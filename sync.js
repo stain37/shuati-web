@@ -117,8 +117,10 @@ const syncRepoUrl = p => syncApi('/repos/' + encodeURIComponent(SYC.owner) + '/'
 function syncPathEnc() { return String(SYC.path || 'sync/data.json').split('/').map(encodeURIComponent).join('/'); }
 async function syncReq(method, url, body, accept) {
   let res;
+  const hdrs = syncHdrs(accept);
+  if (body != null) hdrs['Content-Type'] = 'application/json';   /* 码云必须带，不然 406 */
   try {
-    res = await fetch(url, { method: method, headers: syncHdrs(accept), cache: 'no-store', body: body == null ? undefined : JSON.stringify(body) });
+    res = await fetch(url, { method: method, headers: hdrs, cache: 'no-store', body: body == null ? undefined : JSON.stringify(body) });
   } catch (e) {
     const err = new Error('连不上 ' + syncP().host + '（网络被挡或断网）');
     err.hint = SYC.provider === 'github'
@@ -148,26 +150,31 @@ async function syncWhoAmI() {
   return login;
 }
 function syncSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-/* 云端数据文件：先拿 sha（顺便判断有没有）。GitHub 偶尔在刚提交完时返回 409，等一下重试一次 */
+/* 云端数据文件：先拿 sha（顺便判断有没有）。GitHub 偶尔在刚提交完时返回 409，等一下重试一次；
+   码云对「文件不存在」不给 404，而是返回一个空数组 []，所以这里统一归一化成 null */
 async function syncCloudMeta(retry) {
   try {
     const txt = await syncReq('GET', syncRepoUrl('/contents/' + syncPathEnc() + '?ref=' + encodeURIComponent(SYC.branch)));
-    return JSON.parse(txt);
+    const j = JSON.parse(txt);
+    if (!j || Array.isArray(j) || !j.sha) return null;
+    return j;
   } catch (e) {
     if (e.status === 409 && !retry) { await syncSleep(1200); return syncCloudMeta(1); }
     throw e;
   }
 }
-/* 写云端：409（并发 / 服务端还没同步完）或 422（文件已存在却没带 sha）时，重拿 sha 再试一次 */
+/* 写云端：码云新建文件必须用 POST、改文件用 PUT（不带 sha 的 PUT 会 400「sha is missing」）；
+   409（并发 / 服务端还没同步完）、422 或 400（文件已存在却没带 sha）时，重拿 sha 再试一次 */
 async function syncCloudPut(body) {
   const url = syncRepoUrl('/contents/' + syncPathEnc());
-  try { return await syncReq('PUT', url, body); }
+  const way = () => (SYC.provider === 'gitee' && !body.sha) ? 'POST' : 'PUT';
+  try { return await syncReq(way(), url, body); }
   catch (e) {
-    if (e.status !== 409 && e.status !== 422) throw e;
+    if (e.status !== 409 && e.status !== 422 && e.status !== 400) throw e;
     await syncSleep(1200);
     let sha = null;
-    try { sha = (await syncCloudMeta()).sha; } catch (e2) {}
-    if (sha && sha !== body.sha) { body.sha = sha; return await syncReq('PUT', url, body); }
+    try { sha = ((await syncCloudMeta()) || {}).sha; } catch (e2) {}
+    if (sha && sha !== body.sha) { body.sha = sha; return await syncReq(way(), url, body); }
     throw e;
   }
 }
@@ -261,7 +268,7 @@ async function syncPush(silent) {
   const bytes = syncBytes(text);
   if (bytes > 25 * 1024 * 1024) throw new Error('数据太大（' + (bytes / 1048576).toFixed(1) + ' MB），先别同步自建题库');
   let sha = null;
-  try { sha = (await syncCloudMeta()).sha; } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
+  try { sha = ((await syncCloudMeta()) || {}).sha; } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
   const body = {
     message: 'sync ' + new Date().toLocaleString('zh-CN') + ' ← ' + (SYC.device || syncDevice()),
     content: syncB64Encode(text), branch: SYC.branch
