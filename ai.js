@@ -534,6 +534,7 @@ function aiOpenPanel(host, k, q, onUse) {
   }
 }
 function aiState(host, msg, cls) {
+  if (!host || !host.querySelector) return;      /* 面板已经被整页重画冲掉了：别再报错 */
   const el = host.querySelector('.aistate');
   if (el) { el.textContent = msg || ''; el.className = 'aistate small ' + (cls || ''); }
 }
@@ -585,8 +586,11 @@ async function aiRun(host, userQ) {
   aiState(H(), ctx.count ? ('已取 ' + ctx.count + ' 段资料，正在生成…') : '正在生成…');
   try {
     const full = await aiChat(st.msgs, (txt, rz) => {
-      st.text = txt; st.reason = rz || st.reason;
       const h = H();
+      /* 面板连宿主都没了（用户切页 / 把面板关了）：请求立刻中止，别在后台白烧 token
+         —— 顺带把 st.running 收掉，否则「生成中」会一直挂着、答题快捷键也一直被锁 */
+      if (!h || !h.isConnected) { try { st.ctl.abort(); } catch (e) {} return; }
+      st.text = txt; st.reason = rz || st.reason;
       if (!txt && st.reason) {                       /* 推理模型在「想」的阶段：别让框子看起来是死的 */
         const o = h.querySelector('.aiout');
         if (o) o.innerHTML = '<span class="small muted">模型正在思考…（已想 ' + st.reason.length + ' 字）</span>';
@@ -827,6 +831,9 @@ function renderKb() {
   aiBindConfig();
   if (typeof kbBind === 'function') kbBind($('view'));
 }
+
+/* 有没有 AI 正在流式生成 —— 答题页的键盘快捷键靠它让路（生成期间敲 A–H / Enter / ←→ / S 不该动页面） */
+window.aiBusy = aiIsRunning;
 
 /* 启动：如果站点目录里有 AI配置.js（chatbox-import.py 生成），自动读进来 */
 function aiIngestCfg() { aiLoadCfgFile(); }

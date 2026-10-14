@@ -1947,8 +1947,12 @@ document.querySelectorAll('.mask').forEach(m => m.onclick = e => { if (e.target 
 document.addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName) || '';
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || !!(e.target && e.target.isContentEditable);
-  /* ? 打开快捷键帮助，Esc 关掉所有弹窗（任何页面都能用） */
-  if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+  /* 在输入框里打字一律不响应快捷键（含中文输入法的候选状态：拼音打字时按空格/回车选词也会冒 keydown）。
+     这一条必须放在最前面 —— 否则在 AI 面板里敲字会被当成答题键（A–H / Enter / ←→ / S / Esc），
+     一按就把整页重画、正在流式生成的解析面板被冲掉。 */
+  if (typing || e.isComposing || e.keyCode === 229) return;
+  /* ? 打开快捷键帮助（任何页面都能用） */
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
     e.preventDefault();
     const hm = $('helpMask');
     if (hm && hm.classList.contains('show')) { hideMask(hm); return; }
@@ -1957,7 +1961,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeAll(); return; }
   const rn = route().name;
   /* 搜索页（或任何页面）：按 / 跳到搜索框并聚焦 */
-  if (!typing && e.key === '/') {
+  if (e.key === '/') {
     const focusSq = () => { const el = $('sq'); if (el) { el.focus(); el.select(); } };
     const nb = document.getElementById('nbSearch');       /* 首页那个搜索框：就地聚焦，不用跳页 */
     if (nb) { e.preventDefault(); nb.focus(); nb.select(); return; }
@@ -1967,7 +1971,8 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (rn !== 'quiz' && rn !== 'exam') return;
-  if (typing) return;
+  /* AI 正在流式生成：答题快捷键全部让路（敲 A–H / Enter / ←→ / S / K 都不会再把面板冲掉） */
+  if (typeof aiBusy === 'function' && aiBusy()) return;
   const k = e.key.toUpperCase();
   if (/^[A-H]$/.test(k) || /^[1-8]$/.test(k)) {
     const K = /^[A-H]$/.test(k) ? k : 'ABCDEFGH'[+k - 1];
