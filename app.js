@@ -489,6 +489,7 @@ function route() {
   if (parts[0] === 'review') return { name: 'wrong' };   // 复习入口已并入错题本
   if (parts[0] === 'search') return { name: 'search' };
   if (parts[0] === 'kb') return { name: 'kb' };
+  if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
   return { name: 'home' };
 }
@@ -582,6 +583,7 @@ function renderInner() {
   else if (r.name === 'search') { if (typeof renderSearch === 'function') renderSearch(); }
   else if (r.name === 'stats') renderStats();
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
+  else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else renderQuiz(r.bankId);
 }

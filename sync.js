@@ -1,0 +1,513 @@
+/* ============================================================
+   刷题站 · 云同步 sync.js
+   · 用一个 GitHub【私有】仓库当云盘：电脑和手机各自把记录推到云端、再合并回来
+   · 页面：#/sync（顶栏「同步」按钮 / 设置里的「云同步」按钮 / 首页卡片都能进）
+   · 存的东西：作答记录、错题、收藏、笔记、自定义解析、修正答案、套卷、
+              复习曲线、自建题库、AI 配置（含 Key）——不含站点外观设置
+   · 合并规则：跟站点自己的多标签合并完全一致 —— 谁的时间戳新用谁的；
+              删除会通过「墓碑表」传播，不会被另一台机器复活
+   · 安全：token 只存在本机浏览器的 localStorage（qbank.sync.v1），
+          不会进同步内容、不会发给除 api.github.com 以外的任何地方。
+          建议用 fine-grained token，只授权 shuati-sync 这一个仓库的 Contents 读写。
+   ============================================================ */
+
+const SYNC_LS = 'qbank.sync.v1';
+const SYNC_DEF = {
+  owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
+  auto: true, device: '',
+  scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true },
+  lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
+};
+let SYC = readLS(SYNC_LS, null) || {};
+Object.keys(SYNC_DEF).forEach(k => { if (SYC[k] == null) SYC[k] = SYNC_DEF[k]; });
+SYC.scope = Object.assign({}, SYNC_DEF.scope, SYC.scope || {});
+function syncSave() { writeLS(SYNC_LS, SYC); }
+function syncReady() { return !!(SYC.owner && SYC.repo && SYC.token); }
+function syncSlug() { return SYC.owner + '/' + SYC.repo; }
+
+/* 同步范围（界面上那几行勾选框） */
+const SYNC_SCOPES = [
+  { k: 'ans', label: '作答记录 · 错题 · 收藏', tip: '对错、次数、复习排期、错题本、收藏' },
+  { k: 'note', label: '笔记 · 自定义解析 · 修正答案', tip: '你写过的东西，还有手动改过的正确答案' },
+  { k: 'paper', label: '套卷（组卷）', tip: '临时套卷的定义' },
+  { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
+  { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
+  { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
+  { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
+];
+/* 自建题库没勾上时，分类目录多半也没意义，但由用户自己决定，不做联动 */
+
+/* ---------- 小工具 ---------- */
+function syncBytes(s) { try { return new Blob([s]).size; } catch (e) { return s.length * 2; } }
+function syncB64Encode(str) {
+  const b = new TextEncoder().encode(str);
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < b.length; i += CH) s += String.fromCharCode.apply(null, b.subarray(i, i + CH));
+  return btoa(s);
+}
+function syncB64Decode(b64) {
+  const bin = atob(String(b64).replace(/\s+/g, ''));
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(u8);
+}
+function syncDevice() {
+  const ua = navigator.userAgent || '';
+  let os = '设备';
+  if (/iPhone/.test(ua)) os = 'iPhone'; else if (/iPad/.test(ua)) os = 'iPad';
+  else if (/Android/.test(ua)) os = /Mobile/.test(ua) ? '安卓手机' : '安卓平板';
+  else if (/Mac OS X/.test(ua)) os = 'Mac'; else if (/Windows/.test(ua)) os = 'Windows 电脑';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  let br = '';
+  if (/Edg\//.test(ua)) br = 'Edge'; else if (/OPR\//.test(ua)) br = 'Opera';
+  else if (/Firefox\//.test(ua)) br = '火狐'; else if (/Chrome\//.test(ua)) br = 'Chrome';
+  else if (/Safari\//.test(ua)) br = 'Safari';
+  return os + (br ? '·' + br : '');
+}
+function syncTime(ts) { return ts ? fmtTime(ts) : '从没同步过'; }
+function syncAgo(ts) {
+  if (!ts) return '从没同步过';
+  const d = Date.now() - ts;
+  if (d < 60000) return '刚刚';
+  if (d < 3600000) return Math.floor(d / 60000) + ' 分钟前';
+  if (d < 86400000) return Math.floor(d / 3600000) + ' 小时前';
+  return Math.floor(d / 86400000) + ' 天前';
+}
+/* 页面上的小日志：出问题时要能看见到底哪一步失败 */
+let SYNC_LOG = [];
+function syncLog(msg, bad) {
+  SYNC_LOG.unshift((bad ? '✗ ' : '· ') + new Date().toLocaleTimeString('zh-CN') + '  ' + msg);
+  if (SYNC_LOG.length > 12) SYNC_LOG.length = 12;
+  const el = document.getElementById('syncLogBox');
+  if (el) el.innerHTML = SYNC_LOG.map(x => '<div>' + esc(x) + '</div>').join('');
+}
+function syncState(text, cls) {
+  const el = $('syncState');
+  if (el) { el.textContent = text || ''; el.className = 'aistate' + (cls ? ' ' + cls : ''); }
+}
+
+/* ---------- GitHub API ---------- */
+function syncHdrs(accept) {
+  const h = { 'Authorization': 'Bearer ' + SYC.token, 'Accept': accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  return h;
+}
+const syncApi = p => 'https://api.github.com' + p;
+const syncRepoUrl = p => syncApi('/repos/' + encodeURIComponent(SYC.owner) + '/' + encodeURIComponent(SYC.repo) + p);
+function syncPathEnc() { return String(SYC.path || 'sync/data.json').split('/').map(encodeURIComponent).join('/'); }
+async function syncReq(method, url, body, accept) {
+  let res;
+  try {
+    res = await fetch(url, { method: method, headers: syncHdrs(accept), cache: 'no-store', body: body == null ? undefined : JSON.stringify(body) });
+  } catch (e) {
+    const err = new Error('连不上 api.github.com（网络被挡或断网）');
+    err.hint = '国内偶尔会连不上 GitHub。换个网络、或开代理后再点一次。';
+    throw err;
+  }
+  const txt = await res.text();
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { const j = JSON.parse(txt); if (j.message) msg += '：' + j.message; } catch (e) {}
+    const err = new Error(msg);
+    err.status = res.status;
+    if (res.status === 401) err.hint = 'token 不对或过期了，重新生成一个再填。';
+    else if (res.status === 403) err.hint = 'token 权限不够（需要 Contents 读写；经典 token 要有 repo 权限）。也可能是触发了限流，等一会儿再试。';
+    else if (res.status === 404) err.hint = '仓库不存在，或者 token 没有这个仓库的权限。';
+    else if (res.status === 422) err.hint = '请求被拒：仓库名可能已经存在（存在就直接用，不用再建），或者名字不合法。';
+    else if (res.status === 409) err.hint = 'GitHub 报「状态冲突」（多半是刚提交完、服务端还没同步完）：等两三秒再点一次就好。一直 409 的话，检查仓库是不是空的（点「创建私有仓库」按钮）。';
+    throw err;
+  }
+  return txt;
+}
+async function syncWhoAmI() {
+  const me = JSON.parse(await syncReq('GET', syncApi('/user')));
+  return me.login;
+}
+function syncSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+/* 云端数据文件：先拿 sha（顺便判断有没有）。GitHub 偶尔在刚提交完时返回 409，等一下重试一次 */
+async function syncCloudMeta(retry) {
+  try {
+    const txt = await syncReq('GET', syncRepoUrl('/contents/' + syncPathEnc() + '?ref=' + encodeURIComponent(SYC.branch)));
+    return JSON.parse(txt);
+  } catch (e) {
+    if (e.status === 409 && !retry) { await syncSleep(1200); return syncCloudMeta(1); }
+    throw e;
+  }
+}
+/* 写云端：409（并发 / 服务端还没同步完）或 422（文件已存在却没带 sha）时，重拿 sha 再试一次 */
+async function syncCloudPut(body) {
+  const url = syncRepoUrl('/contents/' + syncPathEnc());
+  try { return await syncReq('PUT', url, body); }
+  catch (e) {
+    if (e.status !== 409 && e.status !== 422) throw e;
+    await syncSleep(1200);
+    let sha = null;
+    try { sha = (await syncCloudMeta()).sha; } catch (e2) {}
+    if (sha && sha !== body.sha) { body.sha = sha; return await syncReq('PUT', url, body); }
+    throw e;
+  }
+}
+async function syncCloudRead(meta) {
+  if (meta && meta.content && meta.encoding === 'base64') return syncB64Decode(meta.content);
+  const txt = await syncReq('GET', syncRepoUrl('/git/blobs/' + meta.sha), null, 'application/vnd.github.raw');
+  return txt;
+}
+
+/* ---------- 打包 / 合并 ---------- */
+function syncPayload() {
+  const s = SYC.scope, d = {};
+  if (s.ans) { d.answers = ANS; d.favs = FAV; }
+  if (s.note) { d.notes = NOTES; d.fixes = FIX; }
+  if (s.paper) d.papers = PAPERS;
+  if (s.cat) d.cats = catRows();
+  if (s.srs) d.srs = SRS;
+  if (s.banks) d.banks = LOCAL;
+  if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
+  const tomb = {};
+  ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
+  tomb.wipe = TOMB.wipe || {};
+  return { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
+}
+/* 把云端的这份数据并进本机（本机自己那套合并写入负责时间戳和墓碑） */
+function syncMergeCloud(cloud) {
+  if (!cloud || cloud.app !== 'shuati-sync') throw new Error('云端文件不是刷题站的同步数据');
+  const d = cloud.data || {}, ct = cloud.tomb || {}, s = SYC.scope;
+  let added = 0;
+
+  /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
+  ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => {
+    const mine = TOMB[k] = TOMB[k] || {}, theirs = ct[k] || {};
+    Object.keys(theirs).forEach(x => { if (!mine[x] || theirs[x] > mine[x]) mine[x] = theirs[x]; });
+  });
+  TOMB.wipe = TOMB.wipe || {};
+  Object.keys(ct.wipe || {}).forEach(k => { if (!TOMB.wipe[k] || ct.wipe[k] > TOMB.wipe[k]) TOMB.wipe[k] = ct.wipe[k]; });
+  writeLS(TOMB_KEY, TOMB);
+
+  /* 2) 记录类：先并进内存，再走站点自己的 mergeWrite（新的赢、墓碑优先） */
+  const put = (mem, cloudObj) => {
+    if (!cloudObj) return;
+    Object.keys(cloudObj).forEach(k => { if (!mem[k]) added++; });
+    Object.assign(mem, cloudObj);
+  };
+  if (s.ans) { put(ANS, d.answers); saveAns(); put(FAV, d.favs); saveFav(); }
+  if (s.note) { put(NOTES, d.notes); saveNotes(); put(FIX, d.fixes); saveFix(); }
+
+  /* 3) 数组类：同 id 以本机为准（本机的可能更新），云端独有的补进来 */
+  if (s.paper && Array.isArray(d.papers)) { d.papers.forEach(p => { if (p && p.id && !PAPERS.some(x => x.id === p.id)) { PAPERS.push(p); added++; } }); savePapers(); }
+  if (s.banks && Array.isArray(d.banks)) { d.banks.forEach(b => { if (b && b.id && !LOCAL.some(x => x.id === b.id)) { LOCAL.push(b); added++; } }); writeLS(LS.banks, LOCAL); invalidateBanks(); }
+  if (s.cat && Array.isArray(d.cats) && d.cats.length) {
+    try {
+      if (typeof CAT !== 'undefined' && CAT && CAT.importCats) { const r = CAT.importCats(d.cats) || {}; added += (r.added || 0); }
+    } catch (e) {}
+  }
+
+  /* 4) 整体设置类（复习曲线 / AI 配置）：只有云端比本机上次上传更新时才采纳 */
+  const newer = (+cloud.updatedAt || 0) > (+SYC.lastPush || 0);
+  if (s.srs && d.srs && newer) { Object.assign(SRS, d.srs); writeLS(LS.srs, SRS); }
+  if (s.ai && d.ai && newer && typeof AIC !== 'undefined') { Object.assign(AIC, d.ai); aiSave(); }
+
+  migrate(); invalidateBanks();
+  return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
+}
+
+/* ---------- 同步动作 ---------- */
+let SYNC_BUSY = false, SYNC_DIRTY = false, SYNC_TIMER = 0;
+function syncBusy(on, msg) {
+  SYNC_BUSY = !!on;
+  document.querySelectorAll('.syncSpin').forEach(el => { el.style.display = on ? 'inline' : 'none'; });
+  if (on) syncState(msg || '同步中…');
+  else if ($('syncState') && !SYC.lastErr) syncState('');
+}
+async function syncPush(silent) {
+  if (!syncReady()) throw new Error('还没配置仓库和 token');
+  const text = JSON.stringify(syncPayload());
+  const bytes = syncBytes(text);
+  if (bytes > 25 * 1024 * 1024) throw new Error('数据太大（' + (bytes / 1048576).toFixed(1) + ' MB），先别同步自建题库');
+  let sha = null;
+  try { sha = (await syncCloudMeta()).sha; } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
+  const body = {
+    message: 'sync ' + new Date().toLocaleString('zh-CN') + ' ← ' + (SYC.device || syncDevice()),
+    content: syncB64Encode(text), branch: SYC.branch
+  };
+  if (sha) body.sha = sha;
+  await syncCloudPut(body);
+  SYC.lastPush = Date.now(); SYC.lastBytes = bytes; SYC.lastErr = '';
+  syncSave();
+  if (!silent) syncLog('已上传 ' + (bytes / 1024).toFixed(0) + ' KB（' + syncDevice() + '）');
+  return bytes;
+}
+async function syncNow(silent) {
+  if (!syncReady()) { if (!silent) toast('先填仓库和 token'); return { ok: false }; }
+  if (SYNC_BUSY) { if (!silent) toast('正在同步，稍等'); return { ok: false }; }
+  SYNC_BUSY = true; syncBusy(true, '正在同步…');
+  try {
+    let cloud = null, meta = null;
+    try { meta = await syncCloudMeta(); } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
+    if (meta) cloud = JSON.parse(await syncCloudRead(meta));
+    let merged = null;
+    if (cloud) merged = syncMergeCloud(cloud);
+    SYC.lastPull = Date.now();
+    const bytes = await syncPush(true);
+    SYC.lastAt = Date.now(); SYC.lastSha = (meta && meta.sha) || '';
+    syncSave();
+    const tip = merged
+      ? '已同步：云端 ' + (merged.added ? '补进 ' + merged.added + ' 条，' : '') + '本机上传 ' + (bytes / 1024).toFixed(0) + ' KB'
+      : '云端还是空的，已把本机数据上传（' + (bytes / 1024).toFixed(0) + ' KB）';
+    syncLog(tip + '　' + (merged ? '云端来自 ' + merged.device : ''));
+    syncBusy(false); syncState('已同步 · ' + syncAgo(SYC.lastAt), 'ok');
+    if (!silent) toast(tip, 4200);
+    render();
+    return { ok: true, added: merged ? merged.added : 0 };
+  } catch (e) {
+    SYC.lastErr = e.message || String(e); syncSave();
+    syncLog('同步失败：' + SYC.lastErr + (e.hint ? '　' + e.hint : ''), true);
+    syncBusy(false); syncState('同步失败：' + SYC.lastErr, 'bad');
+    if (!silent) toast('同步失败：' + SYC.lastErr, 5200);
+    return { ok: false, err: e };
+  } finally { SYNC_BUSY = false; if (route().name === 'sync') syncPaintStatus(); }
+}
+async function syncPullOnly() {
+  if (!syncReady()) return toast('先填仓库和 token');
+  if (SYNC_BUSY) return toast('正在同步，稍等');
+  SYNC_BUSY = true; syncBusy(true, '正在下载…');
+  try {
+    const meta = await syncCloudMeta();
+    if (!meta) throw new Error('云端还没有数据');
+    const cloud = JSON.parse(await syncCloudRead(meta));
+    const r = syncMergeCloud(cloud);
+    SYC.lastPull = Date.now(); SYC.lastErr = ''; syncSave();
+    syncLog('已从云端合并：新进 ' + r.added + ' 条（云端来自 ' + r.device + '）');
+    toast('已合并云端的 ' + r.added + ' 条新记录', 3600);
+    render();
+  } catch (e) {
+    syncLog('下载失败：' + (e.message || e), true);
+    toast('下载失败：' + (e.message || e), 4600);
+  } finally { SYNC_BUSY = false; syncBusy(false); if (route().name === 'sync') syncPaintStatus(); }
+}
+async function syncForcePush() {
+  if (!syncReady()) return toast('先填仓库和 token');
+  if (!confirm('把本机这份数据整个覆盖到云端？\n\n其它设备下次打开时会以云端为准（本机没有的记录会补上，本机多的记录不会丢）。')) return;
+  try { const b = await syncPush(false); toast('已上传 ' + (b / 1024).toFixed(0) + ' KB'); render(); }
+  catch (e) { syncLog('上传失败：' + (e.message || e), true); toast('上传失败：' + (e.message || e), 4600); }
+}
+async function syncTest() {
+  syncState('正在测试…');
+  try {
+    const login = await syncWhoAmI();
+    let repo = '（还没有这个仓库）';
+    try { const r = JSON.parse(await syncReq('GET', syncRepoUrl(''))); repo = r.full_name + (r.private ? '（私有）' : '（⚠️ 公开！）'); } catch (e) { /* 仓库不存在时不算失败 */ }
+    syncState('token 有效：' + login + '　仓库：' + repo, 'ok');
+    syncLog('测试通过：' + login + '　' + repo);
+  } catch (e) {
+    syncState('测试失败：' + e.message, 'bad');
+    syncLog('测试失败：' + e.message + (e.hint ? '　' + e.hint : ''), true);
+  }
+}
+async function syncCreateRepo() {
+  if (!SYC.token) return toast('先填 token');
+  if (!SYC.repo) return toast('先填仓库名');
+  try {
+    await syncReq('POST', syncApi('/user/repos'), {
+      name: SYC.repo, private: true, auto_init: true,
+      description: '刷题站 跨设备云同步数据（私有仓库，浏览器端读写）'
+    });
+    syncLog('已创建私有仓库 ' + syncSlug());
+    toast('已创建私有仓库 ' + syncSlug(), 3600);
+    syncTest();
+  } catch (e) { syncLog('创建仓库失败：' + e.message, true); toast('创建失败：' + e.message, 4600); }
+}
+
+/* ---------- 自动同步 ---------- */
+function syncFp() {
+  let s = '';
+  [LS.ans, LS.fav, LS.note, LS.fix, LS.paper, LS.cat, LS.srs, TOMB_KEY].forEach(k => { s += k + '=' + (localStorage.getItem(k) || '') + '|'; });
+  try { if (typeof AI_LS === 'string') s += AI_LS + '=' + (localStorage.getItem(AI_LS) || '') + '|'; } catch (e) {}
+  const b = localStorage.getItem(LS.banks);            // 自建题库可能几 MB，只看长度
+  s += LS.banks + '=' + (b ? b.length : 0);
+  return s;
+}
+let SYNC_FP = '';
+function syncTick() {
+  if (!syncReady() || !SYC.auto) return;
+  const fp = syncFp();
+  if (!SYNC_FP) { SYNC_FP = fp; return; }
+  if (fp === SYNC_FP) return;
+  SYNC_FP = fp; SYNC_DIRTY = true;
+  clearTimeout(SYNC_TIMER);
+  SYNC_TIMER = setTimeout(() => { if (SYNC_DIRTY) { SYNC_DIRTY = false; syncNow(true); } }, 12000);
+}
+function syncStart() {
+  SYNC_FP = syncFp();
+  setInterval(syncTick, 10000);
+  window.addEventListener('storage', e => {
+    if (!e || !e.key || String(e.key).indexOf('qbank.') !== 0 || e.key === SYNC_LS) return;
+    SYNC_DIRTY = true;
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (SYNC_DIRTY && syncReady() && SYC.auto) { SYNC_DIRTY = false; syncNow(true); } }
+  });
+  if (syncReady() && SYC.auto) setTimeout(() => syncNow(true), 2500);   // 打开页面先对一次
+}
+
+/* ---------- 界面 ---------- */
+function syncStatusHtml() {
+  if (!syncReady()) return '<span class="aistate">还没配置</span>';
+  if (SYC.lastErr) return '<span class="aistate bad">上次失败：' + esc(SYC.lastErr) + '</span>';
+  if (!SYC.lastAt) return '<span class="aistate">已配置，还没同步过</span>';
+  return '<span class="aistate ok">上次同步 ' + esc(syncAgo(SYC.lastAt)) + '（' + esc(syncTime(SYC.lastAt)) + '）</span>';
+}
+function syncCardHtml() {
+  const L = [];
+  L.push('<div class="card kbcard">');
+  L.push('<div class="kbhead">云同步 <span class="small muted">用一个 GitHub 私有仓库当云盘：电脑 ↔ 手机都能读同一份记录</span></div>');
+  L.push('<div class="tools"><span id="syncStatusLine">' + syncStatusHtml() + '</span><span class="syncSpin small muted" style="display:none">同步中…</span><span class="aistate" id="syncState"></span></div>');
+  L.push('<div class="tools"><span class="tl">仓库</span>'
+    + '<input class="num" id="syncOwner" placeholder="用户名" style="width:130px" value="' + esc(SYC.owner) + '">'
+    + '<span class="tl">/</span><input class="num grow" id="syncRepo" placeholder="仓库名，例如 shuati-sync" value="' + esc(SYC.repo) + '">'
+    + '<button class="btn" id="syncCreateRepo" title="在你账号下建一个同名私有仓库（需要 token 有建仓库权限）">创建私有仓库</button></div>');
+  L.push('<div class="tools"><span class="tl">分支</span><input class="num" id="syncBranch" style="width:90px" value="' + esc(SYC.branch) + '">'
+    + '<span class="tl">数据文件</span><input class="num grow" id="syncPath" value="' + esc(SYC.path) + '"></div>');
+  L.push('<div class="tools"><span class="tl">访问 token</span><input class="num grow" id="syncToken" type="password" placeholder="ghp_… 或 github_pat_…" value="' + esc(SYC.token) + '">'
+    + '<button class="btn" id="syncTokShow">显示</button><button class="btn" id="syncTest">测试连接</button></div>');
+  L.push('<div class="tools"><span class="tl">这台设备叫</span><input class="num" id="syncDevice" style="width:170px" placeholder="' + esc(syncDevice()) + '" value="' + esc(SYC.device) + '">'
+    + '<label class="chk"><input type="checkbox" id="syncAuto"' + (SYC.auto ? ' checked' : '') + '> 自动同步（改了就上传，打开页面先对一次）</label></div>');
+  L.push('<div class="tools">' + SYNC_SCOPES.map(x => '<label class="chk" title="' + esc(x.tip) + '"><input type="checkbox" class="syncScope" data-k="' + x.k + '"' + (SYC.scope[x.k] ? ' checked' : '') + '> ' + esc(x.label) + '</label>').join('') + '</div>');
+  L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
+    + '<button class="btn" id="syncPull">只从云端合并下来</button>'
+    + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
+    + '<button class="btn danger" id="syncWipe">断开（清掉本机 token）</button></div>');
+  L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置、自己导入的知识库（那两样用「导出全部数据」搬）。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
+  L.push('<div class="hint" id="syncLogBox" style="margin-top:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap"></div>');
+  L.push('</div>');
+  return L.join('');
+}
+function syncHelpHtml() {
+  const url = location.origin + location.pathname;
+  const L = [];
+  L.push('<div class="card kbcard">');
+  L.push('<div class="kbhead">怎么让手机和电脑通上</div>');
+  L.push('<div class="small">1）电脑上（这里）填好<b>仓库</b>和 <b>token</b>，点「测试连接」→「立即同步」。云端就有第一份数据了。</div>');
+  L.push('<div class="small" style="margin-top:6px">2）手机浏览器打开同一个网址 <code>' + esc(url) + '</code>（可以「添加到主屏幕」，像 App 一样用）：'
+    + '<button class="btn tiny" id="syncCopyUrl">复制网址</button></div>');
+  L.push('<div class="small" style="margin-top:6px">3）手机上进<b>设置 → 云同步</b>，把<b>同样的仓库、同一个 token</b> 填进去，「立即同步」。之后就自动互传了：手机做的题回电脑能看见，电脑写的解析回手机也能看见。</div>');
+  L.push('<div class="note" style="margin-top:10px"><b>关于 token（重要）</b>：它相当于这个仓库的钥匙，只存在你的浏览器里。'
+    + '更安全的做法是用 <b>fine-grained token</b>：GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → 只勾 <b>Only select repositories: ' + esc(SYC.repo || 'shuati-sync') + '</b>，权限只给 <b>Contents: Read and write</b>。'
+    + '这样即使 token 泄露，别人也只能碰这一个私有仓库，动不了你别的代码。用经典 token（ghp_…）的话要带 <code>repo</code> 权限，权限偏大，别在公共电脑上填。</div>');
+  L.push('<div class="small muted" style="margin-top:8px">合并规则：<b>谁的时间戳新用谁的</b>；删掉的记录会在 7 天内带着「墓碑」传播，不会被另一台机器复活。'
+    + '每次同步在仓库里留一个提交，历史都能翻：改坏了就在 GitHub 上回退到上一个提交，然后再同步一次。</div>');
+  L.push('<div class="small muted" style="margin-top:4px">冲突了怎么办：两台设备同时改同一条，会以后同步那台的时间戳为准（不会丢整份数据，只是这一条以新为准）。</div>');
+  L.push('</div>');
+  return L.join('');
+}
+function renderSync() {
+  $('view').innerHTML = '<h2 class="sec">云同步</h2>' + syncCardHtml() + syncHelpHtml();
+  syncPaintStatus();
+  syncBind();
+}
+function syncPaintStatus() {
+  const el = document.getElementById('syncStatusLine');
+  if (el) el.innerHTML = syncStatusHtml();
+  const box = document.getElementById('syncLogBox');
+  if (box) box.innerHTML = SYNC_LOG.map(x => '<div>' + esc(x) + '</div>').join('');
+}
+function syncReadForm() {
+  const v = id => { const el = $(id); return el ? el.value : null; };
+  [['syncOwner', 'owner'], ['syncRepo', 'repo'], ['syncBranch', 'branch'], ['syncPath', 'path'], ['syncToken', 'token'], ['syncDevice', 'device']].forEach(p => {
+    const x = v(p[0]); if (x != null) SYC[p[0] === 'syncToken' ? 'token' : p[1]] = x.trim();
+  });
+  if ($('syncAuto')) SYC.auto = !!$('syncAuto').checked;
+  document.querySelectorAll('.syncScope').forEach(el => { SYC.scope[el.getAttribute('data-k')] = !!el.checked; });
+  SYC.scope.ans = !!SYC.scope.ans;
+  if (!SYC.branch) SYC.branch = 'main';
+  if (!SYC.path) SYC.path = 'sync/data.json';
+  syncSave();
+  if (window.SYNC) SYNC.cfg = SYC;
+}
+function syncBind() {
+  ['syncOwner', 'syncRepo', 'syncBranch', 'syncPath', 'syncToken', 'syncDevice', 'syncAuto'].forEach(id => on(id, syncReadForm, 'change'));
+  document.querySelectorAll('.syncScope').forEach(el => el.addEventListener('change', syncReadForm));
+  on('syncTokShow', () => { const el = $('syncToken'); if (el) el.type = el.type === 'password' ? 'text' : 'password'; });
+  on('syncTest', () => { syncReadForm(); syncTest(); });
+  on('syncNow', () => { syncReadForm(); syncNow(false); });
+  on('syncPull', () => { syncReadForm(); syncPullOnly(); });
+  on('syncPushOnly', () => { syncReadForm(); syncForcePush(); });
+  on('syncCreateRepo', () => { syncReadForm(); syncCreateRepo(); });
+  on('syncCopyUrl', () => {
+    const t = document.createElement('textarea');
+    t.value = location.origin + location.pathname; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); toast('网址已复制，发给手机就能打开'); } catch (e) { toast('复制失败，请手动选中'); }
+    t.remove();
+  });
+  on('syncWipe', () => {
+    if (!confirm('断开云同步？\n\n会清掉这台设备上保存的 token（记录本身不动）。下次要用得重新填。')) return;
+    try { localStorage.removeItem(SYNC_LS); } catch (e) {}
+    SYC = readLS(SYNC_LS, null) || {};
+    Object.keys(SYNC_DEF).forEach(k => { if (SYC[k] == null) SYC[k] = SYNC_DEF[k]; });
+    SYC.scope = Object.assign({}, SYNC_DEF.scope, SYC.scope || {});
+    syncLog('已断开，token 已从这台设备清除');
+    toast('已断开云同步');
+    render();
+  });
+}
+
+/* ---------- 顶栏按钮 / 首页卡片 ---------- */
+function syncTopBtn() {
+  let btn = document.getElementById('btnGoSync');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'btn tg'; btn.id = 'btnGoSync';
+    const kb = document.getElementById('btnGoKb');
+    if (kb && kb.parentNode) kb.parentNode.insertBefore(btn, kb.nextSibling);
+    else document.querySelector('.top .row').appendChild(btn);
+  }
+  btn.textContent = SYC.lastErr ? '同步!' : '同步';
+  btn.title = syncReady() ? ('云同步：' + syncSlug() + '（点开设置 / 立即同步）　' + syncAgo(SYC.lastAt)) : '云同步：还没配置';
+  btn.style.color = SYC.lastErr ? 'var(--bad)' : '';
+  return btn;
+}
+function syncHomeCard() {
+  const v = $('view');
+  if (!v) return;
+  let card = document.getElementById('syncHomeCard');
+  if (card) card.remove();
+  card = document.createElement('div');
+  card.id = 'syncHomeCard';
+  card.className = 'card';
+  card.style.marginBottom = '12px';
+  if (!syncReady()) {
+    card.innerHTML = '<b>云同步</b> <span class="small muted">让手机和电脑共用一份刷题记录（可选，用 GitHub 私有仓库）</span>'
+      + '<div class="actions" style="margin-top:8px"><button class="btn small" id="syncHomeGo">去配置</button></div>';
+  } else {
+    card.innerHTML = '<b>云同步</b> <span class="small muted">' + esc(syncSlug()) + '　' + esc(SYC.lastErr ? '上次失败：' + SYC.lastErr : '上次同步：' + syncAgo(SYC.lastAt)) + '</span>'
+      + '<div class="actions" style="margin-top:8px"><button class="btn small" id="syncHomeNow">立即同步</button>'
+      + '<button class="btn small" id="syncHomeGo">设置</button></div>';
+  }
+  v.insertBefore(card, v.firstChild);
+  on('syncHomeGo', () => go('#/sync'));
+  on('syncHomeNow', () => syncNow(false));
+}
+function syncAfterRender() {
+  const name = (typeof route === 'function' ? route().name : 'home');
+  const full = (name === 'quiz' || name === 'exam');
+  const btn = syncTopBtn();
+  btn.style.display = full ? 'none' : '';
+  if (name === 'home') { try { syncHomeCard(); } catch (e) {} }
+}
+window.addEventListener('hashchange', syncAfterRender);
+window.addEventListener('load', () => { try { syncAfterRender(); } catch (e) {} });
+/* 每次 render() 之后都要补一次（render 会整个换掉 #view，首页卡片会被清掉） */
+try {
+  const _render = window.render;
+  if (typeof _render === 'function' && !_render.__syncWrapped) {
+    const wrapped = function () { const out = _render.apply(this, arguments); try { syncAfterRender(); } catch (e) {} return out; };
+    wrapped.__syncWrapped = true;
+    window.render = wrapped;
+  }
+} catch (e) {}
+/* 设置面板里的「云同步（电脑 ↔ 手机）」按钮 */
+try { on('goSync2', () => { if (typeof closeAll === 'function') closeAll(); go('#/sync'); }); } catch (e) {}
+setTimeout(() => { try { syncStart(); syncAfterRender(); } catch (e) {} }, 800);
+
+window.SYNC = {
+  now: syncNow, pull: syncPullOnly, push: syncForcePush, test: syncTest,
+  cfg: SYC, payload: syncPayload, fp: syncFp, device: syncDevice, render: renderSync
+};
