@@ -171,6 +171,8 @@ app.js                      核心：题库 / 判分 / SRS / 导入解析器 / �
 collection.js               错题本、收藏、待复习、搜索、统计、Markdown、图片、导出
 exam.js                      模拟考试（倒计时 / 标记 / 交卷 / 统一批改）
 kb.js  ai.js                 本地知识库（检索）／AI 写解析
+tags.js                     考点标签（答题页打标签、统计页「按考点」与薄弱点）
+syllabus.js                 考纲覆盖度自查（#/syllabus：抽考点清单、空白/薄弱/已覆盖）
 sw.js  manifest.json  icons/ PWA（离线缓存 + 主屏图标）
 robots.txt                  禁止搜索引擎收录（资料库有版权，别被索引）
 上传步骤.md                 怎么放到网上（Cloudflare Pages / Netlify Drop / GitHub Pages）+ 手机装 App + 数据搬家
