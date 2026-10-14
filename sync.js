@@ -4,9 +4,12 @@
      电脑和手机各自把记录推到云端、再合并回来
    · 页面：#/sync（顶栏「同步」按钮 / 设置里的「云同步」按钮 / 首页卡片都能进）
    · 存的东西：作答记录、错题、收藏、笔记、自定义解析、修正答案、套卷、
-              复习曲线、自建题库、AI 配置（含 Key）——不含站点外观设置
+              复习曲线、自建题库、自己导入的知识库、AI 配置（含 Key）——不含站点外观设置
    · 合并规则：跟站点自己的多标签合并完全一致 —— 谁的时间戳新用谁的；
               删除会通过「墓碑表」传播，不会被另一台机器复活
+   · 知识库两种：站点自带的 5 个「完整版」库在 知识库.js 里（两边打开网址都有，不用同步）；
+              你自己导入的资料库正文在 IndexedDB，走 kbExportAll / kbImportAll 同步，
+              删掉的会记进 qbank.kb.drop.v1 跟着走，不会被另一台设备推回来
    · 安全：token 只存在本机浏览器的 localStorage（qbank.sync.v1），
           不会进同步内容、只会发给所选服务商的接口
           （GitHub：api.github.com；码云：gitee.com）。
@@ -16,7 +19,7 @@ const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, device: '',
-  scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true },
+  scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true, kb: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -34,6 +37,7 @@ const SYNC_SCOPES = [
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
+  { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
 ];
 /* 自建题库没勾上时，分类目录多半也没意义，但由用户自己决定，不做联动 */
@@ -188,7 +192,48 @@ async function syncCloudRead(meta) {
 }
 
 /* ---------- 打包 / 合并 ---------- */
-function syncPayload() {
+/* 知识库：站点自带的 5 个「精编版（完整版）」库是知识库.js 里的网站文件，不进同步（两边打开网址就有）；
+   这里同步的是你自己在「AI 与知识库」页导入的资料库 —— 正文平时躺在 IndexedDB 里，
+   所以走 kb.js 自己的 kbExportAll / kbImportAll，而不是读 localStorage。
+   删除也要能传播，不然 A 删了、B 一推又被带回来：用一本本机账本 qbank.kb.drop.v1 记时间戳。 */
+const SYNC_KB_DROP = 'qbank.kb.drop.v1';
+function syncKbDrops() { const m = readLS(SYNC_KB_DROP, null); return (m && typeof m === 'object') ? m : {}; }
+function syncKbDropAdd(id) { const m = syncKbDrops(); m[id] = Date.now(); writeLS(SYNC_KB_DROP, m); }
+async function syncKbPack() {
+  if (typeof kbExportAll !== 'function') return null;
+  try {
+    const o = await kbExportAll();
+    delete o.sel;        /* 勾选了哪些库是各设备自己的偏好，不跟着走 */
+    delete o.autoN;
+    return o;
+  } catch (e) { syncLog('知识库读不出来：' + (e.message || e), true); return null; }
+}
+/* 把云端的知识库并进本机：先处理「删掉的」，再把本机没有的补进来（同 id 以本机为准） */
+function syncKbMerge(o, drops) {
+  if (typeof kbImportAll !== 'function' || typeof kbList !== 'function') return 0;
+  const mine = syncKbDrops();
+  let changed = false;
+  Object.keys(drops || {}).forEach(id => {
+    if (!mine[id] || drops[id] > mine[id]) {
+      mine[id] = drops[id]; changed = true;
+      const k = kbList().find(x => x.id === id);
+      if (k && !k.auto && typeof kbRemove === 'function') { try { kbRemove(id); } catch (e) {} }
+    }
+  });
+  if (changed) writeLS(SYNC_KB_DROP, mine);
+  if (!o || typeof o !== 'object') return 0;
+  if (Array.isArray(o.skip) && o.skip.length) kbImportAll({ list: [], data: {}, skip: o.skip });   /* 文件库的删除名单 */
+  const have = {};
+  kbList().forEach(k => { have[k.id] = 1; });
+  const list = (o.list || []).filter(k => k && k.id && !mine[k.id] && !have[k.id] && o.data && o.data[k.id]);
+  if (!list.length) return 0;
+  const data = {};
+  list.forEach(k => { data[k.id] = o.data[k.id]; });
+  kbImportAll({ list: list, data: data });
+  syncLog('知识库并进来 ' + list.length + ' 个：' + list.map(k => k.name).join('、'));
+  return list.length;
+}
+async function syncPayload() {
   const s = SYC.scope, d = {};
   if (s.ans) { d.answers = ANS; d.favs = FAV; }
   if (s.note) { d.notes = NOTES; d.fixes = FIX; }
@@ -197,10 +242,13 @@ function syncPayload() {
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
+  if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
   tomb.wipe = TOMB.wipe || {};
-  return { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
+  const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
+  if (s.kb) out.kbDrop = syncKbDrops();
+  return out;
 }
 /* 把云端的这份数据并进本机（本机自己那套合并写入负责时间戳和墓碑） */
 function syncMergeCloud(cloud) {
@@ -240,6 +288,9 @@ function syncMergeCloud(cloud) {
   if (s.srs && d.srs && newer) { Object.assign(SRS, d.srs); writeLS(LS.srs, SRS); }
   if (s.ai && d.ai && newer && typeof AIC !== 'undefined') { Object.assign(AIC, d.ai); aiSave(); }
 
+  /* 5) 知识库：自己导入的资料库按 id 补进来；云端删掉的按时间戳在本机也删掉 */
+  if (s.kb) added += syncKbMerge(d.kb, cloud.kbDrop);
+
   migrate(); invalidateBanks();
   return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
 }
@@ -273,9 +324,9 @@ async function syncWrittenOk(text) {
 }
 async function syncPush(silent) {
   if (!syncReady()) throw new Error('还没配置仓库和 token');
-  const text = JSON.stringify(syncPayload());
+  const text = JSON.stringify(await syncPayload());
   const bytes = syncBytes(text);
-  if (bytes > 25 * 1024 * 1024) throw new Error('数据太大（' + (bytes / 1048576).toFixed(1) + ' MB），先别同步自建题库');
+  if (bytes > 25 * 1024 * 1024) throw new Error('数据太大（' + (bytes / 1048576).toFixed(1) + ' MB）：先别勾「自己导入的资料库」和「自建题库」，或者把它们做成 知识库.js');
   let sha = null;
   try { sha = ((await syncCloudMeta()) || {}).sha; } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
   const body = {
@@ -396,6 +447,10 @@ function syncFp() {
   try { if (typeof AI_LS === 'string') s += AI_LS + '=' + (localStorage.getItem(AI_LS) || '') + '|'; } catch (e) {}
   const b = localStorage.getItem(LS.banks);            // 自建题库可能几 MB，只看长度
   s += LS.banks + '=' + (b ? b.length : 0);
+  /* 知识库：正文在 IndexedDB 里，指纹看不进去；目录 + 删除名单 + 删除账本变了就够触发了 */
+  try {
+    ['qbank.kb.list.v1', 'qbank.kb.skip.v1', SYNC_KB_DROP].forEach(k => { s += '|' + k + '=' + (localStorage.getItem(k) || ''); });
+  } catch (e) {}
   return s;
 }
 let SYNC_FP = '';
@@ -668,6 +723,19 @@ try {
 } catch (e) {}
 /* 设置面板里的「云同步（电脑 ↔ 手机）」按钮 */
 try { on('goSync2', () => { if (typeof closeAll === 'function') closeAll(); go('#/sync'); }); } catch (e) {}
+/* 删掉一个「自己导入的资料库」时记一笔账，别的设备同步时也跟着删（不然会被推回来） */
+try {
+  const _kbRemove = window.kbRemove;
+  if (typeof _kbRemove === 'function' && !_kbRemove.__syncWrapped) {
+    const wrapped = function (id) {
+      const out = _kbRemove.apply(this, arguments);
+      try { if (String(id).indexOf('file:') !== 0) syncKbDropAdd(id); } catch (e) {}
+      return out;
+    };
+    wrapped.__syncWrapped = true;
+    window.kbRemove = wrapped;
+  }
+} catch (e) {}
 setTimeout(() => {
   let fromLink = false;
   try { fromLink = syncCfgFromLink(); } catch (e) {}
