@@ -146,12 +146,15 @@ function paintEditor() {
     paintEditor();
   }, 'change');
   host.querySelectorAll('[data-imgdel]').forEach(b => b.onclick = () => { ED.imgs.splice(+b.dataset.imgdel, 1); paintEditor(); });
-  on('edCancel', () => { host.innerHTML = ''; ED = null; });
+  /* 重画编辑器之后把「AI 生成解析」的面板挂回来（生成到一半被重画也不会断） */
+  if (typeof aiReopenFor === 'function') { try { aiReopenFor(host.querySelector('.ai-host'), k); } catch (e) {} }
+  on('edCancel', () => { if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host')); host.innerHTML = ''; ED = null; });
   on('edReset', () => {
     if (!confirm('恢复成题库自带的解析？你写的 Markdown 和图片都会删掉。')) return;
     delete NOTES[k];
     tombAdd('note', k);
     saveNotes();
+    if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
     host.innerHTML = ''; ED = null; toast('已恢复默认解析'); render();
   });
   on('edSave', () => {
@@ -161,6 +164,7 @@ function paintEditor() {
     if (!saveNotes()) { toast('保存失败：浏览器存储空间已满，建议把图片压小或先导出备份'); return; }
     const mb = storageBytes() / 1024 / 1024;
     toast(mb > 4 ? '已保存（本机存储已用 ' + mb.toFixed(2) + ' MB，接近上限）' : '已保存');
+    if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
     host.innerHTML = ''; ED = null;
     render();
   });
@@ -539,7 +543,16 @@ function bindItem(node, mode, it) {
     }
     else if (act === 'note') openNoteEditor(k, node.querySelector('.note-host'), it.q, render);
     else if (act === 'fix') openAnsEditor(node.querySelector('.fix-host'), k, it.q, render);
-    else if (act === 'ai') { if (typeof aiOpenPanel === 'function') aiOpenPanel(node.querySelector('.ai-host'), k, it.q); else toast('AI 模块没加载（ai.js）'); }
+    else if (act === 'ai') {
+      if (typeof aiOpenPanel !== 'function') { toast('AI 模块没加载（ai.js）'); return; }
+      let h = node.querySelector('.ai-host');
+      if (!h) {                                   /* 没展开时这一格还不存在：先展开，再把面板开在新行里 */
+        st.open.add(k); render();
+        const nd = document.querySelector('[data-k="' + String(k).replace(/["\\]/g, '\\$&') + '"]');
+        h = nd && nd.querySelector('.ai-host');
+      }
+      if (h) aiOpenPanel(h, k, it.q);
+    }
     else if (act === 'link') {
       const b = allBanks().find(x => !x.paper && k.indexOf(x.id + '#') === 0);
       if (!b) return;
@@ -548,6 +561,9 @@ function bindItem(node, mode, it) {
       go('#/bank/' + b.id);
     }
   });
+  /* 重画之后把这一行的「AI 解析」面板挂回来：勾选 / 展开收起 / 收藏 / 别的标签页同步都不会再冲掉正在生成的解析 */
+  { const ah = node.querySelector('.ai-host');
+    if (ah && typeof aiReopenFor === 'function') { try { aiReopenFor(ah, k); } catch (e) {} } }
 }
 
 /* ---------------- 导出 ---------------- */

@@ -314,6 +314,97 @@ async function aiContext(q, userQ) {
 
 /* ---------- 面板：答题页 / 错题本 / 解析编辑器里共用 ---------- */
 let AI_LAST = {};   /* 每个 host 的会话状态 */
+
+/* ---------- 面板「续命」：整页重画（重画会把面板一起冲掉、正在生成的也会断）----------
+   站点里很多操作都会 render() 整页重画：答题页选选项/提交/翻页、错题本展开收起/勾选、
+   别的标签页改了数据（storage 事件）等。重画之后原来的面板节点就没了，
+   于是「生成到一半突然变回原来解析」。
+   办法：每个会话记住自己的宿主怎么找回（#aiHost / [data-k=..] .ai-host / .ed .ai-host），
+   重画后由 renderQuiz / bindItem / paintEditor 调 aiReopenFor() 把面板挂回去，
+   流式输出每次画之前都用 aiFindHost() 取「当前活着的那个宿主」，所以不会断。 */
+function aiSels(host, k) {
+  const s = [];
+  if (host && host.id) s.push('#' + host.id);
+  try { if (host && host.closest && host.closest('.ed')) s.push('.ed .ai-host'); } catch (e) {}
+  if (k != null && k !== '') s.push('[data-k="' + String(k).replace(/["\\]/g, '\\$&') + '"] .ai-host');
+  if (!s.length) s.push('.ai-host');
+  return s;
+}
+function aiFindHost(st) {
+  if (!st) return null;
+  if (st.host && st.host.isConnected && st.host.querySelector) return st.host;
+  const list = st.sels || [];
+  for (let i = 0; i < list.length; i++) {
+    let el = null;
+    try { el = document.querySelector(list[i]); } catch (e) { el = null; }
+    if (el) return el;
+  }
+  return null;
+}
+function aiInEditor(host) { try { return !!(host && host.closest && host.closest('.ed')); } catch (e) { return false; } }
+function aiAttach(st, host) {
+  if (!host || !st) return false;
+  st.host = host;
+  st.sels = aiSels(host, st.k);
+  if (!host.dataset.aiid) host.dataset.aiid = st.id;
+  if (!host.querySelector('.aipanel')) {
+    if (st.onUse) host.dataset.aiuse = '1';
+    host.innerHTML = aiPanelHtml(host);
+    aiPanelBind(host);
+  }
+  return true;
+}
+function aiRestore(st) {
+  const host = aiFindHost(st);
+  if (!host) return false;
+  const fresh = host !== st.host;
+  aiAttach(st, host);
+  const ta = host.querySelector('.ai-askq');
+  if (fresh && ta && st.draft != null && ta.value !== st.draft) ta.value = st.draft;
+  if (st.ctx) { try { aiPaintSrc(host, st.ctx); } catch (e) {} }
+  if (st.text) aiPaintOut(host, st.text, true);
+  else if (!st.running) {
+    const out = host.querySelector('.aiout');
+    if (out && !out.innerHTML.trim()) out.innerHTML = '<span class="muted">还没开始。先在上面写你要什么（可以留空），再点「生成解析」；写好追问后点「继续问」。</span>';
+  }
+  if (st.running) aiState(host, '正在生成…', '');
+  else aiState(host, st.text ? '完成' : '就绪 · 等你的要求', st.text ? 'ok' : '');
+  const stop = host.querySelector('.ai-stop'), go = host.querySelector('.ai-go');
+  if (stop) stop.disabled = !st.running;
+  if (go) go.disabled = !!st.running;
+  try { paintAiChips(); } catch (e) {}
+  return true;
+}
+/* 重画之后调用：把这一格（同一道题 / 同一个编辑器）「还活着」的会话挂回来 */
+function aiReopenFor(host, k) {
+  if (!host) return false;
+  const inEd = aiInEditor(host);
+  let best = null;
+  Object.keys(AI_LAST).forEach(id => {
+    const st = AI_LAST[id];
+    if (!st || !st.host || String(st.k) !== String(k)) return;
+    if (aiInEditor(st.host) !== inEd) return;                 /* 编辑器的面板别挂到错题本行里去（反过来也一样） */
+    const fresh = st.running || (st.endTs && Date.now() - st.endTs < 3 * 60 * 1000);
+    if (!fresh) return;
+    if (!best) { best = st; return; }
+    if (st.running !== best.running) { if (st.running) best = st; return; }
+    if ((st.ts || 0) > (best.ts || 0)) best = st;
+  });
+  if (!best) return false;
+  aiAttach(best, host);
+  return aiRestore(best);
+}
+function aiIsRunning() {
+  return Object.keys(AI_LAST).some(id => AI_LAST[id] && AI_LAST[id].running);
+}
+/* 这个面板被彻底关掉了（取消/保存）→ 忘掉这个会话，别在下次重画时又冒出来 */
+function aiForget(host) {
+  try {
+    if (!host) return;
+    if (host.dataset && host.dataset.aiid) delete AI_LAST[host.dataset.aiid];
+    if (host.querySelectorAll) host.querySelectorAll('[data-aiid]').forEach(x => { if (x.dataset.aiid) delete AI_LAST[x.dataset.aiid]; });
+  } catch (e) {}
+}
 function aiPanelHtml(host) {
   const L = [];
   L.push('<div class="aipanel">');
@@ -382,11 +473,12 @@ function aiPanelBind(host) {
   const aiAskText = () => { const el = q('.ai-askq'); return el ? (el.value || '').trim() : ''; };
   q('.ai-go').onclick = () => {                 /* 生成解析：带上你写的要求，从头生成（不点就不会开始） */
     const st0 = AI_LAST[host.dataset.aiid];
-    if (st0) { st0.text = ''; st0.msgs = []; }
+    if (st0) { st0.text = ''; st0.msgs = []; st0.draft = aiAskText(); st0.host = host; st0.sels = aiSels(host, st0.k); }
     aiRun(host, aiAskText());
   };
   q('.ai-ask').onclick = () => { const v = aiAskText(); if (!v) { toast('先在框里写一句要问的'); return; } aiRun(host, v); };
   q('.ai-askq').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); q('.ai-go').click(); } };
+  { const askq = q('.ai-askq'); if (askq) askq.oninput = () => { const st0 = AI_LAST[host.dataset.aiid]; if (st0) st0.draft = askq.value; }; }
   q('.ai-stop').onclick = () => { const st = AI_LAST[host.dataset.aiid]; if (st && st.ctl) st.ctl.abort(); };
   q('.ai-copy').onclick = () => { const st = AI_LAST[host.dataset.aiid]; aiCopy(st ? st.text : '', host); };
   q('.ai-copyq').onclick = () => {
@@ -415,12 +507,20 @@ function aiOpenPanel(host, k, q, onUse) {
   if (!host) return;
   if (typeof kbEnsureFilesLoaded === 'function') kbEnsureFilesLoaded().then(() => { try { paintAiChips(); } catch (e) {} });
   if (!host.dataset.aiid) {
-    host.dataset.aiid = 'ai' + Math.random().toString(36).slice(2, 8);
-    if (onUse) host.dataset.aiuse = '1';
-    AI_LAST[host.dataset.aiid] = { k: k, q: q, onUse: onUse, text: '', msgs: [], running: false, ctl: null, ctx: null };
-    host.innerHTML = aiPanelHtml(host);
-    aiPanelBind(host);
+    /* 这一格刚被整页重画过、会话还活着 → 挂回来（别新开一个空面板，看起来就像「生成被中断了」） */
+    if (!aiReopenFor(host, k)) {
+      host.dataset.aiid = 'ai' + Math.random().toString(36).slice(2, 8);
+      if (onUse) host.dataset.aiuse = '1';
+      AI_LAST[host.dataset.aiid] = {
+        id: host.dataset.aiid, k: k, q: q, onUse: onUse, text: '', msgs: [], running: false,
+        ctl: null, ctx: null, host: host, sels: aiSels(host, k), ts: Date.now(), draft: ''
+      };
+      host.innerHTML = aiPanelHtml(host);
+      aiPanelBind(host);
+    }
   }
+  const stKeep = AI_LAST[host.dataset.aiid];
+  if (stKeep) { stKeep.host = host; stKeep.sels = aiSels(host, k); stKeep.ts = Date.now(); }
   paintAiChips();
   host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   const st = AI_LAST[host.dataset.aiid];
@@ -465,9 +565,11 @@ async function aiRun(host, userQ) {
   const fresh = !userQ;
   if (fresh) { st.text = ''; st.msgs = []; }
   st.running = true; st.ctl = new AbortController();
-  host.querySelector('.ai-stop').disabled = false;
-  host.querySelector('.ai-go').disabled = true;
-  aiState(host, '正在检索资料…');
+  st.host = host; st.sels = aiSels(host, st.k); st.ts = Date.now(); st.endTs = 0;
+  const H = () => (aiFindHost(st) || host);       /* 重画之后画到「当前活着的那个宿主」里，流不会断 */
+  H().querySelector('.ai-stop').disabled = false;
+  H().querySelector('.ai-go').disabled = true;
+  aiState(H(), '正在检索资料…');
   let ctx = { hits: [], text: '', count: 0 };
   try { ctx = await aiContext(st.q, userQ); } catch (e) {}
   const rec = aiMyRecText(st.k);
@@ -478,19 +580,20 @@ async function aiRun(host, userQ) {
     st.msgs.push({ role: 'user', content: (ctx.text ? '【参考资料】\n' + ctx.text + '\n\n' : '') + (userQ || '继续') });
   }
   st.ctx = ctx;
-  aiPaintSrc(host, ctx);
-  aiPaintOut(host, fresh ? '' : st.text, true);
-  aiState(host, ctx.count ? ('已取 ' + ctx.count + ' 段资料，正在生成…') : '正在生成…');
+  aiPaintSrc(H(), ctx);
+  aiPaintOut(H(), fresh ? '' : st.text, true);
+  aiState(H(), ctx.count ? ('已取 ' + ctx.count + ' 段资料，正在生成…') : '正在生成…');
   try {
     const full = await aiChat(st.msgs, (txt, rz) => {
       st.text = txt; st.reason = rz || st.reason;
+      const h = H();
       if (!txt && st.reason) {                       /* 推理模型在「想」的阶段：别让框子看起来是死的 */
-        const o = host.querySelector('.aiout');
+        const o = h.querySelector('.aiout');
         if (o) o.innerHTML = '<span class="small muted">模型正在思考…（已想 ' + st.reason.length + ' 字）</span>';
-        aiState(host, '正在思考…', '');
+        aiState(h, '正在思考…', '');
         return;
       }
-      aiPaintOut(host, txt);
+      aiPaintOut(h, txt);
     }, st.ctl.signal);
     st.text = full || st.text;
     let onlyReason = false;
@@ -498,21 +601,20 @@ async function aiRun(host, userQ) {
       st.text = st.reason; st.reason = ''; onlyReason = true;
     }
     st.msgs.push({ role: 'assistant', content: st.text });
-    aiPaintOut(host, st.text, true);
-    if (onlyReason) aiState(host, '模型只回了思考过程，没给正文，点「继续问」试试', 'bad');
-    else aiState(host, st.text ? '完成' : '模型没返回内容', st.text ? 'ok' : 'bad');
+    aiPaintOut(H(), st.text, true);
+    if (onlyReason) aiState(H(), '模型只回了思考过程，没给正文，点「继续问」试试', 'bad');
+    else aiState(H(), st.text ? '完成' : '模型没返回内容', st.text ? 'ok' : 'bad');
   } catch (e) {
     const c = aiErrInfo(e);
-    if (c.msg === '已停止') aiState(host, '已停止', '');
+    if (c.msg === '已停止') aiState(H(), '已停止', '');
     else {
-      const out = host.querySelector('.aiout');
+      const out = H().querySelector('.aiout');
       if (out) out.innerHTML = '<span class="bad-text">AI 出错：' + esc(c.msg) + '</span><div class="small muted" style="margin-top:6px">' + esc(c.hint) + '</div>';
-      aiState(host, '出错', 'bad');
+      aiState(H(), '出错', 'bad');
     }
   } finally {
-    st.running = false;
-    host.querySelector('.ai-stop').disabled = true;
-    host.querySelector('.ai-go').disabled = false;
+    st.running = false; st.endTs = Date.now(); st.ts = Date.now();
+    try { H().querySelector('.ai-stop').disabled = true; H().querySelector('.ai-go').disabled = false; } catch (e) {}
   }
 }
 function aiSaveOut(host) {

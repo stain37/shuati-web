@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v27-web13';   // 2026-10-17：自己导入的知识库也一起同步（含删除传播）
+const VERSION = 'shuati-v28-web14';   // 2026-10-17：生成 AI 解析时页面重画不再打断（面板会自己挂回来）
 const CORE = [
   './',
   './index.html',

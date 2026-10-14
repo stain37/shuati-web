@@ -1031,6 +1031,10 @@ function renderQuiz(bankId) {
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
 
+  /* 整页重画之后把「AI 解析」面板挂回来：不然选选项 / 提交 / 翻页 / 别的标签页同步
+     都会把正在生成的解析冲掉（看起来就是「突然变回原来解析、生成中断」） */
+  if (typeof aiReopenFor === 'function') { try { aiReopenFor($('aiHost'), fk); } catch (e) {} }
+
   showFb(bank, q);
   rememberLast(bank, q.id);
   $('jumpInfo').innerHTML = '<b>' + pos + ' / ' + pool.length + '</b><span>答题卡</span>';
