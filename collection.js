@@ -531,7 +531,7 @@ function bindItem(node, mode, it) {
     e.stopPropagation();
     const act = btn.dataset.act;
     if (act === 'open') { st.open.has(k) ? st.open.delete(k) : st.open.add(k); render(); }
-    else if (act === 'fav') { toggleFav(k); }
+    else if (act === 'fav') { toggleFav(k, btn); }
     else if (act === 'unfav') { delete FAV[k]; tombAdd('fav', k); saveFav(); st.sel.delete(k); toast('已取消收藏'); render(); }
     else if (act === 'drop') {
       if (!confirm('把这道题的作答记录（含错题次数）移除？不可恢复。')) return;

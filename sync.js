@@ -251,6 +251,15 @@ function syncBusy(on, msg) {
   document.querySelectorAll('.syncSpin').forEach(el => { el.style.display = on ? 'inline' : 'none'; });
   if (on) syncState(msg || '同步中…');
   else if ($('syncState') && !SYC.lastErr) syncState('');
+  if (document.getElementById('btnGoSync')) syncTopBtn();
+}
+/* 有 AI 正在生成时别重画整页：render() 会把正在写的「AI 解析」一起冲掉 */
+function syncSafeRender() {
+  try {
+    if (typeof AI_LAST === 'object' && AI_LAST
+      && Object.keys(AI_LAST).some(k => AI_LAST[k] && AI_LAST[k].running)) { syncAfterRender(); return; }
+  } catch (e) {}
+  render();
 }
 /* 上传后回读一次做确认：有些服务商对「写」的响应不带跨域头，浏览器读不到回包，
    fetch 会直接抛错，但文件其实已经写进去了 —— 回读（GET 是能读的）来判定真伪 */
@@ -311,7 +320,7 @@ async function syncNow(silent) {
     syncLog(tip + '　' + (merged ? '云端来自 ' + merged.device : ''));
     syncBusy(false); syncState('已同步 · ' + syncAgo(SYC.lastAt), 'ok');
     if (!silent) toast(tip, 4200);
-    render();
+    syncSafeRender();
     return { ok: true, added: merged ? merged.added : 0 };
   } catch (e) {
     SYC.lastErr = e.message || String(e); syncSave();
@@ -333,7 +342,7 @@ async function syncPullOnly() {
     SYC.lastPull = Date.now(); SYC.lastErr = ''; syncSave();
     syncLog('已从云端合并：新进 ' + r.added + ' 条（云端来自 ' + r.device + '）');
     toast('已合并云端的 ' + r.added + ' 条新记录', 3600);
-    render();
+    syncSafeRender();
   } catch (e) {
     syncLog('下载失败：' + (e.message || e), true);
     toast('下载失败：' + (e.message || e), 4600);
@@ -552,7 +561,7 @@ function syncBind() {
     SYC.scope = Object.assign({}, SYNC_DEF.scope, SYC.scope || {});
     syncLog('已断开，token 已从这台设备清除');
     toast('已断开云同步');
-    render();
+    syncSafeRender();
   });
 }
 
@@ -565,9 +574,16 @@ function syncTopBtn() {
     const kb = document.getElementById('btnGoKb');
     if (kb && kb.parentNode) kb.parentNode.insertBefore(btn, kb.nextSibling);
     else document.querySelector('.top .row').appendChild(btn);
+    btn.addEventListener('click', ev => {
+      if (ev.shiftKey || ev.altKey) { go('#/sync'); return; }        /* Shift / Alt + 点 = 打开设置页 */
+      if (!syncReady()) { go('#/sync'); toast('云同步还没配置：填一下服务商 / 属主 / 仓库 / 令牌'); return; }
+      syncNow(false);                                                /* 点一下 = 立即同步（先拉后推） */
+    });
+    btn.addEventListener('contextmenu', ev => { ev.preventDefault(); go('#/sync'); });
   }
-  btn.textContent = SYC.lastErr ? '同步!' : '同步';
-  btn.title = syncReady() ? ('云同步：' + syncSlug() + '（点开设置 / 立即同步）　' + syncAgo(SYC.lastAt)) : '云同步：还没配置';
+  btn.textContent = SYNC_BUSY ? '同步中' : (SYC.lastErr ? '同步!' : '同步');
+  btn.title = (syncReady() ? ('云同步：' + syncSlug() + '（点一下 = 立即同步；Shift+点 或 右键 = 打开设置）　' + syncAgo(SYC.lastAt)) : '云同步：还没配置（点一下去填）')
+    + (SYC.lastErr ? ('　上次失败：' + (SYC.lastErr.message || SYC.lastErr.status || '')) : '');
   btn.style.color = SYC.lastErr ? 'var(--bad)' : '';
   return btn;
 }

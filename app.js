@@ -1029,7 +1029,7 @@ function renderQuiz(bankId) {
   on('doNote', () => openNoteEditor(fk, $('noteHost'), q, render));
   on('doFix', () => openAnsEditor($('fixHost'), fk, q, render));
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
-  on('btnFav', () => toggleFav(fk));
+  on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
 
   showFb(bank, q);
   rememberLast(bank, q.id);
@@ -1046,9 +1046,17 @@ function renderQuiz(bankId) {
   renderChips(bank);
 }
 
-function toggleFav(k) {
+function toggleFav(k, btn) {
   if (FAV[k]) { delete FAV[k]; tombAdd('fav', k); toast('已取消收藏'); } else { FAV[k] = Date.now(); toast('已收藏'); }
   if (!saveFav()) toast('保存失败：浏览器存储空间可能已满');
+  /* 就地换那颗星：整页重画会把正在生成的「AI 解析」一起冲掉（找不到按钮时才重画） */
+  const b = btn || document.getElementById('btnFav');
+  if (b) {
+    const on = !!FAV[k];
+    if (b.classList.contains('tiny')) b.textContent = on ? '★' : '☆';
+    else { b.classList.toggle('on', on); b.textContent = on ? '★ 已收藏' : '☆ 收藏'; }
+    return;
+  }
   render();
 }
 
