@@ -263,8 +263,20 @@ const qType = (q, ans) => ((ans || q.answer || []).length > 1 ? 'X' : 'A');
 const typeLabel = (q, ans) => ((ans || q.answer || []).length > 1 ? '多选' : '单选');
 const key = (bankId, qid) => bankId + '#' + qid;
 const kOf = (bank, q) => key(bank.id, q.id);
-/* 临时套卷里的题目 id 是 p1/p2…（paperBanks 给的重编号），显示题号时去掉前缀 p，否则会写成「第 p1 题」 */
-const qNo = q => String(q.id == null ? '' : q.id).replace(/^p(\d+)$/, '$1');
+/* 题号显示：临时套卷里的题目 id 是 p1/p2…（paperBanks 给的重编号），要去掉前缀 p；
+   题库 id 不是纯数字的（比如导入时给的 q1、uuid 那种），就退回「它在题库里排第几」，
+   免得界面上冒出「第 q1 题」这种内部编号。
+   list 传题库/试卷的题目数组；不传就只能原样显示。 */
+const qNo = (q, list) => {
+  const raw = String(q && q.id == null ? '' : q.id);
+  const m = raw.match(/^p?(\d+)$/);
+  if (m) return m[1];
+  if (list && list.length) {
+    const at = list.findIndex(x => String(x.id) === raw);
+    if (at >= 0) return String(at + 1);
+  }
+  return raw || '?';
+};
 const favKey = (bank, q) => (bank.paper && q._srcKey) ? q._srcKey : key(bank.id, q.id);
 
 /* 作答记录 */
@@ -449,12 +461,38 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /* 安全绑定：id 不存在也不会中断后面的绑定 */
 function on(id, fn, ev) { const el = $(id); if (el) el['on' + (ev || 'click')] = fn; return el; }
-function toast(msg, ms) {
+/* 选项文本：题库里常写成「A. 甲说法」，界面上已经另有 A/B/C/D 徽章，
+   这里把与徽章重复的那个前缀去掉，免得出现「A  A. 甲说法」 */
+function optText(t, K) {
+  const s = String(t == null ? '' : t);
+  if (!K) return s;
+  const m = s.match(/^\s*([A-Ha-h])\s*[.、．·:：)）]\s*/);
+  return (m && m[1].toUpperCase() === String(K).toUpperCase()) ? s.slice(m[0].length) : s;
+}
+/* 气泡提示：kind = ok / bad / 空（普通）。放底部，手机上不会被手指挡住 */
+function toast(msg, ms, kind) {
   const d = document.createElement('div');
-  d.textContent = msg;
-  d.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(17,24,39,.92);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:999;max-width:80vw;text-align:center';
+  d.className = 'toast' + (kind === 'ok' ? ' ok' : kind === 'bad' ? ' bad' : '');
+  const ic = document.createElement('span');
+  ic.className = 'tic';
+  ic.textContent = kind === 'ok' ? '✓' : kind === 'bad' ? '!' : 'i';
+  const tx = document.createElement('span');
+  tx.textContent = msg;
+  d.appendChild(ic); d.appendChild(tx);
   document.body.appendChild(d);
-  setTimeout(() => d.remove(), ms || 1700);
+  requestAnimationFrame(() => d.classList.add('show'));
+  setTimeout(() => { d.classList.remove('show'); setTimeout(() => d.remove(), 260); }, ms || 1700);
+}
+/* 顶栏高亮当前所在页 */
+function markTop(name) {
+  const map = { home: 'btnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', sync: 'btnGoSync' };
+  Object.keys(map).forEach(n => {
+    const el = $(map[n]);
+    if (!el) return;
+    const on_ = n === name;
+    el.classList.toggle('on', on_);
+    if (on_) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
+  });
 }
 function download(name, text, mime) {
   const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
@@ -586,6 +624,7 @@ function renderInner() {
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else renderQuiz(r.bankId);
+  markTop(r.name);
 }
 
 /* ============================================================
@@ -703,13 +742,13 @@ function renderHome() {
       <h1>刷题站</h1>
       <p>选择题即时判分，选错立刻出解析。错题自动进错题本，可批量收藏 / 移除 / 清空次数 / 组成套卷再做一遍，也能改解析、按需导出。</p>
       <div class="hstat">
-        <div><b>${banks.length}</b>个题库</div>
-        <div><b>${totalQ}</b>道题</div>
-        <div><b>${totalDone}</b>已答</div>
-        <div><b>${totalDone ? Math.round(totalOk / totalDone * 100) : 0}%</b>正确率</div>
-        <div><b>${wrongN}</b>错题</div>
-        <div><b>${favN}</b>收藏</div>
-        <div><b>${dueN}</b>待复习</div>
+        <button class="hs" data-act="banks" title="往下看我的题库"><b>${banks.length}</b>个题库</button>
+        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalQ}</b>道题</button>
+        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalDone}</b>已答</button>
+        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalDone ? Math.round(totalOk / totalDone * 100) : 0}%</b>正确率</button>
+        <button class="hs" data-go="#/wrong" title="打开错题本"><b>${wrongN}</b>错题</button>
+        <button class="hs" data-go="#/fav" title="打开收藏"><b>${favN}</b>收藏</button>
+        <button class="hs${dueN ? '' : ' off'}" data-act="review" title="${dueN ? '开始今日复习' : '今天没有该复习的题'}"><b>${dueN}</b>待复习</button>
       </div>
       <div class="hstat today">
         <div><b>${TODAY.dNum}</b>今日已答</div>
@@ -719,19 +758,21 @@ function renderHome() {
       </div>
     </div>
     ${resumeHtml}
-    <div class="row-inline" style="margin:18px 0 12px">
+    <div class="toolbar main">
       <button class="btn primary" id="toImport">＋ 导入 / 新建题库</button>
       ${dueN ? `<button class="btn primary" id="toReview">今日复习 ${srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN} 题</button>` : ''}
-      <button class="btn" id="toWrong">错题本${wrongN ? '（' + wrongN + (dueN ? ' · 待复习' + dueN : '') + '）' : ''}</button>
-      <button class="btn" id="toFav">收藏${favN ? '（' + favN + '）' : ''}</button>
-      <button class="btn" id="toSearch">搜索题目</button>
       <button class="btn" id="toRand">随机抽 30 题</button>
+    </div>
+    <div class="toolbar sub">
+      <button class="btn" id="toWrong">错题本${wrongN ? '（' + wrongN + (dueN ? ' · 待复习 ' + dueN : '') + '）' : ''}</button>
+      <button class="btn" id="toFav">收藏${favN ? '（' + favN + '）' : ''}</button>
+      <button class="btn" id="toSearch">搜索题目<span class="kbd">/</span></button>
       <button class="btn" id="toStats">学习统计</button>
-      <button class="btn" id="toHelp">快捷键</button>
+      <button class="btn" id="toHelp">快捷键<span class="kbd">?</span></button>
       <span class="small muted" id="storeUse" style="flex:1;min-width:180px">数据存在本机浏览器，共占用约 ${(bytes / 1024 / 1024).toFixed(2)} MB（本地估算，正在算真实占用…）。</span>
     </div>
     ${papers.length ? `<h2 class="sec">临时套卷</h2>${paperList}` : ''}
-    <h2 class="sec">我的题库</h2>
+    <h2 class="sec" id="secBanks">我的题库</h2>
     ${list || '<div class="card"><div class="empty">还没有题库，点上面的按钮加一个吧。</div></div>'}
     <div class="card" style="margin-top:16px">
       <div class="name" style="font-weight:700;margin-bottom:6px">数据备份</div>
@@ -758,6 +799,13 @@ function renderHome() {
   on('expAll', exportAllData);
   on('impAll', () => $('impAllFile').click());
   on('impAllFile', importAllData, 'change');
+  /* 首页上调色板：统计块能直接点进去 */
+  document.querySelectorAll('.hstat [data-go]').forEach(el => el.onclick = () => go(el.dataset.go));
+  document.querySelectorAll('.hstat [data-act]').forEach(el => el.onclick = () => {
+    const a = el.dataset.act;
+    if (a === 'banks') { const s = $('secBanks'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (a === 'review') { if (dueN) startReview(60); else toast('今天没有到期的复习题，接着刷题就好'); }
+  });
 
   document.querySelectorAll('[data-start]').forEach(el => el.onclick = () => startBank(el.dataset.start));
   document.querySelectorAll('[data-wrong]').forEach(el => el.onclick = () => { QZ.filter = 'wrong'; startBank(el.dataset.wrong); });
@@ -983,14 +1031,14 @@ function renderQuiz(bankId) {
       if (ansOf(fk, q).includes(K)) cls += ' right';
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
-    return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${esc(t)}</span></button>`;
+    return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${esc(optText(t, K))}</span></button>`;
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
   $('view').innerHTML = `
     <div class="card">
       <div class="qhead">
-        <span class="qno">第 ${qNo(q)} 题</span>
+        <span class="qno">第 ${qNo(q, pool)} 题</span>
         <span class="tag">${typeLabel(q, ansOf(fk, q))}</span>
         ${q.groupTitle ? `<span class="tag g">${esc(q.groupTitle)}</span>` : ''}
         ${bank.paper ? `<span class="tag paper-tag">临时套卷</span>` : ''}
@@ -1038,6 +1086,19 @@ function renderQuiz(bankId) {
   showFb(bank, q);
   rememberLast(bank, q.id);
   $('jumpInfo').innerHTML = '<b>' + pos + ' / ' + pool.length + '</b><span>答题卡</span>';
+  /* 首题 / 末题：把翻页按钮的边界状态摆出来，免得以为点了没反应 */
+  const prevB = $('prev'), nextB = $('next');
+  if (prevB) {
+    const first = pos <= 1;
+    prevB.disabled = first;
+    prevB.title = first ? '已经是第一题了' : '上一题（←）';
+  }
+  if (nextB) {
+    const lastQ = pos >= pool.length;
+    nextB.disabled = lastQ;
+    nextB.textContent = lastQ ? '最后一题' : '下一题 ›';
+    nextB.title = lastQ ? '已经是最后一题（按 K 打开答题卡可以跳回去）' : '下一题（→ 或 Enter）';
+  }
 
   let done = 0, ok = 0, wr = 0;
   bank.questions.forEach(x => {
@@ -1051,8 +1112,8 @@ function renderQuiz(bankId) {
 }
 
 function toggleFav(k, btn) {
-  if (FAV[k]) { delete FAV[k]; tombAdd('fav', k); toast('已取消收藏'); } else { FAV[k] = Date.now(); toast('已收藏'); }
-  if (!saveFav()) toast('保存失败：浏览器存储空间可能已满');
+  if (FAV[k]) { delete FAV[k]; tombAdd('fav', k); toast('已取消收藏'); } else { FAV[k] = Date.now(); toast('已收藏 ★', 1200, 'ok'); }
+  if (!saveFav()) toast('保存失败：浏览器存储空间可能已满', 2600, 'bad');
   /* 就地换那颗星：整页重画会把正在生成的「AI 解析」一起冲掉（找不到按钮时才重画） */
   const b = btn || document.getElementById('btnFav');
   if (b) {
@@ -1426,7 +1487,7 @@ function doPreview() {
     <div class="sec-t">前 3 题预览</div>
     ${qs.slice(0, 3).map(q => `
       <div class="card" style="margin-bottom:10px">
-        <div class="qno small">第 ${qNo(q)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}</div>
+        <div class="qno small">第 ${qNo(q, qs)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}</div>
         ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
         <div style="margin:6px 0">${esc(q.stem)}</div>
         <div class="small">${q.options.map((o, i) => esc('ABCDEFGH'[i] + '. ' + o)).join('<br>')}</div>
@@ -1753,7 +1814,7 @@ on('expAll2', exportAllData);
 
 /* ---------- 顶栏「◐」：一键切换外观 ---------- */
 const THEME_ORDER = ['auto', 'light', 'dark'];
-const THEME_ICON = { auto: '◐', light: '☀', dark: '🌙' };
+const THEME_ICON = { auto: '◐', light: '☀', dark: '☾' };
 const THEME_LABEL = { auto: '跟随系统', light: '浅色', dark: '深色' };
 function paintThemeBtn() {
   const el = $('btnTheme'); if (!el) return;
@@ -1782,10 +1843,14 @@ document.addEventListener('keydown', e => {
   if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) { e.preventDefault(); showHelp(); return; }
   if (e.key === 'Escape') { closeAll(); return; }
   const rn = route().name;
-  /* 搜索页：按 / 直接跳到搜索框 */
-  if (rn === 'search' && !typing && e.key === '/') {
-    const el = $('sq');
-    if (el) { el.focus(); el.select(); e.preventDefault(); }
+  /* 搜索页（或任何页面）：按 / 跳到搜索框并聚焦 */
+  if (!typing && e.key === '/') {
+    const focusSq = () => { const el = $('sq'); if (el) { el.focus(); el.select(); } };
+    const nb = document.getElementById('nbSearch');       /* 首页那个搜索框：就地聚焦，不用跳页 */
+    if (nb) { e.preventDefault(); nb.focus(); nb.select(); return; }
+    if (rn === 'search') focusSq();
+    else { go('#/search'); setTimeout(focusSq, 60); }
+    e.preventDefault();
     return;
   }
   if (rn !== 'quiz' && rn !== 'exam') return;

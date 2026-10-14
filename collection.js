@@ -187,6 +187,16 @@ function shuffle(a) {
   for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = r[i]; r[i] = r[j]; r[j] = t; }
   return r;
 }
+/* 列表里那条「第 N 题」：题号是数字就直接用，不然退回到它在题库里的第几题
+   （以前直接写 q.id，遇到题库里 id 是 q1 这种就会显示成「第 q1 题」） */
+function qLabel(it) {
+  const id = it && it.q ? String(it.q.id == null ? '' : it.q.id) : '';
+  if (/^\d+$/.test(id)) return '第 ' + id + ' 题';
+  const qs = (it && it.bank && it.bank.questions) || [];
+  const at = qs.indexOf(it.q);
+  if (at >= 0) return '第 ' + (at + 1) + ' 题';
+  return '第 ' + (id || '?') + ' 题';
+}
 function dueText(k) {
   const d = dueOf(k);
   if (d == null) return '';
@@ -488,7 +498,7 @@ function itemHtml(it, mode) {
   <div class="card wi" data-k="${esc(k)}">
     <div class="wi-head">
       <input type="checkbox" class="wsel" ${sel ? 'checked' : ''} title="勾选后可批量操作">
-      <span class="wno">第 ${q.id} 题</span>
+      <span class="wno">${qLabel(it)}</span>
       <span class="tag g">${esc(it.bank.title)}</span>
       ${hasFix(k) ? '<span class="mini-tag" title="答案是你手动改过的，只在本机生效">答案已修正</span>' : ''}
       ${mode === 'wrong'
@@ -510,7 +520,7 @@ function itemHtml(it, mode) {
         const K = 'ABCDEFGH'[i];
         const right = ansOf(k, q).includes(K);
         const mine = (rec.sel || []).includes(K);
-        return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hl(o)}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
+        return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hl(optText(o, K))}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
       }).join('')}</div>
       <div class="small" style="margin:6px 0">我的选择：<b>${(rec.sel || []).join('') || '—'}</b>${rec.ts ? `　最近作答：${fmtTime(rec.ts)}` : ''}　错 ${rec.wrong || 0} 次 / 作答 ${rec.tries || 0} 次${custom ? '　<span class="mini-tag">已自定义解析</span>' : ''}</div>
       <div class="exp">${renderRich(k, explainOf(k, q))}</div>
@@ -621,7 +631,7 @@ function buildMd(title, items, o) {
   items.forEach((it, i) => {
     L.push('---');
     L.push('');
-    L.push(`## ${i + 1}. ${it.bank.title} · 第 ${it.q.id} 题`);
+    L.push(`## ${i + 1}. ${it.bank.title} · ${qLabel(it)}`);
     L.push('');
     if (it.q.group) { L.push('> **共用题干**：' + it.q.group); L.push(''); }
     L.push(it.q.stem);
@@ -647,7 +657,7 @@ function buildHtml(title, items, o) {
     }).join('');
     const imgs = o.withImg ? ((noteOf(it.k) || {}).imgs || []) : [];
     return `<section class="q">
-      <h2>${i + 1}. ${esc(it.bank.title)} · 第 ${it.q.id} 题</h2>
+      <h2>${i + 1}. ${esc(it.bank.title)} · ${esc(qLabel(it))}</h2>
       ${it.q.group ? `<div class="g"><b>共用题干：</b>${esc(it.q.group)}</div>` : ''}
       <div class="stem">${esc(it.q.stem)}</div>
       <div class="opts">${opts}</div>

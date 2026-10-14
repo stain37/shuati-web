@@ -508,7 +508,7 @@ function syncCardHtml() {
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
     + '<button class="btn danger" id="syncWipe">断开（清掉本机 token）</button></div>');
   L.push('<div class="actions"><button class="btn" id="syncCopyCfg">复制「一键配置」链接（发给手机，点开自动填好）</button></div>');
-  L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置、自己导入的知识库（那两样用「导出全部数据」搬）。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
+  L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置（换主题、字号只跟这台设备）。「自己导入的资料库」在下面就有一个勾选，勾上就一起同步。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
   L.push('<div class="hint" id="syncLogBox" style="margin-top:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap"></div>');
   L.push('</div>');
   return L.join('');

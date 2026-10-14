@@ -106,7 +106,7 @@ details.fold .tools:first-child{margin-top:0}
 .hero .hstat{display:flex;gap:10px;margin-top:16px;font-size:12.5px;flex-wrap:wrap}
 .hero .hstat>div{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.16);border-radius:var(--r-m);padding:8px 13px;min-width:84px}
 .hero .hstat b{display:block;font-size:19px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums}
-.hero .hstat.today>div{background:rgba(255,255,255,.08)}
+.hero .hstat.today>div,.hero .hstat.today>button.hs{background:rgba(255,255,255,.08)}
 .hstat.today{margin-top:10px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22)}
 body.dark .hero{background:linear-gradient(135deg,#16233c,#1d4ed8 75%)}
 
@@ -491,3 +491,188 @@ body.dark #syncTip{background:#e5e7eb;color:#111827}
 #saveWarnBar{position:fixed;left:0;right:0;top:0;z-index:60;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:10px 14px;background:var(--badbg);border-bottom:1px solid var(--bad-line);color:var(--bad);font-size:13px;line-height:1.5}
 #saveWarnBar b{font-weight:700}
+
+/* ============================================================
+   v17 美化妆点（2026-10-17）
+   - 只做「叠加」：不改上面已有的规则，靠后出现的同名规则覆盖
+   - 新增：顶栏当前页高亮 / 首页统计块可点 / 工具条分组 /
+          选项徽章 / 气泡提示 / 底部导航 / 空状态 / 动效
+   ============================================================ */
+:root{
+  --ring:0 0 0 3px rgba(37,99,235,.22);
+  --sh-3:0 10px 30px rgba(15,23,42,.13);
+  --grad:linear-gradient(135deg,#2563eb,#4f7cf7 58%,#38bdf8);
+}
+body.dark{
+  --ring:0 0 0 3px rgba(107,150,255,.26);
+  --sh-3:0 12px 34px rgba(0,0,0,.52);
+  --grad:linear-gradient(135deg,#1d4ed8,#3b6ff5 58%,#0ea5e9);
+}
+
+/* ---- 顶栏：加个点、当前页高亮、进度条更圆 ---- */
+.title::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--grad);margin-right:7px;vertical-align:1px}
+.top .row{gap:7px}
+.top .btn{padding:6px 12px}
+.top .btn.tg{min-width:58px;text-align:center}
+.top .btn.on{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(37,99,235,.28)}
+.top .btn.on:hover:not(:disabled){background:var(--primary);border-color:var(--primary);filter:brightness(.95)}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:1px 9px}
+.bar{height:4px}
+body.dark .stat{background:#1b2334}
+
+/* ---- 首页 hero：更亮的渐变 + 可点的统计块 ---- */
+.hero{background-image:var(--grad);box-shadow:var(--sh-3)}
+.hero::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(900px 220px at 8% -10%,rgba(255,255,255,.20),transparent 62%),
+             linear-gradient(180deg,rgba(255,255,255,.05),rgba(0,0,0,.06))}
+.hero h1,.hero p,.hero .hstat{position:relative}
+.hero h1{font-size:23px;letter-spacing:.6px}
+.hero .hstat{gap:9px}
+.hero .hstat>button.hs{appearance:none;font:inherit;color:inherit;text-align:left;cursor:pointer;
+  background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.18);border-radius:var(--r-m);
+  padding:8px 13px;min-width:84px;transition:background .15s,border-color .15s,transform .12s}
+.hero .hstat>button.hs:hover{background:rgba(255,255,255,.21);border-color:rgba(255,255,255,.36);transform:translateY(-1px)}
+.hero .hstat>button.hs:active{transform:none}
+.hero .hstat>button.hs.off{opacity:.6;cursor:default}
+.hero .hstat>button.hs.off:hover{transform:none;background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.18)}
+.hero .hstat>button.hs b{display:block;font-size:19px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums}
+.hero .hstat>button.hs:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+/* ---- 首页工具条：主按钮一行、次按钮一行 ---- */
+.toolbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.toolbar.main{margin:16px 0 9px}
+.toolbar.sub{margin:0 0 6px;padding-top:9px;border-top:1px dashed var(--line)}
+.toolbar .btn .kbd{margin-left:6px;margin-right:0;min-width:20px;font-size:11px;background:var(--card);border-bottom-width:1px;opacity:.9}
+.btn.primary .kbd{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.38);color:#fff}
+
+/* ---- 区块标题 / 卡片 ---- */
+h2.sec{font-size:18px;margin:26px 0 12px;letter-spacing:.2px}
+h2.sec::before{width:5px;height:18px;background:var(--grad)}
+.bank{transition:box-shadow .18s,border-color .18s,transform .18s}
+.bank:hover{transform:translateY(-1px)}
+.bank .name{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.bank .name .pill{margin-left:0}
+.resume,.revbar{transition:box-shadow .18s}
+.resume:hover,.revbar:hover{box-shadow:var(--sh-2)}
+
+/* ---- 选项：徽章更立体、状态更清楚 ---- */
+.opt{transition:border-color .15s,background .15s,box-shadow .15s,transform .12s}
+.opt:hover:not(:disabled){transform:translateX(2px)}
+.opt .k{transition:background .15s,color .15s}
+.opt.sel{box-shadow:0 0 0 3px var(--primary-weak),inset 0 0 0 1px var(--primary)}
+.opt.right{box-shadow:inset 3px 0 0 var(--ok)}
+.opt.wrong{box-shadow:inset 3px 0 0 var(--bad)}
+.fb.show{animation:fadeUp .22s ease}
+.keyhint .kbd{opacity:.9}
+
+/* ---- 分类 chips ---- */
+.chips{gap:7px}
+.chip{font-weight:500}
+.chip.on{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(37,99,235,.22)}
+.chip.on:hover{color:#fff}
+
+/* ---- 底部导航 ---- */
+.nav{gap:9px}
+.nav .btn{border-radius:12px;font-weight:600}
+.nav .btn.primary{background:var(--grad);border-color:transparent;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+.nav .btn.primary:hover:not(:disabled){filter:brightness(1.02)}
+.nav .btn:disabled{opacity:.4}
+
+/* ---- 知识库行 / AI 面板 ---- */
+.kbrow.on{box-shadow:0 0 0 3px var(--primary-weak)}
+.aipanel{border-radius:var(--r-m)}
+.aihead b{font-weight:700}
+.aistate.run::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-left:6px;vertical-align:1px;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
+.aiout:not(:empty){border-style:solid}
+
+/* ---- 空状态 ---- */
+.empty{padding:40px 12px;font-size:13.5px}
+.card:has(> .empty),.card:has(.empty:only-child){border-style:dashed}
+
+/* ---- 气泡提示（app.js toast 用） ---- */
+.toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));z-index:1000;display:flex;align-items:center;gap:9px;
+  max-width:84vw;background:rgba(17,24,39,.95);color:#fff;padding:11px 15px;border-radius:14px;font-size:13.5px;line-height:1.5;
+  box-shadow:var(--sh-3);opacity:0;transform:translate(-50%,14px);transition:opacity .22s,transform .22s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast .tic{flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.toast.ok .tic{background:#16a34a;color:#fff}
+.toast.bad .tic{background:#dc2626;color:#fff}
+body.quiz .toast{bottom:calc(104px + env(safe-area-inset-bottom))}
+body.dark .toast{background:rgba(237,240,247,.97);color:#0f172a}
+body.dark .toast .tic{background:rgba(15,23,42,.16)}
+
+/* ---- 进入动画 ---- */
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#view{animation:viewIn .2s ease}
+
+/* ---- v17b：列表页顶栏数字、首页目录导航的收尾 ---- */
+/* 错题本 / 收藏 页顶部那排数字：改成小卡片，读数更清楚 */
+.stats{gap:10px}
+.stats>div{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-s);padding:9px 12px;min-width:86px}
+.stats b{font-size:19px}
+.stats span{font-size:11.5px;margin-top:1px}
+body.dark .stats>div{background:rgba(255,255,255,.035)}
+/* 「第 N 题」：做成小徽标，不跟题干抢注意力 */
+.wno{font-weight:700;font-size:12px;color:var(--primary);background:var(--primary-weak);border-radius:99px;padding:2px 9px;flex:0 0 auto}
+/* 列表行：悬停时轻轻浮一下 */
+.wi{transition:box-shadow .16s ease,transform .16s ease}
+.wi:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+/* 首页那块目录导航：面包屑、按钮、目录树排得紧凑些 */
+.nb-nav{border:1px solid var(--line);background:var(--card);border-radius:var(--r-m);padding:10px 13px;margin:4px 0 2px}
+.nb-crumbs{font-size:13.5px;margin-bottom:6px}
+.nb-crumb{text-decoration:none;color:var(--primary)}
+.nb-navbtns{gap:8px;flex-wrap:wrap}
+.nb-tree{margin-top:9px;border-top:1px dashed var(--line);padding-top:9px}
+.nb-trow{padding:2px 0;display:flex;align-items:center;gap:8px}
+.nb-card{transition:box-shadow .16s ease,transform .16s ease}
+.nb-card:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+/* 首页搜索行 */
+.nb-bar{margin:12px 0 4px}
+.nb-search{width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:14px}
+.nb-search:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-weak)}
+/* 题库卡片右侧按钮别跟名称挤在一起 */
+.bank .acts{gap:7px}
+.kbcard{padding:13px 15px}
+
+/* ---- 小屏再收一次（上面新加的规则要在这一档重排） ---- */
+@media(max-width:560px){
+  .hero{padding:18px}
+  .hero .hstat>button.hs{flex:1 1 72px;min-width:0;padding:7px 11px}
+  .hero .hstat>button.hs b{font-size:17px}
+  .toolbar.main .btn,.toolbar.sub .btn{flex:1 1 auto;text-align:center;justify-content:center}
+  .nav .btn{border-radius:11px}
+}
+@media print{
+  .hero::before,.toast{display:none!important}
+  .hero{background:#fff!important;color:#000!important;box-shadow:none}
+}
+
+/* ============================================================
+   v17c（2026-10-17）：手机档收尾。
+   首页那几个统计块现在是 <button class="hs">，里面「数字」是 <b>、「说明文字」是
+   裸文本节点：窄屏上「今日正确率」会被折成两行（数字一行、文字两行），所以给整块
+   加 nowrap，字号再收一点；顺带把顶栏在手机上压薄，少占一截屏幕。
+   ============================================================ */
+@media(max-width:560px){
+  .top .row{padding:7px 10px;gap:6px}
+  .top .title{font-size:15.5px}
+  .top .btn{padding:5px 10px;font-size:12.5px}
+  .top .stat{font-size:11.5px;padding:2px 7px}
+  .hero{padding:16px}
+  .hero p{font-size:12.5px;line-height:1.65}
+  .hero .hstat{gap:8px;margin-top:13px}
+  .hero .hstat>div,.hero .hstat>button.hs{flex:1 1 74px;min-width:0;padding:7px 10px;font-size:11.5px;white-space:nowrap}
+  .hero .hstat b,.hero .hstat>button.hs b{font-size:16.5px;line-height:1.25}
+  .hero .hstat.today{margin-top:9px;padding-top:10px}
+  .toolbar.main{margin:13px 0 8px}
+  .actions{gap:8px}
+  .actions .btn{flex:1 1 auto;text-align:center;justify-content:center}
+  .qhead{gap:6px}
+  .qhead .btn.fav-btn{flex:1 1 100%;justify-content:center}
+}
+@media(max-width:400px){
+  .hero .hstat>div,.hero .hstat>button.hs{flex:1 1 60px;padding:6px 8px;font-size:11px}
+  .hero .hstat b,.hero .hstat>button.hs b{font-size:15px}
+}
+

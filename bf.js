@@ -397,8 +397,8 @@
     var b = document.createElement('button');
     b.className = 'btn tg';
     b.id = 'btnBankFile';
-    b.title = '把自建题库保存到本机文件 / 从文件读回来';
-    b.textContent = '💾';
+    b.title = '本机题库文件：把自建题库保存到本机文件 / 从文件读回来';
+    b.textContent = '文件';
     b.onclick = function () {
       if (typeof go === 'function') go('#/');
       setTimeout(function () {
