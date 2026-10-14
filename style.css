@@ -914,3 +914,75 @@ body.dark .vcmp mark { background: #8a6a12; color: #f8fafc; }
   .vactions .btn { flex: 1 1 auto; }
   .vraw { max-height: 200px; }
 }
+
+/* ============================================================
+   v22：考点标签（tags.js）+ 考纲覆盖自查（syllabus.js）
+   ============================================================ */
+/* ---------- 答题页那一行标签 ---------- */
+.tagrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.tag-lab { font-size: 12px; color: var(--sub); }
+.tag-none { font-size: 12px; color: var(--sub); opacity: .75; }
+.tagchip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--primary-line, var(--line2));
+  background: var(--primary-weak, #eff6ff); color: var(--primary); border-radius: 999px;
+  font-size: 12.5px; padding: 3px 8px; cursor: pointer; transition: transform var(--t-fast, .12s) var(--ease, ease), background-color .15s; }
+.tagchip i { font-style: normal; opacity: .55; font-size: 12px; }
+.tagchip:hover { transform: translateY(-1px); }
+.tagchip:hover i { opacity: 1; }
+.tagchip:active { transform: scale(.97); }
+.tagadd { border: 1px dashed var(--line2); background: transparent; color: var(--sub); border-radius: 999px;
+  font-size: 12.5px; padding: 3px 10px; cursor: pointer; }
+.tagadd:hover { color: var(--primary); border-color: var(--primary-line, var(--primary)); }
+.tagedit { flex: 1 1 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--r-m, 12px);
+  background: var(--card); animation: fadeUp var(--t-base, .18s) var(--ease, ease); }
+.tedit-top { font-size: 12.5px; color: var(--sub); margin-bottom: 6px; }
+.tedit-cur { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tedit-in { display: flex; gap: 6px; align-items: center; }
+.tedit-input { flex: 1 1 auto; }
+.tedit-sug { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--sub); }
+.vocab-chip { border: 1px solid var(--line2); background: var(--card); color: var(--text); border-radius: 999px;
+  font-size: 12.5px; padding: 3px 9px; cursor: pointer; transition: transform var(--t-fast, .12s) var(--ease, ease); }
+.vocab-chip:hover { transform: translateY(-1px); }
+.vocab-chip.on { border-color: var(--primary-line, var(--primary)); color: var(--primary); background: var(--primary-weak, #eff6ff); }
+.vocab-chip i { font-style: normal; font-size: 11px; opacity: .7; }
+.vocab-box { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-h { font-size: 15px; margin: 0; }
+.tag-meta { font-size: 12px; color: var(--sub); margin-right: 6px; }
+.tag-srow { width: 100%; }
+.tag-weak-line:not(:empty) { margin-top: 10px; font-size: 12.5px; color: var(--sub); }
+.tag-aivocab:not(:empty) { margin-top: 6px; }
+#tagVocabCard, #tagAiCard { margin-top: 12px; }
+body.dark .tagchip { background: #16233b; }
+body.dark .vocab-chip.on { background: #16233b; }
+
+/* ---------- 考纲覆盖自查页 ---------- */
+.syl-head, .syl-row { display: grid; grid-template-columns: minmax(150px, 1.6fr) 90px 96px 74px 76px minmax(190px, auto);
+  gap: 8px; align-items: center; }
+.syl-head { font-size: 12px; color: var(--sub); padding: 4px 8px 6px; border-bottom: 1px solid var(--line2); }
+.syl-row { padding: 9px 8px; border-bottom: 1px solid var(--line2); }
+.syl-row:last-child { border-bottom: 0; }
+.syl-row:hover { background: var(--bg2); }
+.syl-row[data-blank] { background: linear-gradient(90deg, var(--badbg, #fef2f2), transparent 70%); }
+.syl-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.syl-num { font-size: 12.5px; color: var(--sub); }
+.syl-act { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.st-badge { display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line2); }
+.st-badge.blank { color: var(--bad); border-color: var(--bad); background: var(--badbg, #fef2f2); }
+.st-badge.weak { color: #b45309; border-color: #f59e0b; background: #fffbeb; }
+.st-badge.ok { color: var(--ok); border-color: var(--ok); background: var(--okbg, #f0fdf4); }
+body.dark .st-badge.weak { background: #2a2113; color: #fbbf24; }
+.syl-gen:not(:empty) { margin-top: 12px; }
+.syl-genbox:empty { display: none; }
+.vhead2 { font-size: 13.5px; margin-bottom: 8px; }
+.vcard-i { padding: 8px 0; border-top: 1px dashed var(--line2); }
+.vcard-i:first-child { border-top: 0; }
+@media (max-width: 720px) {
+  .syl-head { display: none; }
+  .syl-row { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; gap: 4px 10px; }
+  .syl-name { grid-column: 1 / -1; }
+  .syl-act { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+  .tagrow { gap: 5px; }
+  .tedit-in { flex-wrap: wrap; }
+  .syl-row { grid-template-columns: 1fr 1fr; }
+}

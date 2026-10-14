@@ -22,7 +22,10 @@ const LS = {
   paper: 'qbank.papers.v2',
   fix: 'qbank.answerfix.v1',
   srs: 'qbank.srs.v1',
-  cat: 'qbank.cats.v1'
+  cat: 'qbank.cats.v1',
+  tag: 'qbank.tags.v1',            /* 知识点标签（tags.js） */
+  tagvocab: 'qbank.tagvocab.v1',   /* 考点词表（受控：AI 打标签只从里面挑） */
+  syl: 'qbank.syllabus.v1'         /* 考纲考点清单（syllabus.js，按知识库缓存） */
 };
 const readLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 /* 写不进去要吵醒用户：localStorage 满了 / 被禁用时悄悄丢数据是最坑的 */
@@ -68,7 +71,7 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   TOMB.wipe[kind] = Date.now();
   writeLS(TOMB_KEY, TOMB);
 }
-function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, syl: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
@@ -119,6 +122,8 @@ window.addEventListener('storage', e => {
   else if (k === LS.paper) { PAPERS = readLS(LS.paper, []); invalidateBanks(); }
   else if (k === LS.banks) { LOCAL = readLS(LS.banks, []); invalidateBanks(); }
   else if (k === LS.srs) SRS = readLS(LS.srs, {});
+  else if (k === LS.tag || k === LS.tagvocab) { if (typeof tagReload === 'function') tagReload(); }   /* 标签在 tags.js 里，让它自己重读 */
+  else if (k === LS.syl) { if (window.SYLLABUS && SYLLABUS.reload) SYLLABUS.reload(); }
   else if (k === LS.cat) {                       // 别的标签页改了分类：直接让分类模块重画（它自己写自己，不再走下面的事件）
     if (typeof CAT !== 'undefined' && CAT && CAT.reload) { try { CAT.reload(); CAT.render(); } catch (err) {} }
     return;
@@ -544,6 +549,7 @@ function route() {
   if (parts[0] === 'kb') return { name: 'kb' };
   if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
+  if (parts[0] === 'syllabus') return { name: 'syllabus' };   /* 考纲覆盖自查（syllabus.js） */
   return { name: 'home' };
 }
 function go(hash) {
@@ -635,6 +641,7 @@ function renderInner() {
   else if (r.name === 'fav') { if (typeof renderFav === 'function') renderFav(); }
   else if (r.name === 'search') { if (typeof renderSearch === 'function') renderSearch(); }
   else if (r.name === 'stats') renderStats();
+  else if (r.name === 'syllabus') { if (typeof renderSyllabus === 'function') renderSyllabus(); }
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
@@ -862,6 +869,7 @@ function renderHome() {
     });
     LOCAL = LOCAL.filter(x => x.id !== b.id);
     try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}   // 顺手清掉「上次做到哪」的键
+    if (typeof dropTagsOfBank === 'function') { try { dropTagsOfBank(b.id); } catch (e) {} }   // 考点标签也一起清（跟收藏一个道理）
     invalidateBanks();
     writeLS(LS.banks, LOCAL); saveAns(); saveFav(); saveNotes();
     if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
@@ -967,7 +975,10 @@ function catRows() {
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
 async function exportAllData() {
   let tipCats = 0;
-  const data = { app: 'shuati', version: 4, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS };
+  const data = { app: 'shuati', version: 5, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS,
+    tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
+    tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
+    syllabus: (window.SYLLABUS && SYLLABUS.data) ? SYLLABUS.data() : readLS(LS.syl, {}) };
   let tip = '';
   try {
     if (typeof kbExportAll === 'function') {
@@ -990,7 +1001,8 @@ function importAllData(e) {
       if (!d || typeof d !== 'object') throw new Error('格式不对');
       const cnt = k => Object.keys(d[k] || {}).length;
       const kbCnt = (d.kb && (d.kb.list || []).length) || 0;
-      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、修正答案 ${cnt('fixes')} 条${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
+      const tagCnt = Object.keys(d.tags || {}).length, sylCnt = Object.keys(d.syllabus || {}).length;
+      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${sylCnt ? '、考点清单 ' + sylCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
       Object.assign(ANS, d.answers || {});
       Object.assign(FAV, d.favs || {});
       Object.assign(NOTES, d.notes || {});
@@ -1017,13 +1029,35 @@ function importAllData(e) {
       if (d.srs) Object.assign(SRS, d.srs);
       let kbN = 0;
       if (d.kb && typeof kbImportAll === 'function') { try { kbN = kbImportAll(d.kb) || 0; } catch (err) {} }
+      /* 考点标签 / 考点清单：同一条以导入的为准（标签按题合并） */
+      let tagN = 0, sylN = 0;
+      if (d.tags && typeof window.TAGS === 'object' && window.TAGS) {
+        try {
+          const mine = window.TAGS.data() || {};
+          Object.keys(d.tags).forEach(k => { if (Array.isArray(d.tags[k])) { mine[k] = d.tags[k].slice(); tagN++; } });
+          if (Array.isArray(d.tagVocab)) window.TAGS.rememberVocab(d.tagVocab);
+          window.TAGS.save();
+        } catch (err) {}
+      }
+      if (d.syllabus && window.SYLLABUS && SYLLABUS.data) {
+        try {
+          const mine = SYLLABUS.data() || {};
+          Object.keys(d.syllabus).forEach(id => {
+            const theirs = d.syllabus[id], ours = mine[id];
+            if (!theirs || !Array.isArray(theirs.points)) return;
+            if (!ours || (+theirs.ts || 0) >= (+ours.ts || 0)) { mine[id] = theirs; sylN++; }
+          });
+          if (typeof mergeWrite === 'function') mergeWrite(LS.syl, mine, 'syl'); else writeLS(LS.syl, mine);
+        } catch (err) {}
+      }
       tombClear();   // 导入＝以这份备份为准，清掉本机墓碑，别把要恢复的记录挡回去
       migrate();
       invalidateBanks();
       saveAns(); saveFav(); saveNotes(); writeLS(LS.banks, LOCAL); savePapers(); writeLS(LS.set, SET);
       saveFix(); writeLS(LS.srs, SRS);
       if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
-      toast('导入完成' + (tipCats ? '（含 ' + tipCats + ' 个分类）' : '') + (kbN ? '，含 ' + kbN + ' 个知识库' : '')); render();
+      toast('导入完成' + (tipCats ? '（含 ' + tipCats + ' 个分类）' : '') + (kbN ? '，含 ' + kbN + ' 个知识库' : '')
+        + (tagN ? '，含 ' + tagN + ' 道题的考点标签' : '') + (sylN ? '，含 ' + sylN + ' 份考点清单' : '')); render();
     } catch (err) { alert('导入失败：' + err.message); }
   };
   r.readAsText(f, 'utf-8');
@@ -1083,6 +1117,7 @@ function renderQuiz(bankId) {
       </div>
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
       <div class="stem">${esc(q.stem)}</div>
+      ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
       <div class="actions">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
@@ -1115,6 +1150,8 @@ function renderQuiz(bankId) {
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
+  /* 考点标签那一行：加 / 删 / 小浮层编辑器（就地重画，不整页重画） */
+  if (typeof bindTagRow === 'function') { try { bindTagRow($('view'), bank, q); } catch (e) {} }
 
   /* 整页重画之后把「AI 解析」面板挂回来：不然选选项 / 提交 / 翻页 / 别的标签页同步
      都会把正在生成的解析冲掉（看起来就是「突然变回原来解析、生成中断」） */
@@ -1482,11 +1519,14 @@ D. 阻断终板膜非选择性通道
 function parseText(text, nameHint) {
   const lines = text.split(/\r?\n/);
   const warns = [];
+  const splitTags = s => String(s || '').split(/[,，、;；\/|]+/).map(x => x.trim()).filter(Boolean).slice(0, 6);
   let bankTitle = '', group = '', cur = null;
   const out = [];
   const RE_OPT = /^\s*([A-Ha-h])\s*[.、．)）:：]\s*(.+)$/;
   const RE_ANS = /^\s*(?:正确)?答案\s*[:：]?\s*([A-Ha-h][A-Ha-h\s,，、\/|]*)\s*$/;
   const RE_EXP = /^\s*(?:解析|解释|考点)\s*[:：]?\s*(.*)$/;
+  const RE_TAG = /^\s*(?:标签|考点标签)\s*[:：]\s*(.+)$/;                                     /* 标签：炎症,免疫应答 */
+  const RE_TAG2 = /^\s*考点\s*[:：]\s*([^。；！？]{1,24})$/;                                    /* 考点：炎症,免疫应答（短且带分隔符才算标签） */
   const RE_NUM = /^\s*(?:第\s*)?(\d+)\s*(?:[.、．)）:：]|\s)\s*(.+)$/;
 
   const finish = () => {
@@ -1499,11 +1539,11 @@ function parseText(text, nameHint) {
     const bad = cur.answer.some(a => 'ABCDEFGH'.indexOf(a) >= cur.options.length);
     if (bad) warns.push(`「${cur.stem.slice(0, 14)}…」答案超出选项范围`);
     if (cur.stem && cur.options.length >= 2 && cur.answer.length && !bad) {
-      out.push({ id: out.length + 1, stem: cur.stem, options: cur.options, answer: cur.answer, explain: cur.explain, group: cur.group, groupTitle: cur.groupTitle });
+      out.push({ id: out.length + 1, stem: cur.stem, options: cur.options, answer: cur.answer, explain: cur.explain, group: cur.group, groupTitle: cur.groupTitle, tags: cur.tags || [] });
     }
     cur = null;
   };
-  const newQ = (stem, g) => ({ stem: stem, options: [], answer: [], explain: '', group: g || '', groupTitle: g ? '共用题干' : '', mode: 'stem' });
+  const newQ = (stem, g) => ({ stem: stem, options: [], answer: [], explain: '', tags: [], group: g || '', groupTitle: g ? '共用题干' : '', mode: 'stem' });
 
   for (const raw of lines) {
     const s = raw.replace(/\s+$/, '').trim();
@@ -1514,6 +1554,10 @@ function parseText(text, nameHint) {
     if (mT) { if (!bankTitle) bankTitle = mT[1].trim(); continue; }
     const mAns = s.match(RE_ANS);
     if (mAns && cur) { cur.answer = Array.from(new Set(mAns[1].toUpperCase().replace(/[^A-H]/g, '').split(''))).sort(); cur.mode = 'explain'; continue; }
+    const mTag = s.match(RE_TAG);
+    if (mTag && cur) { cur.tags = (cur.tags || []).concat(splitTags(mTag[1])); cur.mode = 'explain'; continue; }
+    const mTag2 = s.match(RE_TAG2);
+    if (mTag2 && cur && /[,，、;；\/|]/.test(mTag2[1])) { cur.tags = (cur.tags || []).concat(splitTags(mTag2[1])); cur.mode = 'explain'; continue; }
     const mExp = s.match(RE_EXP);
     if (mExp && cur) { cur.explain = mExp[1] || ''; cur.mode = 'explain'; continue; }
     const mOpt = s.match(RE_OPT);
@@ -1570,6 +1614,7 @@ function doSave() {
       bank.questions = qs;
       invalidateBanks();
       writeLS(LS.banks, LOCAL);
+      applyBankTags(bank);
       toast('已更新：' + title);
       go('#/bank/' + bank.id);
       return;
@@ -1581,9 +1626,32 @@ function doSave() {
   LOCAL.push(bank);
   invalidateBanks();
   writeLS(LS.banks, LOCAL);
+  applyBankTags(bank);
   if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
   toast('已保存：' + title);
   go('#/bank/' + bank.id);
+}
+
+/* 导入的题库若写了「标签：炎症,免疫应答」（parseText 认出来的），顺手落进考点标签，别让人再打一遍 */
+function applyBankTags(bank) {
+  try {
+    if (!bank || typeof window.TAGS !== 'object' || !window.TAGS || typeof kOf !== 'function') return 0;
+    const vocab = [];
+    let n = 0;
+    (bank.questions || []).forEach(q => {
+      if (!q || !Array.isArray(q.tags) || !q.tags.length) return;
+      const k = kOf(bank, q);
+      window.TAGS.set(k, window.TAGS.of(k).concat(q.tags), true);
+      q.tags.forEach(t => vocab.push(t));
+      n++;
+    });
+    if (n) {
+      window.TAGS.rememberVocab(vocab);
+      window.TAGS.save();
+      setTimeout(() => toast('顺手打了 ' + n + ' 道题的考点标签'), 700);
+    }
+    return n;
+  } catch (e) { return 0; }
 }
 
 /* ============================================================
@@ -1705,7 +1773,9 @@ function renderStats() {
         <span class="sval">错 ${t.a.wrong || 0} / 做 ${t.a.tries || 0}</span>
         <span class="chev">›</span>
       </div>`).join('') : '<div class="empty">还没有错题，继续保持。</div>'}
-    </div>`;
+    </div>
+
+    ${typeof tagStatsHtml === 'function' ? `<h2 class="sec" id="secTags">按考点（知识点标签）</h2>${tagStatsHtml()}` : ''}`;
 
   /* 统计页的点击：数字块滚到对应区块、题库行直接进题库、柱子看当天详情 */
   document.querySelectorAll('#view [data-jump]').forEach(el => el.onclick = () => {
@@ -1728,6 +1798,8 @@ function renderStats() {
     if (tip) tip.innerHTML = `<b>${d.key}</b>：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : '（那天没做题）'}`;
   });
   on('stReview', () => startReview(60));
+  /* 「按考点」区块：刷最弱考点 / 考纲覆盖自查 / 词表 / AI 打标签 */
+  if (typeof bindTagStats === 'function') { try { bindTagStats($('view')); } catch (e) {} }
 }
 
 /* ============================================================

@@ -441,28 +441,38 @@
   }
 
   /* ---------- 落地：存成新题库 ---------- */
-  function saveBank(st) {
-    var qs = st.parsed || [];
-    if (!qs.length) { toast('还没有可存的题'); return; }
-    if (typeof LOCAL === 'undefined' || typeof writeLS !== 'function') { toast('存储模块没加载'); return; }
-    var id = 'local-var-' + Date.now().toString(36);
+  /* 把一堆题存成一个自建题库（方案六的「考点出题」也走这里，别重复写一遍） */
+  function saveBankFromQuestions(title, qs, opts) {
+    opts = opts || {};
+    qs = qs || [];
+    if (!qs.length) { toast('还没有可存的题'); return false; }
+    if (typeof LOCAL === 'undefined' || typeof writeLS !== 'function') { toast('存储模块没加载'); return false; }
+    var id = (opts.idPrefix || 'local-var-') + Date.now().toString(36);
     while (LOCAL.some(function (b) { return b.id === id; })) id += 'x';
-    var title = '变式 · ' + String((st.q && st.q.stem) || '').slice(0, 12);
-    var bank = { id: id, title: title, subtitle: '自建题库 · AI 变式 · ' + qs.length + ' 题', questions: qs };
-    /* 面板里「改答案」是记在临时键上的：搬到新题库的键上，别丢 */
-    qs.forEach(function (q, i) {
-      var tk = st.uid + '#' + i, nk = id + '#' + q.id;
-      if (typeof FIX !== 'undefined' && FIX[tk]) { FIX[nk] = FIX[tk]; delete FIX[tk]; }
-    });
+    var bank = { id: id, title: String(title || 'AI 新题').slice(0, 40), subtitle: opts.subtitle || ('自建题库 · AI 变式 · ' + qs.length + ' 题'), questions: qs };
     LOCAL.push(bank);
     if (typeof invalidateBanks === 'function') invalidateBanks();
     writeLS(typeof LS !== 'undefined' ? LS.banks : 'qbank.local.v2', LOCAL);
     if (typeof saveFix === 'function') { try { saveFix(); } catch (e) {} }
     if (typeof paintStorageUse === 'function') { try { paintStorageUse(); } catch (e) {} }
     if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
-    toast('已存成新题库：' + title);
+    toast('已存成新题库：' + bank.title);
+    return id;
+  }
+  function saveBank(st) {
+    var qs = st.parsed || [];
+    if (!qs.length) { toast('还没有可存的题'); return; }
+    var title = '变式 · ' + String((st.q && st.q.stem) || '').slice(0, 12);
+    /* 面板里「改答案」是记在临时键上的：搬到新题库的键上，别丢 */
+    var tmp = qs.map(function (q, i) { return { tk: st.uid + '#' + i, q: q }; });
+    var id = saveBankFromQuestions(title, qs, {});
+    if (id) tmp.forEach(function (x) {
+      var nk = id + '#' + x.q.id;
+      if (typeof FIX !== 'undefined' && FIX[x.tk]) { FIX[nk] = FIX[x.tk]; delete FIX[x.tk]; }
+    });
+    if (id && typeof saveFix === 'function') { try { saveFix(); } catch (e) {} }
     var p = live(st);
-    if (p) {
+    if (p && id) {
       p.insertAdjacentHTML('beforeend', '<div class="note">已经存进「' + esc(title) + '」：可以去 <a href="#/bank/' + esc(id) + '">题库里直接做</a>，' +
         '或在首页「全部题库」里找到它（标着「自建」）。</div>');
     }
@@ -506,6 +516,7 @@
   window.VARIANT = {
     open: openVariant, reopen: reopenFor, forget: forget,
     sim: simList, grams: grams, jac: jac, dirs: DIRS, state: V_LAST,
-    run: run, save: saveBank, ask: askText, sys: sysText, dirText: dirText, simMin: SIM_MIN
+    run: run, save: saveBank, ask: askText, sys: sysText, dirText: dirText, simMin: SIM_MIN,
+    saveBankFromQuestions: saveBankFromQuestions      /* 方案六「考点出题」也用它落地 */
   };
 })();
