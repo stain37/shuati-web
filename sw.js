@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v22-web8';   // 2026-10-16：新增云同步（sync.js）——用 GitHub 私有仓库在电脑 ↔ 手机之间合并记录
+const VERSION = 'shuati-v23-web9';   // 2026-10-16：云同步支持「码云 Gitee」（国内比 GitHub 快很多），云盘可切换
 const CORE = [
   './',
   './index.html',

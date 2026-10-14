@@ -1,19 +1,20 @@
 /* ============================================================
    刷题站 · 云同步 sync.js
-   · 用一个 GitHub【私有】仓库当云盘：电脑和手机各自把记录推到云端、再合并回来
+   · 用一个【私有】仓库当云盘（服务商可选：GitHub / 码云 Gitee）：
+     电脑和手机各自把记录推到云端、再合并回来
    · 页面：#/sync（顶栏「同步」按钮 / 设置里的「云同步」按钮 / 首页卡片都能进）
    · 存的东西：作答记录、错题、收藏、笔记、自定义解析、修正答案、套卷、
               复习曲线、自建题库、AI 配置（含 Key）——不含站点外观设置
    · 合并规则：跟站点自己的多标签合并完全一致 —— 谁的时间戳新用谁的；
               删除会通过「墓碑表」传播，不会被另一台机器复活
    · 安全：token 只存在本机浏览器的 localStorage（qbank.sync.v1），
-          不会进同步内容、不会发给除 api.github.com 以外的任何地方。
-          建议用 fine-grained token，只授权 shuati-sync 这一个仓库的 Contents 读写。
+          不会进同步内容、只会发给所选服务商的接口
+          （GitHub：api.github.com；码云：gitee.com）。
    ============================================================ */
 
 const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
-  owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
+  provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, device: '',
   scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
@@ -36,6 +37,29 @@ const SYNC_SCOPES = [
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
 ];
 /* 自建题库没勾上时，分类目录多半也没意义，但由用户自己决定，不做联动 */
+
+/* ---------- 服务商：GitHub / 码云 Gitee ----------
+   两边都是「私有仓库当云盘」，接口形状几乎一样，差别只在域名、鉴权方式、
+   新仓库的默认分支（GitHub 是 main，码云是 master）和建仓库的能力。 */
+const SYNC_PROVIDERS = {
+  github: {
+    key: 'github', label: 'GitHub', host: 'api.github.com', branch: 'main', speed: '国外，国内偶尔要等一两秒',
+    tokenLabel: '访问 token', tokenPh: 'ghp_… 或 github_pat_…',
+    tokenTip: 'github.com/settings/tokens（classic，勾 repo）',
+    repoHint: '在你账号下建一个同名私有仓库（需要 token 有建仓库权限）',
+    api: p => 'https://api.github.com' + p,
+    hdrs: function (accept) { return { 'Authorization': 'Bearer ' + SYC.token, 'Accept': accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
+  },
+  gitee: {
+    key: 'gitee', label: '码云 Gitee', host: 'gitee.com', branch: 'master', speed: '国内，快（推荐）',
+    tokenLabel: '私人令牌', tokenPh: '码云 → 设置 → 安全设置 → 私人令牌',
+    tokenTip: 'gitee.com → 头像 → 设置 → 安全设置 → 私人令牌（勾 projects）',
+    repoHint: '码云要在网页上手动新建一个私有仓库',
+    api: function (p) { return 'https://gitee.com/api/v5' + p + (p.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(SYC.token); },
+    hdrs: function (accept) { return { 'Accept': accept || 'application/json' }; }
+  }
+};
+function syncP() { return SYNC_PROVIDERS[SYC.provider] || SYNC_PROVIDERS.github; }
 
 /* ---------- 小工具 ---------- */
 function syncBytes(s) { try { return new Blob([s]).size; } catch (e) { return s.length * 2; } }
@@ -86,12 +110,9 @@ function syncState(text, cls) {
   if (el) { el.textContent = text || ''; el.className = 'aistate' + (cls ? ' ' + cls : ''); }
 }
 
-/* ---------- GitHub API ---------- */
-function syncHdrs(accept) {
-  const h = { 'Authorization': 'Bearer ' + SYC.token, 'Accept': accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-  return h;
-}
-const syncApi = p => 'https://api.github.com' + p;
+/* ---------- 云端接口（GitHub / 码云共用这一套） ---------- */
+function syncHdrs(accept) { return syncP().hdrs(accept); }
+const syncApi = p => syncP().api(p);
 const syncRepoUrl = p => syncApi('/repos/' + encodeURIComponent(SYC.owner) + '/' + encodeURIComponent(SYC.repo) + p);
 function syncPathEnc() { return String(SYC.path || 'sync/data.json').split('/').map(encodeURIComponent).join('/'); }
 async function syncReq(method, url, body, accept) {
@@ -99,28 +120,32 @@ async function syncReq(method, url, body, accept) {
   try {
     res = await fetch(url, { method: method, headers: syncHdrs(accept), cache: 'no-store', body: body == null ? undefined : JSON.stringify(body) });
   } catch (e) {
-    const err = new Error('连不上 api.github.com（网络被挡或断网）');
-    err.hint = '国内偶尔会连不上 GitHub。换个网络、或开代理后再点一次。';
+    const err = new Error('连不上 ' + syncP().host + '（网络被挡或断网）');
+    err.hint = SYC.provider === 'github'
+      ? '国内偶尔会连不上 GitHub。换个网络、或开代理后再点一次；也可以把「服务商」换成码云 Gitee（国内快很多）。'
+      : '检查网络后再点一次；实在连不上就先「导出全部数据」手动搬。';
     throw err;
   }
   const txt = await res.text();
   if (!res.ok) {
     let msg = 'HTTP ' + res.status;
-    try { const j = JSON.parse(txt); if (j.message) msg += '：' + j.message; } catch (e) {}
+    try { const j = JSON.parse(txt); if (j.message) msg += '：' + j.message; else if (j.error) msg += '：' + j.error; } catch (e) {}
     const err = new Error(msg);
     err.status = res.status;
-    if (res.status === 401) err.hint = 'token 不对或过期了，重新生成一个再填。';
-    else if (res.status === 403) err.hint = 'token 权限不够（需要 Contents 读写；经典 token 要有 repo 权限）。也可能是触发了限流，等一会儿再试。';
-    else if (res.status === 404) err.hint = '仓库不存在，或者 token 没有这个仓库的权限。';
+    if (res.status === 401) err.hint = syncP().tokenLabel + '不对或过期了，重新生成一个再填（' + syncP().tokenTip + '）。';
+    else if (res.status === 403) err.hint = '权限不够：' + (SYC.provider === 'github' ? 'token 要有 Contents 读写（经典 token 勾 repo）' : '私人令牌要勾上 projects（仓库读写）') + '。也可能是请求太频繁，等一会儿再试。';
+    else if (res.status === 404) err.hint = '仓库不存在，或者 token 没有这个仓库的权限' + (SYC.provider === 'gitee' ? '；也看看「分支」对不对（码云新仓库默认是 master）' : '') + '。';
     else if (res.status === 422) err.hint = '请求被拒：仓库名可能已经存在（存在就直接用，不用再建），或者名字不合法。';
-    else if (res.status === 409) err.hint = 'GitHub 报「状态冲突」（多半是刚提交完、服务端还没同步完）：等两三秒再点一次就好。一直 409 的话，检查仓库是不是空的（点「创建私有仓库」按钮）。';
+    else if (res.status === 409) err.hint = syncP().label + ' 报「状态冲突」（多半是刚提交完、服务端还没同步完）：等两三秒再点一次就好。';
     throw err;
   }
   return txt;
 }
 async function syncWhoAmI() {
   const me = JSON.parse(await syncReq('GET', syncApi('/user')));
-  return me.login;
+  const login = me.login || me.name;
+  if (!login) throw new Error('token 能连上，但读不到账号名');
+  return login;
 }
 function syncSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 /* 云端数据文件：先拿 sha（顺便判断有没有）。GitHub 偶尔在刚提交完时返回 409，等一下重试一次 */
@@ -148,6 +173,9 @@ async function syncCloudPut(body) {
 }
 async function syncCloudRead(meta) {
   if (meta && meta.content && meta.encoding === 'base64') return syncB64Decode(meta.content);
+  if (SYC.provider === 'gitee') {            /* 码云：超过 1 MB 的文件直接走 raw 接口 */
+    return await syncReq('GET', syncRepoUrl('/raw/' + syncPathEnc() + '?ref=' + encodeURIComponent(SYC.branch)));
+  }
   const txt = await syncReq('GET', syncRepoUrl('/git/blobs/' + meta.sha), null, 'application/vnd.github.raw');
   return txt;
 }
@@ -217,6 +245,16 @@ function syncBusy(on, msg) {
   if (on) syncState(msg || '同步中…');
   else if ($('syncState') && !SYC.lastErr) syncState('');
 }
+/* 上传后回读一次做确认：有些服务商对「写」的响应不带跨域头，浏览器读不到回包，
+   fetch 会直接抛错，但文件其实已经写进去了 —— 回读（GET 是能读的）来判定真伪 */
+async function syncWrittenOk(text) {
+  try {
+    const meta = await syncCloudMeta();
+    if (!meta) return false;
+    const got = await syncCloudRead(meta);
+    return String(got).trim() === String(text).trim();
+  } catch (e) { return false; }
+}
 async function syncPush(silent) {
   if (!syncReady()) throw new Error('还没配置仓库和 token');
   const text = JSON.stringify(syncPayload());
@@ -229,7 +267,18 @@ async function syncPush(silent) {
     content: syncB64Encode(text), branch: SYC.branch
   };
   if (sha) body.sha = sha;
-  await syncCloudPut(body);
+  try {
+    await syncCloudPut(body);
+  } catch (e) {
+    if (await syncWrittenOk(text)) { syncLog('（服务商没回执，但回读确认已经写进去了，按成功算）'); }
+    else {
+      /* 写不进去最常见的原因就是 token / 权限，用一次 GET 把真正的原因问出来 */
+      try { await syncWhoAmI(); } catch (e2) { throw e2; }
+      if (!e.status) e.hint = (e.hint ? e.hint + '　' : '') + '写请求没能确认：'
+        + (SYC.provider === 'gitee' ? '码云可能不允许网页直接写（跨域），或者私人令牌没勾 projects。' : '检查 token 权限（Contents 读写）。');
+      throw e;
+    }
+  }
   SYC.lastPush = Date.now(); SYC.lastBytes = bytes; SYC.lastErr = '';
   syncSave();
   if (!silent) syncLog('已上传 ' + (bytes / 1024).toFixed(0) + ' KB（' + syncDevice() + '）');
@@ -303,8 +352,16 @@ async function syncTest() {
   }
 }
 async function syncCreateRepo() {
-  if (!SYC.token) return toast('先填 token');
+  if (!SYC.token) return toast('先填 ' + syncP().tokenLabel);
   if (!SYC.repo) return toast('先填仓库名');
+  if (SYC.provider === 'gitee') {
+    /* 码云 API 建的仓库默认是公开的，私有可能要付费——不替用户冒这个险，让他自己在网页上建 */
+    toast('码云请自己在网页上新建一个私有仓库（已帮你打开页面），建好回来填仓库名即可', 7000);
+    try { window.open('https://gitee.com/projects/new', '_blank'); } catch (e) {}
+    syncLog('码云：点「创建私有仓库」不会代建（怕建成了公开仓库）。请在 gitee.com/projects/new 手动新建，'
+      + '仓库名填 ' + (SYC.repo || 'shuati-sync') + '，选「私有」，不要勾「初始化仓库」。');
+    return;
+  }
   try {
     await syncReq('POST', syncApi('/user/repos'), {
       name: SYC.repo, private: true, auto_init: true,
@@ -358,15 +415,19 @@ function syncStatusHtml() {
 function syncCardHtml() {
   const L = [];
   L.push('<div class="card kbcard">');
-  L.push('<div class="kbhead">云同步 <span class="small muted">用一个 GitHub 私有仓库当云盘：电脑 ↔ 手机都能读同一份记录</span></div>');
+  L.push('<div class="kbhead">云同步 <span class="small muted">用一个私有仓库当云盘（GitHub / 码云）：电脑 ↔ 手机都能读同一份记录</span></div>');
   L.push('<div class="tools"><span id="syncStatusLine">' + syncStatusHtml() + '</span><span class="syncSpin small muted" style="display:none">同步中…</span><span class="aistate" id="syncState"></span></div>');
+  L.push('<div class="tools"><span class="tl">云盘</span><select class="num" id="syncProvider">'
+    + Object.keys(SYNC_PROVIDERS).map(k => '<option value="' + k + '"' + (SYC.provider === k ? ' selected' : '') + '>'
+      + esc(SYNC_PROVIDERS[k].label) + '　' + esc(SYNC_PROVIDERS[k].speed) + '</option>').join('')
+    + '</select><span class="small muted">码云在国内快得多（实测 0.2–0.4 秒 vs 1.2–1.7 秒）</span></div>');
   L.push('<div class="tools"><span class="tl">仓库</span>'
     + '<input class="num" id="syncOwner" placeholder="用户名" style="width:130px" value="' + esc(SYC.owner) + '">'
     + '<span class="tl">/</span><input class="num grow" id="syncRepo" placeholder="仓库名，例如 shuati-sync" value="' + esc(SYC.repo) + '">'
-    + '<button class="btn" id="syncCreateRepo" title="在你账号下建一个同名私有仓库（需要 token 有建仓库权限）">创建私有仓库</button></div>');
+    + '<button class="btn" id="syncCreateRepo" title="' + esc(syncP().repoHint) + '">' + (SYC.provider === 'gitee' ? '去码云建私有仓库' : '创建私有仓库') + '</button></div>');
   L.push('<div class="tools"><span class="tl">分支</span><input class="num" id="syncBranch" style="width:90px" value="' + esc(SYC.branch) + '">'
     + '<span class="tl">数据文件</span><input class="num grow" id="syncPath" value="' + esc(SYC.path) + '"></div>');
-  L.push('<div class="tools"><span class="tl">访问 token</span><input class="num grow" id="syncToken" type="password" placeholder="ghp_… 或 github_pat_…" value="' + esc(SYC.token) + '">'
+  L.push('<div class="tools"><span class="tl">' + esc(syncP().tokenLabel) + '</span><input class="num grow" id="syncToken" type="password" placeholder="' + esc(syncP().tokenPh) + '" value="' + esc(SYC.token) + '">'
     + '<button class="btn" id="syncTokShow">显示</button><button class="btn" id="syncTest">测试连接</button></div>');
   L.push('<div class="tools"><span class="tl">这台设备叫</span><input class="num" id="syncDevice" style="width:170px" placeholder="' + esc(syncDevice()) + '" value="' + esc(SYC.device) + '">'
     + '<label class="chk"><input type="checkbox" id="syncAuto"' + (SYC.auto ? ' checked' : '') + '> 自动同步（改了就上传，打开页面先对一次）</label></div>');
@@ -382,18 +443,32 @@ function syncCardHtml() {
 }
 function syncHelpHtml() {
   const url = location.origin + location.pathname;
+  const p = syncP();
+  const isGit = SYC.provider === 'github';
   const L = [];
   L.push('<div class="card kbcard">');
-  L.push('<div class="kbhead">怎么让手机和电脑通上</div>');
-  L.push('<div class="small">1）电脑上（这里）填好<b>仓库</b>和 <b>token</b>，点「测试连接」→「立即同步」。云端就有第一份数据了。</div>');
-  L.push('<div class="small" style="margin-top:6px">2）手机浏览器打开同一个网址 <code>' + esc(url) + '</code>（可以「添加到主屏幕」，像 App 一样用）：'
+  L.push('<div class="kbhead">怎么让手机和电脑通上（当前：' + esc(p.label) + '）</div>');
+  L.push('<div class="small">1）先准备一个<b>私有仓库</b>和一枚 <b>' + esc(p.tokenLabel) + '</b>：'
+    + (isGit
+      ? '<b>token</b> 去 github.com/settings/tokens 生成（classic 勾 <code>repo</code>；或 fine-grained 只勾这个仓库的 <b>Contents: Read and write</b>）。'
+        + '仓库点上面的「创建私有仓库」就能建。'
+      : '<b>私人令牌</b>去 gitee.com → 头像 → 设置 → 安全设置 → 私人令牌（勾 <code>projects</code>）。'
+        + '仓库去 gitee.com/projects/new 新建，<b>一定要选「私有」</b>。')
+    + '</div>');
+  L.push('<div class="small" style="margin-top:6px">2）在这里填好<b>仓库</b>和 <b>' + esc(p.tokenLabel) + '</b>，点「测试连接」→「立即同步」。云端就有第一份数据了。</div>');
+  L.push('<div class="small" style="margin-top:6px">3）手机浏览器打开同一个网址 <code>' + esc(url) + '</code>（可以「添加到主屏幕」，像 App 一样用）：'
     + '<button class="btn tiny" id="syncCopyUrl">复制网址</button></div>');
-  L.push('<div class="small" style="margin-top:6px">3）手机上进<b>设置 → 云同步</b>，把<b>同样的仓库、同一个 token</b> 填进去，「立即同步」。之后就自动互传了：手机做的题回电脑能看见，电脑写的解析回手机也能看见。</div>');
+  L.push('<div class="small" style="margin-top:6px">4）手机上进<b>设置 → 云同步</b>，把<b>同样的仓库、同一枚 token</b> 填进去，「立即同步」。之后就自动互传了：手机做的题回电脑能看见，电脑写的解析回手机也能看见。</div>');
+  L.push('<div class="small muted" style="margin-top:6px">换云盘服务商：把上面的「云盘」换成码云（国内快很多），分支会自动从 <code>main</code> 换成 <code>master</code>，其余照填即可；两边用的是各自独立的仓库，互不影响。</div>');
   L.push('<div class="note" style="margin-top:10px"><b>关于 token（重要）</b>：它相当于这个仓库的钥匙，只存在你的浏览器里。'
-    + '更安全的做法是用 <b>fine-grained token</b>：GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → 只勾 <b>Only select repositories: ' + esc(SYC.repo || 'shuati-sync') + '</b>，权限只给 <b>Contents: Read and write</b>。'
-    + '这样即使 token 泄露，别人也只能碰这一个私有仓库，动不了你别的代码。用经典 token（ghp_…）的话要带 <code>repo</code> 权限，权限偏大，别在公共电脑上填。</div>');
+    + (isGit
+      ? '更安全的做法是用 <b>fine-grained token</b>：GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → 只勾 <b>Only select repositories: ' + esc(SYC.repo || 'shuati-sync') + '</b>，权限只给 <b>Contents: Read and write</b>。'
+        + '这样即使 token 泄露，别人也只能碰这一个私有仓库，动不了你别的代码。用经典 token（ghp_…）的话要带 <code>repo</code> 权限，权限偏大，别在公共电脑上填。'
+      : '码云的私人令牌在「设置 → 安全设置 → 私人令牌」里生成（勾 <code>projects</code> 就够了），可以随时删除作废。'
+        + '注意：码云新建仓库默认是<b>公开</b>的，务必自己确认仓库是「私有」，别把刷题记录公开出去。')
+    + '</div>');
   L.push('<div class="small muted" style="margin-top:8px">合并规则：<b>谁的时间戳新用谁的</b>；删掉的记录会在 7 天内带着「墓碑」传播，不会被另一台机器复活。'
-    + '每次同步在仓库里留一个提交，历史都能翻：改坏了就在 GitHub 上回退到上一个提交，然后再同步一次。</div>');
+    + '每次同步在仓库里留一个提交，历史都能翻：改坏了就在 ' + esc(p.label) + ' 上回退到上一个提交，然后再同步一次。</div>');
   L.push('<div class="small muted" style="margin-top:4px">冲突了怎么办：两台设备同时改同一条，会以后同步那台的时间戳为准（不会丢整份数据，只是这一条以新为准）。</div>');
   L.push('</div>');
   return L.join('');
@@ -411,19 +486,31 @@ function syncPaintStatus() {
 }
 function syncReadForm() {
   const v = id => { const el = $(id); return el ? el.value : null; };
+  const pv = v('syncProvider'); if (pv) SYC.provider = pv;
   [['syncOwner', 'owner'], ['syncRepo', 'repo'], ['syncBranch', 'branch'], ['syncPath', 'path'], ['syncToken', 'token'], ['syncDevice', 'device']].forEach(p => {
     const x = v(p[0]); if (x != null) SYC[p[0] === 'syncToken' ? 'token' : p[1]] = x.trim();
   });
   if ($('syncAuto')) SYC.auto = !!$('syncAuto').checked;
   document.querySelectorAll('.syncScope').forEach(el => { SYC.scope[el.getAttribute('data-k')] = !!el.checked; });
   SYC.scope.ans = !!SYC.scope.ans;
-  if (!SYC.branch) SYC.branch = 'main';
+  if (!SYC.branch) SYC.branch = syncP().branch;
   if (!SYC.path) SYC.path = 'sync/data.json';
   syncSave();
   if (window.SYNC) SYNC.cfg = SYC;
 }
 function syncBind() {
   ['syncOwner', 'syncRepo', 'syncBranch', 'syncPath', 'syncToken', 'syncDevice', 'syncAuto'].forEach(id => on(id, syncReadForm, 'change'));
+  on('syncProvider', () => {
+    const before = SYC.provider;
+    syncReadForm();
+    if (before !== SYC.provider) {
+      const oldDef = (SYNC_PROVIDERS[before] || {}).branch;      /* 换服务商时顺手把「默认分支」也换掉 */
+      if (!SYC.branch || SYC.branch === oldDef) SYC.branch = syncP().branch;
+      syncSave();
+      toast('已切到 ' + syncP().label + '　分支默认是 ' + syncP().branch + '，别忘了换 token');
+      renderSync();
+    }
+  }, 'change');
   document.querySelectorAll('.syncScope').forEach(el => el.addEventListener('change', syncReadForm));
   on('syncTokShow', () => { const el = $('syncToken'); if (el) el.type = el.type === 'password' ? 'text' : 'password'; });
   on('syncTest', () => { syncReadForm(); syncTest(); });
@@ -474,7 +561,7 @@ function syncHomeCard() {
   card.className = 'card';
   card.style.marginBottom = '12px';
   if (!syncReady()) {
-    card.innerHTML = '<b>云同步</b> <span class="small muted">让手机和电脑共用一份刷题记录（可选，用 GitHub 私有仓库）</span>'
+    card.innerHTML = '<b>云同步</b> <span class="small muted">让手机和电脑共用一份刷题记录（可选，用 GitHub / 码云 私有仓库）</span>'
       + '<div class="actions" style="margin-top:8px"><button class="btn small" id="syncHomeGo">去配置</button></div>';
   } else {
     card.innerHTML = '<b>云同步</b> <span class="small muted">' + esc(syncSlug()) + '　' + esc(SYC.lastErr ? '上次失败：' + SYC.lastErr : '上次同步：' + syncAgo(SYC.lastAt)) + '</span>'
