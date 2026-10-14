@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v33-web19';   // 2026-10-18②：版本戳统一到 20261018c（app/collection/exam/style/fx/variant）；内容 = AI 变式题（variant.js：方向提示词 + 同考点新题 + 库里相似题并排对比 + 存成新题库）、做完一套题/交卷的小庆祝（fx.js 彩带 + 🎺）、丝滑交互动效（换页才播入场 / 选项弹抖 / 列表错开 / 柱子逐根长）
+const VERSION = 'shuati-v34-web20';   // 2026-10-18③：弹层退场动画（.mask.closing，减少动态效果时直接关）；app.js / style.css 版本戳升到 20261018d。内容同上一版：AI 变式题（variant.js）、做完一套题的小庆祝（fx.js）、丝滑交互动效
 const CORE = [
   './',
   './index.html',

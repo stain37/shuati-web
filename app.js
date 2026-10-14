@@ -1365,7 +1365,18 @@ function renderGrid() {
     closeAll(); render(); window.scrollTo({ top: 0 });
   });
 }
-function closeAll() { document.querySelectorAll('.mask').forEach(m => m.classList.remove('show')); }
+/* 关弹层：先播一小段退场（只动 opacity / transform），播完再把 .show 摘掉。
+   系统开了「减少动态效果」就直接关，不留延迟。 */
+function hideMask(m) {
+  if (!m || !m.classList.contains('show')) return;
+  var rm = false;
+  try { rm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+  if (rm || m.classList.contains('closing')) { m.classList.remove('show', 'closing'); return; }
+  m.classList.add('closing');
+  setTimeout(function () { m.classList.remove('show'); m.classList.remove('closing'); }, 190);
+}
+function hideMasks() { document.querySelectorAll('.mask').forEach(hideMask); }
+function closeAll() { hideMasks(); }
 
 /* ============================================================
    导入 / 新建题库
@@ -1794,11 +1805,11 @@ function showHelp() {
       <div class="actions"><button class="btn primary" id="helpClose">知道了</button></div>
     </div>`;
     document.body.appendChild(m);
-    m.addEventListener('click', ev => { if (ev.target === m) m.classList.remove('show'); });
+    m.addEventListener('click', ev => { if (ev.target === m) hideMask(m); });
   }
   m.classList.add('show');
-  on('helpClose', () => m.classList.remove('show'));
-  on('helpClose2', () => m.classList.remove('show'));
+  on('helpClose', () => hideMask(m));
+  on('helpClose2', () => hideMask(m));
 }
 
 /* ============================================================
@@ -1940,7 +1951,7 @@ document.addEventListener('keydown', e => {
   if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
     e.preventDefault();
     const hm = $('helpMask');
-    if (hm && hm.classList.contains('show')) { hm.classList.remove('show'); return; }
+    if (hm && hm.classList.contains('show')) { hideMask(hm); return; }
     showHelp(); return;
   }
   if (e.key === 'Escape') { closeAll(); return; }
