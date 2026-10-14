@@ -443,6 +443,7 @@ function syncCardHtml() {
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
     + '<button class="btn danger" id="syncWipe">断开（清掉本机 token）</button></div>');
+  L.push('<div class="actions"><button class="btn" id="syncCopyCfg">复制「一键配置」链接（发给手机，点开自动填好）</button></div>');
   L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置、自己导入的知识库（那两样用「导出全部数据」搬）。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
   L.push('<div class="hint" id="syncLogBox" style="margin-top:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap"></div>');
   L.push('</div>');
@@ -465,7 +466,8 @@ function syncHelpHtml() {
   L.push('<div class="small" style="margin-top:6px">2）在这里填好<b>仓库</b>和 <b>' + esc(p.tokenLabel) + '</b>，点「测试连接」→「立即同步」。云端就有第一份数据了。</div>');
   L.push('<div class="small" style="margin-top:6px">3）手机浏览器打开同一个网址 <code>' + esc(url) + '</code>（可以「添加到主屏幕」，像 App 一样用）：'
     + '<button class="btn tiny" id="syncCopyUrl">复制网址</button></div>');
-  L.push('<div class="small" style="margin-top:6px">4）手机上进<b>设置 → 云同步</b>，把<b>同样的仓库、同一枚 token</b> 填进去，「立即同步」。之后就自动互传了：手机做的题回电脑能看见，电脑写的解析回手机也能看见。</div>');
+  L.push('<div class="small" style="margin-top:6px">4）手机上进<b>设置 → 云同步</b>，把<b>同样的仓库、同一枚 token</b> 填进去，「立即同步」。之后就自动互传了：手机做的题回电脑能看见，电脑写的解析回手机也能看见。'
+    + '　（懒人办法：电脑这边配好后点上面的「复制一键配置链接」，把链接发到手机点开，它会自己填好并同步，不用手打。）</div>');
   L.push('<div class="small muted" style="margin-top:6px">换云盘服务商：把上面的「云盘」换成码云（国内快很多），分支会自动从 <code>main</code> 换成 <code>master</code>，其余照填即可；两边用的是各自独立的仓库，互不影响。</div>');
   L.push('<div class="note" style="margin-top:10px"><b>关于 token（重要）</b>：它相当于这个仓库的钥匙，只存在你的浏览器里。'
     + (isGit
@@ -531,6 +533,17 @@ function syncBind() {
     try { document.execCommand('copy'); toast('网址已复制，发给手机就能打开'); } catch (e) { toast('复制失败，请手动选中'); }
     t.remove();
   });
+  on('syncCopyCfg', () => {
+    syncReadForm();
+    if (!syncReady()) { toast('先把属主、仓库名、token 填完'); return; }
+    const link = syncCfgLink();
+    const t = document.createElement('textarea');
+    t.value = link; document.body.appendChild(t); t.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    t.remove();
+    toast(ok ? '配置链接已复制：发到手机点开，它会自己填好并同步' : '复制失败，链接是：' + link, ok ? 5000 : 8000);
+  });
   on('syncWipe', () => {
     if (!confirm('断开云同步？\n\n会清掉这台设备上保存的 token（记录本身不动）。下次要用得重新填。')) return;
     try { localStorage.removeItem(SYNC_LS); } catch (e) {}
@@ -586,6 +599,46 @@ function syncAfterRender() {
   btn.style.display = full ? 'none' : '';
   if (name === 'home') { try { syncHomeCard(); } catch (e) {} }
 }
+/* ---------- 一键配置链接 ----------
+   ?cfg=<base64url(JSON)> —— 手机上懒得手打时，把电脑这边生成好的链接发过去点开即可：
+   自动填好服务商 / 属主 / 仓库 / 分支 / token，然后立刻「测试连接 + 立即同步」，并把地址栏里的
+   参数清掉（免得留在历史记录里）。JSON 形如 {provider,owner,repo,branch,path,token} */
+function syncCfgFromLink() {
+  let raw = '';
+  try { raw = new URLSearchParams(location.search).get('cfg') || ''; } catch (e) { return false; }
+  if (!raw) return false;
+  try {
+    const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(escape(atob(b64 + '==='.slice((b64.length + 3) % 4))));
+    const c = JSON.parse(json);
+    if (!c || !c.owner || !c.repo || !c.token) { toast('链接里的云同步配置不完整'); return false; }
+    SYC.provider = String(c.provider || 'gitee');
+    SYC.owner = String(c.owner).trim();
+    SYC.repo = String(c.repo).trim();
+    SYC.branch = String(c.branch || syncP().branch).trim();
+    SYC.path = String(c.path || SYC.path || 'sync/data.json');
+    SYC.token = String(c.token).trim();
+    SYC.lastErr = ''; SYC.lastSha = ''; SYC.lastAt = 0;
+    writeLS(SYNC_LS, SYC);
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+    toast('已按链接填好云同步配置，正在测试连接…', 4000);
+    setTimeout(async () => {
+      const r = await syncTest();
+      if (r && r.ok) { toast('连接成功，开始同步…', 3000); await syncNow(false); }
+      else toast('配置已填好，但连接失败：' + ((r && r.err && r.err.message) || '看页面上的提示'), 6000);
+    }, 600);
+    return true;
+  } catch (e) {
+    toast('链接里的配置读不出来（' + (e.message || '格式不对') + '）');
+    return false;
+  }
+}
+/* 站点自己那套「导出配置 / 复制给手机」用的编码 */
+function syncCfgLink() {
+  const c = { provider: SYC.provider, owner: SYC.owner, repo: SYC.repo, branch: SYC.branch, path: SYC.path, token: SYC.token };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(c)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return location.origin + location.pathname + '?cfg=' + b64 + '#/sync';
+}
 window.addEventListener('hashchange', syncAfterRender);
 window.addEventListener('load', () => { try { syncAfterRender(); } catch (e) {} });
 /* 每次 render() 之后都要补一次（render 会整个换掉 #view，首页卡片会被清掉） */
@@ -599,7 +652,12 @@ try {
 } catch (e) {}
 /* 设置面板里的「云同步（电脑 ↔ 手机）」按钮 */
 try { on('goSync2', () => { if (typeof closeAll === 'function') closeAll(); go('#/sync'); }); } catch (e) {}
-setTimeout(() => { try { syncStart(); syncAfterRender(); } catch (e) {} }, 800);
+setTimeout(() => {
+  let fromLink = false;
+  try { fromLink = syncCfgFromLink(); } catch (e) {}
+  if (fromLink) { try { go('#/sync'); renderSync(); } catch (e) {} }
+  try { syncStart(); syncAfterRender(); } catch (e) {}
+}, 800);
 
 window.SYNC = {
   now: syncNow, pull: syncPullOnly, push: syncForcePush, test: syncTest,
