@@ -213,6 +213,21 @@ function splitKw(kw) {
 function hayOf(k, q, b) {
   return (q.stem + ' ' + (q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + explainOf(k, q) + ' ' + ((b && b.title) || '')).toLowerCase();
 }
+/* 这一行为什么会命中：题干里没有关键词时，告诉用户是「选项 / 解析 / 题库名」命中的
+   （不然搜「B 型题里的某个词」，列表里每条题干看起来都跟关键词无关，很容易以为搜错了） */
+function hitWhere(it) {
+  const terms = splitKw(HL_KW);
+  if (!terms.length) return '';
+  const q = it.q, b = it.bank;
+  const has = s => { const t = String(s == null ? '' : s).toLowerCase(); return terms.every(w => t.indexOf(w) >= 0); };
+  if (has(q.stem)) return '';                        // 题干里就有，不用解释
+  const where = [];
+  if (has((q.options || []).join(' '))) where.push('选项');
+  if (has(explainOf(it.k, q))) where.push('解析');
+  if (has((b && b.title) || '')) where.push('题库名');
+  if (!where.length) where.push('题干补充');
+  return where.join(' / ');
+}
 /* 关键词匹配用的 haystack 按题库缓存：几千道题时，每敲一个字都重拼一遍字符串很浪费
    （实测 5000 题：每次重拼 18ms → 缓存后 1ms）。题库/解析/修正答案一变就 bumpHay()。 */
 let HAY_VER = 0;
@@ -485,6 +500,24 @@ function hl(s) {
   try { return t.replace(new RegExp('(' + parts.join('|') + ')', 'gi'), '<mark>$1</mark>'); } catch (e) { return t; }
 }
 
+/* 关键词不在题干里时，抠一小段带关键词的原文出来（搜索列表里不用展开就能看到命中处） */
+function hitSnippet(it) {
+  const terms = splitKw(HL_KW);
+  if (!terms.length) return null;
+  const q = it.q, b = it.bank;
+  const low = s => String(s == null ? '' : s).toLowerCase();
+  const pick = (label, text) => {
+    const t = String(text == null ? '' : text);
+    const at = low(t).indexOf(terms[0]);
+    if (at < 0) return null;
+    const from = Math.max(0, at - 24), to = Math.min(t.length, at + terms[0].length + 40);
+    return { label: label, text: (from > 0 ? '…' : '') + t.slice(from, to) + (to < t.length ? '…' : '') };
+  };
+  if (low(q.stem).indexOf(terms[0]) >= 0) return null;        // 题干里就有，不用另抠
+  const opts = (q.options || []).map((o, i) => pick('选项 ' + 'ABCDEFGH'[i], optText(o, 'ABCDEFGH'[i]))).filter(Boolean);
+  return opts[0] || pick('解析', explainOf(it.k, q)) || pick('题库名', b && b.title) || pick('题干补充', q.group);
+}
+
 /* ---------------- 单条 ---------------- */
 function itemHtml(it, mode) {
   const k = it.k, q = it.q, rec = it.rec, st = LP[mode];
@@ -494,12 +527,15 @@ function itemHtml(it, mode) {
   const fav = !!FAV[k];
   const mastered = rec.ok === true && !rec.redo;
   const stem = q.stem.length > 46 ? q.stem.slice(0, 46) + '…' : q.stem;
+  const where = (mode === 'search') ? hitWhere(it) : '';
+  const snippet = (mode === 'search') ? hitSnippet(it) : null;
   return `
   <div class="card wi" data-k="${esc(k)}">
     <div class="wi-head">
       <input type="checkbox" class="wsel" ${sel ? 'checked' : ''} title="勾选后可批量操作">
       <span class="wno">${qLabel(it)}</span>
       <span class="tag g">${esc(it.bank.title)}</span>
+      ${where ? `<span class="mini-tag hit" title="关键词不在题干里，是在这里命中的">命中：${esc(where)}</span>` : ''}
       ${hasFix(k) ? '<span class="mini-tag" title="答案是你手动改过的，只在本机生效">答案已修正</span>' : ''}
       ${mode === 'wrong'
         ? `<span class="wmeta ${mastered ? 'good' : 'bad'}">错 ${rec.wrong || 0} 次 · 作答 ${rec.tries || 0} 次 · 正确率 ${rateOf(rec)}%${mastered ? ' · 已做对' : ''}</span>`
@@ -512,6 +548,7 @@ function itemHtml(it, mode) {
       ${(mode === 'wrong' || mode === 'fav') ? `<button class="btn tiny danger" data-act="${mode === 'wrong' ? 'drop' : 'unfav'}" title="${mode === 'wrong' ? '移除这条记录' : '取消收藏'}">×</button>` : ''}
     </div>
     ${open ? '' : `<div class="wi-stem">${hl(stem)}</div>`}
+    ${(open || !snippet) ? '' : `<div class="wi-hit"><b>${esc(snippet.label)}</b>${hl(snippet.text)}</div>`}
     ${open ? `
     <div class="wi-body">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${hl(q.group)}</div>` : ''}
@@ -721,8 +758,24 @@ function scheduleSearch(now) {
   sTimer = setTimeout(() => { pushHist(LP.search.kw); paintSearch(); }, now ? 0 : 170);
 }
 
+/* 上次搜的关键词 / 范围也存一份：下次进搜索页自动带出来（在搜索框里清空就没了） */
+const LAST_KEY = 'qbank.searchlast.v1';
+function saveLast() {
+  try { writeLS(LAST_KEY, { kw: LP.search.kw || '', scope: LP.search.scope || 'all' }); } catch (e) {}
+}
+function readLast() {
+  const v = readLS(LAST_KEY, null);
+  return (v && typeof v === 'object') ? v : null;
+}
+
 function renderSearch() {
   const st = LP.search;
+  /* 这一轮第一次进搜索页：把上次的关键词和范围带回来 */
+  if (!st.touched) {
+    st.touched = true;
+    const L = readLast();
+    if (L && L.kw) { st.kw = L.kw; st.scope = L.scope || 'all'; }
+  }
   $('appTitle').textContent = '搜索题目';
   $('stat').textContent = ''; $('bar').style.width = '0%';
 
@@ -798,6 +851,7 @@ function paintSearch() {
       : (kw ? '<div class="card"><div class="empty">没搜到。换个关键词，或者把范围放宽到「全部」。</div></div>' : '')}`;
   HL_KW = '';
   paintHist();
+  saveLast();
 
   host.querySelectorAll('[data-scope]').forEach(c => c.onclick = () => { st.scope = c.dataset.scope; paintSearch(); });
   host.querySelectorAll('.wi').forEach(node => {

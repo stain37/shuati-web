@@ -1597,55 +1597,76 @@ function renderStats() {
   }));
   tops.sort((x, y) => (y.a.wrong || 0) - (x.a.wrong || 0) || (y.a.tries || 0) - (x.a.tries || 0));
 
+  const none = !recN && !sumN;
   $('view').innerHTML = `
     <div class="card">
       <div class="stats">
-        <div><b>${recN}</b><span>累计做题</span></div>
-        <div><b>${triesN}</b><span>累计作答次数</span></div>
-        <div><b>${recN ? Math.round(okN / recN * 100) : 0}%</b><span>累计正确率</span></div>
-        <div><b>${T.dNum}</b><span>今日已答</span></div>
-        <div><b>${T.streak}</b><span>连续天数</span></div>
-        <div><b>${dueN}</b><span>待复习</span></div>
+        <button class="hst" data-jump="secBanks" title="看下面各题库的正确率"><b>${recN}</b><span>累计做题</span></button>
+        <div class="hst-plain"><b>${triesN}</b><span>累计作答次数</span></div>
+        <button class="hst" data-jump="secBanks" title="看下面各题库的正确率"><b>${recN ? Math.round(okN / recN * 100) : 0}%</b><span>累计正确率</span></button>
+        <button class="hst" data-jump="secDays" title="看近 14 天的柱子"><b>${T.dNum}</b><span>今日已答</span></button>
+        <button class="hst" data-jump="secDays" title="看近 14 天的柱子"><b>${T.streak}</b><span>连续天数</span></button>
+        <button class="hst${dueN ? '' : ' off'}" ${dueN ? 'data-act="review"' : 'disabled'} title="${dueN ? '开始今日复习' : '今天没有该复习的题'}"><b>${dueN}</b><span>待复习</span></button>
       </div>
+      ${none ? '<div class="note" style="margin-top:12px">还没有作答记录：回首页挑一个题库做几道，这里就有数据了。</div>' : ''}
       ${undated ? `<div class="small muted" style="margin-top:8px">另有 ${undated} 条早期记录没有日期（老版本数据），不计入下面的趋势图。</div>` : ''}
     </div>
 
-    <h2 class="sec">近 14 天</h2>
+    <h2 class="sec" id="secDays">近 14 天</h2>
     <div class="card">
+      <div class="tools" style="margin-top:0">
+        <span class="mini-tag">共 ${sumN} 题</span>
+        ${sumN ? `<span class="mini-tag ok">平均正确率 ${Math.round(sumOk / sumN * 100)}%</span>` : ''}
+        <span class="spacer-grow"></span>
+        <span class="tl" id="dayTip">点一下柱子，看那天的详情</span>
+      </div>
       <div class="chart">
-        ${days.map(d => `<div class="cbar${d.n ? '' : ' zero'}" title="${d.key}：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : ''}">
+        ${days.map((d, i) => `<div class="cbar${d.n ? '' : ' zero'}" data-day="${i}" title="${d.key}：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : ''}">
           <b>${d.n || ''}</b><i style="height:${Math.max(2, Math.round(d.n / maxN * 92))}px"></i><span>${d.label}</span>
         </div>`).join('')}
       </div>
-      <div class="small muted" style="margin-top:8px">这 14 天共 <b>${sumN}</b> 题${sumN ? '，平均正确率 ' + Math.round(sumOk / sumN * 100) + '%' : ''}。</div>
       ${dueN ? `<div class="tools"><button class="btn primary" id="stReview">开始今日复习（${dueN} 题）</button></div>` : ''}
     </div>
 
-    <h2 class="sec">各题库正确率</h2>
-    ${rows.map(r => `<div class="card" style="margin-bottom:10px;padding:12px 14px">
-      <div class="srow">
+    <h2 class="sec" id="secBanks">各题库正确率</h2>
+    ${rows.length ? rows.map(r => `<button class="srow srow-go" data-openbank="${esc(r.b.id)}" title="去刷这个题库">
         <span class="sname">${esc(r.b.title)}</span>
         <span class="sbar"><i style="width:${r.acc}%"></i></span>
         <span class="sval">${r.acc}%　已答 ${r.done}/${r.n}　错题 ${r.wr}</span>
-      </div>
-    </div>`).join('') || '<div class="card"><div class="empty">还没有题库</div></div>'}
+        <span class="chev">›</span>
+      </button>`).join('') : '<div class="card"><div class="empty">还没有题库</div></div>'}
 
     <h2 class="sec">错得最多的题</h2>
     <div class="card">
-      ${tops.length ? tops.slice(0, 12).map((t, i) => `<div class="srow">
-        <span class="sval" style="flex:0 0 22px">${i + 1}</span>
+      ${tops.length ? tops.slice(0, 12).map((t, i) => `<div class="srow srow-go" data-openbank="${esc(t.b.id)}" data-goto="${esc(String(t.q.id))}" title="去做这道题">
+        <span class="wno">${i + 1}</span>
         <span class="sname" style="flex:1 1 auto" title="${esc(t.q.stem)}">${esc(t.q.stem.slice(0, 40))}${t.q.stem.length > 40 ? '…' : ''}</span>
         <span class="sval">错 ${t.a.wrong || 0} / 做 ${t.a.tries || 0}</span>
-        <button class="btn tiny" data-gobank="${t.b.id}" data-goto="${esc(String(t.q.id))}">去做</button>
+        <span class="chev">›</span>
       </div>`).join('') : '<div class="empty">还没有错题，继续保持。</div>'}
     </div>`;
 
-  on('stReview', () => startReview(60));
-  document.querySelectorAll('[data-gobank]').forEach(el => el.onclick = () => {
-    const b = bankById(el.dataset.gobank); if (!b) return;
-    QZ.filter = 'all'; QZ.order = null; QZ.cur = el.dataset.goto;
+  /* 统计页的点击：数字块滚到对应区块、题库行直接进题库、柱子看当天详情 */
+  document.querySelectorAll('#view [data-jump]').forEach(el => el.onclick = () => {
+    const t = $(el.dataset.jump);
+    if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  const rvBtn = document.querySelector('#view [data-act="review"]');
+  if (rvBtn) rvBtn.onclick = () => startReview(60);
+  document.querySelectorAll('#view [data-openbank]').forEach(el => el.onclick = () => {
+    const b = bankById(el.dataset.openbank); if (!b) return;
+    if (el.dataset.goto) { QZ.filter = 'all'; QZ.order = null; QZ.cur = el.dataset.goto; }
     go('#/bank/' + b.id);
   });
+  const bars = document.querySelectorAll('#view .cbar');
+  bars.forEach(el => el.onclick = () => {
+    const d = days[+el.dataset.day]; if (!d) return;
+    bars.forEach(x => x.classList.remove('on'));
+    el.classList.add('on');
+    const tip = $('dayTip');
+    if (tip) tip.innerHTML = `<b>${d.key}</b>：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : '（那天没做题）'}`;
+  });
+  on('stReview', () => startReview(60));
 }
 
 /* ============================================================
@@ -1685,26 +1706,41 @@ function showHelp() {
   if (!m) {
     m = document.createElement('div');
     m.className = 'mask'; m.id = 'helpMask';
-    m.innerHTML = `<div class="sheet">
-      <div class="shead"><h3>快捷键与操作</h3><span class="spacer-grow"></span><button class="btn tiny" id="helpClose2">关闭</button></div>
-      <div class="hint">手机上直接点就行，这些是电脑上用的。</div>
-      <div class="sec-t">答题</div>
-      <div class="help-row"><span class="kbd">A</span><span class="kbd">B</span><span class="kbd">C</span><span class="kbd">D</span><span class="spacer-grow"></span><span class="muted">选选项（也可按 1 2 3 4）</span></div>
-      <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">多选题提交答案；单选或已判分＝下一题</span></div>
-      <div class="help-row"><span class="kbd">←</span><span class="kbd">→</span><span class="spacer-grow"></span><span class="muted">上一题 / 下一题</span></div>
-      <div class="help-row"><span class="kbd">S</span><span class="spacer-grow"></span><span class="muted">收藏 / 取消收藏当前题</span></div>
-      <div class="help-row"><span class="kbd">K</span><span class="spacer-grow"></span><span class="muted">打开答题卡（可按「做错 / 没做」筛选）</span></div>
-      <div class="sec-t">其它</div>
-      <div class="help-row"><span class="kbd">/</span><span class="spacer-grow"></span><span class="muted">跳到搜索框（搜索页里）</span></div>
-      <div class="help-row"><span class="kbd">?</span><span class="spacer-grow"></span><span class="muted">打开这个帮助</span></div>
-      <div class="help-row"><span class="kbd">Esc</span><span class="spacer-grow"></span><span class="muted">关闭弹窗</span></div>
-      <div class="sec-t">顺手提一句</div>
-      <div class="small muted" style="line-height:2">
-        · 首页最上面是「继续刷题」，直接接着上次的题号。<br>
-        · 顶栏 <b>◐</b> 一键切换 跟随系统 / 浅色 / 深色。<br>
-        · 底栏中间的数字点开就是答题卡；答完自动把解析滚到眼前。<br>
-        · 错题本、收藏页的批量与导出收在「批量操作与导出」里，点一下展开。
+    m.innerHTML = `<div class="sheet help-sheet">
+      <div class="shead help-head"><h3>快捷键与操作</h3><span class="spacer-grow"></span><button class="btn tiny" id="helpClose2">关闭</button></div>
+      <div class="hint">手机上直接点就行；下面这些是电脑键盘用的。随时按 <span class="kbd">?</span> 打开这里，按 <span class="kbd">Esc</span> 关掉。</div>
+
+      <div class="help-card">
+        <div class="sec-t">答题</div>
+        <div class="help-row"><span class="kbd">A</span><span class="kbd">B</span><span class="kbd">C</span><span class="kbd">D</span><span class="spacer-grow"></span><span class="muted">选选项（也可以按 1 2 3 4；多选题先都选上再提交）</span></div>
+        <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">多选题＝提交答案；单选或已判分＝下一题</span></div>
+        <div class="help-row"><span class="kbd">←</span><span class="kbd">→</span><span class="spacer-grow"></span><span class="muted">上一题 / 下一题（到头了按钮会变灰）</span></div>
+        <div class="help-row"><span class="kbd">S</span><span class="spacer-grow"></span><span class="muted">收藏 / 取消收藏当前题（收藏成功会弹一下提示）</span></div>
+        <div class="help-row"><span class="kbd">K</span><span class="spacer-grow"></span><span class="muted">打开答题卡：可按「做错 / 没做」筛选，点题号直接跳过去</span></div>
       </div>
+
+      <div class="help-card">
+        <div class="sec-t">找题</div>
+        <div class="help-row"><span class="kbd">/</span><span class="spacer-grow"></span><span class="muted">任何页面都能跳到搜索框</span></div>
+        <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">光标在搜索框里＝立刻搜（不用等那 0.2 秒）</span></div>
+        <div class="help-row"><span class="kbd">Esc</span><span class="spacer-grow"></span><span class="muted">搜索框里有字＝清空；没字＝关掉弹窗</span></div>
+      </div>
+
+      <div class="help-card">
+        <div class="sec-t">界面</div>
+        <div class="help-row"><span class="kbd">?</span><span class="spacer-grow"></span><span class="muted">打开 / 收起这个帮助</span></div>
+        <div class="help-row"><span class="kbd">◐</span><span class="spacer-grow"></span><span class="muted">顶栏这个按钮：跟随系统 → 浅色 → 深色</span></div>
+      </div>
+
+      <div class="sec-t">顺手提一句</div>
+      <div class="small muted help-tips">
+        · 首页最上面是「继续刷题」，直接接着上次的题号。<br>
+        · 首页那排数字都能点：点错题进错题本，点待复习直接开始复习。<br>
+        · 底栏中间的数字点开就是答题卡；答完自动把解析滚到眼前。<br>
+        · 错题本、收藏页的批量与导出收在「批量操作与导出」里，点一下展开。<br>
+        · 顶栏「文件」＝把自建题库存成本机文件，或从文件读回来。
+      </div>
+
       <div class="actions"><button class="btn primary" id="helpClose">知道了</button></div>
     </div>`;
     document.body.appendChild(m);
@@ -1840,7 +1876,12 @@ document.addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName) || '';
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || !!(e.target && e.target.isContentEditable);
   /* ? 打开快捷键帮助，Esc 关掉所有弹窗（任何页面都能用） */
-  if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) { e.preventDefault(); showHelp(); return; }
+  if (!typing && (e.key === '?' || (e.key === '/' && e.shiftKey))) {
+    e.preventDefault();
+    const hm = $('helpMask');
+    if (hm && hm.classList.contains('show')) { hm.classList.remove('show'); return; }
+    showHelp(); return;
+  }
   if (e.key === 'Escape') { closeAll(); return; }
   const rn = route().name;
   /* 搜索页（或任何页面）：按 / 跳到搜索框并聚焦 */

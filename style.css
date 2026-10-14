@@ -676,3 +676,81 @@ body.dark .stats>div{background:rgba(255,255,255,.035)}
   .hero .hstat b,.hero .hstat>button.hs b{font-size:15px}
 }
 
+/* ============================================================
+   v18（2026-10-17）：统计页数字可点、帮助弹层分组、手机底栏加高、
+   深浅色细调。用到的类：.hst / .hst-plain（统计页数字块）、
+   .srow-go / .chev（整行可点）、.help-card / .help-head / .help-tips、
+   .mini-tag.hit（搜索命中位置）、.cbar.on（选中的柱子）。
+   ============================================================ */
+
+/* 让浏览器自带的东西（滚动条、下拉框、勾选框）也跟着深浅色走：
+   以前只换了自己的颜色，深色下下拉框还是白底、滚动条还是亮的。 */
+:root{color-scheme:light}
+body.dark{color-scheme:dark}
+::selection{background:rgba(37,99,235,.20)}
+body.dark ::selection{background:rgba(96,165,250,.30);color:#fff}
+body.dark{
+  --sh-1:0 1px 2px rgba(0,0,0,.45);
+  --sh-2:0 6px 18px rgba(0,0,0,.42);
+  --sh-3:0 10px 30px rgba(0,0,0,.5);
+}
+body.dark .kbd{background:#1b2334;border-color:#334155;color:#cbd5e1}
+body.dark mark{background:#8a6a12;color:#fff}
+body.dark .mini-tag{background:#1e2a4a;color:#a5b4fc}
+.mini-tag.hit{background:#fff7ed;color:#9a3412;margin-left:0}
+body.dark .mini-tag.hit{background:#3a2413;color:#fdba74}
+
+/* 搜索列表里「关键词不在题干里」的那一小段原文 */
+.wi-hit{font-size:12.5px;color:var(--sub);line-height:1.75;margin-top:3px;padding-left:2px}
+.wi-hit b{color:var(--primary);font-weight:600;margin-right:6px}
+
+/* 统计页：数字块（.hst 是按钮、.hst-plain 是不能点的那种，长得一样） */
+.stats>.hst,.stats>.hst-plain{
+  display:flex;flex-direction:column;text-align:left;font:inherit;color:inherit;line-height:1.3;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-s);padding:9px 12px;min-width:86px;
+}
+.stats>.hst{appearance:none;-webkit-appearance:none;cursor:pointer;transition:transform .12s ease,border-color .12s ease,background .12s ease}
+.stats>.hst:hover{border-color:var(--primary-line);background:var(--card)}
+.stats>.hst:active{transform:translateY(1px)}
+.stats>.hst.off,.stats>.hst[disabled]{opacity:.55;cursor:default}
+.stats>.hst.off:hover,.stats>.hst[disabled]:hover{border-color:var(--line);background:var(--bg2)}
+body.dark .stats>.hst,body.dark .stats>.hst-plain{background:rgba(255,255,255,.035)}
+
+/* 统计页：整行能点的行（各题库 / 错得最多的题） */
+.srow-go{
+  appearance:none;-webkit-appearance:none;width:100%;text-align:left;font:inherit;color:inherit;
+  background:transparent;border-left:0;border-right:0;border-bottom:0;border-radius:10px;
+  padding-left:9px;padding-right:9px;cursor:pointer;transition:background .14s ease;
+}
+.srow-go:hover{background:var(--bg2)}
+body.dark .srow-go:hover{background:rgba(255,255,255,.06)}
+.srow-go .chev{flex:0 0 auto;color:var(--sub);font-size:17px;line-height:1;transition:color .14s ease,transform .14s ease}
+.srow-go:hover .chev{color:var(--primary);transform:translateX(2px)}
+
+/* 统计页：柱子点得动 */
+.cbar{cursor:pointer}
+.cbar:hover i{filter:brightness(1.06)}
+.cbar.on i{background:linear-gradient(180deg,#38bdf8,#2563eb);box-shadow:0 0 0 3px var(--primary-weak)}
+
+/* 帮助弹层：分组卡片 + 顶部常驻的标题条 */
+.help-head{position:sticky;top:-16px;z-index:2;background:var(--card);padding:6px 0 8px}
+.help-card{border:1px solid var(--line);border-radius:var(--r-m);padding:2px 12px 8px;margin-top:10px;background:var(--bg2)}
+.help-card .sec-t{margin:10px 0 2px}
+body.dark .help-card{background:rgba(255,255,255,.03)}
+.help-row .kbd{min-width:26px}
+.help-tips{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line);line-height:2}
+.help-sheet .actions{margin-top:12px}
+
+/* 手机底栏：底栏是一天里点得最多的地方，手机上给它加高、字放大、按钮之间的缝收窄，
+   免得点「上一题 / 下一题」时误触到旁边的答题卡。 */
+@media(max-width:560px){
+  .nav{gap:7px;padding:9px 10px calc(9px + env(safe-area-inset-bottom))}
+  .nav .btn{min-height:52px;font-size:15px;padding:12px 6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  .nav .btn.mid{flex:0 0 100px;min-height:52px}
+  .nav .btn.mid b{font-size:15px}
+  .nav .btn.mid span{font-size:11px}
+  .help-sheet .actions .btn{width:100%}
+  body.quiz{padding-bottom:104px}
+  body.quiz .toast{bottom:calc(112px + env(safe-area-inset-bottom))}
+}
+
