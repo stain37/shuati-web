@@ -173,6 +173,12 @@ function submitExam(auto) {
   EX.usedMs = Date.now() - EX.startedAt;
   clearInterval(exTimer);
   saveEX();
+  /* 交卷庆祝（fx.js）：放在 saveEX() 之后、render() 之前 —— 结果页重绘时不能再放 */
+  if (window.FX && typeof FX.celebrateExam === 'function') {
+    try {
+      FX.celebrateExam({ bankId: bank.id, score: qs.length ? Math.round(correct / qs.length * 100) : 0, correct: correct, total: qs.length, auto: !!auto });
+    } catch (e) {}
+  }
   toast(auto ? '时间到，已自动交卷' : '已交卷');
   render();
 }
@@ -232,6 +238,7 @@ function paintExamResult(bank) {
     const conf = PAPERS.find(p => p.id === bank.id) || {};
     const keys = conf.keys || [];
     if (!keys.length) { toast('这套试卷的题目已经找不到来源了'); return; }
+    if (window.FX && FX.reset) FX.reset(bank.id);      /* 再考一次：把「已经庆祝过」的记号清掉 */
     clearEX();
     makePaper('再考一次 · ' + keys.length + ' 题', keys, { exam: true, duration: conf.duration || 0 });
   });

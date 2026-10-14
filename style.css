@@ -604,7 +604,8 @@ body.dark .toast .tic{background:rgba(15,23,42,.16)}
 
 /* ---- 进入动画 ---- */
 @keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-#view{animation:viewIn .2s ease}
+/* 只有「换了页面」才播（app.js viewEnter 用视图签名守着），答题重画不播 */
+.view-enter{animation:viewIn var(--t-slow) var(--ease)}
 
 /* ---- v17b：列表页顶栏数字、首页目录导航的收尾 ---- */
 /* 错题本 / 收藏 页顶部那排数字：改成小卡片，读数更清楚 */
@@ -754,3 +755,158 @@ body.dark .help-card{background:rgba(255,255,255,.03)}
   body.quiz .toast{bottom:calc(112px + env(safe-area-inset-bottom))}
 }
 
+
+/* ==========================================================================
+   v19：庆祝（fx.js）—— canvas 彩带 + 🎺 + 一句文案
+   只动 transform / opacity（不动布局属性，也不碰 paint 大头），z-index 排在
+   toast（999）与弹层下面，绝不挡按钮。
+   ========================================================================== */
+#fxCanvas {
+  position: fixed; inset: 0 auto auto 0;
+  pointer-events: none; z-index: 950;
+}
+.fx-trumpet {
+  position: fixed; left: 50%; top: 42%; z-index: 960; pointer-events: none;
+  font-size: 64px; line-height: 1; opacity: 0;
+  transform: translate(-50%, -50%) scale(.4) rotate(-25deg);
+  will-change: transform, opacity;
+}
+.fx-trumpet.go { animation: fxTrumpetIn .5s cubic-bezier(.2, 1.4, .3, 1) forwards, fxTrumpetBlow 1.2s .5s ease-in-out 2; }
+@keyframes fxTrumpetIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.4) rotate(-25deg); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(8deg); }
+}
+@keyframes fxTrumpetBlow {
+  0%, 100% { transform: translate(-50%, -50%) scale(1.04) rotate(-6deg); }
+  50%      { transform: translate(-50%, -50%) scale(1.08) rotate(10deg); }
+}
+.fx-msg {
+  position: fixed; left: 50%; top: 52%; z-index: 960; pointer-events: none;
+  padding: 9px 18px; border-radius: 999px; font-size: 15px; font-weight: 700;
+  background: var(--card); color: var(--text); border: 1px solid var(--line);
+  box-shadow: var(--sh-3, var(--sh-2)); opacity: 0;
+  transform: translate(-50%, 8px);
+}
+.fx-msg.go { animation: fxMsgIn .28s ease forwards; }
+@keyframes fxMsgIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.fx-trumpet.out, .fx-msg.out { animation: fxOut .35s ease forwards; }
+@keyframes fxOut { to { opacity: 0; transform: translate(-50%, -8px); } }
+
+@media (max-width: 560px) {
+  .fx-trumpet { font-size: 54px; top: 38%; }
+  .fx-msg { top: 48%; font-size: 14px; padding: 8px 14px; }
+}
+/* 系统开了「减少动态效果」：fx.js 不放彩带，这里再把 🎺 的抖动静止掉 */
+@media (prefers-reduced-motion: reduce) {
+  .fx-trumpet.go { animation: none; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ==========================================================================
+   v20：丝滑交互动效（方案二）
+   规矩：只动 transform / opacity（颜色过渡除外），单次动画 ≤ 400ms，
+   不给大范围元素长期挂 will-change，尊重系统的「减少动态效果」
+   （style.css 开头的 @media (prefers-reduced-motion:reduce) 已经把全站动画/过渡关了）。
+   ========================================================================== */
+:root {
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --t-fast: .12s; --t-base: .18s; --t-slow: .28s;
+}
+
+/* 进度条：统一时长与曲线（顶栏 / 题库卡 / 统计页柱子） */
+.bar i, .prog i { transition: width var(--t-slow) var(--ease); }
+.cbar i { transition: height var(--t-slow) var(--ease); }
+/* 统计页柱子逐根长出来（app.js 给每根写了 style="--i:N"） */
+@keyframes barGrow { from { transform: scaleY(.02); } to { transform: scaleY(1); } }
+.cbar i { transform-origin: bottom; animation: barGrow var(--t-slow) var(--ease) both; animation-delay: calc(var(--i, 0) * 20ms); }
+
+/* 按钮：按压回弹 */
+.btn { transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+                    color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease-spring),
+                    box-shadow var(--t-fast) var(--ease); }
+.btn:active:not(:disabled) { transform: scale(.96); }
+
+/* 选项：选中弹一下、答对轻弹、答错抖一下（都只动 transform） */
+.opt { transition: border-color .15s, background .15s, box-shadow .15s, transform var(--t-fast) var(--ease-spring); }
+.opt:active:not(:disabled) { transform: scale(.985); }
+@keyframes optPop { 0% { transform: scale(1); } 45% { transform: scale(1.018); } 100% { transform: scale(1); } }
+@keyframes optShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+.opt.sel { animation: optPop var(--t-base) var(--ease-spring); }
+.opt.right { animation: optPop var(--t-base) var(--ease-spring); }
+.opt.wrong { animation: optShake .3s var(--ease); }
+
+/* 列表入场：错题本 / 收藏 / 搜索这些卡片淡入上浮，只给前 12 个排延迟（长列表不一次性动）。
+   app.js 的 staggerList() 给卡片加 .stagger-i 并写 --i，动画播完自己摘掉。 */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.stagger-i { animation: fadeUp var(--t-slow) var(--ease) both; animation-delay: calc(var(--i, 0) * 26ms); }
+
+/* 深浅色切换：背景色/文字色慢慢过渡（字号切换故意不写进来，重排会发虚） */
+body { transition: background-color .25s var(--ease), color .25s var(--ease); }
+.card, .sheet, .top { transition: background-color .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease); }
+
+/* ============================================================
+   v21：AI 变式题面板（variant.js）——《方案三》
+   答题页 / 错题本就地内嵌，不新开弹层；配色全走变量，深浅色都覆盖。
+   ============================================================ */
+.vpanel { margin-top: 10px; border: 1px solid var(--line); background: var(--card); border-radius: var(--r-m); padding: 12px; animation: fadeUp var(--t-base) var(--ease) both; }
+.vhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.vhead b { font-size: 14.5px; }
+.vstate { font-size: 11.5px; }
+.vsrc { position: relative; border: 1px dashed var(--line2); border-radius: var(--r-s); padding: 10px 11px 8px; margin: 6px 0 10px; background: var(--bg2); }
+.vsrc-tag { position: absolute; top: -9px; left: 10px; font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: var(--primary); color: #fff; }
+.vsrc-stem { font-size: 13.5px; line-height: 1.6; margin: 2px 0 6px; }
+.vsrc-opts { display: grid; gap: 3px; margin-bottom: 6px; }
+.vso { font-size: 12.5px; color: var(--sub); display: flex; gap: 6px; }
+.vso b { color: var(--text); }
+.vso.w { color: var(--bad); }
+.vso.w b { color: var(--bad); }
+.vlab { font-size: 11.5px; color: var(--sub); margin: 9px 0 5px; }
+.vchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vchip { font-size: 12px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: var(--bg2); color: var(--sub);
+         transition: transform var(--t-fast) var(--ease-spring), background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.vchip:hover { transform: translateY(-1px); color: var(--text); }
+.vchip.on { background: var(--primary-weak); border-color: var(--primary-line); color: var(--primary); }
+.vask { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--bg2); color: var(--text); padding: 7px 9px; font: inherit; font-size: 13px; line-height: 1.55; resize: vertical; }
+.vask:focus { outline: none; border-color: var(--primary-line); box-shadow: 0 0 0 3px var(--ring); }
+.vactions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.vout:not(:empty) { margin-top: 6px; }
+.vraw { white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-s); padding: 8px 10px; margin: 6px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--text); }
+.vrawbox { margin: 4px 0 0; }
+.vrawbox > summary { cursor: pointer; font-size: 12px; color: var(--sub); padding: 3px 0; list-style: none; }
+.vrawbox > summary::-webkit-details-marker { display: none; }
+.vrawbox > summary::before { content: '▸ '; }
+.vrawbox[open] > summary::before { content: '▾ '; }
+.vrawbox .vraw { max-height: 220px; }
+.vcards { display: grid; gap: 8px; margin-top: 6px; }
+.vcards:empty { display: none; }
+.vcard { border: 1px solid var(--line); border-radius: var(--r-s); padding: 9px 11px; background: var(--bg2); }
+.vcard-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 5px; }
+.vno { font-size: 12px; font-weight: 700; color: var(--primary); }
+.vstem { font-size: 13.5px; line-height: 1.6; }
+.vopts { display: grid; gap: 3px; margin: 6px 0; }
+.vopt { font-size: 12.5px; display: flex; gap: 6px; align-items: baseline; color: var(--sub); }
+.vopt b { color: var(--text); }
+.vopt.r, .vopt.r b { color: var(--ok); }
+.vexp { font-size: 12.5px; line-height: 1.6; color: var(--sub); border-top: 1px dashed var(--line2); padding-top: 6px; margin-top: 4px; }
+.vsimbox:not(:empty) { margin-top: 6px; }
+.vsimrow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px dashed var(--line2); }
+.vsim-l { flex: 1; min-width: 0; }
+.vsim-l b { font-size: 12.5px; }
+.sim-pct { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--primary-weak); color: var(--primary); margin-right: 6px; }
+.vcmp { display: grid; gap: 8px; margin-top: 8px; }
+.vcmp-side { border: 1px solid var(--line2); border-radius: var(--r-s); padding: 8px 10px; }
+.vcmp-t { font-size: 11.5px; color: var(--sub); margin-bottom: 4px; }
+.vcmp mark, .vraw mark { background: #fde68a; color: #422006; border-radius: 2px; padding: 0 1px; }
+.vfixhost:not(:empty) { margin-top: 6px; }
+.flash { animation: optPop var(--t-base) var(--ease-spring); }
+.toolbar.vbar { margin-top: 8px; }
+body.dark .vsrc, body.dark .vask, body.dark .vraw, body.dark .vcard { background: #121a28; }
+body.dark .vcmp mark { background: #8a6a12; color: #f8fafc; }
+@media (max-width: 560px) {
+  .vpanel { padding: 10px; }
+  .vactions .btn { flex: 1 1 auto; }
+  .vraw { max-height: 200px; }
+}

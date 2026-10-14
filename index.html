@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261017f">
+<link rel="stylesheet" href="style.css?v=20261018c">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261014e">
 <link rel="manifest" href="manifest.json">
@@ -69,6 +69,8 @@
   <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
   <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
   <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
+  <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
+  <label class="chk"><input type="checkbox" id="setFxNormalBank"> 普通题库刷完也庆祝（默认只在套卷 / 模考时放）</label>
   <div class="tools" style="margin-top:12px">
     <span class="tl">外观</span>
     <select class="num" id="setTheme">
@@ -135,9 +137,9 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261017f"></script>
-<script src="collection.js?v=20261017f"></script>
-<script src="exam.js?v=20261014e"></script>
+<script src="app.js?v=20261018c"></script>
+<script src="collection.js?v=20261018c"></script>
+<script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261017e"></script>
 <script src="ai.js?v=20261017e"></script>
 
@@ -153,6 +155,15 @@
 <!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
      它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
 <script src="sync.js?v=20261017e"></script>
+
+<!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
+     4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->
+<script src="fx.js?v=20261018c"></script>
+
+<!-- AI 变式题（variant.js）：基于一道题（尤其错题）让 AI 出同考点新题，
+     再跟库里的相似题并排对比；生成结果可一键存成新题库。
+     它复用 ai.js 的 aiChat/aiContext 和 app.js 的 parseInput，自己只加面板和相似度比对。 -->
+<script src="variant.js?v=20261018c"></script>
 
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。

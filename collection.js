@@ -378,6 +378,8 @@ function renderList(mode) {
       : `<div class="card"><div class="empty">${items.length ? '当前筛选条件下没有题目，放宽一下条件试试。' : (isWrong ? '还没有错题。答错的题会自动进来。' : '还没有收藏。刷题时点右上角「☆ 收藏」。')}</div></div>`}
   `;
 
+  staggerList($('view'));
+
   /* 事件 */
   $('view').querySelectorAll('.chips-inline .chip').forEach(c => c.onclick = () => { st.bank = c.dataset.b; render(); });
   $('view').querySelectorAll('[data-s]').forEach(c => c.onclick = () => {
@@ -565,13 +567,26 @@ function itemHtml(it, mode) {
         <button class="btn" data-act="note">${custom ? '改解析' : '写解析'}</button>
         <button class="btn" data-act="fix" title="题库答案写错了 / 自己点错了：可以在这里改">${hasFix(k) ? '改答案（已修正）' : '改答案'}</button>
         <button class="btn" data-act="ai" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
+        <button class="btn" data-act="variant" title="让 AI 照这道题出几道同考点的新题（变式题），并跟库里相似的老题对比">变式题</button>
         <button class="btn" data-act="link">去题库里做这道题</button>
       </div>
       <div class="note-host"></div>
       <div class="fix-host"></div>
       <div class="ai-host"></div>
+      <div class="v-host"></div>
     </div>` : ''}
   </div>`;
+}
+
+/* 面板宿主：卡片没展开时那一格还没生成 —— 先展开，再把面板开在新行里 */
+function itemHost(node, st, k, sel) {
+  let h = node.querySelector(sel);
+  if (!h) {
+    st.open.add(k); render();
+    const nd = document.querySelector('[data-k="' + String(k).replace(/["\\]/g, '\\$&') + '"]');
+    h = nd && nd.querySelector(sel);
+  }
+  return h;
 }
 
 function bindItem(node, mode, it) {
@@ -590,15 +605,12 @@ function bindItem(node, mode, it) {
     }
     else if (act === 'note') openNoteEditor(k, node.querySelector('.note-host'), it.q, render);
     else if (act === 'fix') openAnsEditor(node.querySelector('.fix-host'), k, it.q, render);
-    else if (act === 'ai') {
-      if (typeof aiOpenPanel !== 'function') { toast('AI 模块没加载（ai.js）'); return; }
-      let h = node.querySelector('.ai-host');
-      if (!h) {                                   /* 没展开时这一格还不存在：先展开，再把面板开在新行里 */
-        st.open.add(k); render();
-        const nd = document.querySelector('[data-k="' + String(k).replace(/["\\]/g, '\\$&') + '"]');
-        h = nd && nd.querySelector('.ai-host');
-      }
-      if (h) aiOpenPanel(h, k, it.q);
+    else if (act === 'ai' || act === 'variant') {
+      const fn = act === 'ai' ? window.aiOpenPanel : window.openVariant;
+      const cls = act === 'ai' ? '.ai-host' : '.v-host';
+      if (typeof fn !== 'function') { toast((act === 'ai' ? 'AI 模块' : '变式题模块') + '没加载'); return; }
+      const h = itemHost(node, st, k, cls);
+      if (h) fn(h, k, it.q);
     }
     else if (act === 'link') {
       const b = allBanks().find(x => !x.paper && k.indexOf(x.id + '#') === 0);
@@ -811,7 +823,7 @@ function renderSearch() {
       scheduleSearch(false);
     });
     el.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(sTimer); st.kw = el.value; pushHist(st.kw); paintSearch(); }
+      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(sTimer); st.kw = el.value; pushHist(st.kw); paintSearch(true); }
       else if (e.key === 'Escape') { e.preventDefault(); st.kw = ''; el.value = ''; const c = $('sqClear'); if (c) c.style.display = 'none'; paintSearch(); }
     });
     on('sqClear', () => { st.kw = ''; el.value = ''; const c = $('sqClear'); if (c) c.style.display = 'none'; el.focus(); paintSearch(); });
@@ -820,7 +832,7 @@ function renderSearch() {
   paintSearch();
 }
 
-function paintSearch() {
+function paintSearch(anim) {
   const st = LP.search, host = $('sres');
   if (!host) return;
   const kw = String(st.kw || '').trim();
@@ -852,8 +864,11 @@ function paintSearch() {
   HL_KW = '';
   paintHist();
   saveLast();
+  /* 只在「点范围 / 按回车搜 / 清空」这种明确动作时播入场，
+     敲字的时候不播（每敲一下重播会闪） */
+  if (anim) staggerList($('sres'));
 
-  host.querySelectorAll('[data-scope]').forEach(c => c.onclick = () => { st.scope = c.dataset.scope; paintSearch(); });
+  host.querySelectorAll('[data-scope]').forEach(c => c.onclick = () => { st.scope = c.dataset.scope; paintSearch(true); });
   host.querySelectorAll('.wi').forEach(node => {
     const it = shown.find(x => x.k === node.dataset.k);
     if (it) bindItem(node, 'search', it);

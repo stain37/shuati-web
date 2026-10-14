@@ -154,7 +154,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm' };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', fxConfetti: true, fxNormalBank: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
@@ -494,6 +494,21 @@ function markTop(name) {
     if (on_) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
   });
 }
+/* 列表入场：给「错题本 / 收藏 / 搜索」的卡片排上入场延迟。
+   只算前 12 个（长列表一次性动会掉帧），--i 交给 style.css 的 .stagger > * 用。 */
+function staggerList(host) {
+  const box = host || $('view');
+  if (!box) return;
+  const kids = [...box.querySelectorAll(':scope > .wi, :scope > .card.wi')];
+  kids.forEach((el, i) => {
+    if (i >= 12) { el.style.removeProperty('--i'); el.classList.remove('stagger-i'); return; }
+    el.style.setProperty('--i', String(i));
+    el.classList.add('stagger-i');
+  });
+}
+window.addEventListener('animationend', e => {
+  if (e.target && e.target.classList && e.target.classList.contains('stagger-i')) e.target.classList.remove('stagger-i');
+});
 function download(name, text, mime) {
   const blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
   const a = document.createElement('a');
@@ -625,7 +640,26 @@ function renderInner() {
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else renderQuiz(r.bankId);
   markTop(r.name);
+  viewEnter(r);
 }
+
+/* 视图签名守卫：只有「换了个页面」才播入场动画。
+   renderQuiz 每答一题、每翻一题都会重写 #view，所以答题页只看「哪个题库」，
+   无脑加动画会变成每答一题整页闪一下。 */
+let _lastViewSig = '';
+function viewEnter(r) {
+  const sig = r.name + '/' + (r.bankId || '');
+  if (sig === _lastViewSig) return;
+  _lastViewSig = sig;
+  const v = $('view');
+  if (!v) return;
+  v.classList.remove('view-enter');
+  void v.offsetWidth;                       /* 重排一下，让同一个类能重新播 */
+  v.classList.add('view-enter');
+}
+window.addEventListener('animationend', e => {
+  if (e.target && e.target.id === 'view') e.target.classList.remove('view-enter');
+});
 
 /* ============================================================
    首页
@@ -1056,6 +1090,7 @@ function renderQuiz(bankId) {
         <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
         <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
         <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
+        <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
       </div>
       <div class="fb" id="fb"></div>
       <div class="keyhint">
@@ -1069,6 +1104,7 @@ function renderQuiz(bankId) {
       <div id="noteHost"></div>
       <div id="fixHost"></div>
       <div id="aiHost"></div>
+      <div id="vHost"></div>
     </div>`;
 
   $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
@@ -1077,11 +1113,14 @@ function renderQuiz(bankId) {
   on('doNote', () => openNoteEditor(fk, $('noteHost'), q, render));
   on('doFix', () => openAnsEditor($('fixHost'), fk, q, render));
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
+  on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
 
   /* 整页重画之后把「AI 解析」面板挂回来：不然选选项 / 提交 / 翻页 / 别的标签页同步
      都会把正在生成的解析冲掉（看起来就是「突然变回原来解析、生成中断」） */
   if (typeof aiReopenFor === 'function') { try { aiReopenFor($('aiHost'), fk); } catch (e) {} }
+  /* 「AI 变式题」面板同理：翻页 / 答题重画之后挂回来，正在生成的不打断 */
+  if (typeof variantReopenFor === 'function') { try { variantReopenFor($('vHost'), fk, q); } catch (e) {} }
 
   showFb(bank, q);
   rememberLast(bank, q.id);
@@ -1109,6 +1148,16 @@ function renderQuiz(bankId) {
   $('stat').textContent = `${done}/${bank.questions.length}${wr ? ' · 错' + wr : ''}`;
   $('bar').style.width = (done / bank.questions.length * 100) + '%';
   renderChips(bank);
+
+  /* 一套题做完 → 庆祝一次（fx.js）。renderQuiz 每答一题都会重绘，
+     所以靠 localStorage 里的一次性记号 + FX 自己的守卫，绝不重复放；
+     普通题库默认不庆祝，要「设置 → 普通题库刷完也庆祝」打开。 */
+  if (window.FX && bank.questions.length && done === bank.questions.length) {
+    try {
+      if (bank.paper) FX.celebrateSet({ bankId: bank.id, total: bank.questions.length });
+      else if (typeof FX.celebrateNormal === 'function') FX.celebrateNormal({ bankId: bank.id, total: bank.questions.length });
+    } catch (e) {}
+  }
 }
 
 function toggleFav(k, btn) {
@@ -1232,6 +1281,7 @@ function redo(bank, q) {
   ANS[k].redo = true;
   delete QZ.pending[q.id];
   saveAns();
+  if (window.FX && FX.reset) FX.reset(bank.id);      /* 再答一次：允许这套题重新庆祝 */
   render();
 }
 
@@ -1621,7 +1671,7 @@ function renderStats() {
         <span class="tl" id="dayTip">点一下柱子，看那天的详情</span>
       </div>
       <div class="chart">
-        ${days.map((d, i) => `<div class="cbar${d.n ? '' : ' zero'}" data-day="${i}" title="${d.key}：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : ''}">
+        ${days.map((d, i) => `<div class="cbar${d.n ? '' : ' zero'}" data-day="${i}" style="--i:${i}" title="${d.key}：${d.n} 题${d.n ? '，正确率 ' + Math.round(d.ok / d.n * 100) + '%' : ''}">
           <b>${d.n || ''}</b><i style="height:${Math.max(2, Math.round(d.n / maxN * 92))}px"></i><span>${d.label}</span>
         </div>`).join('')}
       </div>
@@ -1797,6 +1847,8 @@ function openSettings() {
   $('setExpOnOk').checked = SET.expOnOk;
   $('setAutoNext').checked = SET.autoNext;
   $('setShuffle').checked = SET.shuffle;
+  $('setFxConfetti').checked = SET.fxConfetti !== false;
+  $('setFxNormalBank').checked = !!SET.fxNormalBank;
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
@@ -1811,6 +1863,15 @@ on('closeSet', closeAll);
 on('setExpOnOk', e => { SET.expOnOk = e.target.checked; writeLS(LS.set, SET); render(); }, 'change');
 on('setAutoNext', e => { SET.autoNext = e.target.checked; writeLS(LS.set, SET); }, 'change');
 on('setShuffle', e => { SET.shuffle = e.target.checked; writeLS(LS.set, SET); QZ.order = null; render(); }, 'change');
+/* 庆祝开关（fx.js）：关掉时把正在放的彩带立刻收掉，别留在屏幕上 */
+on('setFxConfetti', e => {
+  SET.fxConfetti = e.target.checked; writeLS(LS.set, SET);
+  if (!SET.fxConfetti && window.FX && FX.stop) FX.stop();
+}, 'change');
+on('setFxNormalBank', e => {
+  SET.fxNormalBank = e.target.checked; writeLS(LS.set, SET);
+  if (!SET.fxNormalBank && window.FX && FX.stop) FX.stop();
+}, 'change');
 on('resetAll', () => {
   if (!confirm('清空全部题库的作答记录？错题、收藏、自定义解析、临时套卷会被保留。不可恢复。')) return;
   tombWipe('ans'); ANS = {}; saveAns(); closeAll(); render(); toast('已清空作答记录');
