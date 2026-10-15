@@ -519,17 +519,21 @@
       var r = searchAll(segs.length ? segs : [QUERY.toLowerCase()]);
       var sc = r.cats.map(function (c) { return catCardHtml(c, true); }).join('');
       var sb = r.banks.map(function (b) { return bankCardHtml(b, true); }).join('');
-      body = '<h2 class="sec">搜索「' + E(QUERY) + '」的结果</h2>'
-        + ((sc || sb) ? ('<div class="nb-cards">' + sc + sb + '</div>') : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>');
+      var scr = r.cats.map(function (c) { return catRowHtml(c, true); }).join('');
+      var sbr = r.banks.map(function (b) { return bankRowHtml(b, true); }).join('');
+      body = sechead('搜索「' + E(QUERY) + '」的结果')
+        + ((sc || sb) ? viewWrap(sc + sb, scr + sbr) : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>');
     } else {
       var dirs = kids(CUR), bs = dirBanks(CUR);
       var curTitle = CUR ? TITLE(byId(CUR)) : '全部题库';
       var cards = dirs.map(function (c) { return catCardHtml(c, false); }).join('')
         + bs.slice().sort(sortBank).map(function (b) { return bankCardHtml(b, false); }).join('');
+      var rows = dirs.map(function (c) { return catRowHtml(c, false); }).join('')
+        + bs.slice().sort(sortBank).map(function (b) { return bankRowHtml(b, false); }).join('');
       var agg = CUR ? subStat(CUR) : null;
-      body = '<h2 class="sec">' + E(curTitle) + '</h2>'
+      body = sechead(E(curTitle))
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
-        + (cards ? ('<div class="nb-cards">' + cards + '</div>') : emptyHint());
+        + (cards ? viewWrap(cards, rows) : emptyHint());
     }
 
     return ''
@@ -600,6 +604,65 @@
   }
 
   /* 目录树（侧边/顶部折叠）：整个分类结构一次看全 */
+  /* ---------- 7.2 卡片 / 列表 视图切换（像资源管理器） ----------
+     视图选择存 qbank.view.v1，刷新记住；两套视图共用同一份数据和同一批
+     data-act，所以列表行里的「开始 / 错题 / 随机 / 移动 / ⋯」跟卡片上完全一样。 */
+  var VIEW_KEY = 'qbank.view.v1';
+  function viewMode() {
+    try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'; } catch (e) { return 'cards'; }
+  }
+  function setViewMode(m) {
+    try { localStorage.setItem(VIEW_KEY, m === 'list' ? 'list' : 'cards'); } catch (e) {}
+  }
+  function viewToggleHtml() {
+    var v = viewMode();
+    return '<div class="nb-view" role="group" aria-label="视图切换">'
+      + '<button class="vb' + (v === 'cards' ? ' on' : '') + '" data-act="view" data-v="cards" aria-pressed="' + (v === 'cards') + '" title="卡片视图">▦</button>'
+      + '<button class="vb' + (v === 'list' ? ' on' : '') + '" data-act="view" data-v="list" aria-pressed="' + (v === 'list') + '" title="列表视图（像资源管理器那样紧凑）">☰</button>'
+      + '</div>';
+  }
+  function sechead(title) { return '<div class="sechead"><h2 class="sec">' + title + '</h2>' + viewToggleHtml() + '</div>'; }
+  function catRowHtml(c, inSearch) {
+    var s = subStat(c.id);
+    var crumb = inSearch ? pathOf(c.parent || null).map(TITLE).join(' › ') : '';
+    return '<div class="nb-lrow nb-ldir" data-trow="' + E(c.id) + '">'
+      + '<span class="nb-lic">' + ICON_FOLDER + '</span>'
+      + '<div class="nb-linfo"><div class="nb-lname">' + E(TITLE(c)) + '</div>'
+      + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '') + s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done + '</div></div>'
+      + '<div class="nb-lacts">'
+      + '<button class="btn tiny" data-act="open" data-id="' + E(c.id) + '">打开</button>'
+      + '<button class="btn tiny" data-act="menu" data-id="' + E(c.id) + '">⋯</button>'
+      + '</div></div>';
+  }
+  function bankRowHtml(b, inSearch) {
+    var s = bankStat(b);
+    var crumb = inSearch ? pathOf(b.cat || null).map(TITLE).join(' › ') : '';
+    var pick = batOn(), on = pick && batSel(b.id);
+    return '<div class="nb-lrow nb-lbank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="' + (pick ? 'false' : 'true') + '">'
+      + '<span class="nb-lic">' + ICON_BANK + '</span>'
+      + '<div class="nb-linfo"><div class="nb-lname">' + E(b.title)
+      + (b.source === 'local' ? '<span class="pill local">自建</span>' : '<span class="pill">内置</span>')
+      + '</div>'
+      + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '')
+      + b.questions.length + ' 题　已答 ' + s.done
+      + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
+      + '　正确率 ' + s.acc + '%</div>'
+      + '<div class="prog"><i style="width:' + s.pct.toFixed(1) + '%"></i></div>'
+      + '</div>'
+      + '<div class="nb-lacts">'
+      + (pick
+        ? '<span class="small muted">' + (on ? '✔ 已选中' : '点这行选中') + '</span>'
+        : ('<button class="btn tiny primary" data-act="start" data-id="' + E(b.id) + '">' + (s.done ? '继续' : '开始') + '</button>'
+          + '<button class="btn tiny" data-act="wrong" data-id="' + E(b.id) + '">错题 ' + s.wr + '</button>'
+          + '<button class="btn tiny" data-act="move" data-id="' + E(b.id) + '">移动</button>'
+          + '<button class="btn tiny" data-act="more" data-id="' + E(b.id) + '">⋯</button>'))
+      + '</div></div>';
+  }
+  /* 把「卡片们 / 行们」按当前视图包一层；cardsHtml/rowsHtml 都是现成的串 */
+  function viewWrap(cardsHtml, rowsHtml) {
+    return viewMode() === 'list' ? ('<div class="nb-list">' + rowsHtml + '</div>') : ('<div class="nb-cards">' + cardsHtml + '</div>');
+  }
+
   function treeHtml() {
     ensure();
     function walk(pid, depth) {
@@ -693,6 +756,19 @@
     host.querySelectorAll('[data-trow]').forEach(function (row) {
       row.onclick = function () { openDir(row.dataset.trow); };
     });
+    /* 7.1 目录树点不动：`#nbTree` 初始是空的，树节点是点「展开 / 收起目录树」
+       （doAct('expandAll') → treeHtml()）之后才注入的，那些节点赶不上上面那轮绑定。
+       这里给容器挂**一次**委托（用 __trowBound 防重复），以后注入多少节点都能点。 */
+    var tree = host.querySelector('#nbTree');
+    if (tree && !tree.__trowBound) {
+      tree.__trowBound = true;
+      tree.addEventListener('click', function (e) {
+        var row = e.target.closest ? e.target.closest('[data-trow]') : null;
+        if (row && tree.contains(row)) { openDir(row.dataset.trow); return; }
+        var act = e.target.closest ? e.target.closest('[data-act="open"]') : null;
+        if (act && tree.contains(act) && act.dataset.id !== undefined) { openDir(act.dataset.id); }
+      });
+    }
     /* 兜底：万一还有别处（例如 app.js 自己那版首页）渲染出 data-start / data-delpaper 的按钮，
        也补上事件 —— 这两个属性以前没人读，套卷卡片上的「开始做题 / 删除套卷」点不动就是这么来的 */
     host.querySelectorAll('[data-delpaper]').forEach(function (el) {
@@ -777,6 +853,8 @@
   function doAct(act, id, el, host) {
     switch (act) {
       case 'open': openDir(id || null); break;
+      /* 7.2 视图切换：卡片 ▦ / 列表 ☰（存 qbank.view.v1，刷新记住） */
+      case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'cards'); repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
       case 'newcat': askNewCat(); break;
       case 'newbank': if (typeof go === 'function') go('#/import'); break;

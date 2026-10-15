@@ -161,7 +161,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', fxConfetti: true, fxNormalBank: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
@@ -183,7 +183,12 @@ function migrate() {
 }
 migrate();
 
-/* ---------- 外观：深色模式 + 字号 ---------- */
+/* ---------- 外观：深色模式 + 字号 + 主题色 ---------- */
+/* 第四批：4 套主题色（默认蓝）。只改 <html data-theme> 和几个变量，
+   style.css 里 html[data-theme=…] 覆盖 --primary / --primary-weak / --primary-line，
+   全站的按钮、链接、进度条、高亮、底部导航都跟着变。 */
+const THEME_COLORS = ['blue', 'indigo', 'teal', 'violet'];
+const THEME_META = { blue: ['#2563eb', '#0f1420'], indigo: ['#4f46e5', '#0f1420'], teal: ['#0d9488', '#0e131f'], violet: ['#7c3aed', '#0f1420'] };
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -191,8 +196,10 @@ function applyLook() {
   document.body.classList.toggle('fs-s', SET.fs === 's');
   document.body.classList.toggle('fs-l', SET.fs === 'l');
   document.body.classList.toggle('fs-xl', SET.fs === 'xl');
+  const color = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
+  if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', dark ? '#0f1420' : '#2563eb');
+  if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.blue)[dark ? 1 : 0]);
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -2129,6 +2136,7 @@ function openSettings() {
   $('setFxNormalBank').checked = !!SET.fxNormalBank;
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
+  if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
   srsPaintEls();
   $('setMask').classList.add('show');
@@ -2137,6 +2145,7 @@ on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');
 on('setFs', e => setLook('fs', e.target.value), 'change');
+on('setColor', e => { setLook('color', e.target.value); toast('主题色换成' + ({ blue: '蓝色', indigo: '靛蓝', teal: '青色', violet: '紫色' }[e.target.value] || '蓝色'), 1400, 'ok'); }, 'change');
 on('closeSet', closeAll);
 on('setExpOnOk', e => { SET.expOnOk = e.target.checked; writeLS(LS.set, SET); render(); }, 'change');
 on('setAutoNext', e => { SET.autoNext = e.target.checked; writeLS(LS.set, SET); }, 'change');

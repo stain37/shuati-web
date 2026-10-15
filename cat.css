@@ -29,6 +29,39 @@
 .nb-meta { color: var(--sub); font-size: calc(var(--fs) * .86); margin-top: 3px; line-height: 1.5; }
 .nb-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 
+/* ---------- 7.2 视图切换：右上角的 ▦ / ☰ + 列表视图 ---------- */
+.sechead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sechead > h2.sec { margin-bottom: 0; }
+.nb-view { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--bg2); }
+.nb-view .vb {
+  min-width: 32px; min-height: 28px; padding: 0 8px; font-size: 15px; line-height: 1;
+  border: 0; border-radius: 7px; background: transparent; color: var(--sub); cursor: pointer;
+}
+.nb-view .vb:hover { color: var(--text); }
+.nb-view .vb.on { background: var(--card); color: var(--primary); box-shadow: var(--sh-1); font-weight: 700; }
+
+.nb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 18px; }
+.nb-lrow {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-s);
+  padding: 8px 11px; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.nb-lrow:hover { border-color: var(--primary-line); box-shadow: var(--sh-1); }
+.nb-lrow.nb-on { border-color: var(--primary); background: var(--primary-weak); }
+.nb-ldir { cursor: pointer; }
+.nb-lic { flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--bg2); border: 1px solid var(--line); }
+.nb-lic svg { width: 15px; height: 15px; fill: none; stroke: var(--primary); stroke-width: 1.8; stroke-linejoin: round; }
+.nb-ldir .nb-lic { background: var(--primary-weak); border-color: var(--primary-line); }
+.nb-linfo { flex: 1 1 auto; min-width: 0; }
+.nb-lname { font-weight: 700; font-size: calc(var(--fs) * .97); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nb-lmeta { color: var(--sub); font-size: calc(var(--fs) * .82); margin-top: 2px; line-height: 1.45; }
+.nb-linfo .prog { margin-top: 5px; height: 5px; }
+.nb-lacts { flex: none; display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+@media (max-width: 560px) {
+  .nb-lrow { flex-wrap: wrap; }
+  .nb-lacts { flex-basis: 100%; justify-content: flex-start; }
+}
+
 /* 顶部的面包屑 / 目录导航条 */
 .nb-nav {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--r-m);

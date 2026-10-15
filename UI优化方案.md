@@ -227,6 +227,8 @@
 
 ## 4. 视觉焕新（独立批次，可单做，与前三批并行）
 
+> ✅ **已做完并上线**（2026-10-16 凌晨，缓存版本 `shuati-v49-web35`）。落地情况：设置里加「主题色」下拉（`#setColor`：蓝（默认）/ 靛 / 青 / 紫），`app.js` 用 `THEME_COLORS` + `applyLook()` 给 `<html>` 打 `data-theme`，`style.css` 用 `html[data-theme="…"]` 覆盖 `--primary / --primary-weak / --primary-line / --primary-soft`，**并补了 `--grad`**（原来只有蓝色一套，换主题后首页大卡片与底栏「下一题」还是蓝的 —— 这是这轮顺手修掉的漏网）；深色各主题再叠一层（靛+深色 `#8f9bff`、青 `#4fd1c5`、紫 `#b794ff`）。4.2 的 ③④ 也做了：`h2.sec` 竖条改主色渐变 + 字重 800、卡片阴影分层、`.bnav .btn.on` 用 `--primary-soft`、`#view` 加 0.18s 淡入（`prefers-reduced-motion` 下自动禁用）。⑤ 的「底部导航当前页高亮」随第二批一起做了。验证：`工作1\batch4-probe.py` 64 条 0 fail（四套主题逐个切着看 `data-theme` / `--primary` / 按钮实际渲染色 / `--grad`，另测深色叠加与 meta theme-color）。
+
 ### 4.0 现状（别从头调研）
 - 设计 token 全在 `style.css` 顶部 `:root` 和 `body.dark`：颜色、圆角（`--radius/--r-s/--r-m/--r-l`）、阴影（`--sh-1/2/pop`）、字号（`--fs`）、点击区（`--tap`）、主色（`--primary`）。
 - 现在：标准蓝 `#2563eb` + 中性蓝灰；卡片白底细边框轻阴影；顶栏已用 `color-mix` 毛玻璃；深色是深蓝灰。整体已干净，缺的是「辨识度」和「质感」。
@@ -279,6 +281,9 @@
 ## 7. 最新反馈：目录树点不动（bug）+ 题库「卡片/列表」视图切换
 
 ### 7.1 目录树点不动（根因已定位，改起来很小）
+
+> ✅ **已修并上线**（2026-10-16 凌晨，缓存版本 `shuati-v49-web35`）。按推荐的**事件委托**做的：`cat.js` 的 `bind(host)` 里给 `#nbTree` 绑一次 click（`tree.__trowBound` 防重复绑），用 `e.target.closest('[data-trow]')` 取 `row.dataset.trow` 调 `openDir(...)`；行内 `[data-act="open"]` 的「打开」按钮走同一入口。验收：展开树 → 点「内科学」真的进去了（面包屑变「全部题库 › 内科学」、多出「↑ 上一级」、下面列子目录与题库），收起再展开照旧。
+
 - **现象**：首页点「展开 / 收起目录树」后树出来了，但点里面的目录没反应。
 - **根因**（在 `cat.js`）：
   - `bind(host)`（约 682–695 行）只在页面渲染时绑一次 `[data-trow]` 的 onclick。
@@ -289,6 +294,9 @@
 - **风险**：极低，纯补事件绑定。
 
 ### 7.2 题库「卡片 / 列表」视图切换（像 Windows 资源管理器）
+
+> ✅ **已做完并上线**（2026-10-16 凌晨，缓存版本 `shuati-v49-web35`）。落地情况：`cat.js` 里 `VIEW_KEY = 'qbank.view.v1'` + `viewMode()/setViewMode()`，`viewToggleHtml()` 渲染 `.nb-view` 里两颗 `.vb[data-act="view"][data-v="cards|list"]`（`aria-pressed` 标当前项），`sechead(title)` 把标题和切换放一行；`viewWrap(cardsHtml, rowsHtml)` 二选一；新增 `catRowHtml()` / `bankRowHtml()` 两组紧凑行（图标 + 名称 + 「N 题 · 已答 N · 错题 N · 正确率 N%」 + 进度条 + 操作按钮，复用现有 `data-act`），`doAct` 加 `case 'view'`；样式在 `cat.css`（`.sechead / .nb-view / .vb / .nb-list / .nb-lrow / .nb-lic / .nb-linfo / .nb-lacts`，≤560px 时操作按钮换行）。搜索页共用同一套。**双栏（左树 + 右列表）没做**——目录树仍是「展开 / 收起」的顶部折叠式，留作 §8 的样板里再考虑。
+
 - **现状**：`cat.js` 首页只有 `.nb-cards` 卡片网格（`.nb-card`），没有列表视图。
 - **目标**：题库浏览区右上角加视图切换（☰ 列表 / ▦ 卡片），像 Windows 资源管理器的「详细信息 / 大图标」、Notion 的「Table / Gallery / List」。
 - **设计要点**：

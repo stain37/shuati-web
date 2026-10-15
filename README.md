@@ -214,6 +214,7 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | `qbank.tomb.v1` | 多标签页用的删除墓碑 `{ ans:{键:时间}, …, wipe:{ans:时间} }`，7 天自动过期 |
 | `qbank.tags.v1` | 每题的考点标签 `{ 题库id#题号: ['慢阻肺','气道炎症'] }` |
 | `qbank.tagvocab.v1` | 考点词表（AI 批量打标签时**只允许**从这里挑词） |
+| `qbank.view.v1` | 首页 / 搜索页用「卡片」还是「列表」看题库（`'cards'` / `'list'`） |
 | `qbank.report.v1` | 学情诊断报告历史（**只留最近 20 份**，`{ id, ts, from, to, markdown, … }`） |
 
 知识库正文优先放 IndexedDB（`shuati-kb` / `kb`），`file://` 下 IndexedDB 不可用时退回 localStorage。
@@ -224,7 +225,15 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v48-web34**）
+（缓存版本 **shuati-v49-web35**）
+
+| 问题 | 说明 |
+| --- | --- |
+| 想换个主色、又不想动 CSS | **第四批**：设置里加「主题色」下拉 `#setColor`（蓝默认 / 靛 / 青 / 紫）。`app.js` 的 `THEME_COLORS` + `applyLook()` 往 `<html>` 写 `data-theme`，`style.css` 用 `html[data-theme="…"]` 覆盖 `--primary / --primary-weak / --primary-line / --primary-soft / --grad`（深色再叠一层，如靛+深色 `#8f9bff`）；值存 `qbank.settings.v2` 的 `color` |
+| 换了主题，首页大卡片还是蓝的 | `--grad` 原来只有蓝色一套（`:root` / `body.dark`），四套主题现在各有一份浅色与深色渐变；按钮、选中态、进度条、底栏高亮本来就走 `--primary`，自动跟着变 |
+| 点目录树里的目录没反应 | **§7.1**：`cat.js` 的 `bind(host)` 原来给 `[data-trow]` 逐个绑 click，但 `#nbTree` 是点「展开 / 收起目录树」（`doAct('expandAll')`）之后才注入 `treeHtml()` 的，那批节点赶不上绑定 → 改成在 `#nbTree` 上做**事件委托**（`tree.__trowBound` 防重复），点行调 `openDir(row.dataset.trow)`，行内「打开」按钮同路 |
+| 题库多了以后一屏看不下几个 | **§7.2**：加 **▦ 卡片 / ☰ 列表** 视图切换（`.nb-view` 的 `.vb[data-act="view"]`），列表行 = 图标 + 名称 + 「N 题 · 已答 N · 错题 N · 正确率 N%」+ 进度条 + 操作按钮；选择存 `qbank.view.v1`，搜索页共用同一套 |
+| 页面切换有点硬 | `#view` 加 0.18s 淡入（`@keyframes viewIn`），`prefers-reduced-motion: reduce` 下自动禁用；`h2.sec` 竖条改主色渐变 |
 
 | 问题 | 说明 |
 | --- | --- |

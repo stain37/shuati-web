@@ -7,7 +7,7 @@
 :root{
   --bg:#f4f6fb; --bg2:#eef1f7; --card:#fff; --line:#e6e9f0; --line2:#f1f3f8;
   --text:#0f172a; --sub:#64748b;
-  --primary:#2563eb; --primary-weak:#eef4ff; --primary-line:#bfd4ff;
+  --primary:#2563eb; --primary-weak:#eef4ff; --primary-line:#bfd4ff; --primary-soft:rgba(37,99,235,.10);
   --ok:#15803d; --okbg:#eefaf1; --ok-line:#bbf0cd;
   --bad:#dc2626; --badbg:#fdeeee; --bad-line:#fbc4c4;
   --warn:#b45309;
@@ -21,7 +21,7 @@
 body.dark{
   --bg:#0e131f; --bg2:#141b29; --card:#161d2b; --line:#28324a; --line2:#1d2536;
   --text:#e7ebf3; --sub:#93a1b8;
-  --primary:#6b96ff; --primary-weak:#1a2a49; --primary-line:#33507f;
+  --primary:#6b96ff; --primary-weak:#1a2a49; --primary-line:#33507f; --primary-soft:rgba(107,150,255,.14);
   --ok:#4ade80; --okbg:#12251b; --ok-line:#2c6644;
   --bad:#f87171; --badbg:#2a1618; --bad-line:#7a3236;
   --warn:#fbbf24;
@@ -31,6 +31,32 @@ body.dark{
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+
+/* ---------- 第四批：主题色（4 套预设，默认仍是蓝） ----------
+   只覆盖几个主色变量，组件一个都不用改：按钮 / 链接 / 进度条 / 选中态 /
+   底部导航高亮 / 聚焦圈全都会跟着变。深色再单独覆盖一层。
+   色值都保住了正文对比度（≥4.5:1），浅色底 + 深色字、深色底 + 亮色字。 */
+html[data-theme="indigo"]{--primary:#4f46e5;--primary-weak:#eef0ff;--primary-line:#c7c9ff;--primary-soft:rgba(79,70,229,.10)}
+html[data-theme="teal"]  {--primary:#0d9488;--primary-weak:#e6faf7;--primary-line:#a5e6dd;--primary-soft:rgba(13,148,136,.10)}
+html[data-theme="violet"]{--primary:#7c3aed;--primary-weak:#f5eeff;--primary-line:#ddc8ff;--primary-soft:rgba(124,58,237,.10)}
+html[data-theme="indigo"] body.dark{--primary:#8f9bff;--primary-weak:#1e2148;--primary-line:#3b4180;--primary-soft:rgba(143,155,255,.14)}
+html[data-theme="teal"]   body.dark{--primary:#4fd1c5;--primary-weak:#0f2f2c;--primary-line:#2a6159;--primary-soft:rgba(79,209,197,.14)}
+html[data-theme="violet"] body.dark{--primary:#b794ff;--primary-weak:#2a1d47;--primary-line:#543c86;--primary-soft:rgba(183,148,255,.14)}
+/* 首页大卡片 / 底栏「下一题」用的渐变也得跟着主色走，否则换了主题还是蓝的 */
+html[data-theme="indigo"]{--grad:linear-gradient(135deg,#4f46e5,#6366f1 58%,#38bdf8)}
+html[data-theme="teal"]  {--grad:linear-gradient(135deg,#0d9488,#14b8a6 58%,#38bdf8)}
+html[data-theme="violet"]{--grad:linear-gradient(135deg,#7c3aed,#a855f7 58%,#38bdf8)}
+html[data-theme="indigo"] body.dark{--grad:linear-gradient(135deg,#4338ca,#6366f1 58%,#0ea5e9)}
+html[data-theme="teal"]   body.dark{--grad:linear-gradient(135deg,#0f766e,#14b8a6 58%,#0ea5e9)}
+html[data-theme="violet"] body.dark{--grad:linear-gradient(135deg,#6d28d9,#a855f7 58%,#0ea5e9)}
+
+/* ---------- 第四批：层次与微动效 ---------- */
+h2.sec{font-weight:800}
+h2.sec::before{background:linear-gradient(180deg,var(--primary),color-mix(in srgb,var(--primary) 60%,#22d3ee))}
+@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+#view{animation:viewIn .18s ease-out}
+.bnav .btn.on{background:var(--primary-soft)}
+@media (prefers-reduced-motion: reduce){ #view{animation:none} }
 body{
   font:var(--fs)/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   background:var(--bg); color:var(--text); min-height:100vh;
