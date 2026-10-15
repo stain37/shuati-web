@@ -2,12 +2,29 @@
 """把「资料」文件夹里的文档转成 知识库.js —— 网页刷新后自动出现这些知识库。
 
 用法（在站点目录里）：
-    python make-kb.py                 扫 站点目录\资料\
-    python make-kb.py D:\书 D:\讲义    每个目录 = 一个知识库（可给多个）
+    python make-kb.py                 扫 站点目录\\资料\\
+    python make-kb.py D:\\书 D:\\讲义     每个目录 = 一个知识库（可给多个）
 
 支持：.txt .md .csv .json .html .docx .pdf
       .docx 需要 python-docx（没有也能读：会退回直接解压的方式）
       .pdf  需要 pypdf（pip install pypdf），没装就跳过并提示
+
+默认「合并 + 增量」：
+    · 合并：读现有 知识库.js，同名库（按 id）被替换、其它库原样保留 —— 不再整份覆盖丢库。
+    · 增量：每个文件算 md5 存进 知识库.清单.json，没变的文件直接复用旧正文、不重新解析，
+      大 PDF 第二次跑会快很多。
+    · 书签切分：PDF 带书签时按顶层书签切成小节（每节 = 一篇），避免「一本书 = 一篇」
+      在检索时被「同一文件最多 2 段」卡住。
+
+想回到旧行为（整份覆盖、不合并、全部重解析）加 --overwrite。
+可选参数：
+    --overwrite      不合并现有库、不读缓存，只输出本次扫描的库（旧的整份覆盖行为）
+    --skip-pdf       跳过 PDF（最快）
+    --no-bookmarks   关闭 PDF 书签切分（一本书仍算一篇）
+    --pdf-pages 30   每个 PDF 只读前 30 页
+    --max-chars 60000 每篇最多留多少字
+    --dry            只统计、不写文件
+    -h, --help       看这段说明
 """
 import os
 import sys
@@ -20,14 +37,19 @@ import json
 import io
 import re
 import zipfile
+import hashlib
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, '知识库.js')
+MANIFEST = os.path.join(ROOT, '知识库.清单.json')
 EXTS = ['.txt', '.md', '.markdown', '.csv', '.json', '.docx', '.pdf', '.html', '.htm']
 
-PDF_SKIP = False     # --skip-pdf：完全不读 PDF（快）
-PDF_PAGES = 0        # --pdf-pages N：每个 PDF 只读前 N 页
-MAX_CHARS = 60000    # --max-chars N：每个文件最多留 N 字
+PDF_SKIP = False       # --skip-pdf：完全不读 PDF（快）
+PDF_PAGES = 0          # --pdf-pages N：每个 PDF 只读前 N 页
+MAX_CHARS = 60000      # --max-chars N：每篇最多留 N 字
+SPLIT_BOOKMARKS = True # --no-bookmarks：关闭 PDF 书签切分
+OVERWRITE = False      # --overwrite：不合并、不读缓存，整份覆盖
+DRY = False            # --dry：只统计不写
 
 
 def read_text(path):
@@ -85,34 +107,96 @@ def read_docx(path):
         return ''
 
 
-def read_pdf(path):
+def _pdf_reader():
     try:
         from pypdf import PdfReader
+        return PdfReader
     except Exception:
         try:
             from PyPDF2 import PdfReader
+            return PdfReader
         except Exception:
-            print('  ! 读 PDF 需要 pypdf：在命令行里跑  pip install pypdf  再试')
-            return ''
+            return None
+
+
+def _pdf_outline_top(reader):
+    """返回顶层书签 [(标题, 0 起始页码), ...]，按页码排序；嵌套子书签忽略（避免重复切分）。"""
+    out = []
     try:
-        r = PdfReader(path)
-        pages = r.pages if not PDF_PAGES else r.pages[:PDF_PAGES]
-        txt = '\n'.join((pg.extract_text() or '') for pg in pages)
-        if PDF_PAGES and len(r.pages) > PDF_PAGES:
-            print('    （只读了前 ' + str(PDF_PAGES) + ' 页 / 共 ' + str(len(r.pages)) + ' 页）')
-        return txt
+        items = reader.outline or []
+    except Exception:
+        return out
+    for it in items:
+        try:
+            pg = reader.get_destination_page_number(it)
+        except Exception:
+            continue
+        title = str(getattr(it, 'title', '') or '').strip()
+        if title and isinstance(pg, int) and pg >= 0:
+            out.append((title, pg))
+    out.sort(key=lambda x: x[1])
+    # 同一页有多个书签时只留第一个（避免切出空段）
+    dedup, last = [], -1
+    for t, p in out:
+        if p != last:
+            dedup.append((t, p))
+            last = p
+    return dedup
+
+
+def read_pdf(path):
+    PdfReader = _pdf_reader()
+    if PdfReader is None:
+        print('  ! 读 PDF 需要 pypdf：在命令行里跑  pip install pypdf  再试')
+        return []
+    try:
+        reader = PdfReader(path)
     except Exception as e:
         print('  ! 读不了 pdf：' + path + '（' + str(e) + '）')
-        return ''
+        return []
+    try:
+        pages = reader.pages if not PDF_PAGES else reader.pages[:PDF_PAGES]
+    except Exception:
+        pages = list(reader.pages)
+    page_texts = []
+    for pg in pages:
+        try:
+            page_texts.append(pg.extract_text() or '')
+        except Exception:
+            page_texts.append('')
+    if PDF_PAGES and len(reader.pages) > PDF_PAGES:
+        print('    （只读了前 ' + str(PDF_PAGES) + ' 页 / 共 ' + str(len(reader.pages)) + ' 页）')
+    whole = '\n'.join(page_texts)
+    if not whole.strip():
+        return []
+
+    if SPLIT_BOOKMARKS:
+        bms = [(t, p) for t, p in _pdf_outline_top(reader) if p < len(page_texts)]
+        if len(bms) >= 2:
+            sections = []
+            for i, (title, p) in enumerate(bms):
+                end = bms[i + 1][1] if i + 1 < len(bms) else len(page_texts)
+                txt = '\n'.join(page_texts[p:end]).strip()
+                if txt:
+                    sections.append({'name': title, 'text': txt})
+            # 第一个书签之前的封面 / 目录并进第一节，不丢内容
+            if bms[0][1] > 0:
+                pre = '\n'.join(page_texts[:bms[0][1]]).strip()
+                if pre and sections:
+                    sections[0]['text'] = pre + '\n' + sections[0]['text']
+            if len(sections) >= 2:
+                return sections
+    return [{'name': None, 'text': whole}]
 
 
 def load_doc(path):
+    """返回 [{name, text}, ...]；name 为 None 表示用相对路径做名字（普通文件）。PDF 书签切分返回多篇。"""
     ext = os.path.splitext(path)[1].lower()
     if ext == '.docx':
-        return read_docx(path)
+        return [{'name': None, 'text': read_docx(path)}]
     if ext == '.pdf':
-        return '' if PDF_SKIP else read_pdf(path)
-    s = read_text(path)
+        return [] if PDF_SKIP else read_pdf(path)
+    s = read_text(path) or ''
     if ext in ('.html', '.htm'):
         s = strip_html(s)
     if ext == '.json':
@@ -122,7 +206,7 @@ def load_doc(path):
             s = '\n'.join(out)
         except Exception:
             pass
-    return s
+    return [{'name': None, 'text': s}]
 
 
 def clean(s):
@@ -132,28 +216,119 @@ def clean(s):
     return s.strip()
 
 
-def scan(dirpath):
+def file_md5(path):
+    h = hashlib.md5()
+    try:
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b''):
+                h.update(chunk)
+    except Exception:
+        return ''
+    return h.hexdigest()
+
+
+def scan(dirpath, old_by_file, old_md5):
+    """扫一个目录。old_by_file / old_md5 用来做增量：没变的文件复用旧正文，不重新解析。
+    返回 (docs, md5map)：docs 里每个 {name, text, file}，file = 相对路径（用来溯源）。"""
     docs = []
+    md5map = {}
     for cur, dirs, files in os.walk(dirpath):
         dirs[:] = [d for d in dirs if not d.startswith('.')]
         for fn in sorted(files):
-            if os.path.splitext(fn)[1].lower() not in EXTS:
+            ext = os.path.splitext(fn)[1].lower()
+            if ext not in EXTS:
                 continue
-            if PDF_SKIP and fn.lower().endswith('.pdf'):
+            if PDF_SKIP and ext == '.pdf':
                 continue
             p = os.path.join(cur, fn)
             if os.path.abspath(p) == OUT:
                 continue
-            txt = clean(load_doc(p))
-            if MAX_CHARS and len(txt) > MAX_CHARS:
-                txt = txt[:MAX_CHARS]
-            if not txt:
-                print('  - 跳过（没读到文字）：' + fn)
-                continue
             rel = os.path.relpath(p, dirpath)
-            docs.append({'name': rel, 'text': txt})
-            print('  + ' + rel + '（' + format(len(txt), ',') + ' 字）')
-    return docs
+            md5 = file_md5(p)
+            md5map[rel] = md5
+            # 增量复用：文件没变、且旧库里能拿到这段正文
+            if not OVERWRITE and old_md5.get(rel) == md5 and rel in old_by_file:
+                n = 0
+                for d in old_by_file[rel]:
+                    docs.append({'name': d['name'], 'text': d['text'], 'file': rel})
+                    n += 1
+                if n:
+                    print('  = ' + rel + '（没变，复用' + ('' if n == 1 else ' ' + str(n) + ' 节') + '）')
+                    continue
+            secs = load_doc(p)
+            added = 0
+            for s in secs:
+                name = s['name'] or rel
+                text = clean(s['text'])
+                if MAX_CHARS and len(text) > MAX_CHARS:
+                    text = text[:MAX_CHARS]
+                if not text:
+                    continue
+                docs.append({'name': name, 'text': text, 'file': rel})
+                added += 1
+            if added:
+                chars = sum(len(d['text']) for d in docs[-added:])
+                if added > 1:
+                    print('  + ' + rel + '（书签切成 ' + str(added) + ' 节 / 共 ' + format(chars, ',') + ' 字）')
+                else:
+                    print('  + ' + rel + '（' + format(chars, ',') + ' 字）')
+            else:
+                print('  - 跳过（没读到文字）：' + fn)
+    return docs, md5map
+
+
+def parse_existing_kb(path):
+    """把现有 知识库.js（一条或多条 window.__KBS__ = ...concat([...]);）解析回 libs 列表。"""
+    s = read_text(path)
+    if not s:
+        return []
+    libs = []
+    dec = json.JSONDecoder()
+    i = 0
+    while True:
+        i = s.find('concat(', i)
+        if i < 0:
+            break
+        start = i + len('concat(')
+        try:
+            obj, end = dec.raw_decode(s, start)
+        except Exception:
+            i = start
+            continue
+        if isinstance(obj, list):
+            libs.extend(obj)
+        i = end
+    return libs
+
+
+def existing_by_file(lib):
+    """把旧库的 docs 按「原文件路径」分组（file 字段优先，老格式退回 name），供增量复用。"""
+    m = {}
+    for d in lib.get('docs', []):
+        f = d.get('file') or d.get('name') or ''
+        m.setdefault(f, []).append({'name': d.get('name') or '', 'text': d.get('text') or ''})
+    return m
+
+
+def load_manifest():
+    if OVERWRITE:
+        return {}
+    try:
+        with io.open(MANIFEST, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_manifest(manifest):
+    if DRY:
+        return
+    with io.open(MANIFEST, 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, ensure_ascii=False)
+
+
+def slug(name):
+    return re.sub(r'[^\w\u4e00-\u9fa5-]+', '-', name).strip('-').lower()
 
 
 USAGE = r"""刷题站 · 把文件夹转成知识库.js
@@ -163,15 +338,18 @@ USAGE = r"""刷题站 · 把文件夹转成知识库.js
     python make-kb.py D:\书 D:\讲义     每个目录 = 一个知识库（可给多个）
 
 可选参数：
-    --skip-pdf        跳过 PDF（最快）
-    --pdf-pages 30    每个 PDF 只读前 30 页
-    --max-chars 60000 每个文件最多留多少字
-    -h, --help        看这段说明
+    --overwrite      整份覆盖（不合并现有库、不读缓存，回到旧行为）
+    --skip-pdf       跳过 PDF（最快）
+    --no-bookmarks   关闭 PDF 书签切分（一本书算一篇）
+    --pdf-pages 30   每个 PDF 只读前 30 页
+    --max-chars 60000 每篇最多留多少字
+    --dry            只统计、不写文件
+    -h, --help       看这段说明
 """
 
 
 def main():
-    global PDF_SKIP, PDF_PAGES, MAX_CHARS
+    global PDF_SKIP, PDF_PAGES, MAX_CHARS, SPLIT_BOOKMARKS, OVERWRITE, DRY
     raw = sys.argv[1:]
     args = []
     i = 0
@@ -182,6 +360,12 @@ def main():
             return
         if a == '--skip-pdf':
             PDF_SKIP = True
+        elif a == '--no-bookmarks':
+            SPLIT_BOOKMARKS = False
+        elif a == '--overwrite':
+            OVERWRITE = True
+        elif a == '--dry':
+            DRY = True
         elif a == '--pdf-pages':
             i += 1
             PDF_PAGES = int(raw[i]) if i < len(raw) and raw[i].isdigit() else 0
@@ -206,31 +390,55 @@ def main():
             bases.append((ap, os.path.basename(ap) or a))
     else:
         bases = [(os.path.join(ROOT, '资料'), '资料')]
-    kbs = []
+
+    # 读现有库（合并模式）和增量清单
+    existing_libs = {}
+    if not OVERWRITE and os.path.exists(OUT):
+        for lib in parse_existing_kb(OUT):
+            if lib.get('id'):
+                existing_libs[lib['id']] = lib
+    manifest = load_manifest()
+
+    final = dict(existing_libs)   # 先放现有库；被扫描的同名库会原位替换
+    scanned = 0
     for base, name in bases:
         if not os.path.isdir(base):
             print('！目录不存在：' + base)
             continue
-        print('扫描：' + base)
-        docs = scan(base)
+        print('扫描：' + base + ('　（合并模式，重跑只补差异）' if not OVERWRITE else '　（覆盖模式）'))
+        lib_id = 'file-' + slug(name)
+        old_lib = existing_libs.get(lib_id)
+        old_by_file = existing_by_file(old_lib) if old_lib else {}
+        old_md5 = manifest.get(lib_id, {})
+        docs, md5map = scan(base, old_by_file, old_md5)
         if not docs:
             print('  （这个目录里没有可读的文档）')
             continue
-        kb_id = 'file-' + re.sub(r'[^\w\u4e00-\u9fa5-]+', '-', name).strip('-').lower()
-        kbs.append({'id': kb_id, 'name': name, 'src': 'file', 'docs': docs})
-    if not kbs:
+        manifest[lib_id] = md5map
+        final[lib_id] = {'id': lib_id, 'name': name, 'src': 'file', 'docs': docs}
+        scanned += 1
+
+    out_libs = list(final.values())
+    if not out_libs:
         print('')
         print('没有生成内容。把 .txt / .md / .docx / .pdf 放进 资料\\ 文件夹，再双击一次 转知识库.bat。')
         return
-    payload = json.dumps(kbs, ensure_ascii=False).replace('</', '<\\/')
-    with io.open(OUT, 'w', encoding='utf-8') as f:
-        f.write('/* 由「转知识库.bat」自动生成，重新转换会整个覆盖，不要手改。 */\n')
-        f.write('window.__KBS__ = (window.__KBS__ || []).concat(' + payload + ');\n')
-    total = sum(len(d['text']) for kb in kbs for d in kb['docs'])
-    ndoc = sum(len(kb['docs']) for kb in kbs)
+    payload = json.dumps(out_libs, ensure_ascii=False).replace('</', '<\\/')
+    total = sum(len(d['text']) for kb in out_libs for d in kb['docs'])
+    ndoc = sum(len(kb['docs']) for kb in out_libs)
     print('')
-    print('完成：' + str(len(kbs)) + ' 个知识库 / ' + str(ndoc) + ' 个文档 / 共 ' + format(total, ',') + ' 字')
+    print('结果：' + str(len(out_libs)) + ' 个知识库 / ' + str(ndoc) + ' 篇 / 共 ' + format(total, ',') + ' 字'
+          + ('　（本次扫描 ' + str(scanned) + ' 个目录）' if scanned else ''))
+    if DRY:
+        print('（--dry：只统计不写文件）')
+        return
+    with io.open(OUT, 'w', encoding='utf-8') as f:
+        f.write('/* 由「转知识库.bat」自动生成。合并模式：重跑会按库 id 替换、保留其它库；别手改。 */\n')
+        f.write('window.__KBS__ = (window.__KBS__ || []).concat(' + payload + ');\n')
+    save_manifest(manifest)
     print('生成：' + OUT)
+    if not OVERWRITE:
+        print('增量清单：' + MANIFEST + '（可删，删了下次全量重解析）')
     print('回到刷题站按 Ctrl+F5 刷新，在「AI 与知识库」页面或 AI 面板的标签里就能看到它们。')
 
 

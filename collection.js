@@ -5,9 +5,35 @@
    ============================================================ */
 
 /* ---------------- Markdown 渲染 ---------------- */
+/* 颜色 / 高亮支持：Markdown 本身没颜色，这里支持三种写法（渲染成安全的内联样式，不放开任意 HTML）：
+     <font color="red">红字</font>         → 红字
+     <span style="color:red">红字</span>   → 红字
+     ==高亮==                              → 黄色高亮（<mark>）
+   颜色值只收颜色名（red/green/…）或 #hex；其它一律按原文显示，不会执行任何脚本。 */
+const MD_C_OPEN = '\u0001C', MD_C_END = '\u0001', MD_C_CLOSE = '\u0001/C\u0001';
+const MD_H_OPEN = '\u0001H\u0001', MD_H_CLOSE = '\u0001/H\u0001';
+function mdValidColor(c) {
+  c = String(c || '').trim();
+  return /^#[0-9a-f]{3,8}$/i.test(c) || /^[a-zA-Z]{2,20}$/.test(c);
+}
+function mdColorize(s) {
+  s = s.replace(/==([^=\n]+)==/g, (m, t) => MD_H_OPEN + t + MD_H_CLOSE);
+  s = s.replace(/<font\s+color\s*=\s*["']?\s*([^\s"'>]+)\s*["']?\s*>\s*([\s\S]*?)\s*<\/font\s*>/gi, (m, c, inner) =>
+    mdValidColor(c) ? (MD_C_OPEN + c.trim() + MD_C_END + inner + MD_C_CLOSE) : m);
+  s = s.replace(/<span\s+style\s*=\s*["']?\s*color\s*:\s*([^\s;"'>]+)[^>]*>\s*([\s\S]*?)\s*<\/span\s*>/gi, (m, c, inner) =>
+    mdValidColor(c) ? (MD_C_OPEN + c.trim() + MD_C_END + inner + MD_C_CLOSE) : m);
+  return s;
+}
+function mdColorEnd(html) {
+  return String(html)
+    .replace(/\u0001C([^\u0001]+)\u0001/g, '<span style="color:$1">')
+    .replace(/\u0001\/C\u0001/g, '</span>')
+    .replace(/\u0001H\u0001/g, '<mark>')
+    .replace(/\u0001\/H\u0001/g, '</mark>');
+}
 function mdToHtml(md) {
   if (!md) return '';
-  let s = esc(md);
+  let s = esc(mdColorize(md));
   s = s.replace(/!\[([^\]]*)\]\((data:image\/[^)\s]+|[^)\s]+)\)/g, (m, a, u) => `<img alt="${a}" src="${u}">`);
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
@@ -46,7 +72,7 @@ function mdToHtml(md) {
     closeList(); out.push(`<p>${t}</p>`);
   }
   closeList();
-  return out.join('\n');
+  return mdColorEnd(out.join('\n'));
 }
 
 /* 表格辅助 */

@@ -222,7 +222,14 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v43-web29**）
+（缓存版本 **shuati-v44-web30**）
+
+| 问题 | 说明 |
+| --- | --- |
+| AI 输出没法标重点 | `ai.js` 的系统提示教它写 `==高亮==` / `<font color="red">`；`collection.js` 的 Markdown 渲染加白名单（`mdValidColor` 只认颜色名或 `#hex`）与占位符染色（`mdColorize` → `esc()` → `mdColorEnd`），`==x==`→`<mark>`、`<font color>`/`<span style="color:…">`→`<span style="color:…">`，其余 HTML 照样转义 |
+| 别的标签页改数据会把正在生成的面板冲掉 | `ai.js` / `variant.js` 的会话加 `ts`（刚打开的空面板也算活的）并导出 `aiPanelOpen()` / `variantPanelOpen()`；`app.js` 的 storage 防抖重画加守卫：面板开着只更新内存、不重画 |
+| `make-kb.py` 每次整份重生成、PDF 只能整本切 | 改成读现有 `知识库.js` 合并（同名库按 id 替换）、按 md5 清单 `知识库.清单.json` 增量；PDF 带书签时按顶层书签切小节；新增 `--overwrite/--skip-pdf/--no-bookmarks/--pdf-pages/--max-chars/--dry` |
+| `__pycache__\*.pyc` 会被带上线 | `工作1\gh-pages-deploy.mjs` 的上传排除表加 `__pycache__` / `*.pyc` / `知识库.清单.json` |
 
 | 问题 | 说明 |
 | --- | --- |

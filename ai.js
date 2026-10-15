@@ -289,6 +289,7 @@ async function aiTest() {
 /* ---------- 提示词 ---------- */
 const AI_SYS_BASE = [
   '你是我的私人刷题助教，面向中国的考试。用简体中文和 Markdown 回答，不要客套话。',
+  '需要强调时可以用 ==高亮== 或 <font color="red">红字</font> 标色（如正确项标绿、错误项标红），但别滥用。',
   '严格按我这次的要求来写；我没提格式，就自己看情况组织，不要硬套固定小节。',
   '如果我给了【参考资料】：优先使用资料里的说法，并在句末标出 [1] [2] 这样的编号；资料没覆盖的地方可以补充你自己的知识，但要注明「（模型补充）」。',
   '不要编造资料的出处；不确定的地方直说不确定。'
@@ -461,7 +462,9 @@ function aiReopenFor(host, k) {
     const st = AI_LAST[id];
     if (!st || !st.host || String(st.k) !== String(k)) return;
     if (aiInEditor(st.host) !== inEd) return;                 /* 编辑器的面板别挂到错题本行里去（反过来也一样） */
-    const fresh = st.running || (st.endTs && Date.now() - st.endTs < 3 * 60 * 1000);
+    /* 刚打开、还没点「生成解析」的空面板也算「还活着」：否则整页重画会把它冲掉且不回来
+       （看起来就是「点开正准备输入就没了」）。ts = 最后一次打开/生成时间，3 分钟内都挂回来。 */
+    const fresh = st.running || (st.endTs && Date.now() - st.endTs < 3 * 60 * 1000) || (st.ts && Date.now() - st.ts < 3 * 60 * 1000);
     if (!fresh) return;
     if (!best) { best = st; return; }
     if (st.running !== best.running) { if (st.running) best = st; return; }
@@ -473,6 +476,10 @@ function aiReopenFor(host, k) {
 }
 function aiIsRunning() {
   return Object.keys(AI_LAST).some(id => AI_LAST[id] && AI_LAST[id].running);
+}
+/* 页面上有没有开着的 AI 面板（哪怕还没开始生成）：别的标签页同步要整页重画时，先拿它挡一下 */
+function aiPanelOpen() {
+  return !!(document.querySelector && document.querySelector('.aipanel'));
 }
 /* 这个面板被彻底关掉了（取消/保存）→ 忘掉这个会话，别在下次重画时又冒出来 */
 function aiForget(host) {

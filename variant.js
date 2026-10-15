@@ -151,7 +151,7 @@
         k: k, q: q, dirs: [], ask: '', n: 3,
         running: false, ctl: null, text: '', ctx: null, msgs: [], parsed: null,
         parseErr: '', err: null, sims: {}, uid: 'var:' + Math.random().toString(36).slice(2, 8),
-        endTs: 0, timer: null, notes: []
+        endTs: 0, ts: 0, timer: null, notes: []
       };
     }
     if (q) st.q = q;
@@ -482,6 +482,7 @@
   function openVariant(host, k, q) {
     if (!host) return null;
     var st = stateFor(k, q);
+    st.ts = Date.now();
     host.innerHTML = panelHtml(st);
     bindPanel(host, st);
     paintOut(st);
@@ -500,7 +501,7 @@
   function reopenFor(host, k, q) {
     var st = V_LAST[k];
     if (!st || !host) return false;
-    var fresh = st.running || (st.endTs && Date.now() - st.endTs < FRESH_MS);
+    var fresh = st.running || (st.endTs && Date.now() - st.endTs < FRESH_MS) || (st.ts && Date.now() - st.ts < FRESH_MS);
     if (!fresh) return false;
     openVariant(host, k, q);
     return true;
@@ -512,6 +513,7 @@
 
   window.openVariant = openVariant;
   window.variantReopenFor = reopenFor;
+  window.variantPanelOpen = function () { return !!(document.querySelector && document.querySelector('.vpanel')); };
   window.variantForget = forget;
   window.VARIANT = {
     open: openVariant, reopen: reopenFor, forget: forget,

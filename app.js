@@ -138,6 +138,8 @@ window.addEventListener('storage', e => {
     _syncNeed = false;
     const el = document.activeElement;
     if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;   // 正在打字：先只更新内存
+    /* AI 解析 / 变式题面板开着（含还没点「生成」的空面板）：整页重画会把它们冲掉，先只更新内存 */
+    if ((typeof aiPanelOpen === 'function' && aiPanelOpen()) || (typeof variantPanelOpen === 'function' && variantPanelOpen())) return;
     try { render(); showSyncTip(); } catch (err) {}
   }, 250);
 });

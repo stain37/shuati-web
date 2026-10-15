@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v43-web29';   // 2026-10-15：删掉考纲覆盖自查（syllabus.js）；考点标签改成「批量导入考点词表 → AI 读题从词表里挑标签」，「按考点」只汇总 AI 贴好的标签
+const VERSION = 'shuati-v44-web30';   // 2026-10-15 晚：AI 解析支持颜色 / 高亮（==高亮==、<font color>、<span style="color:">）；AI 面板 / 变式题面板开着时，其它标签页的同步不再整页重画把它冲掉
 const CORE = [
   './',
   './index.html',
