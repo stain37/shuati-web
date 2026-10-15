@@ -571,6 +571,7 @@
       + '<button class="btn" id="toFav" data-act="go" data-hash="#/fav">收藏' + (favN ? '（' + favN + '）' : '') + '</button>'
       + '<button class="btn" id="toSearch" data-act="go" data-hash="#/search">搜索全部<span class="kbd">/</span></button>'
       + '<button class="btn" id="toStats" data-act="go" data-hash="#/stats">学习统计</button>'
+      + '<button class="btn" id="toSyl" data-act="go" data-hash="#/syllabus">考纲覆盖自查</button>'
       + '<button class="btn" id="toHelp" data-act="help">快捷键<span class="kbd">?</span></button>'
       + '<button class="btn" data-act="newcat">＋ 新建分类</button>'
       + (BATCH

@@ -986,3 +986,32 @@ body.dark .st-badge.weak { background: #2a2113; color: #fbbf24; }
   .tedit-in { flex-wrap: wrap; }
   .syl-row { grid-template-columns: 1fr 1fr; }
 }
+
+/* ============================================================
+   v24：AI 学情诊断（report.js，方案七）
+   ============================================================ */
+.rep-stale { display: inline-block; font-size: 11.5px; color: var(--bad); border: 1px solid var(--bad-line);
+  background: var(--badbg); border-radius: 999px; padding: 1px 8px; }
+.rep-bar { height: 3px; background: var(--line2); border-radius: 2px; overflow: hidden; margin: 8px 0 2px; }
+.rep-bar > i { display: block; height: 100%; width: 34%; background: var(--primary); animation: repRun 1.15s linear infinite; }
+@keyframes repRun { 0% { transform: translateX(-110%); } 100% { transform: translateX(310%); } }
+.rep-out:not(:empty) { margin-top: 8px; }
+.rep-md { font-size: 14.5px; line-height: 1.75; }
+.rep-md h1, .rep-md h2, .rep-md h3 { font-size: 15.5px; margin: 12px 0 6px; }
+.rep-md p { margin: 6px 0; }
+.rep-md ul, .rep-md ol { margin: 6px 0 6px 20px; }
+.rep-md li { margin: 3px 0; }
+.rep-md strong { color: var(--text); }
+.rep-md code { background: var(--bg2); border-radius: 4px; padding: 1px 4px; font-size: 13px; }
+.rep-md hr { border: 0; border-top: 1px solid var(--line2); margin: 10px 0; }
+.rep-hist { margin-top: 10px; border-top: 1px dashed var(--line2); padding-top: 6px; }
+.rep-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line2); }
+.rep-item:last-child { border-bottom: 0; }
+.rep-open { flex: 1 1 auto; min-width: 0; text-align: left; background: transparent; border: 0; color: var(--text);
+  cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+.rep-open b { font-size: 13px; font-weight: 600; }
+.rep-open:hover b { color: var(--primary); }
+@media (max-width: 560px) {
+  .rep-md { font-size: 14px; }
+  .rep-item { flex-wrap: wrap; }
+}

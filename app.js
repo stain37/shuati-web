@@ -25,7 +25,8 @@ const LS = {
   cat: 'qbank.cats.v1',
   tag: 'qbank.tags.v1',            /* 知识点标签（tags.js） */
   tagvocab: 'qbank.tagvocab.v1',   /* 考点词表（受控：AI 打标签只从里面挑） */
-  syl: 'qbank.syllabus.v1'         /* 考纲考点清单（syllabus.js，按知识库缓存） */
+  syl: 'qbank.syllabus.v1',        /* 考纲考点清单（syllabus.js，按知识库缓存） */
+  report: 'qbank.report.v1'        /* AI 学情诊断的历史报告（report.js） */
 };
 const readLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 /* 写不进去要吵醒用户：localStorage 满了 / 被禁用时悄悄丢数据是最坑的 */
@@ -71,7 +72,7 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   TOMB.wipe[kind] = Date.now();
   writeLS(TOMB_KEY, TOMB);
 }
-function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, syl: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, syl: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
@@ -124,6 +125,7 @@ window.addEventListener('storage', e => {
   else if (k === LS.srs) SRS = readLS(LS.srs, {});
   else if (k === LS.tag || k === LS.tagvocab) { if (typeof tagReload === 'function') tagReload(); }   /* 标签在 tags.js 里，让它自己重读 */
   else if (k === LS.syl) { if (window.SYLLABUS && SYLLABUS.reload) SYLLABUS.reload(); }
+  else if (k === LS.report) { if (window.REPORT && REPORT.reload) REPORT.reload(); }   /* 学情诊断历史报告 */
   else if (k === LS.cat) {                       // 别的标签页改了分类：直接让分类模块重画（它自己写自己，不再走下面的事件）
     if (typeof CAT !== 'undefined' && CAT && CAT.reload) { try { CAT.reload(); CAT.render(); } catch (err) {} }
     return;
@@ -490,7 +492,7 @@ function toast(msg, ms, kind) {
 }
 /* 顶栏高亮当前所在页 */
 function markTop(name) {
-  const map = { home: 'btnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', sync: 'btnGoSync' };
+  const map = { home: 'btnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', syllabus: 'btnGoSyl', sync: 'btnGoSync' };
   Object.keys(map).forEach(n => {
     const el = $(map[n]);
     if (!el) return;
@@ -550,6 +552,7 @@ function route() {
   if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
   if (parts[0] === 'syllabus') return { name: 'syllabus' };   /* 考纲覆盖自查（syllabus.js） */
+  if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   return { name: 'home' };
 }
 function go(hash) {
@@ -627,6 +630,7 @@ function renderInner() {
   $('btnGoFav').style.display = full ? 'none' : '';
   $('btnGoSearch').style.display = full ? 'none' : '';
   if ($('btnGoKb')) $('btnGoKb').style.display = full ? 'none' : '';
+  if ($('btnGoSyl')) $('btnGoSyl').style.display = full ? 'none' : '';
   if ($('btnSetAll')) $('btnSetAll').style.display = full ? 'none' : '';
 
   /* 考试没交卷就想跳走：先确认，免得倒计时在后台自己跑 */
@@ -642,6 +646,7 @@ function renderInner() {
   else if (r.name === 'search') { if (typeof renderSearch === 'function') renderSearch(); }
   else if (r.name === 'stats') renderStats();
   else if (r.name === 'syllabus') { if (typeof renderSyllabus === 'function') renderSyllabus(); }
+  else if (r.name === 'report') { if (typeof renderReport === 'function') renderReport(); }
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
@@ -809,6 +814,7 @@ function renderHome() {
       <button class="btn" id="toFav">收藏${favN ? '（' + favN + '）' : ''}</button>
       <button class="btn" id="toSearch">搜索题目<span class="kbd">/</span></button>
       <button class="btn" id="toStats">学习统计</button>
+      <button class="btn" id="toSyl">考纲覆盖自查</button>
       <button class="btn" id="toHelp">快捷键<span class="kbd">?</span></button>
       <span class="small muted" id="storeUse" style="flex:1;min-width:180px">数据存在本机浏览器，共占用约 ${(bytes / 1024 / 1024).toFixed(2)} MB（本地估算，正在算真实占用…）。</span>
     </div>
@@ -834,6 +840,7 @@ function renderHome() {
   on('toSearch', () => go('#/search'));
   on('toRand', () => randomPaper(baseBanks(), 30));
   on('toStats', () => go('#/stats'));
+  on('toSyl', () => go('#/syllabus'));
   on('toHelp', showHelp);
   on('toReview', () => startReview(60));
   on('toResume', () => { if (last) startBank(last.bank.id); });
@@ -975,10 +982,11 @@ function catRows() {
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
 async function exportAllData() {
   let tipCats = 0;
-  const data = { app: 'shuati', version: 5, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS,
+  const data = { app: 'shuati', version: 6, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS,
     tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
     tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
-    syllabus: (window.SYLLABUS && SYLLABUS.data) ? SYLLABUS.data() : readLS(LS.syl, {}) };
+    syllabus: (window.SYLLABUS && SYLLABUS.data) ? SYLLABUS.data() : readLS(LS.syl, {}),
+    report: (window.REPORT && REPORT.data) ? REPORT.data() : readLS(LS.report, []) };
   let tip = '';
   try {
     if (typeof kbExportAll === 'function') {
@@ -1002,7 +1010,8 @@ function importAllData(e) {
       const cnt = k => Object.keys(d[k] || {}).length;
       const kbCnt = (d.kb && (d.kb.list || []).length) || 0;
       const tagCnt = Object.keys(d.tags || {}).length, sylCnt = Object.keys(d.syllabus || {}).length;
-      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${sylCnt ? '、考点清单 ' + sylCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
+      const repCnt = Array.isArray(d.report) ? d.report.length : 0;
+      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${sylCnt ? '、考点清单 ' + sylCnt + ' 份' : ''}${repCnt ? '、学情报告 ' + repCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
       Object.assign(ANS, d.answers || {});
       Object.assign(FAV, d.favs || {});
       Object.assign(NOTES, d.notes || {});
@@ -1050,6 +1059,18 @@ function importAllData(e) {
           if (typeof mergeWrite === 'function') mergeWrite(LS.syl, mine, 'syl'); else writeLS(LS.syl, mine);
         } catch (err) {}
       }
+      /* 学情诊断的历史报告：按 id 并集（导入的优先），最多留 20 份 */
+      let repN = 0;
+      if (Array.isArray(d.report) && window.REPORT && REPORT.data) {
+        try {
+          let mine = REPORT.data() || [];
+          const seen = {};
+          mine.forEach(r => { if (r && r.id) seen[r.id] = 1; });
+          d.report.forEach(r => { if (r && r.id && r.text && !seen[r.id]) { mine.push(r); seen[r.id] = 1; repN++; } });
+          mine = mine.sort((x, y) => (+y.ts || 0) - (+x.ts || 0)).slice(0, 20);
+          if (typeof mergeWrite === 'function') mergeWrite(LS.report, mine, 'report'); else writeLS(LS.report, mine);
+        } catch (err) {}
+      }
       tombClear();   // 导入＝以这份备份为准，清掉本机墓碑，别把要恢复的记录挡回去
       migrate();
       invalidateBanks();
@@ -1057,7 +1078,8 @@ function importAllData(e) {
       saveFix(); writeLS(LS.srs, SRS);
       if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
       toast('导入完成' + (tipCats ? '（含 ' + tipCats + ' 个分类）' : '') + (kbN ? '，含 ' + kbN + ' 个知识库' : '')
-        + (tagN ? '，含 ' + tagN + ' 道题的考点标签' : '') + (sylN ? '，含 ' + sylN + ' 份考点清单' : '')); render();
+        + (tagN ? '，含 ' + tagN + ' 道题的考点标签' : '') + (sylN ? '，含 ' + sylN + ' 份考点清单' : '')
+        + (repN ? '，含 ' + repN + ' 份学情报告' : '')); render();
     } catch (err) { alert('导入失败：' + err.message); }
   };
   r.readAsText(f, 'utf-8');
@@ -1741,6 +1763,8 @@ function renderStats() {
       ${undated ? `<div class="small muted" style="margin-top:8px">另有 ${undated} 条早期记录没有日期（老版本数据），不计入下面的趋势图。</div>` : ''}
     </div>
 
+    ${typeof reportSectionHtml === 'function' ? reportSectionHtml() : ''}
+
     <h2 class="sec" id="secDays">近 14 天</h2>
     <div class="card">
       <div class="tools" style="margin-top:0">
@@ -1800,6 +1824,8 @@ function renderStats() {
   on('stReview', () => startReview(60));
   /* 「按考点」区块：刷最弱考点 / 考纲覆盖自查 / 词表 / AI 打标签 */
   if (typeof bindTagStats === 'function') { try { bindTagStats($('view')); } catch (e) {} }
+  /* 「学情诊断」区块：切时间窗、生成、停止、历史报告 */
+  if (typeof bindReport === 'function') { try { bindReport($('view')); } catch (e) {} }
 }
 
 /* ============================================================
@@ -1898,6 +1924,7 @@ on('btnGoWrong', () => go('#/wrong'));
 on('btnGoFav', () => go('#/fav'));
 on('btnGoSearch', () => go('#/search'));
 on('btnGoKb', () => go('#/kb'));
+on('btnGoSyl', () => go('#/syllabus'));
 on('goKb2', () => { if (typeof closeAll === 'function') closeAll(); go('#/kb'); });
 /* 设置面板里的「复习曲线」id ↔ 参数名 */
 const SRS_UI = { srsFirst: 'first', srsSecond: 'second', srsFactor: 'factor', srsEase0: 'ease0', srsEaseUp: 'easeUp', srsEaseDown: 'easeDown', srsMinEase: 'minEase', srsMaxIvl: 'maxIvl', srsWrongIvl: 'wrongIvl', srsDaily: 'daily' };

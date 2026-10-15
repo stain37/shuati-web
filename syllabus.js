@@ -29,6 +29,19 @@
     return writeLS(S_KEY, SYL);
   }
   function kbAll() { try { return (typeof kbList === 'function') ? kbList() : []; } catch (e) { return []; } }
+  /* 站点自带的知识库是 kb.js 后来动态挂上 知识库.js 才有的（第一次要读几 MB 的文件）。
+     考纲页先开、库后到的时候，空下拉会一直空着 —— 所以等它一会儿，来了一本就重画一次。 */
+  var kbTimer = null;
+  function retryKb(n) {
+    if (kbTimer) clearTimeout(kbTimer);
+    if (n > 20) return;
+    kbTimer = setTimeout(function () {
+      if (kbAll().length) {
+        kbTimer = null;
+        try { if (typeof route === 'function' && route().name === 'syllabus') renderSyllabus(); } catch (e) {}
+      } else retryKb(n + 1);
+    }, 1000);
+  }
   function kbName(id) {
     var k = kbAll().filter(function (x) { return String(x.id) === String(id); })[0];
     return k ? (k.name || k.id) : id;
@@ -460,6 +473,7 @@
     v.innerHTML = pageHtml();
     bindPage(v);
     paint();
+    if (!kbAll().length) retryKb(0);
   }
   function bindPage(v) {
     if (!v) return;

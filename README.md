@@ -173,6 +173,7 @@ exam.js                      模拟考试（倒计时 / 标记 / 交卷 / 统一
 kb.js  ai.js                 本地知识库（检索）／AI 写解析
 tags.js                     考点标签（答题页打标签、统计页「按考点」与薄弱点）
 syllabus.js                 考纲覆盖度自查（#/syllabus：抽考点清单、空白/薄弱/已覆盖）
+report.js                   AI 学情诊断（周报）（#/report：把学情摘要交给模型写诊断，报告存在本机）
 sw.js  manifest.json  icons/ PWA（离线缓存 + 主屏图标）
 robots.txt                  禁止搜索引擎收录（资料库有版权，别被索引）
 上传步骤.md                 怎么放到网上（Cloudflare Pages / Netlify Drop / GitHub Pages）+ 手机装 App + 数据搬家
@@ -209,6 +210,10 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | `qbank.kb.data.v1.<id>` | 网页导入的知识库正文（文件库不存在这，读 `知识库.js`） |
 | `qbank.kb.skip.v1` | 「删掉了、别再自动挂载」的库黑名单 |
 | `qbank.tomb.v1` | 多标签页用的删除墓碑 `{ ans:{键:时间}, …, wipe:{ans:时间} }`，7 天自动过期 |
+| `qbank.tags.v1` | 每题的考点标签 `{ 题库id#题号: ['慢阻肺','气道炎症'] }` |
+| `qbank.tagvocab.v1` | 考点词表（AI 批量打标签时**只允许**从这里挑词） |
+| `qbank.syllabus.v1` | 各知识库的考点清单 `{ 库id: { points:[{name,hint}], ts, chars } }`（`chars` 用来判断资料是否变过） |
+| `qbank.report.v1` | 学情诊断报告历史（**只留最近 20 份**，`{ id, ts, from, to, markdown, … }`） |
 
 知识库正文优先放 IndexedDB（`shuati-kb` / `kb`），`file://` 下 IndexedDB 不可用时退回 localStorage。
 
@@ -218,7 +223,7 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v15**）
+（缓存版本 **shuati-v38-web24**）
 
 | 问题 | 说明 |
 | --- | --- |

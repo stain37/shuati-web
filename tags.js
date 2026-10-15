@@ -224,7 +224,9 @@
     if (!st.rows.length) {
       return '<div class="card"><div class="note">还没有任何考点标签。'
         + '两种加法：① 答题页每题下面有「＋ 标签」，手动打；② 用下面的「让 AI 打标签」，先出词表再批量打。'
-        + '<div class="small muted">没打标签的题：' + st.total + ' 道。标签只存本机，会跟导出备份一起走。</div></div>'
+        + '<div class="small muted">没打标签的题：' + st.total + ' 道。标签只存本机，会跟导出备份一起走。</div>'
+        + '<div class="tools" style="margin:10px 0 0"><span class="small muted">想看「资料库里的考点我刷了没有」→</span>'
+        + '<button class="btn tiny" data-act="tagsyllabus">考纲覆盖自查</button></div></div>'
         + vocabBoxHtml() + aiBoxHtml();
     }
     var rows = st.rows.map(function (r) {
