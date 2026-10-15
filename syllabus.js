@@ -35,6 +35,9 @@
   function retryKb(n) {
     if (kbTimer) clearTimeout(kbTimer);
     if (n > 20) return;
+    if (n === 0 && typeof kbEnsureFilesLoaded === 'function') {   /* 顺手催一下挂载自带的资料库 */
+      try { kbEnsureFilesLoaded(); } catch (e) {}
+    }
     kbTimer = setTimeout(function () {
       if (kbAll().length) {
         kbTimer = null;
@@ -473,7 +476,7 @@
   function pageHtml() {
     var list = kbAll();
     if (!list.length) {
-      return '<div class="card"><div class="note">还没有知识库。<br>考纲覆盖度自查要用「自己的资料」当考纲：先去 '
+      return '<div class="card"><div class="note">还没有知识库（站点自带的几份资料库正在挂载时也会先看到这句，等一两秒会自己出来）。<br>考纲覆盖度自查要用「自己的资料」当考纲：先去 '
         + '<a href="#/kb">AI 与知识库</a> 导入几份资料（PDF / Word / txt 都行），再回来抽考点。</div></div>';
     }
     var sel = VIEW.kbId || list[0].id;
