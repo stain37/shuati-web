@@ -79,11 +79,12 @@
 ## 2. 第二批（导航重构，中风险）
 
 ### 2.1 顶栏瘦身 + 底部统一导航
-> ✅ **已做完并上线**（2026-10-16 凌晨，缓存版本 shuati-v47-web33）。
-> - 底部新增 `#bnav`：`首页(bnHome) · 错题 · 收藏 · 搜索 · AI · 设置`——`btnGoWrong`/`btnGoFav`/`btnGoSearch`/`btnGoKb`/`btnSetAll` **五个老 id 原样搬进新容器**（`index.html`），所以 `app.js` 的 `on(...)` 绑定、`markTop()`、`renderInner()` 都没重写；新增只有 `#bnHome`（`go('#/')`）与 `markTop()` 里 `home:'bnHome'`。
-> - 顶栏只剩 `⌂ 主页`（非首页时出现）+ 标题 + 进度 + `◐`；答题页的「题号/设置」在 `renderInner()` 里统一 `display:none`（元素留着，老引用不报错）：答题卡走 `#jumpInfo`，设置走底部导航。
+> ✅ **已做完并上线**（2026-10-16 凌晨，缓存版本 shuati-v48-web34）。
+> - 底部新增 `#bnav`：`首页(bnHome) · 错题 · 收藏 · 搜索 · AI · 同步 · 设置`——`btnGoWrong`/`btnGoFav`/`btnGoSearch`/`btnGoKb`/`btnSetAll` **五个老 id 原样搬进新容器**（`index.html`），所以 `app.js` 的 `on(...)` 绑定、`markTop()`、`renderInner()` 都没重写；`#bnHome`（`go('#/')`）与 `markTop()` 里的 `home:'bnHome'` 是新增的。第七个「同步」是 `sync.js` 自己插的（它找 `#btnGoKb` 往后插，跟着搬了过去）。
+> - 顶栏只剩 `⌂ 主页`（非首页时出现）+ 标题 + 进度 + `◐`（外加脚本插的「文件」）；答题页的「题号/设置」在 `renderInner()` 里统一 `display:none`（元素留着，老引用不报错）：答题卡走 `#jumpInfo`，设置走底部导航。
 > - 答题时是**两条**：`#bnav{bottom:74px}` 叠在 `#nav`（上一题/答题卡/下一题）上面；正文留白 62px / 答题 158px（≤400px 时 166px）；`.toast` 抬到 76px（答题页 176px）、`#syncTip` 抬到 76px，设置弹窗（`.mask` z-index 40）照旧盖住导航（20）。
-> - 探针 `工作1\\batch3-probe.py` **49 条 / 0 fail**（浏览器 35 + 源码 14，含 375px 不横向溢出、答题页两行不重叠 `bnav.bottom ≤ nav.top`、六个入口逐个点开路由）。
+> - 窄屏：`.bnav .btn{flex:1 1 0;min-width:0;…;text-overflow:ellipsis}`，实测 320px 宽七个入口不溢出、不出界、每个 ≥38px（无头 Edge 的窗口压不到 375px 以下，探针改用窄 iframe 量）。
+> - 探针 `工作1\\batch3-probe.py` **58 条 / 0 fail**（浏览器 44 + 源码 14）。
 
 - **现状**：`index.html` 顶栏 `.top .row` 一堆按钮（`btnHome`/错题/收藏/搜索/AI/`btnTheme`/`btnSetAll`/`btnGrid`/`btnQuizSet`），部分 `display:none` 随路由显隐，视觉会跳。底部 `#nav` 只有「上一题/答题卡/下一题」，且只在答题页显示。
 - **目标**：

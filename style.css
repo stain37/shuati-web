@@ -212,16 +212,20 @@ body.dark .fb.bad{border-color:var(--bad-line)}
 body.quiz{padding-bottom:96px}
 body.dark .nav{background:rgba(15,20,32,.96)}
 
-/* ===== 第二批：底部统一导航（首页 / 错题 / 收藏 / 搜索 / AI / 设置） =====
-   答题页里它是第二行，叠在 .nav（上一题 / 答题卡 / 下一题）上面；其它页面只有这一行。 */
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;gap:4px;max-width:940px;margin:0 auto;
-  padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
+/* ===== 第二批：底部统一导航（首页 / 错题 / 收藏 / 搜索 / AI / 同步 / 设置） =====
+   答题页里它是第二行，叠在 .nav（上一题 / 答题卡 / 下一题）上面；其它页面只有这一行。
+   七个入口要能在 320px 宽的屏上排开：min-width:0 + 省略号，宁可把字截短也不横向溢出。
+   「同步」是 sync.js 自己插进来的（它找 #btnGoKb，插在它后面），所以顺序是 首页…AI / 同步 / 设置。 */
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;gap:2px;max-width:940px;margin:0 auto;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
   background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(10px);
   border-top:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:var(--r-l) var(--r-l) 0 0}
-.bnav .btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-  padding:6px 2px;min-height:44px;font-size:11px;line-height:1.2;color:var(--sub)}
-.bnav .btn span{font-size:11px}
+.bnav .btn{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  padding:6px 1px;min-height:44px;font-size:11px;line-height:1.2;color:var(--sub);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bnav .btn span{font-size:10.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .bnav .btn.on{color:var(--primary);border-color:var(--primary-line);background:var(--primary-soft,rgba(37,99,235,.10))}
+.bnav .btn.tg{font-size:11px}
 body.dark .bnav{background:rgba(15,20,32,.96)}
 /* 非答题页：正文别被这条挡住（~62px）；答题页：#nav 顶到它上面，两条一共 ~158px */
 body{padding-bottom:calc(62px + env(safe-area-inset-bottom))}

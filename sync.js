@@ -671,9 +671,11 @@ function syncHomeCard() {
 }
 function syncAfterRender() {
   const name = (typeof route === 'function' ? route().name : 'home');
-  const full = (name === 'quiz' || name === 'exam');
   const btn = syncTopBtn();
-  btn.style.display = full ? 'none' : '';
+  /* 以前「同步」按钮在顶栏，答题时会被收起来（免得答题时手滑点到）。
+     第二批 2.1 之后它搬进了底部统一导航，是那一条上的第七个常驻入口：
+     再按页面显隐会让底部导航一会儿 6 个一会儿 7 个（宽度还会跳），所以一律常显。 */
+  btn.style.display = '';
   if (name === 'home') { try { syncHomeCard(); } catch (e) {} }
 }
 /* ---------- 一键配置链接 ----------
