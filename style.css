@@ -1015,3 +1015,22 @@ body.dark .st-badge.weak { background: #2a2113; color: #fbbf24; }
   .rep-md { font-size: 14px; }
   .rep-item { flex-wrap: wrap; }
 }
+
+/* ============ v25：统计页折叠区 / 考纲性能与批量导入 / AI 模型选择 ============ */
+/* 统计页「各题库正确率」改成默认展开的折叠区（能收起，但要显眼） */
+details.fold.secfold { margin-top: 18px; }
+details.fold.secfold > summary { font-size: 15px; font-weight: 600; color: var(--text); padding: 10px 12px; }
+details.fold.secfold > summary:hover { color: var(--primary); }
+details.fold.secfold > .fold-body > .srow:first-child { margin-top: 0; }
+/* 考纲页：批量导入的输入框 + 覆盖度「正在算」与耗时提示 */
+#sylBulkIn { line-height: 1.6; resize: vertical; min-height: 120px; }
+#sylCovNote { padding: 4px 0; }
+#sylCovMs { color: var(--sub); }
+/* AI 设置：拉到的模型做成可见的列表（原来只有 datalist，得先点输入框才看得见） */
+#aiModelPick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+#aiModelSel { max-width: 320px; }
+#aiModelFilter { max-width: 150px; }
+.ai-model-hint { font-size: 12px; }
+@media (max-width: 560px) {
+  #aiModelSel, #aiModelFilter { max-width: 100%; width: 100%; }
+}

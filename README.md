@@ -223,7 +223,7 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v38-web24**）
+（缓存版本 **shuati-v39-web25**）
 
 | 问题 | 说明 |
 | --- | --- |
@@ -235,6 +235,12 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | 首次检索全量建索引卡主线程 | `kbPreheatIndex()` 在 `requestIdleCallback` 里逐库建索引，每轮 `timeRemaining()>4` 就让出 |
 | 模块顶层抛错就白屏 | `render()` 拆成 `renderInner()` + try/catch → `showFatal()`（`#fatalBar` 提示条，可复制错误 / 重载 / 关闭），另接 `window.onerror`、`unhandledrejection` |
 | 删题库不清「上次做到哪」 | 删题库时 `localStorage.removeItem('qbank.last.' + b.id)` |
+| 拉取到的模型「看不见」 | `aiFillModels()` 只填 `<datalist>`（要聚焦+按方向键才弹）；现在同时填一块可见的
+`#aiModelPick`（`<select id="aiModelSel">` + 过滤框），清单记进 `AIC.models` 一起存/同步 |
+| 考纲页覆盖度每次重算、题多就卡 | `syllabus.js` 的覆盖度改成两层缓存（按题 2-gram + 整块结果），
+题×考点 > 20000 时先画壳再分片算；实测 600×40 从 384 ms → 45 ms，缓存命中 0.10 ms |
+| 云同步带不上标签 / 考纲 | `SYNC_DEF.scope` 加 `tag` / `syl`，payload 带 `data.tags` / `data.tagVocab` / `data.syllabus`，
+墓碑加 `tomb.tag` / `tomb.syl`，合并走 `TAGS.mergeIn()`（本机优先）与 `SYLLABUS.mergeIn()`（按 ts 取新） |
 
 上一版（v14）：
 

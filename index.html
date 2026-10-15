@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261018h">
+<link rel="stylesheet" href="style.css?v=20261018i">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261014e">
 <link rel="manifest" href="manifest.json">
@@ -138,11 +138,11 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261018h"></script>
+<script src="app.js?v=20261018i"></script>
 <script src="collection.js?v=20261018c"></script>
 <script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261017e"></script>
-<script src="ai.js?v=20261018e"></script>
+<script src="ai.js?v=20261018i"></script>
 
 <!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
@@ -155,7 +155,7 @@
 
 <!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
      它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
-<script src="sync.js?v=20261017e"></script>
+<script src="sync.js?v=20261018i"></script>
 
 <!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
      4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->
@@ -169,11 +169,11 @@
 <!-- 考点标签（tags.js，方案五）：给每道题挂「考点」标签，统计从「按题库」升级成「按考点」，
      还能让 AI 两段式批量打标签（先出受控词表、再分批分类）。
      标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
-<script src="tags.js?v=20261018g"></script>
+<script src="tags.js?v=20261018i"></script>
 
 <!-- 考纲覆盖自查（syllabus.js，方案六）：拿自己的知识库当考纲，让 AI 抽考点清单（可缓存），
      再纯本地比对题库和作答记录，看出「哪些考点还没出题 / 还没做过」，并能一键让 AI 补上缺口。 -->
-<script src="syllabus.js?v=20261018h"></script>
+<script src="syllabus.js?v=20261018i"></script>
 
 <!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
      让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->

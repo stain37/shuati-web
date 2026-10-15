@@ -22,7 +22,7 @@ const AI_PRESETS = {
   custom:  { label: '自定义（任意 OpenAI 兼容接口）', base: '', model: '', models: [],
              tip: '填类似 https://xxx/v1 的地址；本地服务一般不需要 Key。' }
 };
-const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true };
+const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true, models: null };
 let AIC = readLS(AI_LS, null) || {};
 Object.keys(AI_DEF).forEach(k => { if (AIC[k] == null) AIC[k] = AI_DEF[k]; });
 function aiSave() { writeLS(AI_LS, AIC); }
@@ -667,6 +667,12 @@ function aiConfigHtml() {
   L.push('<div class="tools"><span class="tl">模型</span><input class="num grow" id="aiModel" list="aiModelList" placeholder="qwen2.5:7b"><datalist id="aiModelList"></datalist>');
   L.push('<button class="btn" id="aiGetModels">拉取模型列表</button></div>');
   L.push('<div class="small muted" id="aiModelHint"></div>');
+  /* 拉到的模型做成一条看得见、点得动的列表（原来只塞进 datalist：得先点一下模型框才弹出来，等于看不见） */
+  L.push('<div id="aiModelPick" style="display:none">'
+    + '<span class="tl">可选的模型</span>'
+    + '<select class="inp" id="aiModelSel"></select>'
+    + '<input class="inp" id="aiModelFilter" placeholder="筛一下（几个字）" title="模型多的时候按关键字筛">'
+    + '<span class="small muted ai-model-hint" id="aiModelCount"></span></div>');
   L.push('<div class="tools"><span class="tl">API Key</span><input class="num grow" id="aiKey" type="password" placeholder="本地模型留空就行"><button class="btn" id="aiKeyShow">显示</button></div>');
   L.push('<div class="tools"><span class="tl">温度</span><input class="num" id="aiTemp" type="number" min="0" max="2" step="0.1" style="width:78px">');
   L.push('<span class="tl" title="每次回答问题，从知识库里捞几段资料给它当参考。片段本身最长约 560 字；一般 4 段够用，想让 AI 多做对比就 5~6 段。">检索片段数</span><input class="num" id="aiTopK" type="number" min="0" max="12" step="1" style="width:78px">');
@@ -699,9 +705,32 @@ function aiHelpHtml() {
   return L.join('');
 }
 function aiFillModels(ids) {
+  ids = (ids || []).map(String).filter(Boolean);
   const dl = $('aiModelList');
   if (dl) dl.innerHTML = ids.map(i => '<option value="' + esc(i) + '"></option>').join('');
-  if (ids.length && !AIC.model) { AIC.model = ids[0]; $('aiModel').value = ids[0]; aiSave(); }
+  if (ids.length) AIC.models = ids.slice(0, 500);            /* 记下来：重画 / 下次进来还在 */
+  if (ids.length && !AIC.model) { AIC.model = ids[0]; if ($('aiModel')) $('aiModel').value = ids[0]; aiSave(); }
+  else if (ids.length) aiSave();
+  aiPaintModelPick(ids.length ? ids : (AIC.models || []));
+}
+/* 画那条可点选的模型列表（筛过的、没筛的都走这里） */
+function aiPaintModelPick(ids) {
+  const box = $('aiModelPick'), sel = $('aiModelSel');
+  if (!box || !sel) return;
+  ids = (ids || []).map(String).filter(Boolean);
+  if (!ids.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const fEl = $('aiModelFilter');
+  const f = (fEl && fEl.value ? fEl.value : '').trim().toLowerCase();
+  const list = f ? ids.filter(x => x.toLowerCase().indexOf(f) >= 0) : ids;
+  sel.innerHTML = list.length
+    ? list.map(i => '<option value="' + esc(i) + '"' + (i === AIC.model ? ' selected' : '') + '>' + esc(i) + '</option>').join('')
+    : '<option value="">（没有匹配的）</option>';
+  if (list.length && !list.some(i => i === AIC.model)) sel.value = list[0];
+  const cnt = $('aiModelCount');
+  if (cnt) cnt.textContent = '共 ' + ids.length + ' 个'
+    + (f ? '，筛出 ' + list.length + ' 个' : '')
+    + '（点一下就换成它' + (AIC.model ? '；现在是 ' + AIC.model : '') + '）';
 }
 function aiReadForm() {
   const v = id => { const el = $(id); return el ? el.value : undefined; };
@@ -747,10 +776,12 @@ function aiPaintForm() {
   set('aiTemp', AIC.temp); set('aiTopK', AIC.topK); set('aiMaxChars', AIC.maxChars); set('aiSys', AIC.sys || '');
   if ($('aiTmpl')) $('aiTmpl').checked = !!AIC.tmpl;
   const ms = (AI_PRESETS[AIC.preset] || {}).models || [];
-  if (ms.length) aiFillModels(ms);                      /* 常用模型名直接进下拉，不用先联网拉 */
+  const known = (AIC.models && AIC.models.length) ? AIC.models.slice() : ms;
+  if (ms.length && !(AIC.models && AIC.models.length)) aiFillModels(ms);   /* 常用模型名直接进下拉，不用先联网拉 */
+  else aiPaintModelPick(known);                                            /* 拉过的清单：重画也在 */
   if ($('aiModelHint')) $('aiModelHint').innerHTML = ms.length
-    ? '这个服务常用的模型：' + ms.map(m => '<code>' + esc(m) + '</code>').join(' / ') + '（点「模型」框就能选）；也可以点「拉取模型列表」拿服务端真实可用的名字。'
-    : '点「拉取模型列表」可以从服务端拿真实可用的模型名（本地服务要先启动）。';
+    ? '这个服务常用的模型：' + ms.map(m => '<code>' + esc(m) + '</code>').join(' / ') + '（也可以点「拉取模型列表」拿服务端真实可用的名字，拉到的名字会列在下面，点一下就选中。）'
+    : '点「拉取模型列表」可以从服务端拿真实可用的模型名（本地服务要先启动）；拉到的名字会列在下面，点一下就选中。';
   if ($('aiStream')) $('aiStream').checked = !!AIC.stream;
   if ($('aiExpand')) $('aiExpand').checked = AIC.expand !== false;
   if ($('aiRerank')) $('aiRerank').checked = AIC.rerank !== false;
@@ -782,9 +813,22 @@ function aiBindConfig() {
     /* 换了服务就把模型也换成这个服务能用的：现在填的名字不在清单里就换成默认的 */
     if (ms.length && ms.indexOf(AIC.model) < 0) AIC.model = (def.model && ms.indexOf(def.model) >= 0) ? def.model : ms[0];
     else if (!AIC.model && def.model) AIC.model = def.model;
+    AIC.models = null;      /* 换了服务，上次拉到的清单就不作数了 */
     aiSave();
     aiPaintForm();          /* 地址、模型、下拉清单、提示一次性刷新 */
   }, 'change');
+  on('aiModelSel', () => {
+    const sel = $('aiModelSel');
+    if (!sel || !sel.value) return;
+    AIC.model = sel.value;
+    const inp = $('aiModel'); if (inp) inp.value = sel.value;
+    AIC.cfgAuto = false;
+    aiSave();
+    aiPaintModelPick(AIC.models || []);
+    const st = $('aiState');
+    if (st) { st.textContent = '模型已设成 ' + sel.value; st.className = 'aistate ok'; }
+  }, 'change');
+  on('aiModelFilter', () => { aiPaintModelPick(AIC.models || []); }, 'input');
   on('aiTmpl', aiReadForm, 'change');
   on('aiWipe', () => {
     if (!confirm('清空这台电脑的浏览器里保存的 AI 配置（接口地址 / 模型 / API Key）？\n\n注意：站点文件夹里本来就没有你的 Key；这里清掉的是浏览器里存的那份。')) return;
@@ -812,7 +856,7 @@ function aiBindConfig() {
     try {
       const ids = await aiModels();
       aiFillModels(ids);
-      if (st) { st.textContent = '拿到 ' + ids.length + ' 个模型，点模型框挑一个'; st.className = 'aistate ok'; }
+      if (st) { st.textContent = '拿到 ' + ids.length + ' 个模型，在下面「可选的模型」里挑一个'; st.className = 'aistate ok'; }
     } catch (e) {
       const c = aiErrInfo(e);
       if (st) { st.textContent = c.msg + '　' + c.hint; st.className = 'aistate bad'; }

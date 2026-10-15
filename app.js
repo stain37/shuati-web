@@ -1781,13 +1781,17 @@ function renderStats() {
       ${dueN ? `<div class="tools"><button class="btn primary" id="stReview">开始今日复习（${dueN} 题）</button></div>` : ''}
     </div>
 
-    <h2 class="sec" id="secBanks">各题库正确率</h2>
-    ${rows.length ? rows.map(r => `<button class="srow srow-go" data-openbank="${esc(r.b.id)}" title="去刷这个题库">
+    <details class="fold secfold" id="secBanks" open>
+      <summary>各题库正确率${rows.length ? `（${rows.length} 个题库）` : ''}</summary>
+      <div class="fold-body">
+        ${rows.length ? rows.map(r => `<button class="srow srow-go" data-openbank="${esc(r.b.id)}" title="去刷这个题库">
         <span class="sname">${esc(r.b.title)}</span>
         <span class="sbar"><i style="width:${r.acc}%"></i></span>
         <span class="sval">${r.acc}%　已答 ${r.done}/${r.n}　错题 ${r.wr}</span>
         <span class="chev">›</span>
-      </button>`).join('') : '<div class="card"><div class="empty">还没有题库</div></div>'}
+      </button>`).join('') : '<div class="empty">还没有题库</div>'}
+      </div>
+    </details>
 
     <h2 class="sec">错得最多的题</h2>
     <div class="card">

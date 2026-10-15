@@ -19,7 +19,7 @@ const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, device: '',
-  scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true, kb: true },
+  scope: { ans: true, note: true, paper: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, syl: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -37,6 +37,8 @@ const SYNC_SCOPES = [
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
+  { k: 'tag', label: '考点标签', tip: '你给题打的「考点」标签和考点词表（方案五那套：统计页「按考点」用的就是它）' },
+  { k: 'syl', label: '考纲考点清单', tip: '考纲覆盖自查里抽出来的考点清单（只同步清单，不同步资料库正文；换台电脑不用重新花钱抽一遍）' },
   { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
 ];
@@ -242,9 +244,13 @@ async function syncPayload() {
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
+  if (s.tag && typeof TAGS !== 'undefined') { d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); }
+  if (s.syl && typeof SYLLABUS !== 'undefined') d.syllabus = SYLLABUS.data();
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
+  if (s.tag) tomb.tag = TOMB.tag || {};
+  if (s.syl) tomb.syl = TOMB.syl || {};
   tomb.wipe = TOMB.wipe || {};
   const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
   if (s.kb) out.kbDrop = syncKbDrops();
@@ -257,7 +263,7 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
-  ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => {
+  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'syl'].forEach(k => {
     const mine = TOMB[k] = TOMB[k] || {}, theirs = ct[k] || {};
     Object.keys(theirs).forEach(x => { if (!mine[x] || theirs[x] > mine[x]) mine[x] = theirs[x]; });
   });
@@ -290,6 +296,10 @@ function syncMergeCloud(cloud) {
 
   /* 5) 知识库：自己导入的资料库按 id 补进来；云端删掉的按时间戳在本机也删掉 */
   if (s.kb) added += syncKbMerge(d.kb, cloud.kbDrop);
+
+  /* 6) 考点标签 / 考纲考点清单：同一道题以本机为准，本机没有的补进来 */
+  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab) || 0); } catch (e) {} }
+  if (s.syl && typeof SYLLABUS !== 'undefined' && SYLLABUS.mergeIn) { try { added += (SYLLABUS.mergeIn(d.syllabus) || 0); } catch (e) {} }
 
   migrate(); invalidateBanks();
   return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
@@ -508,7 +518,7 @@ function syncCardHtml() {
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
     + '<button class="btn danger" id="syncWipe">断开（清掉本机 token）</button></div>');
   L.push('<div class="actions"><button class="btn" id="syncCopyCfg">复制「一键配置」链接（发给手机，点开自动填好）</button></div>');
-  L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置（换主题、字号只跟这台设备）。「自己导入的资料库」在下面就有一个勾选，勾上就一起同步。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
+  L.push('<div class="small muted" style="margin-top:8px">同步内容里 <b>不含</b>：站点外观设置（换主题、字号只跟这台设备）。「自己导入的资料库」「考点标签」「考纲考点清单」各有一个勾选，勾上就一起同步；资料库要传正文（几 MB），标签和考纲清单很小。token 只存在这台设备的浏览器里，不会进同步内容。</div>');
   L.push('<div class="hint" id="syncLogBox" style="margin-top:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap"></div>');
   L.push('</div>');
   return L.join('');

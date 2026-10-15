@@ -565,7 +565,25 @@
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
     rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, stop: stop,
     save: function () { save(); saveVocab(); }, reload: function () { rd(); },
-    data: function () { return TAGD; }, dropBank: dropTagsOfBank
+    data: function () { return TAGD; }, dropBank: dropTagsOfBank,
+    /* 云同步用：云端那份标签并进来。同一道题以本机为准（本机更可能是刚改过的），
+       本机没有的题补上；云端词表也合进词表里。墓碑里的题不复活。 */
+    mergeIn: function (cloudTags, cloudVocab) {
+      var n = 0;
+      try {
+        var tomb = (typeof TOMB === 'object' && TOMB && TOMB.tag) || {};
+        Object.keys(cloudTags || {}).forEach(function (k) {
+          var v = norm(cloudTags[k]).slice(0, MAX_PER_Q);
+          if (!v.length || tomb[k]) return;
+          if (TAGD[k] && TAGD[k].length) return;          /* 本机有：留着本机的 */
+          TAGD[k] = v; n++;
+        });
+        if (cloudVocab && cloudVocab.length) rememberVocab(cloudVocab);
+        if (n) { save(); saveVocab(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }
+        else if (cloudVocab && cloudVocab.length) saveVocab();
+      } catch (e) {}
+      return n;
+    }
   };
   rd();
 })();
