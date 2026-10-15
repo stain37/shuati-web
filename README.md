@@ -171,8 +171,8 @@ app.js                      核心：题库 / 判分 / SRS / 导入解析器 / �
 collection.js               错题本、收藏、待复习、搜索、统计、Markdown、图片、导出
 exam.js                      模拟考试（倒计时 / 标记 / 交卷 / 统一批改）
 kb.js  ai.js                 本地知识库（检索）／AI 写解析
-tags.js                     考点标签（答题页打标签、统计页「按考点」与薄弱点）
-syllabus.js                 考纲覆盖度自查（#/syllabus：抽考点清单、空白/薄弱/已覆盖）
+tags.js                     考点标签（词表可批量导入或让 AI 起一份；AI 读题从词表里挑标签，
+                            统计页「按考点」汇总贴好的标签与薄弱点）
 report.js                   AI 学情诊断（周报）（#/report：把学情摘要交给模型写诊断，报告存在本机）
 sw.js  manifest.json  icons/ PWA（离线缓存 + 主屏图标）
 robots.txt                  禁止搜索引擎收录（资料库有版权，别被索引）
@@ -212,7 +212,6 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | `qbank.tomb.v1` | 多标签页用的删除墓碑 `{ ans:{键:时间}, …, wipe:{ans:时间} }`，7 天自动过期 |
 | `qbank.tags.v1` | 每题的考点标签 `{ 题库id#题号: ['慢阻肺','气道炎症'] }` |
 | `qbank.tagvocab.v1` | 考点词表（AI 批量打标签时**只允许**从这里挑词） |
-| `qbank.syllabus.v1` | 各知识库的考点清单 `{ 库id: { points:[{name,hint}], ts, chars } }`（`chars` 用来判断资料是否变过） |
 | `qbank.report.v1` | 学情诊断报告历史（**只留最近 20 份**，`{ id, ts, from, to, markdown, … }`） |
 
 知识库正文优先放 IndexedDB（`shuati-kb` / `kb`），`file://` 下 IndexedDB 不可用时退回 localStorage。
@@ -223,7 +222,7 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v42-web28**）
+（缓存版本 **shuati-v43-web29**）
 
 | 问题 | 说明 |
 | --- | --- |
@@ -237,9 +236,9 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | 删题库不清「上次做到哪」 | 删题库时 `localStorage.removeItem('qbank.last.' + b.id)` |
 | 拉取到的模型「看不见」 | `aiFillModels()` 只填 `<datalist>`（要聚焦+按方向键才弹）；现在同时填一块可见的
 `#aiModelPick`（`<select id="aiModelSel">` + 过滤框），清单记进 `AIC.models` 一起存/同步 |
-| 考纲页覆盖度每次重算、题多就卡 | `syllabus.js` 的覆盖度改成两层缓存（按题 2-gram + 整块结果），
+| （已删）考纲页覆盖度每次重算、题多就卡 | 当时的 `syllabus.js` 改成两层缓存（按题 2-gram + 整块结果），
 题×考点 > 20000 时先画壳再分片算；实测 600×40 从 384 ms → 45 ms，缓存命中 0.10 ms |
-| 云同步带不上标签 / 考纲 | `SYNC_DEF.scope` 加 `tag` / `syl`，payload 带 `data.tags` / `data.tagVocab` / `data.syllabus`，
+| 云同步带不上标签 | `SYNC_DEF.scope` 加 `tag`（考纲那项 `syl` 后来随功能一起删了），payload 带 `data.tags` / `data.tagVocab`，
 墓碑加 `tomb.tag` / `tomb.syl`，合并走 `TAGS.mergeIn()`（本机优先）与 `SYLLABUS.mergeIn()`（按 ts 取新） |
 
 上一版（v14）：

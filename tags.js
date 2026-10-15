@@ -17,6 +17,7 @@
   var TAGD = {};                  /* { key: [标签...] } */
   var TAGV = [];                  /* [标签...] */
   var JOB = { running: false, ctl: null, text: '', done: 0, total: 0, note: '', err: null, vocab: null };
+  var VIEW = { bulk: false };      /* 词表「批量导入」粘贴框是否展开 */
 
   function rd() {
     try { TAGD = (typeof readLS === 'function') ? (readLS(T_KEY, {}) || {}) : (JSON.parse(localStorage.getItem(T_KEY)) || {}); } catch (e) { TAGD = {}; }
@@ -144,7 +145,7 @@
     var cur = tagsOf(k);
     var sug = TAGV.filter(function (t) { return cur.indexOf(t) < 0; });
     return '<div class="tagedit" data-tageditbox="' + esc(k) + '">'
-      + '<div class="tedit-top">给这道题挂考点标签<span class="small muted">（回车或点「加」添上；标签越统一，统计越准）</span></div>'
+      + '<div class="tedit-top">给这道题挂考点标签<span class="small muted">（自己想补一个就回车或点「加」；整个题库的标签去<b>学习统计 → 按考点</b>，那儿能先把词表批量导入、再让 AI 读题自动贴）</span></div>'
       + '<div class="tedit-cur">' + (cur.length ? cur.map(function (t) {
         return '<button class="tagchip" data-tagdel="' + esc(t) + '">' + esc(t) + '<i>×</i></button>';
       }).join('') : '<span class="small muted">还没有标签</span>') + '</div>'
@@ -223,10 +224,9 @@
     var st = tagStats();
     if (!st.rows.length) {
       return '<div class="card"><div class="note">还没有任何考点标签。'
-        + '两种加法：① 答题页每题下面有「＋ 标签」，手动打；② 用下面的「让 AI 打标签」，先出词表再批量打。'
-        + '<div class="small muted">没打标签的题：' + st.total + ' 道。标签只存本机，会跟导出备份一起走。</div>'
-        + '<div class="tools" style="margin:10px 0 0"><span class="small muted">想看「资料库里的考点我刷了没有」→</span>'
-        + '<button class="btn tiny" data-act="tagsyllabus">考纲覆盖自查</button></div></div>'
+        + '顺序是：① 先把你的考点词表导进来（下面「考点词表」那块，一行一个，也可以直接粘贴一整份）；'
+        + '② 再让 AI 读每道题、从词表里挑标签贴上去（「让 AI 打标签」那块）。'
+        + '<div class="small muted">没打标签的题：' + st.total + ' 道。标签只存本机，会跟导出备份一起走。</div></div>'
         + vocabBoxHtml() + aiBoxHtml();
     }
     var rows = st.rows.map(function (r) {
@@ -246,7 +246,7 @@
       + '<span class="mini-tag">已打标签的题 ' + st.tagged + '/' + st.total + '</span>'
       + '<span class="spacer-grow"></span>'
       + '<button class="btn tiny primary" data-act="tagweak"' + (weak.keys.length ? '' : ' disabled') + '>刷最弱的 3 个考点</button>'
-      + '<button class="btn tiny" data-act="tagsyllabus">考纲覆盖自查</button>'
+      + '<button class="btn tiny" data-act="tagvocab">管理考点词表</button>'
       + '</div>'
       + '<div class="small muted" style="margin:6px 0 4px">按正确率排（样本够的在前；已答 &lt; 5 题标「样本不足」）。点一行看这个考点下的题。</div>'
       + rows
@@ -262,13 +262,23 @@
       return '<button class="vocab-chip' + (used[t] ? ' on' : '') + '" data-vocabdel="' + esc(t) + '" title="点一下从词表里删掉（同时会摘掉题上的这个标签）">'
         + esc(t) + (used[t] ? ' <i>' + used[t] + '</i>' : '') + '</button>';
     }).join('');
+    var bulk = VIEW.bulk ? ('<div class="card" style="margin:8px 0 0" id="tagBulkBox">'
+      + '<div class="small muted" style="margin-bottom:6px">把你那份考点清单粘进来，<b>一行一个</b>：只写名字，或者「名字：一句说明」都行。'
+      + '序号（1. ①）、项目符号（- • ·）、引号会自动去掉；和词表里重名的跳过。</div>'
+      + '<textarea class="inp" id="tagVocabBulk" rows="8" placeholder="慢阻肺：持续气流受限、FEV1/FVC&lt;70%'
+      + '\n心力衰竭\n3. 酸碱平衡：血气分析判断失代偿与代偿\n呼吸衰竭"></textarea>'
+      + '<div class="tools" style="margin:8px 0 0"><button class="btn tiny primary" data-vocablistok="1">导入这些考点</button>'
+      + '<button class="btn tiny" data-vocablistclose="1">取消</button>'
+      + '<span class="spacer-grow"></span><span class="tl" id="tagVocabBulkState"></span></div></div>') : '';
     return '<div class="card" id="tagVocabCard"><h3 class="tag-h">考点词表 <span class="small muted">'
-      + '"' + TAGV.length + '" 个 · 打标签时只从这里面挑，统计才不会散</span></h3>'
+      + '"' + TAGV.length + '" 个 · AI 只从这里面挑标签，统计才不会散</span></h3>'
       + '<div class="tools" style="margin:6px 0"><input class="inp" id="tagVocabInp" placeholder="加一个考点，比如：免疫应答" maxlength="14">'
       + '<button class="btn tiny primary" data-vocabadd="1">加进词表</button>'
-      + '<button class="btn tiny" data-vocabai="1">让 AI 生成词表</button>'
+      + '<button class="btn tiny" data-vocablist="1">批量导入考点（粘贴一串）</button>'
+      + '<button class="btn tiny" data-vocabai="1">让 AI 起一份</button>'
       + '<button class="btn tiny" data-vocabimport="1">从已打的标签补全</button></div>'
-      + '<div class="vocab-box" id="tagVocabBox">' + (rows || '<span class="small muted">词表是空的。</span>') + '</div></div>';
+      + bulk
+      + '<div class="vocab-box" id="tagVocabBox">' + (rows || '<span class="small muted">词表是空的。建议先把你的考点清单批量导入，再让 AI 按它贴标签。</span>') + '</div></div>';
   }
   function aiBoxHtml() {
     var banks = [];
@@ -276,12 +286,13 @@
     var total = 0, tagged = 0;
     banks.forEach(function (b) { (b.questions || []).forEach(function (q) { total++; if (tagsOf(keyOf(b, q)).length) tagged++; }); });
     var todo = total - tagged;
-    return '<div class="card" id="tagAiCard"><h3 class="tag-h">让 AI 打标签 <span class="small muted">两段式：先出词表，再分批分类</span></h3>'
+    return '<div class="card" id="tagAiCard"><h3 class="tag-h">让 AI 打标签 <span class="small muted">它读题，从你的词表里挑，不会自己造词</span></h3>'
       + '<div class="small muted" style="margin:4px 0 8px">没打标签的题：<b>' + todo + '</b> 道（共 ' + total + ' 道）。'
-      + '一个几百题的库大概要十几到几十次请求 —— 用本地 Ollama 不花钱，用云模型注意余额。中途可以停，已经打完的会留着。</div>'
+      + '一次给 AI 看 ' + BATCH + ' 道题，让它按上面那份词表（' + TAGV.length + ' 个考点）逐题挑；'
+      + '一次几十题，一个几百题的库大概十几到几十次请求 —— 用本地 Ollama 不花钱，用云模型注意余额。中途可以停，已经打完的会留着。</div>'
       + '<div class="tools" style="margin:0">'
-      + '<button class="btn tiny" id="tagGenVocab">1) 生成考点词表</button>'
-      + '<button class="btn tiny primary" id="tagGo"' + (todo && TAGV.length ? '' : ' disabled') + '>2) 给没标签的题打标签</button>'
+      + '<button class="btn tiny primary" id="tagGo"' + (todo && TAGV.length ? '' : ' disabled') + '>给没标签的题贴标签</button>'
+      + '<button class="btn tiny" id="tagGenVocab">词表空着？让 AI 起一份</button>'
       + '<button class="btn tiny" id="tagStop" style="display:none">停止</button>'
       + '<span class="spacer-grow"></span><span class="tl" id="tagAiState"></span></div>'
       + '<div class="tag-aivocab" id="tagAiVocab"></div></div>';
@@ -509,6 +520,37 @@
     var box = host.querySelector('#tagVocabCard');
     if (box) {
       box.addEventListener('click', function (e) {
+        if (e.target.closest('[data-vocablist]')) {
+          VIEW.bulk = true;
+          if (typeof render === 'function') { try { render(); } catch (err) {} }
+          setTimeout(function () { var t = document.getElementById('tagVocabBulk'); if (t) t.focus(); }, 60);
+          return;
+        }
+        if (e.target.closest('[data-vocablistclose]')) {
+          VIEW.bulk = false;
+          if (typeof render === 'function') { try { render(); } catch (err) {} }
+          return;
+        }
+        if (e.target.closest('[data-vocablistok]')) {
+          var ta = document.getElementById('tagVocabBulk');
+          var cat = document.getElementById('tagVocabBulkState');
+          var parsed = parseVocabList(ta ? ta.value : '');
+          if (!parsed.length) { if (cat) cat.textContent = '一行都没认出考点（每行写「名字」或「名字：说明」）'; return; }
+          var res = addVocabBulk(parsed);
+          VIEW.bulk = false;
+          if (typeof render === 'function') { try { render(); } catch (err) {} }
+          if (typeof toast === 'function') toast('词表里加了 ' + res.added + ' 个考点（跳过 ' + (parsed.length - res.added) + ' 个重名的），现在共 ' + res.total + ' 个');
+          /* 词表刚到位，顺手问一句要不要让 AI 给还没标签的题贴 */
+          var banks = [];
+          try { banks = (typeof baseBanks === 'function') ? baseBanks() : []; } catch (err5) {}
+          var total = 0, tagged = 0;
+          banks.forEach(function (b) { (b.questions || []).forEach(function (q) { total++; if (tagsOf(keyOf(b, q)).length) tagged++; }); });
+          if (total - tagged > 0 && !JOB.running && cfgOK() && typeof confirm === 'function'
+              && confirm('词表里有 ' + res.total + ' 个考点了。\n现在让 AI 给还没标签的 ' + (total - tagged) + ' 道题贴标签吗？（用 AI，可以中途停）')) {
+            tagAll();
+          }
+          return;
+        }
         var dd = e.target.closest('[data-vocabdel]');
         if (!dd) return;
         var t = dd.getAttribute('data-vocabdel');
@@ -527,7 +569,11 @@
         if (typeof makePaper === 'function') makePaper('薄弱考点 · ' + pick.tags.join('、'), pick.keys, {});
         return;
       }
-      if (e.target.closest('[data-act="tagsyllabus"]')) { if (typeof go === 'function') go('#/syllabus'); return; }
+      if (e.target.closest('[data-act="tagvocab"]')) {
+        var box2 = document.getElementById('tagVocabCard');
+        if (box2) box2.scrollIntoView({ block: 'start' });
+        return;
+      }
       var open = e.target.closest('[data-tagopen]');
       if (open) {
         var t = open.getAttribute('data-tagopen');
@@ -536,6 +582,34 @@
         setTimeout(function () { if (typeof tagOpenInSearch === 'function') tagOpenInSearch(t); }, 60);
       }
     });
+  }
+  function parseVocabList(txt) {
+    var out = [], seen = {};
+    String(txt || '').split(/[\r\n]+/).forEach(function (raw) {
+      var s = String(raw || '').trim();
+      if (!s) return;
+      s = s.replace(/^[\s\-•·*—–]+/, '')                         /* 项目符号 */
+           .replace(/^\s*[（(]?\s*\d+\s*[.、)）:：]?\s*/, '')      /* 1. / （2） / 3、 */
+           .replace(/^\s*[①-⑳]\s*/, '')                          /* ①②③ */
+           .replace(/^["“'「『]+|["”'」』]+$/g, '')                 /* 首尾引号 */
+           .trim();
+      if (!s) return;
+      var parts = s.split(/\s*[:：]\s*|\s+[-–—]\s+|\t+|\s{2,}/);  /* 名字：说明 / 名字 - 说明 */
+      var name = String(parts[0] || '').trim().replace(/["“'「『]+|["”'」』]+$/g, '').trim();
+      name = name.slice(0, 14);
+      if (name.length < 2) return;                                /* 太短的丢掉 */
+      if (seen[name]) return;
+      seen[name] = 1; out.push(name);
+    });
+    return out;
+  }
+  function addVocabBulk(list) {
+    var before = TAGV.length;
+    rememberVocab(list);
+    saveVocab();
+    TAGV = norm(TAGV);
+    TAGS_STATS_CACHE = null;
+    return { added: Math.max(0, TAGV.length - before), total: TAGV.length, skipped: Math.max(0, list.length - Math.max(0, TAGV.length - before)) };
   }
   var _pendingTag = null;
   /* 搜索页里按标签筛：借它现成的搜索框（标签词本来就常在题干里，先填进去） */
@@ -565,6 +639,7 @@
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
     rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, stop: stop,
     save: function () { save(); saveVocab(); }, reload: function () { rd(); },
+    parseVocabList: parseVocabList, addVocabBulk: addVocabBulk,
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,
     /* 云同步用：云端那份标签并进来。同一道题以本机为准（本机更可能是刚改过的），
        本机没有的题补上；云端词表也合进词表里。墓碑里的题不复活。 */
