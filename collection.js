@@ -205,8 +205,14 @@ const SORTS = {
   id: { label: '题号', def: 1, cmp: (a, b) => String(a.bank.title).localeCompare(String(b.bank.title)) || String(a.q.id).localeCompare(String(b.q.id), 'zh', { numeric: true }) }
 };
 const ARROW = d => (d > 0 ? '↑' : '↓');
-const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '' });
+const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '' });
 const LP = { wrong: mkState(), fav: mkState(), search: mkState() };
+let LP_KW_T = null;                                  /* 「找词」输入的防抖计时器 */
+
+/* 这道题贴了哪些考点标签（tags.js 可能还没加载，兜住） */
+function tagListOf(k) {
+  try { return (typeof tagsOf === 'function' && tagsOf(k)) || []; } catch (e) { return []; }
+}
 
 function shuffle(a) {
   const r = a.slice();
@@ -312,6 +318,11 @@ function renderList(mode) {
   if (st.onlyOpen) shown = shown.filter(it => !(it.rec.ok === true && !it.rec.redo));
   if (isWrong && st.onlyDue) shown = shown.filter(it => isDue(it.k));
   if (st.bank !== 'all') shown = shown.filter(it => it.bank.id === st.bank);
+  /* 候补池 G：按考点标签筛 + 列表里直接找词（都只作用于当前这个列表） */
+  if (st.tag) shown = shown.filter(it => tagListOf(it.k).indexOf(st.tag) >= 0);
+  const kwTerms = splitKw(st.kw);
+  if (kwTerms.length) shown = shown.filter(it => { const h = hayOf(it.k, it.q, it.bank); return kwTerms.every(w => h.indexOf(w) >= 0); });
+  HL_KW = st.kw || '';
   const S = SORTS[st.sort] || SORTS.wrong;
   shown.sort((a, b) => S.cmp(a, b) * (st.dir > 0 ? 1 : -1));
   st.shown = shown;
@@ -325,6 +336,16 @@ function renderList(mode) {
       const b = allBanks().find(x => x.id === id) || { title: id };
       return `<button class="chip${st.bank === id ? ' on' : ''}" data-b="${id}">${esc(b.title)} ${banksWith[id]}</button>`;
     })).join('');
+
+  /* 候补池 G：考点标签筛选（只列当前列表里真有的标签，按题数排） */
+  const tagCount = {};
+  items.forEach(it => tagListOf(it.k).forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
+  const tagNames = Object.keys(tagCount).sort((a, b) => tagCount[b] - tagCount[a] || a.localeCompare(b, 'zh'));
+  const tagChips = tagNames.length ? `
+      <div class="chips-inline"><span class="tl" style="align-self:center">按考点</span>
+        <button class="chip${st.tag ? '' : ' on'}" data-t="">全部 ${items.length}</button>
+        ${tagNames.map(t => `<button class="chip${st.tag === t ? ' on' : ''}" data-t="${esc(t)}">${esc(t)} ${tagCount[t]}</button>`).join('')}
+      </div>` : '';
 
   $('view').innerHTML = `
     <div class="card" style="margin-bottom:14px">
@@ -343,6 +364,13 @@ function renderList(mode) {
         <button class="btn" id="wRevSel" ${selKeys.length ? '' : 'disabled'}>复习选中的 ${selKeys.length} 题</button>
       </div>` : ''}
       <div class="chips-inline">${bankChips}</div>
+      ${tagChips}
+
+      <div class="tools">
+        <span class="tl">找词</span>
+        <input type="text" id="lkw" class="num" style="min-width:160px;flex:1 1 160px" placeholder="题干 / 选项 / 解析里的词，空格分多个" value="${esc(st.kw)}">
+        ${st.kw ? '<button class="btn" id="lkwClear">清掉</button>' : ''}
+      </div>
 
       <div class="tools">
         <span class="tl">排序（点第二次反向）</span>
@@ -407,7 +435,20 @@ function renderList(mode) {
   staggerList($('view'));
 
   /* 事件 */
-  $('view').querySelectorAll('.chips-inline .chip').forEach(c => c.onclick = () => { st.bank = c.dataset.b; render(); });
+  $('view').querySelectorAll('.chips-inline .chip[data-b]').forEach(c => c.onclick = () => { st.bank = c.dataset.b; render(); });
+  /* 考点标签 chip（和题库 chip 分开绑：它们没有 data-b） */
+  $('view').querySelectorAll('.chips-inline .chip[data-t]').forEach(c => c.onclick = () => { st.tag = c.dataset.t || ''; render(); });
+  /* 找词：边打边筛，但别每敲一个字就重画（会把输入焦点弄丢） */
+  on('lkw', () => {
+    clearTimeout(LP_KW_T);
+    LP_KW_T = setTimeout(() => {
+      const typing = document.activeElement && document.activeElement.id === 'lkw';
+      st.kw = $('lkw').value;
+      render();
+      if (typing) { const el = $('lkw'); if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} } }
+    }, 260);
+  }, 'input');
+  on('lkwClear', () => { clearTimeout(LP_KW_T); st.kw = ''; render(); });
   $('view').querySelectorAll('[data-s]').forEach(c => c.onclick = () => {
     const id = c.dataset.s;
     if (st.sort === id) st.dir = -(st.dir || SORTS[id].def);
@@ -485,16 +526,32 @@ function batch(mode, op) {
     saveFav(); toast(`已取消收藏 ${n} 题`); render();
   } else if (op === 'drop') {
     if (!confirm(`把选中的 ${n} 道题的作答记录（含错题次数）移除？不可恢复。`)) return;
+    /* 候补池 E：先拍一份快照，5 秒内可以撤销（连带把墓碑删掉，不然同步会又把它删回来） */
+    const snap = keys.map(k => [k, ANS[k] ? JSON.parse(JSON.stringify(ANS[k])) : null]);
     keys.forEach(k => { delete ANS[k]; tombAdd('ans', k); st.sel.delete(k); });
-    saveAns(); toast(`已移除 ${n} 题`); render();
+    saveAns(); render();
+    toast(`已移除 ${n} 题`, 5000, '', {
+      label: '撤销', fn: () => {
+        snap.forEach(([k, v]) => { if (v) ANS[k] = v; });
+        try { if (typeof TOMB !== 'undefined' && TOMB.ans) { keys.forEach(k => delete TOMB.ans[k]); writeLS(TOMB_KEY, TOMB); } } catch (e) {}
+        saveAns(); render(); toast(`已恢复 ${n} 题`, 1400, 'ok');
+      }
+    });
   } else if (op === 'clearCount') {
     if (!confirm(`把选中的 ${n} 道题的作答次数和答错次数清零？题目本身不删，但清零后就不再算「错题」了（想留着可以先收藏）。`)) return;
+    const snap = keys.map(k => [k, ANS[k] ? JSON.parse(JSON.stringify(ANS[k])) : null]);
     keys.forEach(k => {
       const a = ANS[k];
       if (!a) return;
       a.tries = 0; a.wrong = 0; a.ts = 0; a.upd = Date.now(); a.redo = true;   // upd 让「清零」在合并时也不会被旧记录盖回去
     });
-    saveAns(); toast(`已清空 ${n} 题的次数`); render();
+    saveAns(); render();
+    toast(`已清空 ${n} 题的次数`, 5000, '', {
+      label: '撤销', fn: () => {
+        snap.forEach(([k, v]) => { if (v) ANS[k] = v; });
+        saveAns(); render(); toast(`已恢复 ${n} 题`, 1400, 'ok');
+      }
+    });
   } else if (op === 'paper') {
     const suggest = (mode === 'wrong' ? '错题套卷' : mode === 'fav' ? '收藏套卷' : '复习套卷') + ' · ' + n + ' 题';
     st.pendingKeys = keys;

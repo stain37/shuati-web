@@ -552,6 +552,7 @@
       + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 最近 7 天"><b>' + TODAY.weekN + '</b>近 7 天</button>'
       + '</div></div>'
       + resumeHtml
+      + ((typeof firstGuideHtml === 'function') ? firstGuideHtml() : '')
       + '<div class="nb-nav" id="nbNav">'
       + '<div class="nb-crumbs">' + crumbHtml() + '</div>'
       + '<div class="nb-navbtns">'

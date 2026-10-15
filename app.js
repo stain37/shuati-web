@@ -476,19 +476,136 @@ function optText(t, K) {
   const m = s.match(/^\s*([A-Ha-h])\s*[.、．·:：)）]\s*/);
   return (m && m[1].toUpperCase() === String(K).toUpperCase()) ? s.slice(m[0].length) : s;
 }
-/* 气泡提示：kind = ok / bad / 空（普通）。放底部，手机上不会被手指挡住 */
-function toast(msg, ms, kind) {
+/* 气泡提示：kind = ok / bad / 空（普通）。放底部，手机上不会被手指挡住。
+   action = { label, fn }：给这个气泡挂一个按钮（「撤销」那种），点完就消失 */
+function toast(msg, ms, kind, action) {
   const d = document.createElement('div');
-  d.className = 'toast' + (kind === 'ok' ? ' ok' : kind === 'bad' ? ' bad' : '');
+  d.className = 'toast' + (kind === 'ok' ? ' ok' : kind === 'bad' ? ' bad' : '') + (action ? ' has-act' : '');
   const ic = document.createElement('span');
   ic.className = 'tic';
   ic.textContent = kind === 'ok' ? '✓' : kind === 'bad' ? '!' : 'i';
   const tx = document.createElement('span');
   tx.textContent = msg;
   d.appendChild(ic); d.appendChild(tx);
+  let timer = null, gone = false;
+  const kill = () => { if (gone) return; gone = true; clearTimeout(timer); d.classList.remove('show'); setTimeout(() => d.remove(), 260); };
+  if (action && action.label) {
+    const b = document.createElement('button');
+    b.className = 'btn tiny toast-act';
+    b.textContent = action.label;
+    b.onclick = () => { try { action.fn && action.fn(); } catch (e) {} kill(); };
+    d.appendChild(b);
+  }
   document.body.appendChild(d);
   requestAnimationFrame(() => d.classList.add('show'));
-  setTimeout(() => { d.classList.remove('show'); setTimeout(() => d.remove(), 260); }, ms || 1700);
+  timer = setTimeout(kill, ms || (action ? 5200 : 1700));
+  return d;
+}
+/* 动效开关：系统开了「减少动态效果」就连脉冲 / 震动一起省掉（sticky 到本页） */
+function uiMotionOK() {
+  try { return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return true; }
+}
+/* 判分后的即时反馈（候补池 B）：触屏轻轻震一下 + 选项脉冲一次 + 答错给一句小提示 */
+function uiFeedbackPulse(bank, q, st, picked) {
+  if (!uiMotionOK()) return;
+  try {
+    if (navigator.vibrate && (window.matchMedia && window.matchMedia('(hover:none)').matches)) {
+      navigator.vibrate(st.ok ? 18 : [22, 60, 22]);
+    }
+  } catch (e) {}
+  try {
+    const keys = st.ok ? ansOf(favKey(bank, q), q) : (picked || []);
+    document.querySelectorAll('#view .opts .opt').forEach(el => {
+      if (keys.indexOf(el.dataset.k) < 0) return;
+      el.classList.remove(st.ok ? 'pulse-ok' : 'pulse-bad');
+      void el.offsetWidth;                       /* 重新触发动画 */
+      el.classList.add(st.ok ? 'pulse-ok' : 'pulse-bad');
+      setTimeout(() => el.classList.remove('pulse-ok', 'pulse-bad'), 700);
+    });
+  } catch (e) {}
+  if (!st.ok) toast('已记入错题本', 1500, 'bad');
+}
+/* 复制一段文本：站里一直用 execCommand 这一套（file:// 下 navigator.clipboard 常被拦） */
+function uiCopyText(txt, okMsg) {
+  try {
+    const t = document.createElement('textarea');
+    t.value = String(txt);
+    t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    const ok = document.execCommand('copy');
+    t.remove();
+    toast(ok ? (okMsg || '已复制') : '复制失败，请手动选中', 1400, ok ? 'ok' : 'bad');
+  } catch (e) { toast('复制失败，请手动选中', 1600, 'bad'); }
+}
+/* 候补池 A：触屏左右滑动翻题（左滑＝下一题，右滑＝上一题）
+   只在触屏上启用；横向位移 > 30px 且横向明显大于纵向才算；
+   从选项 / 输入框 / 按钮上起手的不算（不然「点选项」会被当成翻页） */
+function uiBindSwipe(bank) {
+  const host = $('view');
+  if (!host) return;
+  if (!(('ontouchstart' in window) || (window.matchMedia && window.matchMedia('(hover:none)').matches))) return;
+  const card = host.querySelector('.card');
+  if (!card) return;
+  let x0 = null, y0 = 0, t0 = 0, moved = false;
+  card.addEventListener('touchstart', e => {
+    x0 = null;
+    if (e.touches.length !== 1) return;
+    const el = e.target;
+    if (el && el.closest && el.closest('input,select,textarea,button,.opts,.kbrow')) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); moved = false;
+  }, { passive: true });
+  card.addEventListener('touchmove', e => {
+    if (x0 == null || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) moved = true;
+  }, { passive: true });
+  card.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const t = e.changedTouches && e.changedTouches[0];
+    const x1 = x0; x0 = null;
+    if (!t) return;
+    const dx = t.clientX - x1, dy = t.clientY - y0, dt = Date.now() - t0;
+    if (!moved || dt > 900) return;
+    if (Math.abs(dx) < 30 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (typeof aiBusy === 'function' && aiBusy()) return;    /* 正在生成解析就别翻页 */
+    try { e.preventDefault(); } catch (err) {}               /* 压掉紧随其后的 click */
+    step(dx < 0 ? 1 : -1);
+  }, { passive: false });
+}
+/* 候补池 H：长按题干 600ms 弹一个小菜单（复制题干 / AI 解析 / 收藏） */
+function uiBindStemLongPress(bank, q, fk) {
+  const stem = document.querySelector('#view .stem');
+  if (!stem) return;
+  let timer = null;
+  const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const openMenu = () => {
+    clear();
+    if ($('stemMenu')) return;
+    const m = document.createElement('div');
+    m.className = 'stemmenu';
+    m.id = 'stemMenu';
+    m.innerHTML = '<button class="btn tiny" data-a="copy">复制题干</button>'
+      + '<button class="btn tiny" data-a="ai">AI 解析</button>'
+      + '<button class="btn tiny" data-a="fav">' + (FAV[fk] ? '取消收藏' : '收藏') + '</button>'
+      + '<button class="btn tiny" data-a="x">关闭</button>';
+    stem.appendChild(m);
+    m.onclick = ev => {
+      const b = ev.target && ev.target.closest ? ev.target.closest('[data-a]') : null;
+      if (!b) return;
+      const a = b.dataset.a;
+      const el = $('stemMenu'); if (el) el.remove();
+      if (a === 'copy') uiCopyText(q.stem || '', '题干已复制');
+      else if (a === 'ai') { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）', 1600, 'bad'); }
+      else if (a === 'fav') toggleFav(fk, $('btnFav'));
+    };
+    setTimeout(() => document.addEventListener('click', () => { const el = $('stemMenu'); if (el) el.remove(); }, { once: true }), 30);
+  };
+  stem.addEventListener('pointerdown', e => {
+    if (e.pointerType && e.pointerType !== 'touch') return;   /* 鼠标长按不弹 */
+    clear();
+    timer = setTimeout(openMenu, 600);
+  });
+  ['pointerup', 'pointermove', 'pointercancel', 'pointerleave'].forEach(ev => stem.addEventListener(ev, clear));
 }
 /* 顶栏高亮当前所在页 */
 function markTop(name) {
@@ -706,6 +823,26 @@ function todayStats() {
   return { dNum: dNum, dOk: dOk, streak: streak, weekN: weekN };
 }
 
+/* 候补池 C：一题都还没有时的「三步就能开始」引导卡（有题库了返回空串）。
+   注意：首页正文实际由 cat.js 的目录视图接管（它会把 app.js 渲染出来的卡片清掉），
+   所以 cat.js 的 homeHtml() 也调这个函数取一次；两边共用，别各写一份。 */
+function firstGuideHtml() {
+  if (typeof baseBanks === 'function' && baseBanks().length) return '';
+  return `
+    <div class="card guide" id="firstGuide">
+      <div class="gname">三步就能开始</div>
+      <div class="gstep"><b>①</b><div><div class="gt">把题库导进来</div><div class="small muted">支持 JSON 题库，也支持「题干 / 选项 / 答案 / 解析」这种纯文本，粘贴或选文件都行。</div></div><button class="btn primary" data-g="#/import">去导入</button></div>
+      <div class="gstep"><b>②</b><div><div class="gt">想让 AI 帮你写解析</div><div class="small muted">在「AI 与知识库」里填服务商地址 + API Key，答完题点「AI 解析」就行；还能挂上自己的资料库。</div></div><button class="btn" data-g="#/kb">去设置</button></div>
+      <div class="gstep"><b>③</b><div><div class="gt">手机和电脑共用一份记录</div><div class="small muted">在「云同步」里连一个私有仓库，做题记录自动互通；不做也不影响本机使用。</div></div><button class="btn" data-g="#/sync">去同步</button></div>
+      <div class="small muted" style="margin-top:8px">数据都存在本机浏览器里，换电脑或清缓存前先在下面「导出全部数据」备一份。</div>
+    </div>`;
+}
+/* 引导卡的三个按钮用事件委托（cat.js 会重画首页，逐个绑会丢） */
+document.addEventListener('click', ev => {
+  const t = ev.target && ev.target.closest ? ev.target.closest('#firstGuide [data-g]') : null;
+  if (t) go(t.dataset.g);
+});
+
 function renderHome() {
   QZ.bankId = null;
   $('appTitle').textContent = '刷题站';
@@ -779,6 +916,9 @@ function renderHome() {
       <button class="btn primary" id="toResume">继续刷题</button>
     </div>` : '';
 
+  /* 候补池 C：一题都还没有时，给一块「三步就能开始」的引导（有题了就不再出现） */
+  const guideHtml = firstGuideHtml();
+
   const bytes = storageBytes();
   $('view').innerHTML = `
     <div class="hero">
@@ -801,6 +941,7 @@ function renderHome() {
       </div>
     </div>
     ${resumeHtml}
+    ${guideHtml}
     <div class="toolbar main">
       <button class="btn primary" id="toImport">＋ 导入 / 新建题库</button>
       ${dueN ? `<button class="btn primary" id="toReview">今日复习 ${srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN} 题</button>` : ''}
@@ -844,6 +985,7 @@ function renderHome() {
   on('impAllFile', importAllData, 'change');
   /* 首页上调色板：统计块能直接点进去 */
   document.querySelectorAll('.hstat [data-go]').forEach(el => el.onclick = () => go(el.dataset.go));
+  /* 首次引导卡上的三个按钮：走 document 上的事件委托（见 firstGuideHtml 上面），这里不用再绑 */
   document.querySelectorAll('.hstat [data-act]').forEach(el => el.onclick = () => {
     const a = el.dataset.act;
     if (a === 'banks') { const s = $('secBanks'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -1165,6 +1307,16 @@ function renderQuiz(bankId) {
   if (typeof variantReopenFor === 'function') { try { variantReopenFor($('vHost'), fk, q); } catch (e) {} }
 
   showFb(bank, q);
+  /* 3.1 判分后不用滚回底部：解析下面那个「下一题 →」直接用（末题给个灰的） */
+  const fbNext = $('fbNext');
+  if (fbNext) {
+    if (pos >= pool.length) { fbNext.disabled = true; fbNext.textContent = '已经是最后一题'; }
+    else on('fbNext', () => step(1));
+  }
+  /* 候补池 A：手机上左右滑动翻题（触屏才启用；位移 > 30px 且横向为主才算） */
+  uiBindSwipe(bank);
+  /* 候补池 H：长按题干弹「复制 / AI 解析 / 收藏」 */
+  uiBindStemLongPress(bank, q, fk);
   rememberLast(bank, q.id);
   $('jumpInfo').innerHTML = '<b>' + pos + ' / ' + pool.length + '</b><span>答题卡</span>';
   /* 首题 / 末题：把翻页按钮的边界状态摆出来，免得以为点了没反应 */
@@ -1203,7 +1355,21 @@ function renderQuiz(bankId) {
 }
 
 function toggleFav(k, btn) {
-  if (FAV[k]) { delete FAV[k]; tombAdd('fav', k); toast('已取消收藏'); } else { FAV[k] = Date.now(); toast('已收藏 ★', 1200, 'ok'); }
+  if (FAV[k]) {
+    const was = FAV[k];
+    delete FAV[k]; tombAdd('fav', k);
+    /* 候补池 E：误点取消收藏 → 5 秒内可以撤销。
+       撤销前要把「fav 墓碑」删掉：墓碑是给同步用的（别的标签页别把它合并回来），
+       留着的话 saveFav() 合并时又会把它过滤掉，等于撤销无效。 */
+    toast('已取消收藏', 5000, '', {
+      label: '撤销',
+      fn: () => {
+        FAV[k] = was;
+        try { if (TOMB.fav) { delete TOMB.fav[k]; writeLS(TOMB_KEY, TOMB); } } catch (e) {}
+        saveFav(); render(); toast('已恢复收藏', 1300, 'ok');
+      }
+    });
+  } else { FAV[k] = Date.now(); toast('已收藏 ★', 1200, 'ok'); }
   if (!saveFav()) toast('保存失败：浏览器存储空间可能已满', 2600, 'bad');
   /* 就地换那颗星：整页重画会把正在生成的「AI 解析」一起冲掉（找不到按钮时才重画） */
   const b = btn || document.getElementById('btnFav');
@@ -1239,12 +1405,21 @@ function renderChips(bank) {
   const n = f => poolCount(bank, f);
   const defs = [['all', '全部 ' + bank.questions.length], ['single', '单选 ' + n('single')], ['multi', '多选 ' + n('multi')],
                 ['wrong', '错题 ' + n('wrong')], ['fav', '收藏 ' + n('fav')], ['due', '待复习 ' + n('due')]];
-  $('chips').innerHTML = defs.map(([k, t]) => `<button class="chip${QZ.filter === k ? ' on' : ''}" data-f="${k}">${t}</button>`).join('');
-  $('chips').querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  $('chips').innerHTML = defs.map(([k, t]) => `<button class="chip${QZ.filter === k ? ' on' : ''}" data-f="${k}">${t}</button>`).join('')
+    + `<button class="chip tog${SET.shuffle ? ' on' : ''}" id="chipShuffle" title="随机顺序出题（和「设置」里那个开关是同一个）">随机 ${SET.shuffle ? '开' : '关'}</button>`;
+  $('chips').querySelectorAll('.chip[data-f]').forEach(c => c.onclick = () => {
     QZ.filter = c.dataset.f;
     const p = poolOf(bank);
     if (p.length && !p.some(q => String(q.id) === String(QZ.cur))) QZ.cur = p[0].id;
     render();
+  });
+  /* 候补池 F：「只刷错题」本来就是上面那颗「错题 N」chip，这里补一个「随机 开/关」快捷开关 */
+  on('chipShuffle', () => {
+    SET.shuffle = !SET.shuffle;
+    writeLS(LS.set, SET);
+    QZ.order = null;
+    render();
+    toast(SET.shuffle ? '随机顺序：开' : '随机顺序：关', 1200);
   });
 }
 function poolCount(bank, f) {
@@ -1309,6 +1484,8 @@ function judge(bank, q, sel) {
   delete QZ.pending[q.id];
   saveAns();
   render();
+  /* 候补池 B：判完立刻给反馈（触屏震一下 + 选项脉冲 + 答错一句提示） */
+  uiFeedbackPulse(bank, q, ANS[k] || { ok: ok }, sel);
   /* 判完分把反馈（对错 + 解析）滚进视野：手机上尤其需要，不然要点完还得自己往下翻 */
   const fbEl = $('fb');
   if (fbEl && (!ok || SET.expOnOk)) {
@@ -1347,7 +1524,8 @@ function showFb(bank, q) {
     ${extra}
     ${showExp
       ? `<div class="exp"><span class="lb">解析${custom ? '（自定义）' : ''}：</span>${renderRich(fk, explainOf(fk, q))}</div>`
-      : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}`;
+      : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}
+    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
 }
 
 function renderRich(k, text) {

@@ -440,6 +440,7 @@ function aiRestore(st) {
   const ta = host.querySelector('.ai-askq');
   if (fresh && ta && st.draft != null && ta.value !== st.draft) ta.value = st.draft;
   if (st.ctx) { try { aiPaintSrc(host, st.ctx); } catch (e) {} }
+  try { aiPaintHist(host); } catch (e) {}
   if (st.text) aiPaintOut(host, st.text, true);
   else if (!st.running) {
     const out = host.querySelector('.aiout');
@@ -502,8 +503,10 @@ function aiPanelHtml(host) {
   L.push('<button class="btn ai-copy">复制</button>');
   L.push('<button class="btn ai-copyq" title="把这道题 + 命中的资料 + 要求复制到剪贴板，粘到 Chatbox 等客户端里问">复制提问</button>');
   L.push('<button class="btn ai-save">' + (host.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析') + '</button>');
+  L.push('<button class="btn ai-clear" title="把这道题的这次对话清掉，重新开始（已存进解析的正文不受影响）">清空对话</button>');
   L.push('<span class="aistate small"></span>');
   L.push('</div>');
+  L.push('<div class="aihist" hidden></div>');                 /* 候补池 D：追问的历史折叠在这里 */
   L.push('<div class="aiout small"></div>');
   L.push('<div class="aisrc small muted"></div>');
   L.push('</div>');
@@ -571,6 +574,19 @@ function aiPanelBind(host) {
     aiCopy(aiSysText() + '\n\n' + aiUserText(st.q, (st.ctx && st.ctx.text) || '', '', st.k), host);
   };
   q('.ai-save').onclick = () => aiSaveOut(host);
+  q('.ai-clear').onclick = () => {
+    const st0 = AI_LAST[host.dataset.aiid];
+    if (!st0) return;
+    if (st0.running) { toast('正在生成，先点「停止」再清'); return; }
+    if (st0.text && !confirm('把这次对话清掉重新开始？（已经「存入本题解析」的正文不受影响）')) return;
+    st0.text = ''; st0.msgs = []; st0.hist = []; st0.curQ = ''; st0.ctx = null; st0.reason = '';
+    aiPaintHist(host);
+    aiPaintSrc(host, null);
+    aiPaintOut(host, '', true);
+    const o = host.querySelector('.aiout');
+    if (o) o.innerHTML = '<span class="muted">已经清空。在上面写你要什么，再点「生成解析」。</span>';
+    aiState(host, '就绪 · 等你的要求', '');
+  };
   q('.ai-all').onclick = () => { kbSelAll(true); paintAiChips(); };
   q('.ai-none').onclick = () => { kbSelAll(false); paintAiChips(); };
   host.querySelector('.aichipbox').addEventListener('click', e => {
@@ -631,6 +647,18 @@ function aiPaintOut(host, text, force) {
   out.innerHTML = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text).replace(/\n/g, '<br>');
   if (force) host.scrollIntoView({ block: 'nearest' });
 }
+/* 候补池 D：追问会把上一轮的回答顶掉，这里把历史收进一个可折叠的块（点开能回看） */
+function aiPaintHist(host) {
+  const st = AI_LAST[host && host.dataset ? host.dataset.aiid : ''];
+  const box = host ? host.querySelector('.aihist') : null;
+  if (!box) return;
+  const hist = (st && st.hist) || [];
+  if (!hist.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  const rnd = hist.map((h, i) => '<div class="aih-round"><div class="aih-q">第 ' + (i + 1) + ' 轮问：' + esc(h.q || '（没写要求，自由发挥）') + '</div>'
+    + '<div class="aih-a">' + ((typeof mdToHtml === 'function') ? mdToHtml(h.a || '') : esc(h.a || '').replace(/\n/g, '<br>')) + '</div></div>').join('');
+  box.innerHTML = '<details class="fold"><summary>之前的 ' + hist.length + ' 轮追问（点开看）</summary><div class="fold-body">' + rnd + '</div></details>';
+}
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
@@ -643,12 +671,16 @@ function aiPaintSrc(host, ctx) {
   box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => '<span class="aitag" title="' + esc(h.snip) + '">[' + (i + 1) + '] ' + esc(h.doc) + '</span>').join('')
     + (ctx.note ? ' <span class="small muted">（' + esc(ctx.note) + '）</span>' : '');
 }
-async function aiRun(host, userQ) {
-  const st = AI_LAST[host.dataset.aiid];
+async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   if (!st || st.running) return;
   if (!AIC.base || !AIC.model) { aiState(host, '先在「设置 / 知识库」里填接口地址和模型', 'bad'); return; }
   const fresh = !userQ;
-  if (fresh) { st.text = ''; st.msgs = []; }
+  if (fresh) { st.text = ''; st.msgs = []; st.hist = []; st.curQ = ''; }
+  else if (st.text) {                       /* 追问：先把上一轮收进历史，免得被新回答顶掉 */
+    st.hist = st.hist || [];
+    st.hist.push({ q: st.curQ || '', a: st.text });
+  }
+  st.curQ = userQ || '';
   st.running = true; st.ctl = new AbortController();
   st.host = host; st.sels = aiSels(host, st.k); st.ts = Date.now(); st.endTs = 0;
   const H = () => (aiFindHost(st) || host);       /* 重画之后画到「当前活着的那个宿主」里，流不会断 */
@@ -666,6 +698,7 @@ async function aiRun(host, userQ) {
   }
   st.ctx = ctx;
   aiPaintSrc(H(), ctx);
+  aiPaintHist(H());
   aiPaintOut(H(), fresh ? '' : st.text, true);
   aiState(H(), ctx.count ? ('已取 ' + ctx.count + ' 段资料，正在生成…') : '正在生成…');
   try {

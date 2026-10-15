@@ -224,14 +224,20 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v45-web31**）
+（缓存版本 **shuati-v46-web32**）
 
 | 问题 | 说明 |
 | --- | --- |
-| 设置弹窗一屏塞不下（手机上要滑半天） | `index.html` 把「复习参数 · 庆祝范围 · 快捷键」收进 `details.fold#setAdv`（默认折叠），常用项（外观 / 字号 / 4 个开关 / 复习曲线）留在外面；**只挪位置**，id 与 `app.js` 的绑定一个没动 |
-| 复习曲线的档位说明藏得深 | 档位 select、说明和「答对后的间隔」预览行（`#srsPreview`）摆到常用区，旁边补一句「松＝长期记忆，标准＝经典 / Anki，勤快＝考前冲刺」（6 档预设 `SRS_PRESETS` 本来就在，没改逻辑） |
-| `#/kb` 一页太长：配置 / 知识库 / 试检索 / 说明挤在一起 | 拆成 `① AI 服务 / ② 知识库 / ③ 试检索 / ④ 怎么用` 四个标签页（`kbTabsHtml()` / `kbPanelsHtml()` / `kbTabShow()` / `kbTabPaint()`）；**只切 display、不调 `render()`**（切标签 render 0 次，填了一半的配置不丢）；`kb.js` 的 `kbSectionHtml()` 拆成 `kbLibHtml()` + `kbTryHtml()`，老接口保留 |
-| 触屏上还显示答题页的快捷键提示 | `style.css` 的 `@media(hover:none)` 里加 `.keyhint{display:none}`（原来只在 ≤400px 宽时隐藏，平板 / 触屏笔记本盖不到） |
+| 答完题还得滚回底部才能翻页 | 反馈区底部加「**下一题 →**」（`showFb()` 里的 `.fbnext` / `#fbNext`），走同一个 `step(1)`；最后一题按钮变灰、文案改「已经是最后一题」（3.1） |
+| 手机上选项太小、点不准 | `style.css` 的 `@media(hover:none)` 里把 `.opt` 加到 `padding:13px 14px; min-height:46px`（3.2） |
+| 手机上翻题只能点底部按钮 | **候补池 A**：答题页卡片支持左右滑动翻题（`uiBindSwipe()`：横向位移 ≥30px、明显大于纵向、900ms 内；从选项 / 输入框 / 按钮起手不算；`touchend` 里 `preventDefault()` 压掉误触 click） |
+| 判分那一下没什么感觉 | **候补池 B**：`uiFeedbackPulse()` 给命中选项加 `.pulse-ok` / `.pulse-bad` 光晕（700ms），触屏再震一下（对 18ms / 错 22-60-22ms），答错弹「已记入错题本」；`prefers-reduced-motion` 时只留文案 |
+| 第一次打开、一道题都没有时不知道干嘛 | **候补池 C**：`firstGuideHtml()` 渲染「三步就能开始」卡（导入 / AI / 云同步，三个按钮走 document 事件委托）；因为首页正文其实是 `cat.js` 的目录视图接管，所以 `cat.js` 的 `homeHtml()` 也调它取一次 |
+| 追问几轮之后，面板里全是历史 | **候补池 D**：`aiPaintHist()` 把上一轮问答收进「之前的 N 轮追问」折叠块，面板上加「清空对话」（`ai-clear`） |
+| 手滑取消收藏 / 移除错题没法回头 | **候补池 E**：`toast(msg, ms, kind, { label, fn })` 支持气泡上的动作按钮；取消收藏与错题本移除都带「撤销」（5 秒）；撤销收藏时要把同步墓碑 `TOMB.fav[k]` 一起删掉，否则 `saveFav()` 合并时又会被过滤 |
+| 想随机刷题得进设置 | **候补池 F**：题库工具条加「随机 开 / 关」chip（`#chipShuffle`），直接切 `SET.shuffle` 并落盘 |
+| 错题本只能按题库筛 | **候补池 G**：`collection.js` 加「按考点」chips（`data-t`，只列当前列表里真有的标签、按题数排）、「找词」输入框（`#lkw` + `hayOf()`，多个词空格分开、命中处高亮）、「错次 ≥ N」（`#minW`），三者与题库 chip / 只看没做对 / 只看今天到期都能叠加 |
+| 手机上看题想复制题干 / 收藏要点好几下 | **候补池 H**：长按题干 600ms 弹 `#stemMenu`（复制题干 / AI 解析 / 收藏 / 关闭），只认 `pointerType === 'touch'` |
 
 | 问题 | 说明 |
 | --- | --- |
