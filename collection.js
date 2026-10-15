@@ -17,7 +17,7 @@ function mdValidColor(c) {
   return /^#[0-9a-f]{3,8}$/i.test(c) || /^[a-zA-Z]{2,20}$/.test(c);
 }
 function mdColorize(s) {
-  s = s.replace(/==([^=\n]+)==/g, (m, t) => MD_H_OPEN + t + MD_H_CLOSE);
+  s = s.replace(/==([^=\n](?:[^\n]*?[^=\n])?)==/g, (m, t) => MD_H_OPEN + t + MD_H_CLOSE);
   s = s.replace(/<font\s+color\s*=\s*["']?\s*([^\s"'>]+)\s*["']?\s*>\s*([\s\S]*?)\s*<\/font\s*>/gi, (m, c, inner) =>
     mdValidColor(c) ? (MD_C_OPEN + c.trim() + MD_C_END + inner + MD_C_CLOSE) : m);
   s = s.replace(/<span\s+style\s*=\s*["']?\s*color\s*:\s*([^\s;"'>]+)[^>]*>\s*([\s\S]*?)\s*<\/span\s*>/gi, (m, c, inner) =>
