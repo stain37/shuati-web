@@ -177,6 +177,8 @@ report.js                   AI 学情诊断（周报）（#/report：把学情�
 sw.js  manifest.json  icons/ PWA（离线缓存 + 主屏图标）
 robots.txt                  禁止搜索引擎收录（资料库有版权，别被索引）
 上传步骤.md                 怎么放到网上（Cloudflare Pages / Netlify Drop / GitHub Pages）+ 手机装 App + 数据搬家
+UI优化方案.md               UI / 交互优化执行方案（第一批「设置分层 / 复习曲线档位 / #kb 标签页 / 触屏收起快捷键提示」
+                            已做完上线；后面还有第二批导航重构、第三批细节、§3.5 候补池 8 条、第四批视觉焕新）
 banks/                     题库目录（本包为空，内置模考卷已移除）
   说明.txt                 怎么加自己的题库
   你的题库.js               放这里，再去 index.html 加一行
@@ -222,7 +224,14 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v44-web30**）
+（缓存版本 **shuati-v45-web31**）
+
+| 问题 | 说明 |
+| --- | --- |
+| 设置弹窗一屏塞不下（手机上要滑半天） | `index.html` 把「复习参数 · 庆祝范围 · 快捷键」收进 `details.fold#setAdv`（默认折叠），常用项（外观 / 字号 / 4 个开关 / 复习曲线）留在外面；**只挪位置**，id 与 `app.js` 的绑定一个没动 |
+| 复习曲线的档位说明藏得深 | 档位 select、说明和「答对后的间隔」预览行（`#srsPreview`）摆到常用区，旁边补一句「松＝长期记忆，标准＝经典 / Anki，勤快＝考前冲刺」（6 档预设 `SRS_PRESETS` 本来就在，没改逻辑） |
+| `#/kb` 一页太长：配置 / 知识库 / 试检索 / 说明挤在一起 | 拆成 `① AI 服务 / ② 知识库 / ③ 试检索 / ④ 怎么用` 四个标签页（`kbTabsHtml()` / `kbPanelsHtml()` / `kbTabShow()` / `kbTabPaint()`）；**只切 display、不调 `render()`**（切标签 render 0 次，填了一半的配置不丢）；`kb.js` 的 `kbSectionHtml()` 拆成 `kbLibHtml()` + `kbTryHtml()`，老接口保留 |
+| 触屏上还显示答题页的快捷键提示 | `style.css` 的 `@media(hover:none)` 里加 `.keyhint{display:none}`（原来只在 ≤400px 宽时隐藏，平板 / 触屏笔记本盖不到） |
 
 | 问题 | 说明 |
 | --- | --- |

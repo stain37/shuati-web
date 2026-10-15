@@ -517,7 +517,8 @@ function kbRowHtml(k) {
   }
   return html + '</div>';
 }
-function kbSectionHtml() {
+/* ② 知识库：列表 + 导入/粘贴 + 选择。单独一个函数，好让 #/kb 把它放进「② 知识库」标签页 */
+function kbLibHtml() {
   const rows = KB_LIST.map(kbRowHtml).join('') || '<div class="small muted">还没有知识库。导入 txt / md 文件，或把资料直接粘进来。</div>';
   const opts = KB_LIST.map(k => '<option value="' + k.id + '">' + esc(k.name) + '</option>').join('');
   const L = [];
@@ -547,6 +548,11 @@ function kbSectionHtml() {
   L.push('<button class="btn" id="kbAll">全选</button>');
   L.push('<button class="btn" id="kbNone">清空选择</button>');
   L.push('</div></div>');
+  return L.join('\n');
+}
+/* ③ 试检索：只用关键词检索，不花 token */
+function kbTryHtml() {
+  const L = [];
   L.push('<div class="card kbcard">');
   L.push('<div class="kbhead">③ 试检索 <span class="small muted">（看看资料能不能被 AI 找到，不花 token）</span></div>');
   L.push('<div class="tools">');
@@ -559,6 +565,8 @@ function kbSectionHtml() {
   L.push('</div>');
   return L.join('\n');
 }
+/* 老接口：②+③ 一起返回（#/kb 现在把 ③ 单独放进「试检索」标签页；这个留着给别处和老探针用） */
+function kbSectionHtml() { return kbLibHtml() + kbTryHtml(); }
 function kbBind(host) {
   const rows = host.querySelector('#kbRows');
   if (rows) rows.addEventListener('change', e => {

@@ -957,16 +957,59 @@ function aiBindConfig() {
   });
   on('aiKeyShow', () => { const el = $('aiKey'); if (el) el.type = el.type === 'password' ? 'text' : 'password'; });
 }
+/* ---------- #/kb 的四个标签页：① AI 服务 / ② 知识库 / ③ 试检索 / ④ 怎么用 ----------
+   只切 display、不调 render()：切标签不丢已经填进表单的配置，也不会整页闪一下。
+   当前标签只记在内存里（刷新回到①），不写 localStorage，免得云同步多带没用的东西。 */
+let KB_TAB = 'cfg';
+const KB_TABS = [['cfg', '① AI 服务'], ['kb', '② 知识库'], ['try', '③ 试检索'], ['help', '④ 怎么用']];
+function kbPanId(k) { return 'kbPan' + k.charAt(0).toUpperCase() + k.slice(1); }
+function kbTabsHtml() {
+  return '<div class="kbtabs" id="kbTabs" role="tablist">' + KB_TABS.map(t =>
+    '<button class="kbtab" type="button" role="tab" data-kbtab="' + t[0] + '"'
+    + (KB_TAB === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + '</button>').join('') + '</div>';
+}
+function kbPanelsHtml() {
+  const L = [];
+  L.push('<div class="kbpanel" id="kbPanCfg">' + aiConfigHtml() + '</div>');
+  L.push('<div class="kbpanel" id="kbPanKb">'
+    + (typeof kbLibHtml === 'function' ? kbLibHtml() : (typeof kbSectionHtml === 'function' ? kbSectionHtml() : ''))
+    + '</div>');
+  L.push('<div class="kbpanel" id="kbPanTry">' + (typeof kbTryHtml === 'function' ? kbTryHtml() : '') + '</div>');
+  L.push('<div class="kbpanel" id="kbPanHelp">' + aiHelpHtml() + '</div>');
+  return L.join('');
+}
+function kbTabPaint() {
+  KB_TABS.forEach(t => {
+    const pan = $(kbPanId(t[0]));
+    if (pan) pan.style.display = (t[0] === KB_TAB ? '' : 'none');
+    const btn = document.querySelector ? document.querySelector('.kbtab[data-kbtab="' + t[0] + '"]') : null;
+    if (btn) { if (t[0] === KB_TAB) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current'); }
+  });
+}
+function kbTabShow(k) {
+  if (!KB_TABS.some(t => t[0] === k)) return;
+  KB_TAB = k;
+  kbTabPaint();
+}
+function kbTabsBind() {
+  const box = $('kbTabs');
+  if (!box || box.__kbtabsBound) return;
+  box.__kbtabsBound = 1;
+  box.addEventListener('click', e => {
+    const b = e.target.closest ? e.target.closest('[data-kbtab]') : null;
+    if (b) kbTabShow(b.dataset.kbtab);
+  });
+}
 function renderKb() {
   /* 知识库列表要等 知识库.js 挂上才有内容：懒加载，加载完再重画一次 */
   if (typeof kbEnsureFilesLoaded === 'function') kbEnsureFilesLoaded().then(r => { if (r && r.added) { try { render(); } catch (e) {} } });
   if (typeof aiIngestCfg === 'function') aiIngestCfg();
-  $('view').innerHTML = '<h2 class="sec">AI 与知识库</h2>' + aiConfigHtml()
-    + (typeof kbSectionHtml === 'function' ? kbSectionHtml() : '')
-    + aiHelpHtml();
+  $('view').innerHTML = '<h2 class="sec">AI 与知识库</h2>' + kbTabsHtml() + kbPanelsHtml();
   aiPaintForm();
   aiBindConfig();
   if (typeof kbBind === 'function') kbBind($('view'));
+  kbTabsBind();
+  kbTabPaint();
 }
 
 /* 有没有 AI 正在流式生成 —— 答题页的键盘快捷键靠它让路（生成期间敲 A–H / Enter / ←→ / S 不该动页面） */
