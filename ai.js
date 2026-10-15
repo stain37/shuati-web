@@ -22,7 +22,7 @@ const AI_PRESETS = {
   custom:  { label: '自定义（任意 OpenAI 兼容接口）', base: '', model: '', models: [],
              tip: '填类似 https://xxx/v1 的地址；本地服务一般不需要 Key。' }
 };
-const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true, models: null };
+const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true, models: null, tempFix: null };
 let AIC = readLS(AI_LS, null) || {};
 Object.keys(AI_DEF).forEach(k => { if (AIC[k] == null) AIC[k] = AI_DEF[k]; });
 function aiSave() { writeLS(AI_LS, AIC); }
@@ -81,10 +81,34 @@ function aiErrInfo(e) {
   if (s >= 500) return { msg: '模型服务自己出错了（HTTP ' + s + '）', hint: '一般是服务商那边抖动，不是你配置的问题：等一会儿重试，或者换个模型。' + aiErrTail(body) };
   if (s === 400) {
     const b = body;
-    if (/model/i.test(b)) return { msg: '模型名不存在', hint: '先在模型服务里拉取模型（Ollama: ollama pull 模型名），再点「拉取模型列表」挑一个。' + aiErrTail(b) };
+    /* 这一支最容易被误判：错误体里几乎都带 "model" 这个词（for this model / model 某某），
+       所以先按具体关键词判，最后才回落到「模型名不存在」 */
+    if (/temperature/i.test(b)) {
+      return { msg: '这个模型只接受 temperature=1', hint: '设置里的「温度」现在填的不是 1：把它改成 1 就好（站点也会自己按 1 重试一次，成功的话不用你动手）。' + aiErrTail(b) };
+    }
+    if (/(max_tokens|context length|too long|maximum context|length limit|too many tokens)/i.test(b)) {
+      return { msg: '这次问得太长了（HTTP 400）', hint: '把设置里的「资料上限」或「检索片段数」调小一点再试；也可能是这道题本身太长。' + aiErrTail(b) };
+    }
+    if (/(model_not_found|model not found|unknown model|no such model|invalid model|does not exist|模型不存在)/i.test(b)) {
+      return { msg: '模型名不存在', hint: '先在模型服务里拉取模型（Ollama: ollama pull 模型名），再点「拉取模型列表」挑一个。' + aiErrTail(b) };
+    }
     return { msg: '请求被拒绝（HTTP 400）', hint: (aiErrBrief(b) || b.slice(0, 200)) };
   }
   return { msg: e.message || '出错', hint: aiErrBrief(body) ? ('服务商原话：' + aiErrBrief(body)) : '' };
+}
+
+/* 有的模型（推理模型，例如 kimi-k3）只接受 temperature=1。
+   碰到「400 + temperature」就自动按 1 重试一次，并把这个模型记在本机配置里，下次直接用 1。 */
+var AI_TEMP_NOTE = '';
+function aiTempFixed(model) { return !!(AIC.tempFix && AIC.tempFix[model]); }
+function aiTempRemember(model) {
+  if (!AIC.tempFix) AIC.tempFix = {};
+  AIC.tempFix[model] = 1;
+  AI_TEMP_NOTE = model;
+  try { aiSave(); } catch (e) {}
+}
+function aiTempNoteText() {
+  return AI_TEMP_NOTE ? '（这个模型只收 temperature=1，已经自动按 1 走；把设置里的温度改成 1 以后就每次都直接走）' : '';
 }
 
 /* ---------- 接口调用 ---------- */
@@ -102,19 +126,32 @@ async function aiChat(messages, onDelta, signal, opts) {
   const o = opts || {};
   const body = {
     model: cfg.model, messages: messages,
-    temperature: o.temp == null ? +cfg.temp : +o.temp,
+    temperature: o.temp == null ? (aiTempFixed(cfg.model) ? 1 : +cfg.temp) : +o.temp,
     stream: o.stream == null ? !!cfg.stream : !!o.stream
   };
   if (o.maxTokens) body.max_tokens = +o.maxTokens;
-  const res = await fetch(url, {
+  const post = () => fetch(url, {
     method: 'POST', headers: aiHeaders(cfg), signal: signal,
     body: JSON.stringify(body)
   });
+  const errOf = async (r) => {
+    const e = new Error('HTTP ' + r.status);
+    e.status = r.status;
+    e.body = await r.text().catch(() => '');
+    return e;
+  };
+  let res = await post();
   if (!res.ok) {
-    const e = new Error('HTTP ' + res.status);
-    e.status = res.status;
-    e.body = await res.text().catch(() => '');
-    throw e;
+    const e1 = await errOf(res);
+    /* 这个模型只收 temperature=1（kimi-k3 这类推理模型）：自动按 1 重试一次，并记下来 */
+    if (e1.status === 400 && /temperature/i.test(String(e1.body || '')) && +body.temperature !== 1) {
+      aiTempRemember(cfg.model);
+      body.temperature = 1;
+      res = await post();
+      if (!res.ok) throw await errOf(res);
+    } else {
+      throw e1;
+    }
   }
   if (!body.stream || !res.body) {
     const j = await res.json();
@@ -242,7 +279,7 @@ async function aiTest() {
   }
   try {
     const txt = await aiChat([{ role: 'user', content: '只回复两个字：可以' }], null, null);
-    set('一切正常 · 模型回了「' + String(txt || '').trim().slice(0, 20) + '」', 'ok');
+    set('一切正常 · 模型回了「' + String(txt || '').trim().slice(0, 20) + '」' + aiTempNoteText(), 'ok');
   } catch (e) {
     const c = aiErrInfo(e);
     set('生成失败：' + c.msg + '　' + c.hint, 'bad');
@@ -408,7 +445,7 @@ function aiRestore(st) {
     if (out && !out.innerHTML.trim()) out.innerHTML = '<span class="muted">还没开始。先在上面写你要什么（可以留空），再点「生成解析」；写好追问后点「继续问」。</span>';
   }
   if (st.running) aiState(host, '正在生成…', '');
-  else aiState(host, st.text ? '完成' : '就绪 · 等你的要求', st.text ? 'ok' : '');
+  else aiState(host, st.text ? ('完成' + aiTempNoteText()) : '就绪 · 等你的要求', st.text ? 'ok' : '');
   const stop = host.querySelector('.ai-stop'), go = host.querySelector('.ai-go');
   if (stop) stop.disabled = !st.running;
   if (go) go.disabled = !!st.running;
@@ -647,7 +684,7 @@ async function aiRun(host, userQ) {
     st.msgs.push({ role: 'assistant', content: st.text });
     aiPaintOut(H(), st.text, true);
     if (onlyReason) aiState(H(), '模型只回了思考过程，没给正文，点「继续问」试试', 'bad');
-    else aiState(H(), st.text ? '完成' : '模型没返回内容', st.text ? 'ok' : 'bad');
+    else aiState(H(), st.text ? ('完成' + aiTempNoteText()) : '模型没返回内容', st.text ? 'ok' : 'bad');
   } catch (e) {
     const c = aiErrInfo(e);
     if (c.msg === '已停止') aiState(H(), '已停止', '');
@@ -714,7 +751,8 @@ function aiConfigHtml() {
     + '<input class="inp" id="aiModelFilter" placeholder="筛一下（几个字）" title="模型多的时候按关键字筛">'
     + '<span class="small muted ai-model-hint" id="aiModelCount"></span></div>');
   L.push('<div class="tools"><span class="tl">API Key</span><input class="num grow" id="aiKey" type="password" placeholder="本地模型留空就行"><button class="btn" id="aiKeyShow">显示</button></div>');
-  L.push('<div class="tools"><span class="tl">温度</span><input class="num" id="aiTemp" type="number" min="0" max="2" step="0.1" style="width:78px">');
+  L.push('<div class="tools"><span class="tl">温度</span><input class="num" id="aiTemp" type="number" min="0" max="2" step="0.1" style="width:78px">'
+    + '<span class="small muted" id="aiTempTip"></span>');
   L.push('<span class="tl" title="每次回答问题，从知识库里捞几段资料给它当参考。片段本身最长约 560 字；一般 4 段够用，想让 AI 多做对比就 5~6 段。">检索片段数</span><input class="num" id="aiTopK" type="number" min="0" max="12" step="1" style="width:78px">');
   L.push('<span class="tl" title="这些参考资料加起来最多送给模型多少字。要跟上面的片段数配套：片段数 × 620 字以内才不会被截断。">资料上限</span><input class="num" id="aiMaxChars" type="number" min="600" max="20000" step="200" style="width:92px">');
   L.push('<label class="chk"><input type="checkbox" id="aiStream"> 流式输出</label></div>');
@@ -787,6 +825,7 @@ function aiReadForm() {
   if (v('aiSys') != null) AIC.sys = (v('aiSys') || '').trim();
   AIC.cfgAuto = false;        /* 你自己改过，就不再让 AI配置.js 覆盖 */
   aiSave();
+  aiPaintTempTip();
   if (typeof aiRagTip === 'function') aiRagTip();
 }
 /* 「检索片段数 × 资料上限」的实时提示：知识库一个片段最长约 560 字，这两个数要配套才不会白截 */
@@ -805,6 +844,11 @@ function aiRagTip() {
     el.innerHTML = '<span class="aistate bad">当前配法：' + k + ' 段，但每段只剩 ' + per + ' 字</span> → 片段本身有 500 多字，会<b>被截断</b>；而且总量一到 ' + mc + ' 字就停，实际只进得去约 ' + fit + ' 段（还都是残段）。想每段都完整：把「检索片段数」降到 <b>' + keep + '</b>，或把「资料上限」提到 <b>' + (k * 620) + '</b> 字左右。';
   }
 }
+function aiPaintTempTip() {
+  const el = $('aiTempTip');
+  if (!el) return;
+  el.textContent = aiTempFixed(AIC.model) ? '这个模型只收 1（已经自动按 1 走了）' : '';
+}
 function aiPaintForm() {
   const sel = $('aiPreset');
   if (sel) {
@@ -814,6 +858,7 @@ function aiPaintForm() {
   const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? '' : v; };
   set('aiBase', AIC.base); set('aiModel', AIC.model); set('aiKey', AIC.key);
   set('aiTemp', AIC.temp); set('aiTopK', AIC.topK); set('aiMaxChars', AIC.maxChars); set('aiSys', AIC.sys || '');
+  aiPaintTempTip();
   if ($('aiTmpl')) $('aiTmpl').checked = !!AIC.tmpl;
   const ms = (AI_PRESETS[AIC.preset] || {}).models || [];
   const known = (AIC.models && AIC.models.length) ? AIC.models.slice() : ms;
@@ -865,6 +910,7 @@ function aiBindConfig() {
     AIC.cfgAuto = false;
     aiSave();
     aiPaintModelPick(AIC.models || []);
+    aiPaintTempTip();
     const st = $('aiState');
     if (st) { st.textContent = '模型已设成 ' + sel.value; st.className = 'aistate ok'; }
   }, 'change');
