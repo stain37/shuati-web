@@ -212,6 +212,22 @@ body.dark .fb.bad{border-color:var(--bad-line)}
 body.quiz{padding-bottom:96px}
 body.dark .nav{background:rgba(15,20,32,.96)}
 
+/* ===== 第二批：底部统一导航（首页 / 错题 / 收藏 / 搜索 / AI / 设置） =====
+   答题页里它是第二行，叠在 .nav（上一题 / 答题卡 / 下一题）上面；其它页面只有这一行。 */
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;gap:4px;max-width:940px;margin:0 auto;
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
+  background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(10px);
+  border-top:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:var(--r-l) var(--r-l) 0 0}
+.bnav .btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  padding:6px 2px;min-height:44px;font-size:11px;line-height:1.2;color:var(--sub)}
+.bnav .btn span{font-size:11px}
+.bnav .btn.on{color:var(--primary);border-color:var(--primary-line);background:var(--primary-soft,rgba(37,99,235,.10))}
+body.dark .bnav{background:rgba(15,20,32,.96)}
+/* 非答题页：正文别被这条挡住（~62px）；答题页：#nav 顶到它上面，两条一共 ~158px */
+body{padding-bottom:calc(62px + env(safe-area-inset-bottom))}
+body.quiz{padding-bottom:calc(158px + env(safe-area-inset-bottom))}
+body.quiz .bnav{bottom:calc(74px + env(safe-area-inset-bottom))}
+
 /* ===== 答题卡（题号面板） ===== */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(50px,1fr));gap:8px}
 .gnum{font-size:13px;padding:9px 0;border-radius:var(--r-s);border:1px solid var(--line);background:var(--card);cursor:pointer;text-align:center;transition:background .15s,border-color .15s,transform .06s;font-variant-numeric:tabular-nums}
@@ -445,7 +461,7 @@ body.dark .kbrow,body.dark .kb-ta{background:var(--card)}
 body.dark #fatalBar{background:#3a1414;border-bottom-color:var(--bad-line);color:#fca5a5}
 
 /* 另一个标签页改了数据时的小提示 */
-#syncTip{position:fixed;right:14px;bottom:14px;z-index:90;background:#111827;color:#fff;font-size:12.5px;padding:8px 13px;border-radius:999px;opacity:0;transform:translateY(8px);transition:opacity .22s,transform .22s;pointer-events:none;max-width:70vw;box-shadow:var(--sh-2)}
+#syncTip{position:fixed;right:14px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:90;background:#111827;color:#fff;font-size:12.5px;padding:8px 13px;border-radius:999px;opacity:0;transform:translateY(8px);transition:opacity .22s,transform .22s;pointer-events:none;max-width:70vw;box-shadow:var(--sh-2)}
 #syncTip.show{opacity:.94;transform:none}
 body.dark #syncTip{background:#e5e7eb;color:#111827}
 
@@ -604,14 +620,14 @@ h2.sec::before{width:5px;height:18px;background:var(--grad)}
 .card:has(> .empty),.card:has(.empty:only-child){border-style:dashed}
 
 /* ---- 气泡提示（app.js toast 用） ---- */
-.toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));z-index:1000;display:flex;align-items:center;gap:9px;
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));z-index:1000;display:flex;align-items:center;gap:9px;
   max-width:84vw;background:rgba(17,24,39,.95);color:#fff;padding:11px 15px;border-radius:14px;font-size:13.5px;line-height:1.5;
   box-shadow:var(--sh-3);opacity:0;transform:translate(-50%,14px);transition:opacity .22s,transform .22s;pointer-events:none}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast .tic{flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
 .toast.ok .tic{background:#16a34a;color:#fff}
 .toast.bad .tic{background:#dc2626;color:#fff}
-body.quiz .toast{bottom:calc(104px + env(safe-area-inset-bottom))}
+body.quiz .toast{bottom:calc(176px + env(safe-area-inset-bottom))}
 body.dark .toast{background:rgba(237,240,247,.97);color:#0f172a}
 body.dark .toast .tic{background:rgba(15,23,42,.16)}
 
@@ -764,8 +780,8 @@ body.dark .help-card{background:rgba(255,255,255,.03)}
   .nav .btn.mid b{font-size:15px}
   .nav .btn.mid span{font-size:11px}
   .help-sheet .actions .btn{width:100%}
-  body.quiz{padding-bottom:104px}
-  body.quiz .toast{bottom:calc(112px + env(safe-area-inset-bottom))}
+  body.quiz{padding-bottom:calc(166px + env(safe-area-inset-bottom))}
+  body.quiz .toast{bottom:calc(184px + env(safe-area-inset-bottom))}
 }
 
 

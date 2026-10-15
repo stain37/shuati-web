@@ -607,9 +607,9 @@ function uiBindStemLongPress(bank, q, fk) {
   });
   ['pointerup', 'pointermove', 'pointercancel', 'pointerleave'].forEach(ev => stem.addEventListener(ev, clear));
 }
-/* 顶栏高亮当前所在页 */
+/* 底栏高亮当前所在页（第二批之后，入口都在底部导航上） */
 function markTop(name) {
-  const map = { home: 'btnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', sync: 'btnGoSync' };
+  const map = { home: 'bnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', sync: 'btnGoSync' };
   Object.keys(map).forEach(n => {
     const el = $(map[n]);
     if (!el) return;
@@ -739,14 +739,17 @@ function renderInner() {
   document.body.classList.toggle('quiz', full);
   $('nav').style.display = r.name === 'quiz' ? 'flex' : 'none';
   $('chips').style.display = r.name === 'quiz' ? 'flex' : 'none';
-  $('btnGrid').style.display = full ? '' : 'none';
-  $('btnQuizSet').style.display = full ? '' : 'none';
+  /* 第二批：顶栏瘦身 —— 题号 / 设置 都挪到下面了（答题卡的「上一题 / 答题卡 / 下一题」里有 #jumpInfo，
+     底部导航里有 #btnSetAll），所以这两个老按钮统一收起来，只留在 DOM 里给老代码兜底。 */
+  $('btnGrid').style.display = 'none';
+  $('btnQuizSet').style.display = 'none';
   $('btnHome').style.display = r.name === 'home' ? 'none' : '';
-  $('btnGoWrong').style.display = full ? 'none' : '';
-  $('btnGoFav').style.display = full ? 'none' : '';
-  $('btnGoSearch').style.display = full ? 'none' : '';
-  if ($('btnGoKb')) $('btnGoKb').style.display = full ? 'none' : '';
-  if ($('btnSetAll')) $('btnSetAll').style.display = full ? 'none' : '';
+  /* 底部导航的六个去处：不分页面，一直显示 */
+  $('btnGoWrong').style.display = '';
+  $('btnGoFav').style.display = '';
+  $('btnGoSearch').style.display = '';
+  if ($('btnGoKb')) $('btnGoKb').style.display = '';
+  if ($('btnSetAll')) $('btnSetAll').style.display = '';
 
   /* 考试没交卷就想跳走：先确认，免得倒计时在后台自己跑 */
   if (typeof examActive === 'function' && examActive() && r.name !== 'exam') {
@@ -2084,6 +2087,7 @@ on('btnGrid', () => { renderGrid(); $('gridMask').classList.add('show'); });
 on('jumpInfo', () => { renderGrid(); $('gridMask').classList.add('show'); });
 on('gridClose', closeAll);
 on('btnHome', () => go('#/'));
+on('bnHome', () => go('#/'));
 on('appTitle', () => go('#/'));
 on('btnGoWrong', () => go('#/wrong'));
 on('btnGoFav', () => go('#/fav'));
