@@ -39,6 +39,28 @@ function aiHeaders(cfg) {
 }
 
 /* ---------- 错误提示：尽量告诉用户到底哪里不对 ---------- */
+/* 服务商返回的错误体里通常有一句人话（{"error":{"message":"…","type":"…"}}），抠出来给用户看 */
+function aiErrBrief(body) {
+  var b = String(body || '').trim();
+  if (!b) return '';
+  var out = '';
+  try {
+    var j = JSON.parse(b);
+    var e = (j && j.error) || j || {};
+    if (typeof e === 'string') e = { message: e };
+    var m = e.message || e.msg || (j && j.message) || '';
+    var t = e.type || e.code || '';
+    out = (t ? '[' + t + '] ' : '') + m;
+  } catch (err) {
+    out = b.replace(/\s+/g, ' ');
+  }
+  out = String(out || '').trim();
+  return out ? out.slice(0, 160) : '';
+}
+function aiErrTail(body) {
+  var s = aiErrBrief(body);
+  return s ? '　服务商原话：' + s : '';
+}
 function aiErrInfo(e) {
   if (!e) return { msg: '未知错误', hint: '' };
   if (e.name === 'AbortError') return { msg: '已停止', hint: '' };
@@ -46,14 +68,23 @@ function aiErrInfo(e) {
     return { msg: '连不上模型服务', hint: '① 服务没启动（Ollama 要开着）；② 浏览器直连被跨域挡了：把 OLLAMA_ORIGINS 设成 * ，或者用站点里的「本地服务器.bat」打开（http://localhost:5173），见 AI知识库说明.md。' };
   }
   const s = e.status;
-  if (s === 401 || s === 403) return { msg: 'API Key 不对或没有权限', hint: '检查 Key 有没有复制全、有没有欠费。' };
-  if (s === 404) return { msg: '接口地址不对', hint: '地址一般要以 /v1 结尾，例如 http://127.0.0.1:11434/v1。' };
-  if (s === 400) {
-    const b = String(e.body || '');
-    if (/model/i.test(b)) return { msg: '模型名不存在', hint: '先在模型服务里拉取模型（Ollama: ollama pull 模型名），再点「拉取模型列表」挑一个。' };
-    return { msg: '请求被拒绝（HTTP 400）', hint: b.slice(0, 200) };
+  const body = String(e.body || '');
+  if (s === 401 || s === 403) return { msg: 'API Key 不对或没有权限', hint: '检查 Key 有没有复制全、有没有欠费。' + aiErrTail(body) };
+  if (s === 402) return { msg: '余额 / 额度不足（HTTP 402）', hint: '这是模型服务商那边的账务问题，不是站点的问题：去它的控制台看看余额或免费额度；急用可以先换个便宜的小模型（如 moonshot-v1-8k），或用本机 Ollama 顶着。' + aiErrTail(body) };
+  if (s === 404) return { msg: '接口地址或模型名不对（HTTP 404）', hint: '地址一般要以 /v1 结尾（例如 https://api.moonshot.cn/v1）；也可能这个模型你的账号没有权限，点「拉取模型列表」换一个。' + aiErrTail(body) };
+  if (s === 429) {
+    if (/quota|balance|insufficient|billing|exceed|余额|欠费|额度|配额/i.test(body)) {
+      return { msg: '额度 / 余额用完了（HTTP 429）', hint: '拉模型列表能通、一生成就 429，一般就是账户额度用完了：去 Kimi（Moonshot）控制台的账户页看看余额 / 免费额度；也可以先把模型换成便宜的小号（moonshot-v1-8k）或本机 Ollama 顶着。' + aiErrTail(body) };
+    }
+    return { msg: '问得太密了（HTTP 429）', hint: '一分钟内请求太多：等 30–60 秒再点；也可以把设置里的「检索片段数」「资料上限」调小、把「让模型把捞回来的段落重排」关掉，一次问得轻一点。' + aiErrTail(body) };
   }
-  return { msg: e.message || '出错', hint: '' };
+  if (s >= 500) return { msg: '模型服务自己出错了（HTTP ' + s + '）', hint: '一般是服务商那边抖动，不是你配置的问题：等一会儿重试，或者换个模型。' + aiErrTail(body) };
+  if (s === 400) {
+    const b = body;
+    if (/model/i.test(b)) return { msg: '模型名不存在', hint: '先在模型服务里拉取模型（Ollama: ollama pull 模型名），再点「拉取模型列表」挑一个。' + aiErrTail(b) };
+    return { msg: '请求被拒绝（HTTP 400）', hint: (aiErrBrief(b) || b.slice(0, 200)) };
+  }
+  return { msg: e.message || '出错', hint: aiErrBrief(body) ? ('服务商原话：' + aiErrBrief(body)) : '' };
 }
 
 /* ---------- 接口调用 ---------- */
@@ -107,6 +138,12 @@ async function aiChat(messages, onDelta, signal, opts) {
       if (d === '[DONE]') { if (onDelta) onDelta(full); return full; }
       try {
         const j = JSON.parse(d);
+        if (j && j.error) {            /* 有的服务商把报错塞在 200 的流里（限速/额度用完最常见） */
+          const em = new Error('HTTP ' + (j.error.code || j.error.status || 200));
+          em.status = j.error.code || j.error.status || 0;
+          em.body = JSON.stringify(j.error);
+          throw em;
+        }
         const ch0 = (j.choices && j.choices[0]) || {};
         const d0 = ch0.delta || {};
         const c = d0.content || (ch0.message && ch0.message.content) || '';
@@ -114,7 +151,10 @@ async function aiChat(messages, onDelta, signal, opts) {
         if (rz) reas += rz;
         if (c) { full += c; if (onDelta) onDelta(full, reas); }
         else if (rz && onDelta) onDelta(full, reas);      /* 只吐思考过程时也报一次，界面好显示「正在思考」 */
-      } catch (err) {}
+      } catch (err) {
+        if (err instanceof SyntaxError) continue;         /* 半截 JSON 是正常的，跳过这一行 */
+        throw err;
+      }
     }
   }
   if (onDelta) onDelta(full);
