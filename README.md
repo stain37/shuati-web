@@ -225,7 +225,13 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v49-web35**）
+（缓存版本 **shuati-v51-web37**）
+
+| 问题 | 说明 |
+| --- | --- |
+| 错题不想再练了，但要一道道手动选 | **核心功能 ②**：错题本（和「待复习」）展开题目后操作行多一个「**✗ 剔除错题**」（`data-act="kick"`）。只做一件事：`a.wrong = 0`（`inSrs()` 判的就是 `wrong > 0`，清掉就不算错题、也不再排复习），**tries / 正确率 / 收藏 / 自定义解析全留着**；顺带 `a.upd = Date.now()`，云同步不会被别的设备的旧记录盖回来 |
+| 批量那块只有收藏 / 移除记录 / 套卷 | **核心功能 ③**：批量折叠条里补 **✗ 剔除错题（保留记录）**（`data-batch="kick"`）、**✓ 标记已掌握**（`data-batch="mastered"`：`wrong=0` + `ok=true` + `redo=false`；这两个只在错题本出现）、**+ 加考点标签**（`data-batch="tagAdd"`：`#tagRow` 输入行 + `<datalist id="batchTagList">` 给词表候选，走 `TAGS.add` / `TAGS.set`，新词进 `qbank.tagvocab.v1`） |
+| 撤销点了一点反应都没有 | `mergeWrite()` 按 `recTs = max(ts, upd, updatedAt, createdAt)` 判新旧 —— 撤销时把老快照原样写回会被「刚才那条更新的记录」挡掉，**必须再推一次时间戳**：`snap.upd = Date.now(); ANS[k] = snap;`（批量版：`v.upd = Date.now(); ANS[k] = v;`）。删记录类的撤销还要删墓碑 |
 
 | 问题 | 说明 |
 | --- | --- |

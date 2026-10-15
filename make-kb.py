@@ -166,6 +166,7 @@ def read_pdf(path):
             page_texts.append('')
     if PDF_PAGES and len(reader.pages) > PDF_PAGES:
         print('    （只读了前 ' + str(PDF_PAGES) + ' 页 / 共 ' + str(len(reader.pages)) + ' 页）')
+    pages_total = len(reader.pages)
     whole = '\n'.join(page_texts)
     if not whole.strip():
         return []
@@ -178,22 +179,23 @@ def read_pdf(path):
                 end = bms[i + 1][1] if i + 1 < len(bms) else len(page_texts)
                 txt = '\n'.join(page_texts[p:end]).strip()
                 if txt:
-                    sections.append({'name': title, 'text': txt})
-            # 第一个书签之前的封面 / 目录并进第一节，不丢内容
+                    sections.append({'name': title, 'text': txt, 'page': p + 1, 'pages': pages_total})
+            # 第一个书签之前的封面 / 目录并进第一节，不丢内容（页码也归到 1）
             if bms[0][1] > 0:
                 pre = '\n'.join(page_texts[:bms[0][1]]).strip()
                 if pre and sections:
                     sections[0]['text'] = pre + '\n' + sections[0]['text']
+                    sections[0]['page'] = 1
             if len(sections) >= 2:
                 return sections
-    return [{'name': None, 'text': whole}]
+    return [{'name': None, 'text': whole, 'page': None, 'pages': pages_total}]
 
 
 def load_doc(path):
     """返回 [{name, text}, ...]；name 为 None 表示用相对路径做名字（普通文件）。PDF 书签切分返回多篇。"""
     ext = os.path.splitext(path)[1].lower()
     if ext == '.docx':
-        return [{'name': None, 'text': read_docx(path)}]
+        return [{'name': None, 'text': read_docx(path), 'page': None, 'pages': None}]
     if ext == '.pdf':
         return [] if PDF_SKIP else read_pdf(path)
     s = read_text(path) or ''
@@ -206,7 +208,7 @@ def load_doc(path):
             s = '\n'.join(out)
         except Exception:
             pass
-    return [{'name': None, 'text': s}]
+    return [{'name': None, 'text': s, 'page': None, 'pages': None}]
 
 
 def clean(s):
@@ -250,7 +252,7 @@ def scan(dirpath, old_by_file, old_md5):
             if not OVERWRITE and old_md5.get(rel) == md5 and rel in old_by_file:
                 n = 0
                 for d in old_by_file[rel]:
-                    docs.append({'name': d['name'], 'text': d['text'], 'file': rel})
+                    docs.append({'name': d['name'], 'text': d['text'], 'file': rel, 'page': d.get('page'), 'pages': d.get('pages')})
                     n += 1
                 if n:
                     print('  = ' + rel + '（没变，复用' + ('' if n == 1 else ' ' + str(n) + ' 节') + '）')
@@ -264,7 +266,7 @@ def scan(dirpath, old_by_file, old_md5):
                     text = text[:MAX_CHARS]
                 if not text:
                     continue
-                docs.append({'name': name, 'text': text, 'file': rel})
+                docs.append({'name': name, 'text': text, 'file': rel, 'page': s.get('page'), 'pages': s.get('pages')})
                 added += 1
             if added:
                 chars = sum(len(d['text']) for d in docs[-added:])
@@ -306,7 +308,7 @@ def existing_by_file(lib):
     m = {}
     for d in lib.get('docs', []):
         f = d.get('file') or d.get('name') or ''
-        m.setdefault(f, []).append({'name': d.get('name') or '', 'text': d.get('text') or ''})
+        m.setdefault(f, []).append({'name': d.get('name') or '', 'text': d.get('text') or '', 'page': d.get('page'), 'pages': d.get('pages')})
     return m
 
 
@@ -339,6 +341,7 @@ USAGE = r"""刷题站 · 把文件夹转成知识库.js
 
 可选参数：
     --overwrite      整份覆盖（不合并现有库、不读缓存，回到旧行为）
+    --name 生理        给对应目录起个库名（按顺序，可重复：--name 外科 --name 内科）
     --skip-pdf       跳过 PDF（最快）
     --no-bookmarks   关闭 PDF 书签切分（一本书算一篇）
     --pdf-pages 30   每个 PDF 只读前 30 页
@@ -352,6 +355,7 @@ def main():
     global PDF_SKIP, PDF_PAGES, MAX_CHARS, SPLIT_BOOKMARKS, OVERWRITE, DRY
     raw = sys.argv[1:]
     args = []
+    NAMES = []          # --name：给对应目录起库名（按顺序）
     i = 0
     while i < len(raw):
         a = raw[i]
@@ -360,6 +364,10 @@ def main():
             return
         if a == '--skip-pdf':
             PDF_SKIP = True
+        elif a == '--name':
+            i += 1
+            if i < len(raw):
+                NAMES.append(raw[i])
         elif a == '--no-bookmarks':
             SPLIT_BOOKMARKS = False
         elif a == '--overwrite':
@@ -385,9 +393,10 @@ def main():
         i += 1
     if args:
         bases = []
-        for a in args:
+        for idx, a in enumerate(args):
             ap = os.path.abspath(a)
-            bases.append((ap, os.path.basename(ap) or a))
+            nm = NAMES[idx] if idx < len(NAMES) else (os.path.basename(ap) or a)
+            bases.append((ap, nm))
     else:
         bases = [(os.path.join(ROOT, '资料'), '资料')]
 

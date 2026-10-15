@@ -385,7 +385,7 @@ async function aiContext(q, userQ) {
     const t = h.text.slice(0, per);
     if (used + t.length > (+cfg.maxChars || 3500) && blocks.length) return;
     used += t.length;
-    blocks.push('[' + (blocks.length + 1) + '] 《' + h.doc + (h.head ? ' · ' + h.head : '') + '》（知识库：' + h.kb + '）\n' + t);
+    blocks.push('[' + (blocks.length + 1) + '] 《' + h.doc + (h.head ? ' · ' + h.head : '') + (h.page ? ' · 第' + h.page + '页' : '') + '》（知识库：' + h.kb + '）\n' + t);
   });
   return { hits: hits.slice(0, blocks.length), text: blocks.join('\n\n'), count: blocks.length, note: note.join(' · ') };
 }
@@ -659,6 +659,12 @@ function aiPaintHist(host) {
     + '<div class="aih-a">' + ((typeof mdToHtml === 'function') ? mdToHtml(h.a || '') : esc(h.a || '').replace(/\n/g, '<br>')) + '</div></div>').join('');
   box.innerHTML = '<details class="fold"><summary>之前的 ' + hist.length + ' 轮追问（点开看）</summary><div class="fold-body">' + rnd + '</div></details>';
 }
+/* 参考资料标签上的名字：优先用源文件名（如「1.1 外科 颈部疾病」），没有就用节标题 */
+function aiSrcName(h) {
+  const f = String(h.file || '').split(/[\\\/]/).pop();
+  const base = (f || h.doc || '资料').replace(/\.[a-z0-9]+$/i, '').replace(/\s+/g, ' ').trim();
+  return base || h.doc || '资料';
+}
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
@@ -668,8 +674,32 @@ function aiPaintSrc(host, ctx) {
       : '';
     return;
   }
-  box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => '<span class="aitag" title="' + esc(h.snip) + '">[' + (i + 1) + '] ' + esc(h.doc) + '</span>').join('')
-    + (ctx.note ? ' <span class="small muted">（' + esc(ctx.note) + '）</span>' : '');
+  box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => {
+    const pg = h.page ? ' 第 ' + h.page + ' 页' : '';
+    const tip = (h.head ? h.head + '　' : '') + (h.snip || '');
+    return '<span class="aitag" data-src="' + i + '" title="' + esc(tip) + '">[' + (i + 1) + '] ' + esc(aiSrcName(h)) + pg + '</span>';
+  }).join('') + (ctx.note ? ' <span class="small muted">（' + esc(ctx.note) + '）</span>' : '');
+  /* 点标签展开这一节的完整原文（不是截取的那几百字）——做题时直接看讲义原话 */
+  box.querySelectorAll('.aitag').forEach(el => {
+    el.onclick = () => {
+      const i = +el.dataset.src, h = ctx.hits[i];
+      if (!h) return;
+      const cur = box.querySelector('.aisrc-full');
+      if (cur && cur.dataset.i === String(i)) { cur.remove(); el.classList.remove('on'); return; }
+      if (cur) cur.remove();
+      box.querySelectorAll('.aitag').forEach(x => x.classList.remove('on'));
+      const full = String(h.full || h.text || '');
+      const d = document.createElement('div');
+      d.className = 'aisrc-full';
+      d.dataset.i = String(i);
+      d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
+        + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
+        + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
+        + '<div class="aisrc-text">' + esc(full).replace(/\n/g, '<br>') + '</div>';
+      box.appendChild(d);
+      el.classList.add('on');
+    };
+  });
 }
 async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   if (!st || st.running) return;

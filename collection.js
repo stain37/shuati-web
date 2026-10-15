@@ -214,6 +214,14 @@ function tagListOf(k) {
   try { return (typeof tagsOf === 'function' && tagsOf(k)) || []; } catch (e) { return []; }
 }
 
+/* 考点词表 → 「批量加标签」输入框的候选（tags.js 没加载就空着） */
+function tagVocabOptions() {
+  try {
+    const all = (window.TAGS && typeof window.TAGS.all === 'function') ? window.TAGS.all() : [];
+    return (all || []).map(t => `<option value="${esc(t)}"></option>`).join('');
+  } catch (e) { return ''; }
+}
+
 function shuffle(a) {
   const r = a.slice();
   for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = r[i]; r[i] = r[j]; r[j] = t; }
@@ -402,10 +410,21 @@ function renderList(mode) {
             <span class="tl">对选中的题</span>
             <button class="btn" data-batch="fav">☆ 收藏</button>
             <button class="btn" data-batch="unfav">取消收藏</button>
-            ${isWrong ? `<button class="btn" data-batch="clearCount">清空作答/错误次数</button>
+            ${isWrong ? `<button class="btn" data-batch="kick">✗ 剔除错题（保留记录）</button>
+            <button class="btn" data-batch="mastered">✓ 标记已掌握</button>
+            <button class="btn" data-batch="clearCount">清空作答/错误次数</button>
             <button class="btn danger" data-batch="drop">移除记录</button>` : ''}
+            <button class="btn" data-batch="tagAdd" title="给选中的题一起加一个考点标签（标签会加进你的考点词表）">+ 加考点标签</button>
             <button class="btn primary" data-batch="paper">组成套卷重做</button>
             <button class="btn" data-batch="exam">模拟考试</button>
+          </div>
+
+          <div class="tools" id="tagRow" style="display:none">
+            <span class="tl">考点标签</span>
+            <input type="text" id="batchTag" class="num" list="batchTagList" placeholder="写一个考点名（可从词表里挑）" style="min-width:170px;flex:1 1 170px">
+            <datalist id="batchTagList">${tagVocabOptions()}</datalist>
+            <button class="btn primary" id="batchTagOk">给选中的加</button>
+            <button class="btn" id="batchTagCancel">取消</button>
           </div>
 
           ${paperRowsHtml()}
@@ -481,6 +500,25 @@ function bindCommonTools(mode, shown) {
   on('selInv', () => { shown.forEach(it => st.sel.has(it.k) ? st.sel.delete(it.k) : st.sel.add(it.k)); render(); });
   on('selNone', () => { st.sel.clear(); render(); });
   document.querySelectorAll('[data-batch]').forEach(b => b.onclick = () => batch(mode, b.dataset.batch));
+  /* ③ 批量加考点标签：输入框里写名字（候选来自考点词表），一次给选中的题都贴上 */
+  on('batchTagOk', () => {
+    const el = $('batchTag');
+    const name = String((el && el.value) || '').trim().replace(/\s+/g, ' ').slice(0, 14);
+    if (!name) { toast('先写一个考点名'); return; }
+    if (!(window.TAGS && typeof window.TAGS.add === 'function')) { toast('标签模块没加载'); return; }
+    const keys = (st.shown || []).filter(it => st.sel.has(it.k)).map(it => it.k);
+    if (!keys.length) { toast('先勾选题目'); return; }
+    const snap = keys.map(k => [k, window.TAGS.of(k)]);
+    keys.forEach(k => window.TAGS.add(k, [name]));
+    try { if (typeof window.TAGS.rememberVocab === 'function') window.TAGS.rememberVocab([name]); } catch (e) {}
+    if (el) el.value = '';
+    const row = $('tagRow'); if (row) row.style.display = 'none';
+    render();
+    toast(`已给 ${keys.length} 题加上「${name}」`, 5000, '', {
+      label: '撤销', fn: () => { snap.forEach(([k, v]) => window.TAGS.set(k, v)); render(); toast('已撤销', 1400, 'ok'); }
+    });
+  });
+  on('batchTagCancel', () => { const row = $('tagRow'); if (row) row.style.display = 'none'; });
   on('paperOk', () => makePaper(($('paperName').value || '').trim() || '临时套卷', st.pendingKeys || []));
   on('paperCancel', () => { st.pendingKeys = []; $('paperRow').style.display = 'none'; });
   on('examOk', () => {
@@ -524,6 +562,30 @@ function batch(mode, op) {
   } else if (op === 'unfav') {
     keys.forEach(k => { delete FAV[k]; tombAdd('fav', k); });
     saveFav(); toast(`已取消收藏 ${n} 题`); render();
+  } else if (op === 'kick' || op === 'mastered') {
+    /* 核心功能 ③：批量「剔除错题 / 标记已掌握」——只动「错题 / 待复习」标记，作答历史留着 */
+    const snap = [];
+    keys.forEach(k => {
+      const a = ANS[k];
+      if (!a) return;
+      snap.push([k, JSON.parse(JSON.stringify(a))]);
+      a.wrong = 0;                             /* inSrs() 看的就是 wrong>0：清了它就不算错题、也不排复习了 */
+      if (op === 'mastered') { a.ok = true; a.redo = false; }
+      a.upd = Date.now();                      /* 时间戳往后推：云同步合并时不会被旧记录盖回来 */
+    });
+    saveAns(); keys.forEach(k => st.sel.delete(k)); render();
+    const what = (op === 'mastered') ? '标记已掌握' : '剔除';
+    toast(`已${what} ${snap.length} 题（作答记录留着）`, 5000, '', {
+      label: '撤销', fn: () => {
+        snap.forEach(([k, v]) => { v.upd = Date.now(); ANS[k] = v; });   /* 时间戳再往后推：不然合并时被刚才那条更新的记录挡住 */
+        saveAns(); render(); toast(`已恢复 ${snap.length} 题`, 1400, 'ok');
+      }
+    });
+  } else if (op === 'tagAdd') {
+    const row = $('tagRow');
+    if (!row) return;
+    row.style.display = (row.style.display === 'none' || !row.style.display) ? '' : 'none';
+    if (row.style.display !== 'none') { const el = $('batchTag'); if (el) el.focus(); }
   } else if (op === 'drop') {
     if (!confirm(`把选中的 ${n} 道题的作答记录（含错题次数）移除？不可恢复。`)) return;
     /* 候补池 E：先拍一份快照，5 秒内可以撤销（连带把墓碑删掉，不然同步会又把它删回来） */
@@ -651,6 +713,7 @@ function itemHtml(it, mode) {
         <button class="btn" data-act="fix" title="题库答案写错了 / 自己点错了：可以在这里改">${hasFix(k) ? '改答案（已修正）' : '改答案'}</button>
         <button class="btn" data-act="ai" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
         <button class="btn" data-act="variant" title="让 AI 照这道题出几道同考点的新题（变式题），并跟库里相似的老题对比">变式题</button>
+        ${(mode === 'wrong' || mode === 'due') ? `<button class="btn" data-act="kick" title="只把「错题 / 待复习」标记去掉，作答次数、收藏、自定义解析都留着（5 秒内可撤销）">✗ 剔除错题</button>` : ''}
         <button class="btn" data-act="link">去题库里做这道题</button>
       </div>
       <div class="note-host"></div>
@@ -685,6 +748,17 @@ function bindItem(node, mode, it) {
     else if (act === 'drop') {
       if (!confirm('把这道题的作答记录（含错题次数）移除？不可恢复。')) return;
       delete ANS[k]; tombAdd('ans', k); saveAns(); st.sel.delete(k); toast('已移除'); render();
+    }
+    else if (act === 'kick') {
+      /* 核心功能 ②：单题一键剔除 —— 只清「错题 / 待复习」标记，作答次数、收藏、自定义解析都留着 */
+      const a = ANS[k];
+      if (!a) { toast('这道题没有作答记录'); return; }
+      const snap = JSON.parse(JSON.stringify(a));
+      a.wrong = 0; a.upd = Date.now();
+      saveAns(); st.sel.delete(k); render();
+      toast('已从错题本剔除（作答记录留着）', 5000, '', {
+        label: '撤销', fn: () => { snap.upd = Date.now(); ANS[k] = snap; saveAns(); render(); toast('已恢复', 1400, 'ok'); }
+      });
     }
     else if (act === 'note') openNoteEditor(k, node.querySelector('.note-host'), it.q, render);
     else if (act === 'fix') openAnsEditor(node.querySelector('.fix-host'), k, it.q, render);
