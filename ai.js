@@ -818,6 +818,77 @@ function aiPdfViewerOK() {
       && typeof ''.replaceAll === 'function';
   } catch (e) { return false; }
 }
+/* 这台设备上站内阅读器试过不行（看门狗抓到的）：记住它，以后直接给系统阅读器，
+   别再让人对着白屏发呆。想再试一次：参考资料里那颗「再试一次站内阅读器」会清掉这个标记。 */
+const PDF_NOVIEWER_LS = 'qbank.pdfnoviewer.v1';
+function aiPdfNoViewer() { try { return localStorage.getItem(PDF_NOVIEWER_LS) === '1'; } catch (e) { return false; } }
+function aiPdfNoViewerSet(on) { try { if (on) localStorage.setItem(PDF_NOVIEWER_LS, '1'); else localStorage.removeItem(PDF_NOVIEWER_LS); } catch (e) {} }
+/* 这台设备上「为什么打不开」的自检报告：让用户能一键复制发给我 */
+function aiPdfDiagText(extra) {
+  const L = [];
+  const P = (k, v) => L.push(k + '：' + v);
+  try {
+    P('时间', new Date().toLocaleString('zh-CN'));
+    P('页面', location.href);
+    P('UA', navigator.userAgent);
+    P('平台', (navigator.platform || '?') + ' / 触点 ' + (navigator.maxTouchPoints || 0) + ' / 主屏App ' + (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+    P('线路', (aiPdfMirId() || '(默认 ①)') + ' / 线上模式 ' + aiPdfOnline() + ' / 触屏判定 ' + aiPdfTouch());
+    P('站内阅读器可用', aiPdfViewerOK() + ' / 已被标记打不开 ' + aiPdfNoViewer());
+    const apis = ['URL.parse', 'Promise.withResolvers', 'Object.hasOwn', 'structuredClone'];
+    P('关键 API', apis.map(a => {
+      try { return a + '=' + (a === 'Object.hasOwn' ? typeof Object.hasOwn : (a === 'URL.parse' ? typeof URL.parse : (a === 'Promise.withResolvers' ? typeof Promise.withResolvers : typeof structuredClone))); } catch (e) { return a + '=缺'; }
+    }).join('  '));
+    P('模块 Worker', (function () { try { const w = new Worker(URL.createObjectURL(new Blob([''], { type: 'text/javascript' })), { type: 'module' }); w.terminate(); return '支持'; } catch (e) { return '不支持：' + (e && e.message); } })());
+    P('屏幕', screen.width + '×' + screen.height + ' @' + (window.devicePixelRatio || 1) + 'x');
+    const fid = document.getElementById('pdfFs');
+    if (fid) {
+      const f = fid.querySelector('iframe');
+      let st = '没有 iframe';
+      try {
+        const w = f && f.contentWindow;
+        st = 'viewer=' + !!(f && f.contentDocument && f.contentDocument.querySelector('#viewer'))
+          + ' app=' + !!(w && w.PDFViewerApplication)
+          + ' pdfDoc=' + !!(w && w.PDFViewerApplication && w.PDFViewerApplication.pdfDocument)
+          + ' err=' + JSON.stringify(((f && f.contentDocument && f.contentDocument.getElementById('errorMessage')) || {}).textContent || '').slice(0, 80);
+      } catch (e) { st = '读不到 iframe：' + e.message; }
+      P('整屏阅读器状态', st);
+    } else P('整屏阅读器状态', '(没开)');
+    if (extra) P('补充', extra);
+  } catch (e) { L.push('自检本身出错：' + (e && e.message)); }
+  return L.join('\n');
+}
+async function aiPdfDiagShow() {
+  let extra = '';
+  try {
+    const rel = 'pdf/' + encodeURIComponent('病理') + '/' + encodeURIComponent('1.结核_110-117.pdf');
+    const t0 = Date.now();
+    const id = await aiPdfMirPick(rel);
+    extra = '线路探测：' + (id || '无') + '，' + (Date.now() - t0) + 'ms';
+    for (const m of PDF_MIRS) {
+      const t = Date.now();
+      const ok = await aiPdfPing(m.id, rel, 6000);
+      extra += '\n  · ' + m.label + '（' + m.id + '）：' + (ok ? '通' : '不通') + ' ' + (Date.now() - t) + 'ms';
+    }
+    const u = aiPdfMirUrl(rel, aiPdfMirId() || PDF_MIRS[0].id);
+    const t1 = Date.now();
+    try { const r = await fetch(u, { headers: { Range: 'bytes=0-99' }, cache: 'no-store' }); extra += '\n  实测拉 100 字节：HTTP ' + r.status + '  ' + (Date.now() - t1) + 'ms'; }
+    catch (e) { extra += '\n  实测拉 100 字节：失败 ' + String(e).slice(0, 60); }
+  } catch (e) { extra = '探测出错：' + (e && e.message); }
+  const txt = aiPdfDiagText(extra);
+  const box = document.createElement('div');
+  box.id = 'pdfDiagBox';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9995;background:rgba(6,10,18,.85);display:flex;flex-direction:column;gap:9px;padding:14px';
+  box.innerHTML = '<div style="color:#fff;font-size:13.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    + '<span style="flex:1 1 180px">这台设备的 PDF 自检报告（复制发给我就行）</span>'
+    + '<button class="btn tiny" type="button" id="pdfDiagCopy">复制</button>'
+    + '<button class="btn tiny" type="button" id="pdfDiagClose">关闭</button></div>'
+    + '<textarea id="pdfDiagTa" spellcheck="false" style="flex:1;width:100%;border-radius:12px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5"></textarea>';
+  document.body.appendChild(box);
+  const ta = document.getElementById('pdfDiagTa');
+  ta.value = txt;
+  on('pdfDiagCopy', () => { try { ta.select(); document.execCommand('copy'); toast('已复制，粘给我就行'); } catch (e) { toast('复制失败，手动全选复制'); } });
+  on('pdfDiagClose', () => box.remove());
+}
 /* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
    window.__pdfTouch 是给探针用的开关，能强扮手机 / 电脑。 */
 function aiPdfTouch() {
@@ -845,12 +916,16 @@ function aiPdfBlockHtml(h, full) {
   /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
      直接给站内网页阅读器 —— 它跟普通网页一样，在浏览器 / 加到主屏的 App 里都能开。 */
   const viewer = aiPdfViewerHref(h);
-  /* 浏览器太旧（跑不动 pdf.js 5）：别给阅读器，直接给「系统阅读器打开」那条路 */
-  if (viewer && !aiPdfViewerOK()) {
+  /* 浏览器太旧（跑不动 pdf.js 5）、或者这台设备上看门狗已经确认打不开：
+     别给阅读器，直接给「系统阅读器打开」那条路 */
+  if (viewer && (!aiPdfViewerOK() || aiPdfNoViewer())) {
+    const why = aiPdfNoViewer() ? '这台设备上站内阅读器打不开（已经记住，不再重试）' : '这台设备的浏览器版本较旧（跑不动站内阅读器）';
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<a class="btn tiny primary" href="' + esc(direct + (anchor ? '#page=' + anchor : '')) + '" target="_blank" rel="noopener" title="用系统阅读器 / 浏览器直接打开这一节（原站直链）">📄 ' + label + ' ↗</a>'
+      + '<button class="btn tiny" type="button" data-pdf-retryviewer="1">再试一次站内阅读器</button>'
       + '</div>'
-      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">这台设备的浏览器版本较旧（跑不动站内阅读器），已经改成用系统阅读器打开；第一次会慢一点。</div>';
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">' + esc(why) + '，已经改成用系统阅读器打开。'
+      + '<a href="javascript:void 0" data-pdf-diag="1" style="margin-left:6px">看看为什么？</a></div>';
   }
   if (viewer && aiPdfTouch()) {
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
@@ -907,16 +982,20 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
     if (wtries >= 7) {
       clearInterval(watch);
       if (document.getElementById('pdfFsFail')) return;
+      aiPdfNoViewerSet(true);                       /* 记住：这台设备上阅读器打不开，以后直接给系统阅读器 */
       const bar = document.createElement('div');
       bar.id = 'pdfFsFail';
       bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;color:#fff;font-size:13px';
-      bar.innerHTML = '<span>这一页在这台设备上没打开成功。</span>'
+      bar.innerHTML = '<span>这一页在这台设备上没打开成功（以后这里会直接用系统阅读器）。</span>'
         + '<button class="btn tiny" type="button" id="pdfFsAgain">换条线路重试</button>'
-        + (directUrl ? '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(directUrl) + '">用系统阅读器直接打开 ↗</a>' : '');
+        + (directUrl ? '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(directUrl) + '">用系统阅读器直接打开 ↗</a>' : '')
+        + '<button class="btn tiny" type="button" id="pdfFsWhy">为什么打不开？</button>';
       const head = box.firstElementChild;
       if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling);
       const again = bar.querySelector('#pdfFsAgain');
       if (again) again.onclick = () => { const f = box.querySelector('iframe'); if (f) f.src = f.src; };
+      const why = bar.querySelector('#pdfFsWhy');
+      if (why) why.onclick = () => { try { aiPdfDiagShow(); } catch (e) {} };
     }
   }, 2000);
   if (sw && rel) sw.onclick = function () {
@@ -942,6 +1021,18 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
 function aiBindPdfInline(root) {
   (root || document).querySelectorAll('.pdf-full').forEach(btn => {
     btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF', btn.dataset.rel || '', btn.dataset.anchor || '');
+  });
+  /* 「再试一次站内阅读器」：清掉「这台设备打不开」的标记，下次又给阅读器 */
+  (root || document).querySelectorAll('[data-pdf-retryviewer]').forEach(btn => {
+    btn.onclick = () => {
+      aiPdfNoViewerSet(false);
+      toast('好，下次会再试一次站内阅读器', 3000);
+      try { if (typeof render === 'function') render(); } catch (e) {}
+    };
+  });
+  /* 「看看为什么？」：出个自检报告，可以一键复制发我 */
+  (root || document).querySelectorAll('[data-pdf-diag]').forEach(a => {
+    a.onclick = ev => { ev.preventDefault(); try { aiPdfDiagShow(); } catch (e) { toast('自检失败了：' + (e && e.message)); } };
   });
 }
 /* 同一份资料的重复段落合并成一个：同一文件 + 同一页（没页码就算同一文件）只留第一条。
