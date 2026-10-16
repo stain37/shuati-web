@@ -1034,12 +1034,16 @@ function firstGuideHtml() {
 /* 引导卡的三个按钮用事件委托（cat.js 会重画首页，逐个绑会丢） */
 /* 触屏上「滑不动」的兜底：解析块/AI 输出是 contenteditable 与可选文字，
    手指落在上面拖拽会被当成「选文字」，页面就滞住了。只要手指落点不在正在编辑的那块里，
-   就先把焦点放开（顺带收键盘），把滚动权还给页面。 */
+   就先把焦点放开（顺带收键盘），把滚动权还给页面。
+   ⚠ 唯独放行格式小浮条（.fmt-bar，选中文字后的 加粗 / 颜色…）：它挂在 body 上、
+   不在编辑块里，点色点时要是先把编辑器失焦，手机上选区就丢了 ——
+   表现出来就是「颜色改不了」（2026-10-17 用户报，实测点浮条的 pointerdown 后 activeElement 变 body）。 */
 document.addEventListener('pointerdown', ev => {
   try {
     const ae = document.activeElement;
     if (!ae || !ae.isContentEditable) return;
     if (ev.target && ae.contains(ev.target)) return;
+    if (ev.target && ev.target.closest && ev.target.closest('.fmt-bar')) return;   // 浮条不算「点别处」
     ae.blur();
   } catch (e) {}
 }, true);
