@@ -234,3 +234,48 @@ body.nbm { user-select: none; -webkit-user-select: none; }
   .nb-crumb { max-width: 62vw; }
 }
 
+/* ---------- 拖放反馈：列表 / 详细信息 / 面包屑也当放置目标 ---------- */
+.nb-lrow.dragging, .nb-drow.dragging { opacity: .55; border-style: dashed; border-color: var(--primary); }
+.nb-lrow.drop-tgt { border-color: var(--primary); border-style: dashed; box-shadow: var(--sh-pop); }
+.nb-drow.drop-tgt td { background: var(--primary-weak); }
+.nb-crumb.drop-tgt { background: var(--primary-weak); border-color: var(--primary); box-shadow: var(--sh-1); }
+
+/* ---------- 题目管理页（#/qlist）：一张张读题、勾选批量删 ---------- */
+.ql-head { margin-bottom: 12px; }
+.ql-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.ql-title { margin: 0 0 4px; font-size: calc(var(--fs) * 1.25); line-height: 1.4; word-break: break-word; }
+.ql-sub { line-height: 1.6; }
+.ql-hint { margin-top: 10px; line-height: 1.7; }
+.ql-bar { position: sticky; top: 6px; z-index: 6; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; margin-bottom: 12px; }
+.ql-bar .nb-search { flex: 1 1 200px; }
+.ql-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-m);
+  padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--sh-1);
+  transition: border-color .15s, box-shadow .15s;
+}
+.ql-card.on { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-weak), var(--sh-1); }
+.ql-ctop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; cursor: pointer; user-select: none; }
+.ql-box {
+  flex: none; width: 20px; height: 20px; border-radius: 6px; box-sizing: border-box;
+  border: 1.5px solid var(--line); background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+}
+.ql-box.on { border-color: var(--primary); background: var(--primary); }
+.ql-box.on::after { content: "✓"; color: #fff; font-size: 13px; line-height: 1; font-weight: 700; }
+.ql-no { font-weight: 700; font-size: calc(var(--fs) * .95); }
+.ql-ans { color: var(--sub); font-size: calc(var(--fs) * .85); }
+.ql-ans b { color: var(--ok); }
+.ql-stem { line-height: 1.75; font-size: var(--fs); white-space: pre-wrap; word-break: break-word; }
+.ql-group { background: var(--bg2); border-left: 3px solid var(--primary-line); padding: 6px 10px; border-radius: 6px; color: var(--sub); font-size: calc(var(--fs) * .9); line-height: 1.6; margin: 0 0 8px; word-break: break-word; }
+.ql-opts { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.ql-opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg2); line-height: 1.6; font-size: calc(var(--fs) * .95); word-break: break-word; }
+.ql-opt b { flex: none; color: var(--sub); min-width: 1em; }
+.ql-opt.right { border-color: var(--ok-line); background: var(--okbg); }
+.ql-opt.right b { color: var(--ok); }
+.ql-opt.wrong { border-color: var(--bad-line); background: var(--badbg); }
+.ql-opt.wrong b { color: var(--bad); }
+.ql-exp { margin-top: 10px; }
+.ql-exp summary { cursor: pointer; color: var(--primary); font-size: calc(var(--fs) * .92); user-select: none; }
+.ql-exp-body { margin-top: 8px; padding: 10px 12px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; line-height: 1.7; font-size: calc(var(--fs) * .94); overflow-wrap: anywhere; }
+
+

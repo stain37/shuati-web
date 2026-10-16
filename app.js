@@ -417,7 +417,12 @@ function hasFix(k) { return !!fixOf(k); }
 function ansOf(k, q) { return fixOf(k) || ((q && q.answer) ? q.answer : []); }
 function setFix(k, letters) {
   letters = Array.from(new Set((letters || []).map(x => String(x).toUpperCase()).filter(a => 'ABCDEFGH'.includes(a)))).sort();
-  if (letters.length) FIX[k] = letters; else delete FIX[k];
+  if (letters.length) {
+    FIX[k] = letters;
+    /* 删题时会给 FIX 记过墓碑；7 天内又把这道题（重新导入后）修了答案的话，
+       墓碑会把这次写入挡掉，这里主动把墓碑删掉——跟「取消收藏 → 撤销」一个套路 */
+    try { if (TOMB && TOMB.fix && TOMB.fix[k]) { delete TOMB.fix[k]; writeLS(TOMB_KEY, TOMB); } } catch (e) {}
+  } else delete FIX[k];
   saveFix();
 }
 /* 按新答案重判这条作答记录：原来是误判为错的，把错次数还回去 */
@@ -772,6 +777,7 @@ function route() {
   if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
+  if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
   return { name: 'home' };
 }
 function go(hash) {
@@ -881,6 +887,7 @@ function renderInner() {
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
+  else if (r.name === 'qlist') { if (window.CAT && CAT.qlistRender) CAT.qlistRender(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">题目管理模块没加载（cat.js）。</div></div>'; }
   else renderQuiz(r.bankId);
   markTop(r.name);
   try { uiPaintBadge(); } catch (e) {}
@@ -1277,6 +1284,73 @@ function deletePaper(id) {
   toast('已删除套卷'); render();
 }
 
+/* ---------- 删题：从【自建题库】里移除一道题 ----------
+   场景：刷题时觉得某道题不好（重复 / 出得歪 / 跟资料对不上），想直接扔掉。
+   入口：答题页「⋯ 更多 → 删除本题」、cat.js 题目管理页（#/qlist）的勾选删除。
+   内置题库是 banks/*.js 里的只读文件，删不了；自建题库存在 qbank.local.v2，这里直接把那道题摘掉。
+   连带清掉这道题的本机痕迹（作答 / 收藏 / 自定义解析 / 参考资料 / 口诀便签 / 修正答案 / 考点标签），
+   该写墓碑的写墓碑 —— 免得被另一个标签页或云端旧副本复活；套卷里引用它的地方也一起摘干净。 */
+function delTargetOf(bank, q) {
+  if (!bank || !q) return null;
+  if (bank.paper) {                              /* 套卷 / 模考里的题：删的是它原来题库里那道 */
+    if (!q._srcKey) return null;
+    const f = findQIn(baseBanks(), q._srcKey);
+    if (!f || !f.bank || f.bank.source !== 'local') return null;
+    return { bankId: f.bank.id, qid: f.q.id, title: f.bank.title };
+  }
+  if (bank.source !== 'local') return null;      /* 内置题库：只读 */
+  return { bankId: bank.id, qid: q.id, title: bank.title };
+}
+function delQTraces(k) {
+  if (ANS[k] != null) { delete ANS[k]; tombAdd('ans', k); saveAns(); }
+  if (FAV[k] != null) { delete FAV[k]; tombAdd('fav', k); saveFav(); }
+  if (NOTES[k] != null) { delete NOTES[k]; tombAdd('note', k); saveNotes(); }   /* ai.js 包过 tombAdd：参考资料清单跟着一起清 */
+  else if (typeof aiSrcFor === 'function' && typeof aiSrcDrop === 'function') {
+    try { if (aiSrcFor(k).length) aiSrcDrop(k); } catch (e) {}                  /* 只剩参考资料清单的旧数据也清掉 */
+  }
+  if (QTN[k] != null) { delete QTN[k]; tombAdd('qtn', k); saveQtn(); }
+  if (FIX[k] != null) { delete FIX[k]; tombAdd('fix', k); saveFix(); }
+  try { if (window.TAGS && TAGS.set) TAGS.set(k, []); } catch (e) {}
+}
+function delBankQuestion(bankId, qid) {
+  if (!Array.isArray(LOCAL)) return { ok: false, reason: 'builtin' };
+  const raw = LOCAL.find(x => x && x.id === bankId);
+  if (!raw) return { ok: false, reason: 'builtin' };
+  const qs = Array.isArray(raw.questions) ? raw.questions : (raw.questions = []);
+  const idx = qs.findIndex(q => q && String(q.id) === String(qid));
+  if (idx < 0) return { ok: false, reason: 'missing' };
+  const srcKey = key(bankId, qid);
+  /* 先清套卷（要在缓存还认得出这道题的时候做）：套卷自己的作答键、套卷引用的 keys */
+  let paperTouched = false;
+  try {
+    allBanks().forEach(b => {
+      if (!b.paper) return;
+      b.questions.forEach(q => {
+        if (q._srcKey !== srcKey) return;
+        const pk = kOf(b, q);
+        if (ANS[pk] != null) { delete ANS[pk]; tombAdd('ans', pk); paperTouched = true; }
+      });
+    });
+    let changed = false;
+    PAPERS.forEach(p => {
+      if (Array.isArray(p.keys) && p.keys.indexOf(srcKey) >= 0) {
+        p.keys = p.keys.filter(x => x !== srcKey);
+        changed = true; paperTouched = true;
+      }
+    });
+    if (changed) savePapers();
+  } catch (e) {}
+  qs.splice(idx, 1);
+  delQTraces(srcKey);
+  if (paperTouched) saveAns();
+  writeLS(LS.banks, LOCAL);
+  invalidateBanks();
+  try { if (window.BF && BF.autoSync) BF.autoSync(); } catch (e) {}
+  return { ok: true, left: qs.length };
+}
+window.delBankQuestion = delBankQuestion;   /* cat.js 的题目管理页要调 */
+window.delTargetOf = delTargetOf;
+
 function storageBytes() {
   let n = 0;
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += (k || '').length + (localStorage.getItem(k) || '').length; } } catch (e) {}
@@ -1450,6 +1524,7 @@ function renderQuiz(bankId) {
   const faved = !!FAV[fk];
   const custom = !!noteOf(fk);
   const fixedAns = hasFix(fk);
+  const delT = delTargetOf(bank, q);              /* 这道题能不能删、删的是哪个题库里的哪道（内置题库不能删） */
 
   const opts = q.options.map((t, i) => {
     const K = 'ABCDEFGH'[i];
@@ -1516,6 +1591,7 @@ function renderQuiz(bankId) {
             <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
             <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
             <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
+            ${delT ? '<button class="btn danger" id="doDelQ" title="把这道题从题库里永久删掉（它的作答记录 / 收藏 / 解析会一起清）">🗑 删除本题</button>' : ''}
           </div>
           <button class="btn" data-qsheet="0">取消</button>
         </div>
@@ -1551,6 +1627,26 @@ function renderQuiz(bankId) {
     openNoteEditor(fk, $('noteHost'), q, render);
   });
   on('doFix', () => openAnsEditor($('fixHost'), fk, q, render));
+  /* 「删除本题」：只删自建题库里的题（套卷里的题记在它原来的题库上）。删完自动跳到下一题 */
+  if (delT) on('doDelQ', () => {
+    const i2 = pool.findIndex(x => String(x.id) === String(q.id));
+    const nxt = pool[i2 + 1] || pool[i2 - 1] || null;
+    const ask = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : (o => Promise.resolve(confirm(o.title)));
+    ask({
+      title: '删除这道题？',
+      html: '从题库「' + esc(delT.title) + '」里移除第 ' + esc(String(qNo(q, pool))) + ' 题。<br>它的作答记录、收藏、解析（含 AI 解析、参考资料）、标签会一起清掉，<b>不可恢复</b>。'
+        + (bank.paper ? '<br><span class="muted">引用它的套卷里也会一起消失。</span>' : ''),
+      okText: '删除', danger: true
+    }).then(ok => {
+      if (!ok) return;
+      const r = delBankQuestion(delT.bankId, delT.qid);
+      if (!r.ok) { toast(r.reason === 'builtin' ? '内置题库是只读文件，删不了题' : '这道题已经不在了'); return; }
+      QZ.cur = nxt ? nxt.id : null;
+      qSheetToggle(false);
+      toast('已删除这道题' + (bank.paper ? '（套卷里也一起去掉了）' : ''), 1600, 'ok');
+      render();
+    });
+  });
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
   /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
