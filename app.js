@@ -25,7 +25,8 @@ const LS = {
   cat: 'qbank.cats.v1',
   tag: 'qbank.tags.v1',            /* 知识点标签（tags.js） */
   tagvocab: 'qbank.tagvocab.v1',   /* 考点词表（受控：AI 打标签只从里面挑） */
-  report: 'qbank.report.v1'        /* AI 学情诊断的历史报告（report.js） */
+  report: 'qbank.report.v1',       /* AI 学情诊断的历史报告（report.js） */
+  qtn: 'qbank.qtn.v1'              /* 答题页右侧的「口诀 / 思路」小便签（跟解析分开存） */
 };
 const readLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 /* 写不进去要吵醒用户：localStorage 满了 / 被禁用时悄悄丢数据是最坑的 */
@@ -118,6 +119,7 @@ window.addEventListener('storage', e => {
   if (k === LS.ans) ANS = readLS(LS.ans, {});
   else if (k === LS.fav) FAV = readLS(LS.fav, {});
   else if (k === LS.note) NOTES = readLS(LS.note, {});
+  else if (k === LS.qtn) QTN = readLS(LS.qtn, {});
   else if (k === LS.fix) FIX = readLS(LS.fix, {});
   else if (k === LS.paper) { PAPERS = readLS(LS.paper, []); invalidateBanks(); }
   else if (k === LS.banks) { LOCAL = readLS(LS.banks, []); invalidateBanks(); }
@@ -156,6 +158,7 @@ let ANS = readLS(LS.ans, {});
 let LOCAL = readLS(LS.banks, []);
 let FAV = readLS(LS.fav, {});
 let NOTES = readLS(LS.note, {});
+let QTN = readLS(LS.qtn, {});      /* 答题页右侧便签（口诀 / 思路）：跟解析分开存，一个题目一条 */
 let PAPERS = readLS(LS.paper, []);     // [{ id, title, createdAt, keys:[] }]
 let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
@@ -1460,11 +1463,17 @@ function renderQuiz(bankId) {
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
       </div>
       <div class="vstrip" id="vStrip"></div>
+      <div class="qtwo">
       <div id="qBody">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
       <div class="stem">${esc(q.stem)}</div>
       ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
+      </div>
+      <aside class="qnbox" id="qnBox">
+        <div class="qn-cap">✎ 口诀 / 思路<span class="qn-state small muted" id="qnState"></span></div>
+        <textarea id="qnTa" rows="4" spellcheck="false" placeholder="只记几个字：口诀、判别法、易错点。&#10;（跟解析分开存，只在本机）">${esc((QTN[fk] || {}).text || '')}</textarea>
+      </aside>
       </div>
       <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
@@ -1521,6 +1530,21 @@ function renderQuiz(bankId) {
   /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
   if (typeof varqBind === 'function') varqBind($('vStrip'), fk);
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
+  (() => {                                   /* 右侧小便签：输入防抖自动存，失焦再存一次 */
+    const ta = document.getElementById('qnTa');
+    const st = document.getElementById('qnState');
+    if (!ta) return;
+    let timer = null;
+    const save = () => {
+      const v = ta.value.trim();
+      if (v) QTN[fk] = { text: v, ts: Date.now() };
+      else delete QTN[fk];
+      writeLS(LS.qtn, QTN);
+      if (st) { st.textContent = v ? '已存' : ''; setTimeout(() => { if (st) st.textContent = ''; }, 1200); }
+    };
+    ta.addEventListener('input', () => { if (st) st.textContent = '…'; clearTimeout(timer); timer = setTimeout(save, 700); });
+    ta.addEventListener('blur', () => { clearTimeout(timer); save(); });
+  })();
   /* §3.6-P0① 专注模式：就地切，不整页重画（重画会打断正在生成的 AI 面板） */
   on('btnFocus', () => { uiSetFocus(!SET.focus); const b = document.getElementById('btnFocus'); if (b) b.classList.toggle('on', !!SET.focus); });
   /* 考点标签那一行：加 / 删 / 小浮层编辑器（就地重画，不整页重画） */
