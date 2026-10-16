@@ -145,6 +145,8 @@ window.addEventListener('storage', e => {
     if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;   // 正在打字：先只更新内存
     /* AI 解析 / 变式题面板开着（含还没点「生成」的空面板）：整页重画会把它们冲掉，先只更新内存 */
     if ((typeof aiPanelOpen === 'function' && aiPanelOpen()) || (typeof variantPanelOpen === 'function' && variantPanelOpen())) return;
+    /* 正在看参考资料 / PDF 整屏阅读器：别重画，免得把它冲掉、PDF 又得重下一遍 */
+    try { if (document.getElementById('pdfFs') || document.querySelector('.aisrc-full')) return; } catch (err) {}
     try { render(); showSyncTip(); } catch (err) {}
   }, 250);
 });

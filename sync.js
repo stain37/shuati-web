@@ -18,7 +18,7 @@
 const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
-  auto: true, device: '',
+  auto: true, autoMin: 2, device: '',
   scope: { ans: true, note: true, qtn: true, paper: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
@@ -324,6 +324,7 @@ function syncSafeRender() {
     if (typeof AI_LAST === 'object' && AI_LAST
       && Object.keys(AI_LAST).some(k => AI_LAST[k] && AI_LAST[k].running)) { syncAfterRender(); return; }
   } catch (e) {}
+  if (syncBlocked()) { SYNC_RENDER_PENDING = true; syncAfterRender(); return; }   /* 别把正在看的参考资料 / PDF 冲掉 */
   render();
 }
 /* 上传后回读一次做确认：有些服务商对「写」的响应不带跨域头，浏览器读不到回包，
@@ -473,14 +474,31 @@ function syncFp() {
   return s;
 }
 let SYNC_FP = '';
+/* 用「正在看东西」的几处守卫：参考资料展开着 / PDF 整屏阅读器开着 / AI 面板开着，
+   就别整页重画（否则看着看着就被收起来、PDF 还得重下）。没画成的话记一笔，等空了再补。 */
+let SYNC_RENDER_PENDING = false;
+function syncBlocked() {
+  try {
+    if (typeof aiPanelOpen === 'function' && aiPanelOpen()) return true;
+    if (document.getElementById('pdfFs')) return true;
+    if (document.querySelector('.aisrc-full')) return true;
+    if (typeof variantPanelOpen === 'function' && variantPanelOpen()) return true;
+  } catch (e) {}
+  return false;
+}
 function syncTick() {
+  if (SYNC_RENDER_PENDING && !syncBlocked()) { SYNC_RENDER_PENDING = false; try { render(); } catch (e) {} }
   if (!syncReady() || !SYC.auto) return;
   const fp = syncFp();
   if (!SYNC_FP) { SYNC_FP = fp; return; }
   if (fp === SYNC_FP) return;
   SYNC_FP = fp; SYNC_DIRTY = true;
+  const min = Math.max(0, Math.min(120, (+SYC.autoMin != null) ? +SYC.autoMin : 2));
+  if (min <= 0) return;                                   /* 0 = 不自动传，只手点 */
+  /* 攒够「每隔 N 分钟」（默认 2 分钟）再一起传：省得一边看解析一边被同步打断 */
+  const wait = Math.max(2000, min * 60000 - (Date.now() - (+SYC.lastAt || 0)));
   clearTimeout(SYNC_TIMER);
-  SYNC_TIMER = setTimeout(() => { if (SYNC_DIRTY) { SYNC_DIRTY = false; syncNow(true); } }, 12000);
+  SYNC_TIMER = setTimeout(() => { if (SYNC_DIRTY) { SYNC_DIRTY = false; syncNow(true); } }, wait);
 }
 function syncStart() {
   SYNC_FP = syncFp();
@@ -520,7 +538,9 @@ function syncCardHtml() {
   L.push('<div class="tools"><span class="tl">' + esc(syncP().tokenLabel) + '</span><input class="num grow" id="syncToken" type="password" placeholder="' + esc(syncP().tokenPh) + '" value="' + esc(SYC.token) + '">'
     + '<button class="btn" id="syncTokShow">显示</button><button class="btn" id="syncTest">测试连接</button></div>');
   L.push('<div class="tools"><span class="tl">这台设备叫</span><input class="num" id="syncDevice" style="width:170px" placeholder="' + esc(syncDevice()) + '" value="' + esc(SYC.device) + '">'
-    + '<label class="chk"><input type="checkbox" id="syncAuto"' + (SYC.auto ? ' checked' : '') + '> 自动同步（改了就上传，打开页面先对一次）</label></div>');
+    + '<label class="chk"><input type="checkbox" id="syncAuto"' + (SYC.auto ? ' checked' : '') + '> 自动同步</label>'
+    + '<span class="tl">每隔</span><input class="num" id="syncAutoMin" style="width:60px" value="' + esc(String(SYC.autoMin)) + '"><span class="tl">分钟传一次</span>'
+    + '<span class="small muted">0–120；填 0 = 只手动点。改动仍然随时会记，只是攒够这个间隔再一起传。</span></div>');
   L.push('<div class="tools">' + SYNC_SCOPES.map(x => '<label class="chk" title="' + esc(x.tip) + '"><input type="checkbox" class="syncScope" data-k="' + x.k + '"' + (SYC.scope[x.k] ? ' checked' : '') + '> ' + esc(x.label) + '</label>').join('') + '</div>');
   L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
@@ -583,6 +603,12 @@ function syncReadForm() {
     const x = v(p[0]); if (x != null) SYC[p[0] === 'syncToken' ? 'token' : p[1]] = x.trim();
   });
   if ($('syncAuto')) SYC.auto = !!$('syncAuto').checked;
+  if ($('syncAutoMin')) {
+    let m = parseFloat(String($('syncAutoMin').value).replace(/[^0-9.]/g, ''));
+    if (!isFinite(m) || m < 0) m = 0;
+    if (m > 120) m = 120;
+    SYC.autoMin = Math.round(m * 10) / 10;
+  }
   document.querySelectorAll('.syncScope').forEach(el => { SYC.scope[el.getAttribute('data-k')] = !!el.checked; });
   SYC.scope.ans = !!SYC.scope.ans;
   if (!SYC.branch) SYC.branch = syncP().branch;
@@ -591,7 +617,7 @@ function syncReadForm() {
   if (window.SYNC) SYNC.cfg = SYC;
 }
 function syncBind() {
-  ['syncOwner', 'syncRepo', 'syncBranch', 'syncPath', 'syncToken', 'syncDevice', 'syncAuto'].forEach(id => on(id, syncReadForm, 'change'));
+  ['syncOwner', 'syncRepo', 'syncBranch', 'syncPath', 'syncToken', 'syncDevice', 'syncAuto', 'syncAutoMin'].forEach(id => on(id, syncReadForm, 'change'));
   on('syncProvider', () => {
     const before = SYC.provider;
     syncReadForm();

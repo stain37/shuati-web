@@ -719,9 +719,77 @@ function aiPdfHref(h) {
 }
 /* 站点根（index.html 所在目录）：站内 PDF / 阅读器都从它算绝对地址 */
 function aiPdfBase() { return location.origin + location.pathname.replace(/[^\/]*$/, ''); }
+/* ---------- PDF 走哪条线路（2026-10-16「PDF 太慢」这一轮的方案 ①）----------
+   实测：线上直连 GitHub Pages 只有 33–46 KB/s（1.23 MB 的病理要 33 秒），
+   国内能连上的 GitHub 加速代理 gh-proxy.com 有 729 KB/s（约 18 倍）、ghfast.top 约 300 KB/s。
+   所以：线上（github.io）走代理，本机 / 局域网 / file:// 走本地相对路径（本地本来最快、还不吃流量）。
+   选线：优先用上次选中的（记 qbank.pdfmirror.v1，7 天后重测），后台用 2 字节的 Range 请求探一遍，
+   谁先回来用谁；点开时要是这条挂了，阅读器里有「换条线路」按钮立刻换。 */
+const PDF_MIR_LS = 'qbank.pdfmirror.v1';
+const PDF_RAW_BASE = 'https://raw.githubusercontent.com/stain37/shuati-web/main/';
+const PDF_MIRS = [
+  { id: 'gh-proxy', pre: 'https://gh-proxy.com/', label: '加速线路①' },
+  { id: 'ghfast', pre: 'https://ghfast.top/', label: '加速线路②' },
+  { id: 'direct', pre: '', label: '原站直连' }
+];
+function aiPdfOnline() {
+  try { if (window.__pdfForceOnline != null) return !!window.__pdfForceOnline; } catch (e) {}
+  try { return /(^|\.)github\.io$/i.test(location.hostname); } catch (e) { return false; }
+}
+function aiPdfMirCache() { try { const o = JSON.parse(localStorage.getItem(PDF_MIR_LS) || 'null'); return (o && o.id) ? o : null; } catch (e) { return null; } }
+function aiPdfMirSave(id) { try { localStorage.setItem(PDF_MIR_LS, JSON.stringify({ id: id, ts: Date.now() })); } catch (e) {} }
+function aiPdfMirId() {
+  const o = aiPdfMirCache();
+  const ok = o && PDF_MIRS.some(m => m.id === o.id) && (Date.now() - (+o.ts || 0) < 7 * 86400000);
+  return ok ? o.id : '';
+}
+function aiPdfMirUrl(rel, id) {
+  const m = PDF_MIRS.find(x => x.id === id) || PDF_MIRS[0];
+  return m.pre ? (m.pre + PDF_RAW_BASE + rel) : (aiPdfBase() + rel);
+}
+function aiPdfMirLabel(id) { const m = PDF_MIRS.find(x => x.id === id); return m ? m.label : ''; }
+function aiPdfPing(id, rel, ms) {
+  return new Promise(resolve => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(false); } }, ms);
+    try {
+      fetch(aiPdfMirUrl(rel, id), { headers: { Range: 'bytes=0-1' }, cache: 'no-store' })
+        .then(r => { if (!done) { done = true; clearTimeout(t); resolve(!!r && (r.status === 206 || r.ok)); } })
+        .catch(() => { if (!done) { done = true; clearTimeout(t); resolve(false); } });
+    } catch (e) { if (!done) { done = true; clearTimeout(t); resolve(false); } }
+  });
+}
+async function aiPdfMirPick(rel) {
+  if (!aiPdfOnline()) return '';
+  const cur = aiPdfMirId();
+  const order = PDF_MIRS.map(m => m.id).sort((a, b) => (a === cur ? -1 : b === cur ? 1 : 0));
+  for (const id of order) {
+    if (await aiPdfPing(id, rel, id === cur ? 3000 : 2500)) { aiPdfMirSave(id); return id; }
+  }
+  return cur || PDF_MIRS[0].id;
+}
+let AI_PDF_MIR_BUSY = false;
+function aiPdfMirWarm(rel) {
+  if (!aiPdfOnline() || AI_PDF_MIR_BUSY || aiPdfMirId()) return;
+  AI_PDF_MIR_BUSY = true;
+  try { aiPdfMirPick(rel).then(() => { AI_PDF_MIR_BUSY = false; }).catch(() => { AI_PDF_MIR_BUSY = false; }); }
+  catch (e) { AI_PDF_MIR_BUSY = false; }
+}
+/* 阅读器本体（viewer.html + 3 个 js，约 3.7 MB）先悄悄拉一遍：
+   SW 是「先用缓存、后台更新」，拉一遍就进缓存了，第一次点「看原页」不用现等。 */
+let AI_PDF_VIEWER_WARM = false;
+function aiPdfViewerWarm() {
+  if (AI_PDF_VIEWER_WARM) return;
+  AI_PDF_VIEWER_WARM = true;
+  const base = aiPdfBase();
+  ['pdfjs/web/viewer.html', 'pdfjs/web/viewer.css', 'pdfjs/web/viewer.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs']
+    .forEach((p, i) => { setTimeout(() => { try { fetch(base + p).catch(() => {}); } catch (e) {} }, 1500 + i * 400); });
+}
 function aiPdfAbs(h) {
   const rel = String(aiPdfHref(h) || '').split('#')[0];
-  return rel ? aiPdfBase() + rel : '';
+  if (!rel) return '';
+  if (!aiPdfOnline()) return aiPdfBase() + rel;
+  return aiPdfMirUrl(rel, aiPdfMirId() || PDF_MIRS[0].id);
 }
 /* 站内网页阅读器（pdfjs\web\viewer.html，2026-10-16 新增）：
    安卓 / iOS 的浏览器不认内嵌 PDF（iframe 直接空白，安卓 Chrome 还会把文件整份拉下来），
@@ -731,6 +799,11 @@ function aiPdfViewerHref(h) {
   const abs = aiPdfAbs(h);
   if (!abs) return '';
   const anchor = h.pdfp || h.page;
+  return aiPdfBase() + 'pdfjs/web/viewer.html?file=' + encodeURIComponent(abs) + (anchor ? '#page=' + anchor : '');
+}
+/* 按「相对路径 + 页码 + 线路」直接拼阅读器地址（换线路时用） */
+function aiPdfViewerUrl(rel, anchor, id) {
+  const abs = aiPdfMirUrl(rel, id || aiPdfMirId() || PDF_MIRS[0].id);
   return aiPdfBase() + 'pdfjs/web/viewer.html?file=' + encodeURIComponent(abs) + (anchor ? '#page=' + anchor : '');
 }
 /* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
@@ -752,35 +825,42 @@ function aiPdfBlockHtml(h, full) {
   }
   const label = h.page ? ('打开 PDF 第 ' + h.page + ' 页') : '打开 PDF';
   const title = '《' + aiSrcName(h) + '》' + (h.page ? ' 第 ' + h.page + ' 页' : '');
+  const rel = String(pdf).split('#')[0];
+  const anchor = h.pdfp || h.page || '';
+  const direct = aiPdfBase() + String(pdf).split('#')[0];
+  try { aiPdfMirWarm(rel); } catch (e) {}
+  try { aiPdfViewerWarm(); } catch (e) {}
   /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
      直接给站内网页阅读器 —— 它跟普通网页一样，在浏览器 / 加到主屏的 App 里都能开。 */
   const viewer = aiPdfViewerHref(h);
   if (viewer && aiPdfTouch()) {
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-title="' + esc(title) + '" title="在本站里用网页阅读器打开原页（纯网页渲染，安卓 / iPhone 都行；Esc 或右上角关闭退出）">📖 看原页（网页阅读器）</button>'
-      + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
+      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="在本站里用网页阅读器打开原页（纯网页渲染，安卓 / iPhone 都行；Esc 或右上角关闭退出）">📖 看原页（网页阅读器）</button>'
+      + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
       + '</div>'
-      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的网页阅读器会直接翻开这一页，能翻页、双指放大，不用先下载几十 MB。</div>';
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的网页阅读器会直接翻开这一页（走加速线路，比直连快十几倍），能翻页、双指放大。</div>';
   }
+  /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
   return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(pdf) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
-    + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="在新标签里用系统的 PDF 阅读器打开这一节">' + label + ' ↗</a>'
-    + (viewer ? '<a class="btn tiny" href="' + esc(viewer) + '" target="_blank" rel="noopener" title="站内网页阅读器（手机上用这个；电脑上系统阅读器更全）">📖 网页阅读器 ↗</a>' : '')
+    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
+    + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（原站直链，加载慢一点）">' + label + ' ↗</a>'
     + '</div>'
     + '<div class="pdf-embed" style="margin:0 0 9px">'
-    + '<iframe src="' + esc(pdf) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
+    + '<iframe src="' + esc(viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
+    + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）</div>'
     + '</div>';
 }
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
-function aiPdfFullscreen(pdf, title) {
+function aiPdfFullscreen(pdf, title, rel, anchor) {
   const old = document.getElementById('pdfFs');
   if (old) old.remove();
   const box = document.createElement('div');
   box.id = 'pdfFs';
   box.style.cssText = 'position:fixed;inset:0;z-index:9990;background:rgba(6,10,18,.78);display:flex;flex-direction:column;padding:13px;gap:9px';
   box.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#fff;font-size:13.5px;flex-wrap:wrap">'
-    + '<span style="flex:1 1 240px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title || 'PDF') + '</span>'
-    + '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(pdf) + '">用阅读器打开 ↗</a>'
+    + '<span style="flex:1 1 200px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title || 'PDF') + '</span>'
+    + (rel && aiPdfOnline() ? '<button class="btn tiny" type="button" id="pdfFsSwap" title="这条线路取不到就换一条（加速线路①→②→直连）">换条线路</button>' : '')
+    + '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(pdf) + '">新窗口打开 ↗</a>'
     + '<button class="btn tiny" type="button" id="pdfFsClose">关闭（Esc）</button>'
     + '</div>'
     + '<iframe src="' + esc(pdf) + '" title="' + esc(title || 'PDF') + '" style="flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>';
@@ -791,11 +871,30 @@ function aiPdfFullscreen(pdf, title) {
   const btn = document.getElementById('pdfFsClose');
   if (btn) btn.onclick = close;
   box.addEventListener('click', e => { if (e.target === box) close(); });
+  const sw = document.getElementById('pdfFsSwap');
+  if (sw && rel) sw.onclick = function () {
+    if (sw.dataset.busy) return;
+    sw.dataset.busy = '1'; sw.textContent = '正在试别的线路…';
+    const cur = aiPdfMirId();
+    const others = PDF_MIRS.map(m => m.id).filter(id => id !== cur);
+    (async () => {
+      let okId = '';
+      for (const id of others) { if (await aiPdfPing(id, rel, 2600)) { okId = id; break; } }
+      delete sw.dataset.busy;
+      if (!okId) { sw.textContent = '线路都不通，稍后再试'; setTimeout(() => { sw.textContent = '换条线路'; }, 2600); return; }
+      aiPdfMirSave(okId);
+      const f = box.querySelector('iframe');
+      const url = aiPdfViewerUrl(rel, anchor, okId);
+      if (f) f.src = url;
+      sw.textContent = '已换到' + aiPdfMirLabel(okId);
+      setTimeout(() => { sw.textContent = '换条线路'; }, 2600);
+    })();
+  };
 }
 /* 「⛶ 全屏看原页」按钮的绑定 */
 function aiBindPdfInline(root) {
   (root || document).querySelectorAll('.pdf-full').forEach(btn => {
-    btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF');
+    btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF', btn.dataset.rel || '', btn.dataset.anchor || '');
   });
 }
 /* 同一份资料的重复段落合并成一个：同一文件 + 同一页（没页码就算同一文件）只留第一条。
@@ -815,6 +914,13 @@ function aiSrcName(h) {
   const base = (f || h.doc || '资料').replace(/\.[a-z0-9]+$/i, '').replace(/\s+/g, ' ').trim();
   return base || h.doc || '资料';
 }
+/* 展开的是哪一条：按「这一组参考资料的内容签名」记，重心画之后自动展回去
+   （云同步、翻页、切页都会整页重画，以前点开的东西会被一起收起来） */
+const AI_SRC_OPEN = {};
+function aiSrcSig(hits) {
+  return (hits || []).map(h => String(h.file || h.doc || '') + '#' + (h.pdfp || h.page || '') + '#' + String(h.head || '')).join('|');
+}
+function aiSrcAnyOpen() { try { return !!document.querySelector('.aisrc-full'); } catch (e) { return false; } }
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
@@ -825,33 +931,45 @@ function aiPaintSrc(host, ctx) {
       : '';
     return;
   }
+  const sig = aiSrcSig(ctx.hits);
   box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => {
     const pg = h.page ? ' 第 ' + h.page + ' 页' : '';
     const tip = (h.head ? h.head + '　' : '') + (h.snip || '');
     return '<span class="aitag" data-src="' + i + '" title="' + esc(tip) + '">[' + (i + 1) + '] ' + esc(aiSrcName(h)) + pg + '</span>';
   }).join('') + (ctx.note ? ' <span class="small muted">（' + esc(ctx.note) + '）</span>' : '');
   /* 点标签展开这一节的完整原文（不是截取的那几百字）——做题时直接看讲义原话 */
+  const openHit = (i, el) => {
+    const h = ctx.hits[i];
+    if (!h) return;
+    const cur = box.querySelector('.aisrc-full');
+    if (cur) cur.remove();
+    box.querySelectorAll('.aitag').forEach(x => x.classList.remove('on'));
+    const full = String(h.full || h.text || '');
+    const d = document.createElement('div');
+    d.className = 'aisrc-full';
+    d.dataset.i = String(i);
+    d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
+      + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
+      + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
+      + aiPdfBlockHtml(h, full);
+    box.appendChild(d);
+    aiBindPdfInline(d);
+    if (el) el.classList.add('on');
+    AI_SRC_OPEN[sig] = i;                      /* 记下来：万一页面重画（云同步等），自动展开回去 */
+  };
   box.querySelectorAll('.aitag').forEach(el => {
     el.onclick = () => {
-      const i = +el.dataset.src, h = ctx.hits[i];
-      if (!h) return;
+      const i = +el.dataset.src;
       const cur = box.querySelector('.aisrc-full');
-      if (cur && cur.dataset.i === String(i)) { cur.remove(); el.classList.remove('on'); return; }
-      if (cur) cur.remove();
-      box.querySelectorAll('.aitag').forEach(x => x.classList.remove('on'));
-      const full = String(h.full || h.text || '');
-      const d = document.createElement('div');
-      d.className = 'aisrc-full';
-      d.dataset.i = String(i);
-      d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
-        + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
-        + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
-        + aiPdfBlockHtml(h, full);
-      box.appendChild(d);
-      aiBindPdfInline(d);
-      el.classList.add('on');
+      if (cur && cur.dataset.i === String(i)) { cur.remove(); el.classList.remove('on'); delete AI_SRC_OPEN[sig]; return; }
+      openHit(i, el);
     };
   });
+  /* 上一次是展开着的（多半是云同步把页面重画了）：直接展回去，不用再点一次 */
+  if (AI_SRC_OPEN[sig] != null && ctx.hits[AI_SRC_OPEN[sig]]) {
+    const el = box.querySelector('.aitag[data-src="' + AI_SRC_OPEN[sig] + '"]');
+    openHit(AI_SRC_OPEN[sig], el);
+  }
 }
 async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   if (!st || st.running) return;
