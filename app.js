@@ -72,7 +72,7 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   TOMB.wipe[kind] = Date.now();
   writeLS(TOMB_KEY, TOMB);
 }
-function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, report: {}, qtn: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
@@ -110,6 +110,9 @@ const saveFav = () => mergeWrite(LS.fav, FAV, 'fav');
 const saveNotes = () => { const r = mergeWrite(LS.note, NOTES, 'note'); if (typeof bumpHay === 'function') bumpHay(); return r; };
 const saveFix = () => { const r = mergeWrite(LS.fix, FIX, 'fix'); if (typeof bumpHay === 'function') bumpHay(); return r; };
 const savePapers = () => mergeWrite(LS.paper, PAPERS, 'paper');
+/* 口诀 / 思路便签：跟解析一样走「合并写入」（多标签安全 + 删除记墓碑），这样云同步才能按时间戳合并、
+   并且在一台设备上清空之后，不会被另一台设备/云端里的旧副本复活。 */
+const saveQtn = () => mergeWrite(LS.qtn, QTN, 'qtn');
 
 /* 别的标签页写了 → 把最新数据读进内存；正打字就先不重画，免得把输入冲掉 */
 let _syncT = 0, _syncNeed = false;
@@ -1301,7 +1304,7 @@ function catRows() {
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
 async function exportAllData() {
   let tipCats = 0;
-  const data = { app: 'shuati', version: 6, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS,
+  const data = { app: 'shuati', version: 7, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
     tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
     tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
     report: (window.REPORT && REPORT.data) ? REPORT.data() : readLS(LS.report, []) };
@@ -1329,11 +1332,17 @@ function importAllData(e) {
       const kbCnt = (d.kb && (d.kb.list || []).length) || 0;
       const tagCnt = Object.keys(d.tags || {}).length;
       const repCnt = Array.isArray(d.report) ? d.report.length : 0;
-      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${repCnt ? '、学情报告 ' + repCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
+      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、口诀便签 ${cnt('qtn')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${repCnt ? '、学情报告 ' + repCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
       Object.assign(ANS, d.answers || {});
       Object.assign(FAV, d.favs || {});
       Object.assign(NOTES, d.notes || {});
       Object.assign(FIX, d.fixes || {});
+      if (d.qtn && typeof d.qtn === 'object') {                  // 口诀便签：同一条以时间戳新的为准
+        Object.keys(d.qtn).forEach(k => {
+          const th = d.qtn[k], mi = QTN[k];
+          if (th && typeof th === 'object' && (!mi || (+th.ts || 0) > (+mi.ts || 0))) QTN[k] = th;
+        });
+      }
       if (Array.isArray(d.banks)) d.banks.forEach(b => { if (b && b.id && !LOCAL.some(x => x.id === b.id)) LOCAL.push(b); });
       let tipCats = 0;                                          // 导入进来的分类数（原先漏了声明，导致导入完弹「导入失败：tipCats is not defined」）
       if (Array.isArray(d.cats) && d.cats.length) {            // 分类树跟着一起恢复
@@ -1381,7 +1390,7 @@ function importAllData(e) {
       tombClear();   // 导入＝以这份备份为准，清掉本机墓碑，别把要恢复的记录挡回去
       migrate();
       invalidateBanks();
-      saveAns(); saveFav(); saveNotes(); writeLS(LS.banks, LOCAL); savePapers(); writeLS(LS.set, SET);
+      saveAns(); saveFav(); saveNotes(); saveQtn(); writeLS(LS.banks, LOCAL); savePapers(); writeLS(LS.set, SET);
       saveFix(); writeLS(LS.srs, SRS);
       if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
       toast('导入完成' + (tipCats ? '（含 ' + tipCats + ' 个分类）' : '') + (kbN ? '，含 ' + kbN + ' 个知识库' : '')
@@ -1538,8 +1547,8 @@ function renderQuiz(bankId) {
     const save = () => {
       const v = ta.value.trim();
       if (v) QTN[fk] = { text: v, ts: Date.now() };
-      else delete QTN[fk];
-      writeLS(LS.qtn, QTN);
+      else { delete QTN[fk]; tombAdd('qtn', fk); }   /* 清空即删除：记一笔墓碑，免得被别的标签页 / 云端的旧副本复活 */
+      saveQtn();
       if (st) { st.textContent = v ? '已存' : ''; setTimeout(() => { if (st) st.textContent = ''; }, 1200); }
     };
     ta.addEventListener('input', () => { if (st) st.textContent = '…'; clearTimeout(timer); timer = setTimeout(save, 700); });
