@@ -20517,6 +20517,13 @@ PDFPrintServiceFactory.initGlobals(PDFViewerApplication);
     if (fileOrigin === viewerOrigin) {
       return;
     }
+    /* ===== 刷题站自用补丁（2026-10-16，改的是我们托管的那份拷贝）=====
+       pdf.js 原版只允许同源 PDF（或 mozilla 托管阅读器），而我们的 PDF 为了速度走
+       gh-proxy.com / ghfast.top 这两条国内加速线路（它们都带 access-control-allow-origin: *）。
+       放行这三个域；其他域一律照旧拦着。 */
+    if (/^https:\/\/(gh-proxy\.com|ghfast\.top)$/i.test(fileOrigin || "") || fileOrigin === "https://stain37.github.io") {
+      return;
+    }
     const ex = new Error("file origin does not match viewer's");
     PDFViewerApplication._documentError("pdfjs-loading-error", {
       message: ex.message
