@@ -526,7 +526,9 @@
        数字全来自已有数据（ANS / FAV / todayStats / heatStats），不新增存储；动作全用现有 data-act。 */
     var bentoHtml = '';
     (function () {
-      var hm = (typeof heatStats === 'function') ? heatStats(12) : { cells: [], total: 0, weeks: 12 };
+      var hmWeeks = Math.max(12, Math.min(53, Math.floor((document.documentElement.clientWidth - 80) / 17)));   /* 桌面铺满一整年（53 周），窄屏按宽度少一些 */
+      var hm = (typeof heatStats === 'function') ? heatStats(hmWeeks) : { cells: [], total: 0, weeks: hmWeeks };
+      var hmLabel = hmWeeks >= 50 ? '近一年' : (hmWeeks >= 24 ? '近半年' : '近 ' + hmWeeks + ' 周');
       var cap = (srsCap && dueN > srsCap) ? srsCap : dueN;
       var p = (TODAY.dNum + dueN) ? Math.round(TODAY.dNum / (TODAY.dNum + dueN) * 100) : 0;
       var dOf = function (ts) { var d = new Date(ts); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; };
@@ -555,7 +557,7 @@
         + '<div class="vb-line">近 7 天 <b>' + TODAY.weekN + '</b> 题</div>'
         + '</div>'
         + '<div class="vb-card span2 vb-heat">'
-        + '<div class="vb-cap">近 12 周<span class="vb-cap-n">共 ' + hm.total + ' 题</span></div>'
+        + '<div class="vb-cap">' + hmLabel + '<span class="vb-cap-n">共 ' + hm.total + ' 题</span></div>'
         + '<div class="hm">' + (cells || '<i class="hm-c" data-l="0"></i>') + '</div>'
         + '<div class="hm-legend"><span class="small muted">少</span>'
         + '<i class="hm-c" data-l="0"></i><i class="hm-c" data-l="1"></i><i class="hm-c" data-l="2"></i>'

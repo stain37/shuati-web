@@ -42,15 +42,37 @@ function mdEscEnd(html) {
     return ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch;
   });
 }
+/* 修「记号点重了」攒出来的垃圾：浮条连记号一起选中再加粗，**A** 会攒成 ****A**** / ******A******（
+   每点一次多一对）。渲染前把 3 个以上的同种记号收成一个正常记号（本应用的 mdToHtml 只认 ** 和 *，
+   三颗星它也渲染不出来，只会显示成星号）。 */
+function mdTidy(s) {
+  return String(s == null ? '' : s)
+    .replace(/＊/g, '*')          /* 全角星号（中文输入法打的）先归一到半角，不然下面所有规则都认不到它 */
+    .replace(/\*{4,}/g, '**')
+    .replace(/={4,}/g, '==')
+    .replace(/`{4,}/g, '`');
+}
 function mdToHtml(md) {
   if (!md) return '';
+  md = mdTidy(md);
   let s = esc(mdColorize(mdEscOpen(md)));
   s = s.replace(/!\[([^\]]*)\]\((data:image\/[^)\s]+|[^)\s]+)\)/g, (m, a, u) => `<img alt="${a}" src="${u}">`);
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
   s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');   /* 三颗星 = 加粗+斜体（标准 Markdown） */
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  /* 配对完还剩的 ** 记号 = 历史残渣（加粗点重了攒出来的），别让它显示成一串星号。
+     整行的 *** 是分隔线，先变成 --- 再清，免得误伤。 */
+  s = s.replace(/^(\s*)\*{3,}\s*$/gm, '$1---');
+  s = s.replace(/\*{2,}/g, '');
+  s = s.replace(/＊{2,}/g, '');      /* 全角星号成串的（旧数据）也别显示 */
+  /* 落单的单星号（斜体只配了一半）也清掉：先把 2*3 这种乘法的星号藏起来，清完再换回去。
+     到这里为止配好的记号早就变成 <strong>/<em> 了，剩下的星号全是残渣。 */
+  for (let i = 0; i < 3; i++) s = s.replace(/(\d)\*(\d)/g, '$1\uE000$2');
+  s = s.replace(/\*/g, '');
+  s = s.replace(/\uE000/g, '*');
   const lines = s.split(/\r?\n/);
   const out = [];
   let list = null;
@@ -206,6 +228,13 @@ function fmtWrap(ta, open, close, refresh) {
   } else if (v.slice(s - open.length, s) === open && v.slice(e, e + close.length) === close) {
     nv = v.slice(0, s - open.length) + sel + v.slice(e + close.length);
     ns = s - open.length; ne = ns + sel.length;
+  } else if (sel.slice(0, open.length) === open && sel.slice(sel.length - close.length) === close
+             && sel.length >= open.length + close.length + 1) {
+    /* 选区**连着记号一起框住了**（`**A**` 里连星号一起选）→ 再点一次就是取消。
+       不认这一种就会套娃：** + **A** + ** = ******A******（用户报的就是这个）。 */
+    const inner = sel.slice(open.length, sel.length - close.length);
+    nv = v.slice(0, s) + inner + v.slice(e);
+    ns = s; ne = s + inner.length;
   } else {
     nv = v.slice(0, s) + open + sel + close + v.slice(e);
     ns = s + open.length; ne = ns + sel.length;
@@ -443,7 +472,7 @@ function mdFromHtml(root) {
   flush();
   let md = blocks.join('\n\n');
   md = md.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
-  return md;
+  return mdTidy(md);
 }
 
 /* ---- 就地编辑器：渲染 / 绑定 / 保存 / 收尾 ---- */
@@ -606,7 +635,7 @@ function paintEditor() {
     fmtBarHide(); host.innerHTML = ''; ED = null; fmtBarRebind(); toast('已恢复默认解析'); render();
   });
   on('edSave', () => {
-    const text = ($('edTa').value || '').trim();
+    const text = mdTidy(($('edTa').value || '').trim());
     if (!text && !ED.imgs.length) { delete NOTES[k]; tombAdd('note', k); }
     else NOTES[k] = { text: text, imgs: ED.imgs.slice(), ts: Date.now() };
     if (!saveNotes()) { toast('保存失败：浏览器存储空间已满，建议把图片压小或先导出备份'); return; }

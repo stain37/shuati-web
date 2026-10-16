@@ -1322,11 +1322,11 @@ body{ background-image:var(--bg-wash); background-repeat:no-repeat; background-a
 .vb-line{ font-size:12.5px; color:var(--sub); }
 .vb-line b{ color:var(--text); font-variant-numeric:tabular-nums; }
 
-/* 学习热力图（§3.6-P1④）：7 行（周一…周日）× 12 列 */
-.vb-heat .hm{ display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); grid-auto-columns:11px;
+/* 学习热力图（§3.6-P1④）：7 行（周一…周日）× 动态列数 —— 桌面铺满一整年（53 周），窄屏按宽度少一些，见 cat.js 的 hmWeeks */
+.vb-heat .hm{ display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,13px); grid-auto-columns:13px;
   gap:3px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
 .vb-heat .hm::-webkit-scrollbar{ display:none; }
-.hm-c{ display:block; width:11px; height:11px; border-radius:3px; background:var(--bg2); }
+.hm-c{ display:block; width:13px; height:13px; border-radius:3.5px; background:var(--bg2); }
 .hm-c[data-l="1"]{ background:color-mix(in srgb, var(--primary) 22%, var(--bg2)); }
 .hm-c[data-l="2"]{ background:color-mix(in srgb, var(--primary) 42%, var(--bg2)); }
 .hm-c[data-l="3"]{ background:color-mix(in srgb, var(--primary) 68%, var(--bg2)); }
@@ -1379,7 +1379,7 @@ body.sheet-open{ overflow:hidden; }
 .hm-c{ background:color-mix(in srgb, var(--text) 9%, var(--card)); }
 .rg-bg{ stroke:color-mix(in srgb, var(--text) 11%, var(--card)); }
 .hero .hstat.today{ display:none; }
-@media (max-width:420px){ .vb-heat .hm{ grid-template-rows:repeat(7,10px); grid-auto-columns:10px; gap:2.5px; } }
+@media (max-width:420px){ .vb-heat .hm{ grid-template-rows:repeat(7,11px); grid-auto-columns:11px; gap:2.5px; } .vb-heat .hm .hm-c{ width:11px; height:11px; } }
 
 /* ================= §3.6-P1⑤：解析 ↔ 选项 联动（纯显示层，不进存储） =================
    变量用的是站点自己的 --primary / --primary-soft / --primary-line（四套主题色都跟着走） */
@@ -1413,3 +1413,28 @@ body.sheet-open{ overflow:hidden; }
 .aifollow[hidden]{ display:none; }
 .aifollow .aifollow-btn{ white-space:nowrap; }
 @media (prefers-reduced-motion: reduce){ .opt.opt-hit{ animation:none; outline:2px solid var(--primary); } }
+
+/* ================= §3.6-P2⑥ 骨架屏：换页 / 首屏先给个「形状」 ================= */
+.skel{ display:flex; flex-direction:column; gap:12px; }
+.sk-hero{
+  display:flex; flex-direction:column; gap:9px; padding:18px;
+  border-radius:var(--r-card,22px);
+  background:linear-gradient(120deg, color-mix(in srgb, var(--primary) 16%, var(--card)), var(--card));
+  box-shadow:var(--sh-card, none);
+}
+.sk-card{
+  display:flex; flex-direction:column; gap:9px; padding:16px 18px;
+  border-radius:var(--r-card,22px); background:var(--card);
+  border:1px solid var(--line); box-shadow:var(--sh-card, none);
+}
+.sk-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.sk-bl{
+  display:block; height:12px; border-radius:7px;
+  background:color-mix(in srgb, var(--text) 11%, var(--card));
+}
+.sk-hero .sk-bl:first-child, .sk-card .sk-bl:first-child{ height:16px; }
+.skel .sk-bl{ animation:skPulse 1.15s ease-in-out infinite; }
+.sk-grid .sk-bl:first-child{ animation-delay:.12s; }
+@keyframes skPulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+@media (prefers-reduced-motion: reduce){ .skel .sk-bl{ animation:none; opacity:.75; } }
+@media (max-width:420px){ .sk-grid{ grid-template-columns:1fr; } }

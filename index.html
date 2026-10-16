@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261019e">
+<link rel="stylesheet" href="style.css?v=20261019f">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261018f">
 <link rel="manifest" href="manifest.json">
@@ -38,7 +38,16 @@
   <div class="chips" id="chips" style="display:none"></div>
 </div>
 
-<div class="wrap" id="view"></div>
+<div class="wrap" id="view"><!-- §3.6-P2⑥ 首屏骨架：JS 和几 MB 的知识库还在解析时先给个形状，别白屏；真内容一画好就被顶掉 -->
+  <div class="skel" aria-hidden="true">
+    <div class="sk-hero"><i class="sk-bl" style="width:38%"></i><i class="sk-bl" style="width:72%"></i><i class="sk-bl" style="width:54%"></i></div>
+    <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:76%"></i></div>
+    <div class="sk-grid">
+      <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:62%"></i></div>
+      <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:58%"></i></div>
+    </div>
+  </div>
+</div>
 
 <!-- §3.6-P0① 专注模式：只在 body.focus 时浮出来（那时顶栏/底栏都收起来了），点它或按 Esc 退出 -->
 <button class="btn focus-exit" id="btnFocusExit" title="退出专注模式（Esc）">⛶ 退出专注</button>
@@ -166,8 +175,8 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261019e"></script>
-<script src="collection.js?v=20261019k"></script>
+<script src="app.js?v=20261019f"></script>
+<script src="collection.js?v=20261019n"></script>
 <script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261019b"></script>
 <script src="ai.js?v=20261019j"></script>

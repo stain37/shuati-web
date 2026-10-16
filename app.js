@@ -825,7 +825,17 @@ function showFatal(err) {
 }
 function render() {
   if (typeof richFlush === 'function') richFlush();          // 方案十：换页 / 重画前先保存就地编辑
-  try { renderInner(); }
+  try {
+    const r = route();
+    const sig = r.name + '/' + (r.bankId || '');
+    /* §3.6-P2⑥：换页 + 这页真可能卡一下 → 先同步铺一层骨架，真内容留到下一个宏任务，
+       这样浏览器能先把骨架画出来（渲染真慢的时候，用户看到的是骨架，不是白屏） */
+    if (sig !== _lastViewSig && skelNeeded(r) && skelPaint(r)) {
+      setTimeout(() => { try { renderInner(); } catch (err) { showFatal(err); } }, 0);
+      return;
+    }
+    renderInner();
+  }
   catch (err) { showFatal(err); }
 }
 function renderInner() {
@@ -877,6 +887,7 @@ function viewEnter(r) {
   const sig = r.name + '/' + (r.bankId || '');
   if (sig === _lastViewSig) return;
   _lastViewSig = sig;
+  skelDrop();                               /* §3.6-P2⑥：真内容已经在了，还留着骨架就摘掉 */
   const v = $('view');
   if (!v) return;
   v.classList.remove('view-enter');
@@ -886,6 +897,47 @@ function viewEnter(r) {
 window.addEventListener('animationend', e => {
   if (e.target && e.target.id === 'view') e.target.classList.remove('view-enter');
 });
+
+/* ============================================================
+   §3.6-P2⑥ 骨架屏：换页那一瞬间先给个「形状」，别让屏幕白一下
+   ------------------------------------------------------------
+   · 首屏那层直接写在 index.html 的 #view 里 —— JS / 知识库还在解析时它就看得见，不用等任何人；
+   · 这里只管「换页」：只有真可能卡一下的地方才铺（知识库 / 搜索全部 / 学习统计 / 大题库），
+     铺完把真内容丢进下一个宏任务，浏览器才有机会先把骨架画出来；
+   · 答题页每答一题都会重画，所以只在「换了个题库」时铺（签名跟 viewEnter 那一套一致）。
+   ============================================================ */
+const SKEL_BIG_Q = 200;                 /* 题库超过这么多题才值得铺一层 */
+function skelHtml(kind) {
+  const bl = w => '<i class="sk-bl" style="width:' + w + '%"></i>';
+  const card = ws => '<div class="sk-card">' + ws.map(bl).join('') + '</div>';
+  if (kind === 'quiz') return '<div class="skel" aria-hidden="true">' + card([62, 100, 88, 74, 92]) + card([40, 70]) + '</div>';
+  if (kind === 'stats') return '<div class="skel" aria-hidden="true">' + card([30, 100, 100]) + card([46, 100, 92, 84]) + '</div>';
+  return '<div class="skel" aria-hidden="true">'
+    + '<div class="sk-hero">' + bl(38) + bl(72) + bl(54) + '</div>'
+    + card([100, 76])
+    + '<div class="sk-grid">' + card([100, 62]) + card([100, 58]) + '</div></div>';
+}
+function skelNeeded(r) {
+  if (!r || r.name === 'exam') return false;                    /* 考试有自己的倒计时，别插队 */
+  if (r.name === 'quiz') {
+    const b = (typeof bankById === 'function') ? bankById(r.bankId) : null;
+    return !!(b && b.questions && b.questions.length >= SKEL_BIG_Q);
+  }
+  return r.name === 'kb' || r.name === 'search' || r.name === 'stats';
+}
+function skelPaint(r) {
+  const v = $('view');
+  if (!v) return false;
+  v.innerHTML = skelHtml(r.name === 'quiz' ? 'quiz' : (r.name === 'kb' || r.name === 'stats') ? 'stats' : 'home');
+  return true;
+}
+/* 真内容画好了：把还留在那儿的骨架摘掉（正常情况下 innerHTML 已经把它顶掉了，这是兜底） */
+function skelDrop() {
+  const v = $('view');
+  if (!v) return;
+  const sk = v.querySelector('.skel');
+  if (sk && sk.parentNode === v) sk.remove();
+}
 
 /* ============================================================
    首页
@@ -927,7 +979,7 @@ function todayStats() {
    返回 cells 按时间正序，每格 { ts, n, l }（l = 0..4 的档位，给颜色用），外加 total / max / weeks。
    排布：7 行（周一…周日）× weeks 列，最后一列是本周。 */
 function heatStats(weeks) {
-  const w = Math.max(4, Math.min(26, Math.round(+weeks || 12)));
+  const w = Math.max(4, Math.min(53, Math.round(+weeks || 12)));   /* 上限是一年（53 周）：桌面首页要铺满整张卡 */
   const dayOf = ts => { const d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
   const cnt = {};
   Object.keys(ANS).forEach(k => {

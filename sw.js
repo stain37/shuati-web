@@ -1,4 +1,4 @@
-﻿/* Service Worker：让刷题站能离线打开、能装到手机主屏
+/* Service Worker：让刷题站能离线打开、能装到手机主屏
    策略：
      · 页面导航：网络优先，断网回落首页；
      · 静态资源（js/css/图标）：stale-while-revalidate —— 先用缓存立刻出页面，
@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v67-web61';   // 2026-10-16 傍晚：解析里点 A/B/C/D 就跳到上面那个选项、点选项解析里提到它的地方亮一下（§3.6-P1⑤），AI 答完面板下面多三颗追问（再详细点 / 换个说法 / 出变式题）。上一版：参考资料跟解析一起存 —— 「存入本题解析」后重新打开，解析下面照样有那行参考资料、点开就是 PDF（存 qbank.aisrc.v1，只存出处不存正文），不用再跑一遍 AI
+const VERSION = 'shuati-v67-web64';   // 2026-10-16：+ 骨架屏（大题库 / 知识库 / 统计换页先铺一层灰条：skelHtml/skelNeeded/skelPaint/skelDrop）；上一版：全角星号（＊）也当星号处理
 const CORE = [
   './',
   './index.html',

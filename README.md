@@ -227,10 +227,12 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v67-web61**）
+（缓存版本 **shuati-v67-web64**）
 
 最近几轮按倒序说清各自动了什么：
-- **shuati-v67-web61（§3.6-P1⑤ 解析 ↔ 选项联动 + AI 快捷追问）**：就是下面第一张表。
+- **shuati-v67-web64（§3.6-P2⑥ 骨架屏：大题库 / 知识库 / 统计换页先铺一层灰条）**：详见《更新说明.md》最上面那节。
+- **shuati-v67-web63 / web62（收拾加粗点重、全角星号也当星号）**：详见《更新说明.md》同一天晚上那两节。
+- **shuati-v67-web61（§3.6-P1⑤ 解析 ↔ 选项联动 + AI 快捷追问）**：见下面第一张表往下数两行。
 - **shuati-v67-web60（参考资料跟解析一起存）**：详见《更新说明.md》同一轮那节。
 - **shuati-v67-web54（§8 视觉 v2 铺到在用的站点上）**：就是下面第一张表。
 - **shuati-v66-web53（修深色模式下「改答案」勾选看不出高亮 + 病理知识库补页码）**：`body.dark .fixopt` → `body.dark .fixopt:not(.on)`（同理 `body.dark .kbrow:not(.on)`）；`make-kb.py` 新增 `page_from_filename()`（没书签的 PDF 从文件名取页码，和页数对不上就不采信），病理 27 篇补上页码。
@@ -241,6 +243,8 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 | 问题 | 说明 |
 | --- | --- |
+| 点进大题库 / 知识库会白一下 | **§3.6-P2⑥ 骨架屏**：`index.html` 的 `#view` 里写了**静态首屏骨架**（`.skel` + 带主色渐变的 `.sk-hero` + `.sk-card` + `.sk-grid` 两块小卡，`aria-hidden="true"`），JS 没跑起来就能看见；`app.js` 新增 `skelHtml(kind)`（`home` / `kb` / `quiz` 三种形状）/ `skelNeeded(r)`（考试页不铺；答题页要 `bankById(r.bankId).questions.length >= SKEL_BIG_Q`（`= 200`）；`kb` / `search` / `stats` 一律铺）/ `skelPaint(r)` / `skelDrop()`（只摘 `#view` 的直接子 `.skel`）；`render()` 判断「真换页 + 该铺」时先铺骨架再把真渲染 `setTimeout(…, 0)` 让出一帧，`viewEnter()` 里 `skelDrop()` 兜底。CSS 在 `style.css` 末尾 `§3.6-P2⑥` 一节（`.sk-bl` 用 `color-mix(in srgb, var(--text) 11%, var(--card))`，`@keyframes skPulse`，reduced-motion 不闪，窄屏合成一列） |
+| 老探针的断言过期了 | 新探针 `工作1\p26-probe.py` **44 条 / 0 fail**（浏览器 22 + 源码 22）：四种形状的卡数 / 灰条数、阈值 200、`aria-hidden`、`skelDrop()` 不留残渣；真换页用 `MutationObserver` 数「中间铺过几次」= 大题库 1 次 / 小题库 0 次 / 知识库 1 次 / 统计 1 次，且画完内容都在。截图 `工作1\shots\r18-skel-home.png` / `r18-skel-kb.png` / `r18-skel-quiz.png` |
 | 看完解析想对照选项，得来回滚 | **§3.6-P1⑤ 解析 ↔ 选项联动**：解析（`.exp.rich-edit`）/ AI 输出（`.aiout`）/ AI 解析折叠区（`.aih-a`）里单独出现的 A–H 由 `uiOptHtml()` 包成 `<b class="optjump" data-k="B">B</b>`（`uiOptLetters()` 用 `TreeWalker` 走文本节点，跳过 `.opt` / 代码块 / 链接；题里没有的字母会还原成纯文字）；点字母 → 上面那个选项 `.opt-hit` 闪一圈并滚过去，点选项 → 解析里提到它的字母 `.on` 变实心（1.1 秒）。两个方向都绑在 `#view` 上做事件委托，翻题 / 重渲染不用重绑。存回去之前 `collection.js` 的 `stripOptJump()` 会把字母壳脱掉（`mdFromHtml()` 里那一步），**解析原文一个字节都不会被污染** |
 | AI 答完想追问，还得自己打字 | **AI 快捷追问 chips**：`ai.js` 的 `AI_FOLLOW`（再详细点 / 换个说法 / 出变式题）+ `aiPaintFollow(host, show)`；`aiRun()` 一开跑先收起来，`finally` 里按「有没有答案」决定显不显示，`aiRestore()` 重开题目时同一条件；点 chip 带着原题和这轮回答再跑一次 |
 | 老探针的断言过期了 | 新探针 `工作1\p15-probe.py` **52 条 / 0 fail**（浏览器 25 + 源码 27，含「题里没有的 E 会还原成纯文字」「存回 Markdown 里没有 `<b class="optjump">`」「点 chip 会再跑一次 AI」）。⚠️ 字母胶囊的样式必须用站点自己的 `--primary` / `--primary-soft` / `--primary-line`；**别再造 `--a` 这种不存在的变量** —— `color-mix()` 里出现未定义变量会让整条声明静默失效（探针 52 条全绿、截图里却看不见底色，就是这么来的） |
