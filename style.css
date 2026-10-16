@@ -496,6 +496,9 @@ body.dark .srsline{background:var(--card);border-color:var(--line)}
 .aitag.on{background:var(--primary-weak);border-color:var(--primary-line)}
 .aisrc-full{flex:1 1 100%;width:100%;margin-top:8px;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-s);max-height:360px;overflow:auto}
 .aisrc-text{font-size:13px;line-height:1.75;color:var(--text)}
+/* 「PDF 内嵌这块空白就点上面那颗」的提示：只在触摸设备（手机/平板）显示 */
+.pdf-touch-hint{display:none}
+@media (hover:none){ .pdf-touch-hint{display:block} }
 /* ---------- 方案十一：变式题挂到原题下面（题干下面一排「变式 1/2/3」） ---------- */
 .vstrip{margin:8px 0 0}
 .vstrip:empty{display:none}

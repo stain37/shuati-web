@@ -1490,8 +1490,9 @@ function renderQuiz(bankId) {
         <span><span class="kbd">A</span>–<span class="kbd">H</span> 选选项</span>
         <span><span class="kbd">Enter</span> 提交 / 下一题</span>
         <span><span class="kbd">←</span><span class="kbd">→</span> 翻页</span>
+        <span><span class="kbd">J</span><span class="kbd">K</span> 翻题</span>
         <span><span class="kbd">S</span> 收藏</span>
-        <span><span class="kbd">K</span> 答题卡</span>
+        <span><span class="kbd">O</span> 答题卡</span>
         <span><span class="kbd">?</span> 全部快捷键</span>
       </div>
       <div id="noteHost"></div>
@@ -1551,13 +1552,13 @@ function renderQuiz(bankId) {
   if (prevB) {
     const first = pos <= 1;
     prevB.disabled = first;
-    prevB.title = first ? '已经是第一题了' : '上一题（←）';
+    prevB.title = first ? '已经是第一题了' : '上一题（← 或 k）';
   }
   if (nextB) {
     const lastQ = pos >= pool.length;
     nextB.disabled = lastQ;
     nextB.textContent = lastQ ? '最后一题' : '下一题 ›';
-    nextB.title = lastQ ? '已经是最后一题（按 K 打开答题卡可以跳回去）' : '下一题（→ 或 Enter）';
+    nextB.title = lastQ ? '已经是最后一题（按 O 打开答题卡可以跳回去）' : '下一题（→、Enter 或 j）';
   }
 
   let done = 0, ok = 0, wr = 0;
@@ -2410,8 +2411,20 @@ function showHelp() {
         <div class="help-row"><span class="kbd">A</span><span class="kbd">B</span><span class="kbd">C</span><span class="kbd">D</span><span class="spacer-grow"></span><span class="muted">选选项（也可以按 1 2 3 4；多选题先都选上再提交）</span></div>
         <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">多选题＝提交答案；单选或已判分＝下一题</span></div>
         <div class="help-row"><span class="kbd">←</span><span class="kbd">→</span><span class="spacer-grow"></span><span class="muted">上一题 / 下一题（到头了按钮会变灰）</span></div>
+        <div class="help-row"><span class="kbd">J</span><span class="kbd">K</span><span class="spacer-grow"></span><span class="muted">下一题 / 上一题（Vim 那套；和 <span class="kbd">←</span><span class="kbd">→</span> 一样）</span></div>
         <div class="help-row"><span class="kbd">S</span><span class="spacer-grow"></span><span class="muted">收藏 / 取消收藏当前题（收藏成功会弹一下提示）</span></div>
-        <div class="help-row"><span class="kbd">K</span><span class="spacer-grow"></span><span class="muted">打开答题卡：可按「做错 / 没做」筛选，点题号直接跳过去</span></div>
+        <div class="help-row"><span class="kbd">O</span><span class="spacer-grow"></span><span class="muted">打开答题卡：可按「做错 / 没做」筛选，点题号直接跳过去</span></div>
+      </div>
+
+      <div class="help-card">
+        <div class="sec-t">跳页（都是先按 <span class="kbd">g</span>，再按一下）</div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">h</span><span class="spacer-grow"></span><span class="muted">首页</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">w</span><span class="spacer-grow"></span><span class="muted">错题本</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">s</span><span class="spacer-grow"></span><span class="muted">搜索</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">k</span><span class="spacer-grow"></span><span class="muted">知识库</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">f</span><span class="spacer-grow"></span><span class="muted">收藏</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">t</span><span class="spacer-grow"></span><span class="muted">学习统计</span></div>
+        <div class="help-row"><span class="kbd">g</span><span class="kbd">g</span><span class="spacer-grow"></span><span class="muted">回到最上面（长页面用）</span></div>
       </div>
 
       <div class="help-card">
@@ -2599,6 +2612,17 @@ if (window.matchMedia) {
 paintThemeBtn();
 document.querySelectorAll('.mask').forEach(m => m.onclick = e => { if (e.target === m) closeAll(); });
 
+/* §3.6-P2⑦：g 后面第二个键去哪儿（'top' 是回到页面最上面，不是换页） */
+const GO_KEYS = {
+  h: ['#/', '首页'],
+  w: ['#/wrong', '错题本'],
+  s: ['#/search', '搜索'],
+  k: ['#/kb', '知识库'],
+  f: ['#/fav', '收藏'],
+  t: ['#/stats', '学习统计'],
+  g: ['top', '回到最上面'],
+};
+let _gAt = 0;                       /* 上一次按 g 的时间，超过 1.2 秒就作废 */
 document.addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName) || '';
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || !!(e.target && e.target.isContentEditable);
@@ -2606,6 +2630,31 @@ document.addEventListener('keydown', e => {
      这一条必须放在最前面 —— 否则在 AI 面板里敲字会被当成答题键（A–H / Enter / ←→ / S / Esc），
      一按就把整页重画、正在流式生成的解析面板被冲掉。 */
   if (typing || e.isComposing || e.keyCode === 229) return;
+  /* ---------- §3.6-P2⑦ Vim 风格双键：先按 g，再按一下跳页 ----------
+     g h 首页 / g w 错题本 / g s 搜索 / g k 知识库 / g f 收藏 / g t 学习统计 / g g 回到最上面。
+     只认「1.2 秒内」的第二下，中途按了别的键就作废（不会误伤单键）；
+     页面上会冒一条小提示告诉你能按什么，省得记。 */
+  const gNow = Date.now();
+  if (_gAt && gNow - _gAt >= 1200) _gAt = 0;          /* 上一回的 g 已经过期，清掉再认下一次 */
+  if ((e.key === 'g' || e.key === 'G') && !e.ctrlKey && !e.metaKey && !e.altKey && !_gAt) {
+    _gAt = gNow;
+    if (typeof toast === 'function') toast('g 后面再按一下：h 首页 · w 错题 · s 搜索 · k 知识库 · f 收藏 · t 统计 · g 顶部', 1400);
+    e.preventDefault();
+    return;
+  }
+  if (_gAt && gNow - _gAt < 1200) {
+    const hit = GO_KEYS[e.key.toLowerCase()];
+    _gAt = 0;
+    if (hit) {
+      e.preventDefault();
+      if (hit[0] === 'top') window.scrollTo({ top: 0, behavior: (typeof uiMotionOK === 'function' && !uiMotionOK()) ? 'auto' : 'smooth' });
+      else go(hit[0]);
+      return;
+    }
+    /* 等第二下的时候按了别的键：什么也不做（Vim 的规矩）—— 免得「g 之后手滑敲了 A」把选项选上。
+       Esc 放行，用来中途反悔。 */
+    if (e.key !== 'Escape') { e.preventDefault(); return; }
+  }
   /* ? 打开快捷键帮助（任何页面都能用） */
   if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
     e.preventDefault();
@@ -2636,15 +2685,18 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); return;
   }
   if (rn === 'exam') {
-    if (e.key === 'Enter' || e.key === 'ArrowRight') { if (typeof examStep === 'function') examStep(1); e.preventDefault(); return; }
-    if (e.key === 'ArrowLeft') { if (typeof examStep === 'function') examStep(-1); e.preventDefault(); return; }
+    if (e.key === 'Enter' || e.key === 'ArrowRight' || k === 'J') { if (typeof examStep === 'function') examStep(1); e.preventDefault(); return; }
+    if (e.key === 'ArrowLeft' || k === 'K') { if (typeof examStep === 'function') examStep(-1); e.preventDefault(); return; }
     return;
   }
   const bank = bankById(QZ.bankId);
   const q = bank && bank.questions.find(x => String(x.id) === String(QZ.cur));
-  /* S 收藏本题、K 打开答题卡 —— 不用去够鼠标（A–H 留给选项） */
+  /* S 收藏本题、O 打开答题卡（原本是 K，让给 Vim 的「上一题」）—— 不用去够鼠标（A–H 留给选项） */
   if (k === 'S' && bank && q) { toggleFav(favKey(bank, q)); e.preventDefault(); return; }
-  if (k === 'K') { renderGrid(); const gm = $('gridMask'); if (gm) gm.classList.add('show'); e.preventDefault(); return; }
+  if (k === 'O') { renderGrid(); const gm = $('gridMask'); if (gm) gm.classList.add('show'); e.preventDefault(); return; }
+  /* §3.6-P2⑦：j 下一题 / k 上一题（Vim 那套，跟 ←→ 等价） */
+  if (k === 'J') { step(1); e.preventDefault(); return; }
+  if (k === 'K') { step(-1); e.preventDefault(); return; }
   if (e.key === 'Enter') {
     if (q && !answered(kOf(bank, q)) && qType(q, ansOf(favKey(bank, q), q)) === 'X' && (QZ.pending[q.id] || []).length) judge(bank, q, QZ.pending[q.id]);
     else step(1);

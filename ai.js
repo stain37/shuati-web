@@ -691,9 +691,25 @@ function aiPaintHist(host) {
 function aiPdfOk() {
   try {
     if (location.protocol === 'file:') return true;
-    const h = location.hostname;
-    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+    return aiPdfHostOk(location.hostname);
   } catch (e) { return false; }
+}
+/* 哪些「打开方式」算本机（能读到站点目录里那五个 PDF junction）：
+   · file://（双击 index.html）· localhost / 127.0.0.1
+   · **局域网 IP** —— 手机连同一个 Wi-Fi、用「手机访问.bat」（8080，bind 0.0.0.0）看时也算：
+     零上传、零流量、局域网直读，代价是电脑得开着（2026-10-16 用户要「手机也能看 PDF」时加的）
+   线上（github.io）永远不算 —— PDF 没上传，画了也是死链。 */
+function aiPdfHostOk(host) {
+  const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 10) return true;                        /* 10.0.0.0/8（校园网/热点常见） */
+    if (a === 192 && b === 168) return true;          /* 192.168.0.0/16 */
+    if (a === 172 && b >= 16 && b <= 31) return true; /* 172.16.0.0/12 */
+  }
+  return false;
 }
 function aiPdfHref(h) {
   if (!h || !h.file) return '';
@@ -723,6 +739,7 @@ function aiPdfBlockHtml(h, full) {
     + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（只在本地服务器 / 双击网页打开时可用，手机上不显示；这些 PDF 不会上传到网上）">' + label + ' ↗</a>'
     + '</div>'
     + '<div class="pdf-embed" style="margin:0 0 9px">'
+    + '<div class="small muted pdf-touch-hint" style="margin:0 0 6px">手机 / 平板上这块要是空白（安卓的浏览器不认内嵌 PDF），就点上面的「打开 PDF」那颗，它会在新标签里用系统阅读器打开。</div>'
     + '<iframe src="' + esc(pdf) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
     + '</div>';
 }

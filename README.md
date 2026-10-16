@@ -227,9 +227,10 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v67-web64**）
+（缓存版本 **shuati-v67-web65**）
 
 最近几轮按倒序说清各自动了什么：
+- **shuati-v67-web65（§3.6-P2⑦ Vim 双键：g h/w/s/k/f/t/g 跳页 + j/k 翻题，答题卡 K→O）**：详见《更新说明.md》最上面那节。
 - **shuati-v67-web64（§3.6-P2⑥ 骨架屏：大题库 / 知识库 / 统计换页先铺一层灰条）**：详见《更新说明.md》最上面那节。
 - **shuati-v67-web63 / web62（收拾加粗点重、全角星号也当星号）**：详见《更新说明.md》同一天晚上那两节。
 - **shuati-v67-web61（§3.6-P1⑤ 解析 ↔ 选项联动 + AI 快捷追问）**：见下面第一张表往下数两行。
@@ -243,6 +244,8 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 | 问题 | 说明 |
 | --- | --- |
+| 鼠标点翻页、换题太慢，想全用键盘 | **§3.6-P2⑦ Vim 双键**：`app.js` 新增 `const GO_KEYS`（`h: '#/'` 首页 / `w` 错题本 / `s` 搜索 / `k` 知识库 / `f` 收藏 / `t` 学习统计 / `g` 回到最上面）与 `let _gAt`：按下 `g` 时 `toast()` 把键位念一遍并记时间，第二下在 **1.2 秒**内就跳页（`hit[0] === 'top'` 走 `scrollTo`，其余走 `go()`），过期用 `if (_gAt && gNow - _gAt >= 1200) _gAt = 0;` 清掉；第二下按了表外的键就 `e.preventDefault(); return;` —— 什么也不做（免得「g 之后手滑敲 A」把选项选上），`Esc` 放行用来反悔。答题页 `j` 下一题 / `k` 上一题（`if (k === 'J') { step(1); … }`，考试页同样），**答题卡从 `K` 挪到 `O`**（`k` 让给 Vim 的「上一题」），顶栏提示 / `?` 小抄 / 按钮 title 一起改；「在不在输入框里打字」判的是 `e.target`，所以搜索框 / 笔记 / AI 面板里敲这些键都是普通文字 |
+| 老探针的断言过期了 | 新探针 `工作1\p27-probe.py` **54 条 / 0 fail**（浏览器 28 + 源码 26：七个 `g` 跳页都到位、按错键不选选项、超 1.2 秒作废、焦点在搜索框时不跳页、`j` / `k` 翻题与 `O` 开答题卡、A–H / 数字 / S / ? / Esc 一个没挤掉）；`工作1\ai-survive-probe.py` 里拿 `K` 开答题卡当对照那处改成 `O`。截图 `工作1\shots\r19-help.png`（`?` 里新加的「跳页（都是先按 g，再按一下）」一卡）、`r19-g-toast.png`（按下 `g` 冒出来的那行提示） |
 | 点进大题库 / 知识库会白一下 | **§3.6-P2⑥ 骨架屏**：`index.html` 的 `#view` 里写了**静态首屏骨架**（`.skel` + 带主色渐变的 `.sk-hero` + `.sk-card` + `.sk-grid` 两块小卡，`aria-hidden="true"`），JS 没跑起来就能看见；`app.js` 新增 `skelHtml(kind)`（`home` / `kb` / `quiz` 三种形状）/ `skelNeeded(r)`（考试页不铺；答题页要 `bankById(r.bankId).questions.length >= SKEL_BIG_Q`（`= 200`）；`kb` / `search` / `stats` 一律铺）/ `skelPaint(r)` / `skelDrop()`（只摘 `#view` 的直接子 `.skel`）；`render()` 判断「真换页 + 该铺」时先铺骨架再把真渲染 `setTimeout(…, 0)` 让出一帧，`viewEnter()` 里 `skelDrop()` 兜底。CSS 在 `style.css` 末尾 `§3.6-P2⑥` 一节（`.sk-bl` 用 `color-mix(in srgb, var(--text) 11%, var(--card))`，`@keyframes skPulse`，reduced-motion 不闪，窄屏合成一列） |
 | 老探针的断言过期了 | 新探针 `工作1\p26-probe.py` **44 条 / 0 fail**（浏览器 22 + 源码 22）：四种形状的卡数 / 灰条数、阈值 200、`aria-hidden`、`skelDrop()` 不留残渣；真换页用 `MutationObserver` 数「中间铺过几次」= 大题库 1 次 / 小题库 0 次 / 知识库 1 次 / 统计 1 次，且画完内容都在。截图 `工作1\shots\r18-skel-home.png` / `r18-skel-kb.png` / `r18-skel-quiz.png` |
 | 看完解析想对照选项，得来回滚 | **§3.6-P1⑤ 解析 ↔ 选项联动**：解析（`.exp.rich-edit`）/ AI 输出（`.aiout`）/ AI 解析折叠区（`.aih-a`）里单独出现的 A–H 由 `uiOptHtml()` 包成 `<b class="optjump" data-k="B">B</b>`（`uiOptLetters()` 用 `TreeWalker` 走文本节点，跳过 `.opt` / 代码块 / 链接；题里没有的字母会还原成纯文字）；点字母 → 上面那个选项 `.opt-hit` 闪一圈并滚过去，点选项 → 解析里提到它的字母 `.on` 变实心（1.1 秒）。两个方向都绑在 `#view` 上做事件委托，翻题 / 重渲染不用重绑。存回去之前 `collection.js` 的 `stripOptJump()` 会把字母壳脱掉（`mdFromHtml()` 里那一步），**解析原文一个字节都不会被污染** |
