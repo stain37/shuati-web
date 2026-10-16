@@ -1411,20 +1411,46 @@ function aiSrcPaintFor(container, k) {
 }
 function aiSaveOut(host) {
   const st = AI_LAST[host.dataset.aiid];
-  if (!st || !st.text) { toast('还没有内容'); return; }
-  const text = st.text.trim();
-  if (!text) return;
+  if (!st) { toast('这个面板过期了，重新点一下「AI 解析」', 2600, 'bad'); return; }
+  const text = (st.text || '').trim();
+  /* 以前这里没内容就直接 return，用户看到的就是「点了没反应」（实测反馈）。现在都给一句话。 */
+  if (!text) {
+    const sb = host.querySelector('.ai-save');
+    if (sb) { sb.disabled = false; }
+    toast(st.running ? '还在生成中，等它写完再存' : '还没有内容：先点上面的「生成解析」', 2800, 'bad');
+    return;
+  }
   if (typeof st.onUse === 'function') {
     if (st.k && st.ctx && st.ctx.hits && st.ctx.hits.length) aiSrcSaveFor(st.k, st.ctx.hits);
-    st.onUse(text); toast('已写进解析框，记得点保存'); return;
+    st.onUse(text); toast('已写进解析框，记得点保存', 2600); return;
   }
-  if (!st.k || typeof NOTES === 'undefined') { toast('这道题没有可保存的位置'); return; }
-  if (st.ctx && st.ctx.hits && st.ctx.hits.length) aiSrcSaveFor(st.k, st.ctx.hits);   /* 参考资料跟着解析一起存下 */
+  if (!st.k || typeof NOTES === 'undefined') { toast('这道题没有可保存的位置', 2600, 'bad'); return; }
+  if (st.ctx && st.ctx.hits && st.ctx.hits.length) { try { aiSrcSaveFor(st.k, st.ctx.hits); } catch (e) {} }   /* 参考资料跟着解析一起存下（出错也不拦存正文） */
   const old = NOTES[st.k] || {};
   NOTES[st.k] = { text: text, imgs: old.imgs || [], ts: Date.now(), ai: true };
-  if (!saveNotes()) { toast('保存失败：浏览器存储满了'); return; }
+  if (!saveNotes()) { toast('保存失败：浏览器存储满了', 2800, 'bad'); return; }
   toast('已存为本题解析');
+  const stid = st.id;
   if (typeof render === 'function') render();
+  /* 重画之后（面板会被 aiReopenFor 恢复回来）就地给一个看得见的确认：
+     按钮变字 + 面板里多一行「存哪去了」并滚到眼前 —— 之前只在底部弹一下就没了，
+     用户看着面板会以为「点了没反应」（2026-10-16 实测反馈）。 */
+  setTimeout(() => {
+    try {
+      const h2 = document.querySelector('[data-aiid="' + stid + '"]') || host;
+      const sb = h2.querySelector('.ai-save');
+      if (sb) { sb.textContent = '✓ 已存入本题解析'; sb.disabled = true; }
+      if (h2.querySelector('.ai-saved-tip')) return;
+      const tip = document.createElement('div');
+      tip.className = 'small muted ai-saved-tip';
+      tip.style.cssText = 'margin:6px 0 0;color:var(--ok)';
+      tip.textContent = '✓ 已存进本题解析 —— 就在本题下面的「解析」里（同步、备份都会带上它）';
+      const panel = h2.querySelector('.aipanel') || h2;
+      panel.appendChild(tip);
+      try { tip.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      setTimeout(() => { if (sb) { sb.disabled = false; sb.textContent = h2.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析'; } if (tip.isConnected) tip.remove(); }, 6000);
+    } catch (e) {}
+  }, 80);
 }
 function aiCopy(t, host) {
   if (!t) { toast('还没有内容'); return; }
