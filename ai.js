@@ -806,6 +806,13 @@ function aiPdfViewerUrl(rel, anchor, id) {
   const abs = aiPdfMirUrl(rel, id || aiPdfMirId() || PDF_MIRS[0].id);
   return aiPdfBase() + 'pdfjs/web/viewer.html?file=' + encodeURIComponent(abs) + (anchor ? '#page=' + anchor : '');
 }
+/* 兼容写法：不用后台线程（在主线程里解析）。华为平板那类 WebView 上，模块 worker 可能起不来，
+   表现就是「阅读器页面明明加载了，文档却永远打不开、也不报错」—— 这个参数正好绕开 worker。
+   （pdf.js 自带支持：#disableworker=true，见 viewer.mjs 的 _parseHashParams。） */
+function aiPdfViewerUrlCompat(rel, anchor, id) {
+  const u = aiPdfViewerUrl(rel, anchor, id);
+  return u + (u.indexOf('#') >= 0 ? '&' : '#') + 'disableworker=true';
+}
 /* 站内阅读器能不能在这台设备上跑：pdf.js 5 靠一堆 ES2022 的东西。
    旧 iPad（iOS 15.4 之前）/ 旧安卓浏览器会直接白屏 —— 那就别硬上，改走系统阅读器（原生渲染/下载）。
    （Promise.withResolvers 和 URL.parse 已经由 pdfjs\web\compat.js 垫住了，这里只查没垫的那几个。） */
@@ -857,6 +864,76 @@ function aiPdfDiagText(extra) {
   } catch (e) { L.push('自检本身出错：' + (e && e.message)); }
   return L.join('\n');
 }
+/* 深入自检：把「pdf.js 在这台设备上到底卡在哪一步」逐个试出来。
+   背景：华为平板的 ArkWeb 上，阅读器页面能加载、却永远停在「文档没打开」且不报错 ——
+   像是卡死（卡在 worker 启动 / 或者卡在流式读取）。这里把可能的几条路逐个试：
+     A. URL 方式建模块 Worker（pdf.js 默认用法）
+     B. 把 worker 源码拉下来做 blob Worker（绕开 URL worker）
+     C1 默认打开 / C2 直连原站对照 / C3 关 Range / C4 关流式 / C5 blob worker
+   试完把结果复制给开发者，就能对症下药。 */
+async function aiPdfDeepDiag(push) {
+  const base = aiPdfBase();
+  const rel = 'pdf/' + encodeURIComponent('病理') + '/' + encodeURIComponent('1.结核_110-117.pdf');
+  const url = aiPdfMirUrl(rel, aiPdfMirId() || PDF_MIRS[0].id);
+  const direct = base + rel;
+  push('A. URL 方式建模块 Worker：');
+  try {
+    const w = new Worker(base + 'pdfjs/build/pdf.worker.mjs', { type: 'module' });
+    const r = await new Promise(res => {
+      let done = false;
+      const t = setTimeout(() => { if (!done) { done = true; res('4 秒内没报错'); } }, 4000);
+      w.onerror = e => { if (!done) { done = true; clearTimeout(t); res('报错：' + ((e && e.message) || e.type || '?')); } };
+      try { w.postMessage({}); } catch (e) { if (!done) { done = true; clearTimeout(t); res('postMessage 抛错：' + e.message); } }
+    });
+    push('   ' + r);
+    try { w.terminate(); } catch (e) {}
+  } catch (e) { push('   抛错：' + e.message); }
+  let blobWorker = null;
+  push('B. 把 worker 源码拉下来做 blob Worker：');
+  try {
+    const rs = await fetch(base + 'pdfjs/build/pdf.worker.mjs', { cache: 'no-store' });
+    const txt = await rs.text();
+    push('   源码 HTTP ' + rs.status + '，' + txt.length + ' 字节');
+    blobWorker = new Worker(URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), { type: 'module' });
+    push('   blob Worker 建好了');
+  } catch (e) { push('   失败：' + e.message); }
+  let lib = null;
+  push('C. 动态 import pdf.mjs：');
+  try { lib = await import(base + 'pdfjs/build/pdf.mjs'); push('   ok，version=' + (lib.version || '?')); }
+  catch (e) { push('   失败：' + ((e && e.message) || e)); }
+  if (lib) {
+    const tries = [
+      ['C1 默认（workerSrc = URL）', { url: url }],
+      ['C2 直连原站（对照）', { url: direct }],
+      ['C3 关 Range', { url: url, disableRange: true }],
+      ['C4 关流式+关预取', { url: url, disableStream: true, disableAutoFetch: true }],
+    ];
+    for (const [name, opt] of tries) {
+      const t0 = Date.now();
+      try {
+        lib.GlobalWorkerOptions.workerSrc = base + 'pdfjs/build/pdf.worker.mjs';
+        try { lib.GlobalWorkerOptions.workerPort = null; } catch (e) {}
+        const task = lib.getDocument(opt);
+        const doc = await Promise.race([task.promise, new Promise((_, rej) => setTimeout(() => rej(new Error('25 秒超时')), 25000))]);
+        push('   ' + name + '：成功，' + doc.numPages + ' 页（' + ((Date.now() - t0) / 1000).toFixed(1) + 's）');
+        try { doc.destroy(); } catch (e) {}
+      } catch (e) { push('   ' + name + '：' + String((e && e.message) || e).slice(0, 130) + '（' + ((Date.now() - t0) / 1000).toFixed(1) + 's）'); }
+    }
+    if (blobWorker) {
+      const t0 = Date.now();
+      try {
+        lib.GlobalWorkerOptions.workerPort = blobWorker;
+        const task = lib.getDocument({ url: url });
+        const doc = await Promise.race([task.promise, new Promise((_, rej) => setTimeout(() => rej(new Error('25 秒超时')), 25000))]);
+        push('   C5 blob worker：成功，' + doc.numPages + ' 页（' + ((Date.now() - t0) / 1000).toFixed(1) + 's）');
+        try { doc.destroy(); } catch (e) {}
+      } catch (e) { push('   C5 blob worker：' + String((e && e.message) || e).slice(0, 130) + '（' + ((Date.now() - t0) / 1000).toFixed(1) + 's）'); }
+      try { lib.GlobalWorkerOptions.workerPort = null; } catch (e) {}
+      try { blobWorker.terminate(); } catch (e) {}
+    }
+  }
+  push('（深入自检完）');
+}
 async function aiPdfDiagShow() {
   let extra = '';
   try {
@@ -880,12 +957,21 @@ async function aiPdfDiagShow() {
   box.style.cssText = 'position:fixed;inset:0;z-index:9995;background:rgba(6,10,18,.85);display:flex;flex-direction:column;gap:9px;padding:14px';
   box.innerHTML = '<div style="color:#fff;font-size:13.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
     + '<span style="flex:1 1 180px">这台设备的 PDF 自检报告（复制发给我就行）</span>'
+    + '<button class="btn tiny" type="button" id="pdfDiagDeep">▶ 深入自检（试四种取法，约 1 分钟）</button>'
     + '<button class="btn tiny" type="button" id="pdfDiagCopy">复制</button>'
     + '<button class="btn tiny" type="button" id="pdfDiagClose">关闭</button></div>'
     + '<textarea id="pdfDiagTa" spellcheck="false" style="flex:1;width:100%;border-radius:12px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5"></textarea>';
   document.body.appendChild(box);
   const ta = document.getElementById('pdfDiagTa');
   ta.value = txt;
+  on('pdfDiagDeep', async () => {
+    const b = document.getElementById('pdfDiagDeep');
+    if (b) { b.disabled = true; b.textContent = '正在深入自检…'; }
+    const push = m => { ta.value += '\n' + m; ta.scrollTop = ta.scrollHeight; };
+    try { await aiPdfDeepDiag(push); } catch (e) { push('深入自检出错：' + (e && e.message)); }
+    ta.value += '\n—— 就这些，点上面「复制」发给我 ——';
+    if (b) { b.disabled = false; b.textContent = '▶ 再试一次深入自检'; }
+  });
   on('pdfDiagCopy', () => { try { ta.select(); document.execCommand('copy'); toast('已复制，粘给我就行'); } catch (e) { toast('复制失败，手动全选复制'); } });
   on('pdfDiagClose', () => box.remove());
 }
@@ -957,10 +1043,14 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
     + '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(pdf) + '">新窗口打开 ↗</a>'
     + '<button class="btn tiny" type="button" id="pdfFsClose">关闭（Esc）</button>'
     + '</div>'
-    + '<iframe src="' + esc(pdf) + '" title="' + esc(title || 'PDF') + '" style="flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>';
+    + '<iframe src="' + esc(pdf) + '" title="' + esc(title || 'PDF') + '" style="flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>'
+    + '<div class="pdfFsTip small" style="color:#cbd5e1;margin:0"></div>';
   document.body.appendChild(box);
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
-  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const close = () => {
+    box.remove(); document.removeEventListener('keydown', onKey, true);
+    try { if (box.__rmTimers) box.__rmTimers(); } catch (e) {}
+  };
   document.addEventListener('keydown', onKey, true);
   const btn = document.getElementById('pdfFsClose');
   if (btn) btn.onclick = close;
@@ -969,20 +1059,28 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
   /* 看门狗：站内阅读器是**同源**的，可以直接问它「PDF 打开了没」。
      14 秒还没打开（老浏览器 / 线路不通 / 设备不让跨域）就在顶上补一条出路，别让人对着白屏发呆。 */
   const directUrl = rel ? (aiPdfBase() + rel + (anchor ? '#page=' + anchor : '')) : '';
-  let wtries = 0;
-  const watch = setInterval(() => {
-    if (!box.isConnected) { clearInterval(watch); return; }
-    wtries++;
-    let loaded = false;
+  /* 两个时间点，不用计数器，省得绕：
+       12 秒 —— 还没打开，先自动换成「不用 worker」的地址再试一次；
+       28 秒 —— 还不行才弹提示条 + 记住这台设备（下次直接给系统阅读器）。 */
+  const openedNow = () => {
     try {
       const fr = box.querySelector('iframe'), w = fr && fr.contentWindow;
-      loaded = !!(w && w.PDFViewerApplication && w.PDFViewerApplication.pdfDocument);
+      return !!(w && w.PDFViewerApplication && w.PDFViewerApplication.pdfDocument);
+    } catch (e) { return false; }
+  };
+  const tRetry = setTimeout(() => {
+    if (!box.isConnected || openedNow() || !rel) return;
+    try {
+      const f = box.querySelector('iframe');
+      if (f) f.src = aiPdfViewerUrlCompat(rel, anchor, aiPdfMirId() || PDF_MIRS[0].id);
+      const t = box.querySelector('.pdfFsTip');
+      if (t) t.textContent = '第一次没打开，正在换成「不用后台线程」的方式再试一次…';
     } catch (e) {}
-    if (loaded) { clearInterval(watch); return; }
-    if (wtries >= 7) {
-      clearInterval(watch);
-      if (document.getElementById('pdfFsFail')) return;
-      aiPdfNoViewerSet(true);                       /* 记住：这台设备上阅读器打不开，以后直接给系统阅读器 */
+  }, 12000);
+  const tGiveUp = setTimeout(() => {
+    if (!box.isConnected || openedNow() || document.getElementById('pdfFsFail')) return;
+    try {
+      aiPdfNoViewerSet(true);                     /* 记住：这台设备上阅读器打不开，以后直接给系统阅读器 */
       const bar = document.createElement('div');
       bar.id = 'pdfFsFail';
       bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;color:#fff;font-size:13px';
@@ -996,8 +1094,10 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
       if (again) again.onclick = () => { const f = box.querySelector('iframe'); if (f) f.src = f.src; };
       const why = bar.querySelector('#pdfFsWhy');
       if (why) why.onclick = () => { try { aiPdfDiagShow(); } catch (e) {} };
-    }
-  }, 2000);
+    } catch (e) { try { toast('PDF 打不开。可以点「打开 PDF」用系统阅读器看'); } catch (e2) {} }
+  }, 28000);
+  const _rmTimers = () => { clearTimeout(tRetry); clearTimeout(tGiveUp); };
+  box.__rmTimers = _rmTimers;
   if (sw && rel) sw.onclick = function () {
     if (sw.dataset.busy) return;
     sw.dataset.busy = '1'; sw.textContent = '正在试别的线路…';
