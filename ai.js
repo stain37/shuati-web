@@ -689,16 +689,12 @@ function aiPaintHist(host) {
    站点目录里的 pdf\ 是五个指向桌面精编版文件夹的 junction（本机才有，不随部署上传），
    手机（局域网 IP）和线上（github.io）上这份 PDF 根本不存在，所以那边干脆不画这个按钮。 */
 function aiPdfOk() {
-  try {
-    if (location.protocol === 'file:') return true;
-    return aiPdfHostOk(location.hostname);
-  } catch (e) { return false; }
+  /* 2026-10-16 改：PDF 现在**跟着站点一起上线了**（站点目录里的 pdf\ 那 476MB 也会上传），
+     所以本地 / 局域网 / 线上（github.io）都能看，这个开关就恒为 true。
+     只有一种情况会 404：把站点目录拷给别人时没带上 pdf\（分享包里那个文件夹本来就大，不带也算合理）。 */
+  return true;
 }
-/* 哪些「打开方式」算本机（能读到站点目录里那五个 PDF junction）：
-   · file://（双击 index.html）· localhost / 127.0.0.1
-   · **局域网 IP** —— 手机连同一个 Wi-Fi、用「手机访问.bat」（8080，bind 0.0.0.0）看时也算：
-     零上传、零流量、局域网直读，代价是电脑得开着（2026-10-16 用户要「手机也能看 PDF」时加的）
-   线上（github.io）永远不算 —— PDF 没上传，画了也是死链。 */
+/* （留着备用）哪些「打开方式」算本机能直接读 PDF junction 的 */
 function aiPdfHostOk(host) {
   const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
   if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
