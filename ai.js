@@ -1444,7 +1444,7 @@ function aiSaveOut(host) {
     NOTES[extraKey] = { text: text, imgs: o2.imgs || [], ts: Date.now(), ai: true };
   }
   if (!saveNotes()) { toast('保存失败：浏览器存储满了', 2800, 'bad'); return; }
-  toast('已存为本题解析');
+  toast('已存为本题解析（' + text.length + ' 字）');
   const stid = st.id;
   if (typeof render === 'function') render();
   /* 重画之后（面板会被 aiReopenFor 恢复回来）就地给一个看得见的确认：
@@ -1476,9 +1476,9 @@ function aiSaveOut(host) {
             wrap.style.boxShadow = '0 0 0 2px var(--ok)';
             setTimeout(() => { wrap.style.boxShadow = prev || ''; }, 1800);
           }, 120);
-          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + '）—— 就是下面这条（已经滚过去闪了一下）';
+          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + ' · ' + text.length + ' 字）—— 就是下面这条（已经滚过去闪了一下）';
         } else {
-          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + '）—— 页面上没找到对应的解析块';
+          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + ' · ' + text.length + ' 字）—— 页面上没找到对应的解析块';
         }
       } catch (e) {}
       setTimeout(() => { if (sb) { sb.disabled = false; sb.textContent = h2.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析'; } if (tip.isConnected) tip.remove(); }, 6000);
