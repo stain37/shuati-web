@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="light" data-accent="teal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>视觉 v2 样板（§8）· 首页 + 答题页</title>
+<meta name="description" content="刷题站视觉 v2 样板：先做首页与答题页两屏，验收后再全站铺开。">
+<link rel="stylesheet" href="v2-sample.css">
+</head>
+<body>
+<!-- 图标全部内联 SVG（§8.4：不引外链字体 / 图标库，离线也能看） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-wrong" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M9.6 9.6l4.8 4.8M14.4 9.6l-4.8 4.8"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4.4l2.4 5 5.6.7-4.1 3.9 1 5.6-4.9-2.8-4.9 2.8 1-5.6-4.1-3.9 5.6-.7z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8 20 20"/></symbol>
+  <symbol id="i-me" viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.4"/><path d="M5.6 19.6c1.3-3.2 3.7-4.7 6.4-4.7s5.1 1.5 6.4 4.7"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 19.5V11M12 19.5V5M19 19.5v-6"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 4l1.8 4.7L18.5 10l-4.7 1.4L12 16l-1.8-4.6L5.5 10l4.7-1.3z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3.5c3.6 3.4 5.5 6 5.5 8.6A5.5 5.5 0 0 1 12 20.5a5.5 5.5 0 0 1-5.5-5.4c0-1.6.7-3 2.1-4.6.6 1.2 1.4 1.9 2.2 2.1-.6-2.6-.2-5.6 1.2-9.1z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></symbol>
+</defs></svg>
+<div class="wrap">
+  <div class="head">
+    <h1>视觉 v2 样板 · 首页 + 答题页</h1>
+    <p>这是《UI优化方案》§8「换脸」的<strong>第一步</strong>：只重做两屏、只动视觉和布局，<strong>数据和逻辑层一行没改</strong>。看着可以，再按同一套语言铺开错题本 / 搜索 / 统计 / 设置 / AI。</p>
+    <p class="note">上面的开关就是 §8.4 的验收清单：浅色 / 深色都过一遍、三套主色都点一下、375 窄屏和桌面都看看。此页离线也能开（不引外链字体和图标）。</p>
+  </div>
+
+  <div class="ctrls">
+    <div class="grp" role="group" aria-label="明暗">
+      <span>外观</span>
+      <button class="seg" data-skin="light">浅色</button>
+      <button class="seg" data-skin="dark">深色</button>
+      <button class="seg" data-skin="auto">跟随系统</button>
+    </div>
+    <div class="grp" role="group" aria-label="主色">
+      <span>主色</span>
+      <button class="seg" data-accent="teal">① 冷静青</button>
+      <button class="seg" data-accent="indigo">① 靛蓝</button>
+      <button class="seg" data-accent="warm">② 蓝 + 暖橙</button>
+    </div>
+    <div class="grp" role="group" aria-label="宽度">
+      <span>宽度</span>
+      <button class="seg" data-w="375">375</button>
+      <button class="seg" data-w="390">390</button>
+      <button class="seg" data-w="430">430</button>
+    </div>
+    <div class="grp">
+      <button class="seg" id="replay">▶ 重放判分动画</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- ============ 屏 1：首页（Bento） ============ -->
+    <section class="phone">
+      <div class="frame">
+        <div class="screen">
+          <div class="s-top">
+            <div>
+              <div class="s-hi">上午好，继续加油</div>
+              <h2 class="s-app">刷题站</h2>
+            </div>
+            <div class="streak" title="连续刷题天数"><svg class="ic"><use href="#i-flame"/></svg> 12 天</div>
+          </div>
+
+          <div class="bento">
+            <!-- 大卡：继续上次刷题 -->
+            <div class="bcard span2 resume" style="--i:0">
+              <div class="kick">继续上次刷题</div>
+              <div class="t">内科学 · 精编版</div>
+              <div class="m">第 42 / 86 题 · 已答 41 · 正确率 76% · 昨天 21:40</div>
+              <div class="bar"><i style="width:49%"></i></div>
+              <button class="btn pri wide">继续刷题 →</button>
+            </div>
+
+            <!-- 今日复习圆环 -->
+            <div class="bcard due" style="--i:1">
+              <div class="ring">
+                <svg viewBox="0 0 44 44" aria-hidden="true">
+                  <defs><linearGradient id="v2Ring" x1="0" y1="0" x2="1" y2="1">
+                    <stop class="s1" offset="0"/><stop class="s2" offset="1"/>
+                  </linearGradient></defs>
+                  <circle class="rk" cx="22" cy="22" r="18"/>
+                  <circle class="rv" cx="22" cy="22" r="18" style="--p:61"/>
+                </svg>
+                <div class="n"><b>18</b><span>待复习</span></div>
+              </div>
+              <button class="btn ghost wide">开始复习</button>
+            </div>
+
+            <!-- 今日数据 -->
+            <div class="bcard" style="--i:2">
+              <div class="kick">今天</div>
+              <div class="big"><b>36</b><span>已答</span></div>
+              <div class="ok">正确率 83%</div>
+              <div class="bar thin"><i style="width:83%"></i></div>
+              <div class="kick">近 7 天 214 题</div>
+            </div>
+
+            <!-- 热力图 -->
+            <div class="bcard span2 heat" style="--i:3">
+              <div class="kick" style="display:flex; justify-content:space-between">
+                <span>近 12 周</span><span>共 412 题</span>
+              </div>
+              <div class="hm" id="hm"></div>
+              <div class="hm-legend">少 <i data-l="0"></i><i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i> 多</div>
+            </div>
+
+            <!-- 错题 / 收藏 -->
+            <div class="bcard mini" style="--i:4">
+              <span class="mi"><svg class="ic"><use href="#i-wrong"/></svg></span>
+              <div><div class="n">27<em class="dot" style="font-style:normal">3</em></div><div class="l">错题</div></div>
+            </div>
+            <div class="bcard mini" style="--i:5">
+              <span class="mi"><svg class="ic"><use href="#i-star"/></svg></span>
+              <div><div class="n">12</div><div class="l">收藏</div></div>
+            </div>
+
+            <!-- 快捷入口 -->
+            <div class="bcard span2 quick" style="--i:6">
+              <button class="q"><b><svg class="ic"><use href="#i-search"/></svg></b>搜索</button>
+              <button class="q"><b><svg class="ic"><use href="#i-chart"/></svg></b>统计</button>
+              <button class="q"><b><svg class="ic"><use href="#i-ai"/></svg></b>AI 解析</button>
+              <button class="q"><b><svg class="ic"><use href="#i-plus"/></svg></b>新建题库</button>
+            </div>
+          </div>
+
+          <nav class="s-nav">
+            <button class="on"><svg class="ic"><use href="#i-home"/></svg>首页</button>
+            <button><svg class="ic"><use href="#i-wrong"/></svg>错题<span class="nb">3</span></button>
+            <button><svg class="ic"><use href="#i-star"/></svg>收藏</button>
+            <button><svg class="ic"><use href="#i-search"/></svg>搜索</button>
+            <button><svg class="ic"><use href="#i-me"/></svg>我的</button>
+          </nav>
+        </div>
+      </div>
+      <p class="cap">屏 1 · 首页：Bento 网格（继续刷题大卡 + 复习圆环 + 热力图 + 今日数据 + 快捷入口）<br>底栏从 7 个收到 5 个，收藏 / 同步 / 设置 收进「我的」</p>
+    </section>
+
+    <!-- ============ 屏 2：答题页（沉浸式） ============ -->
+    <section class="phone" style="--phone-w:390px">
+      <div class="frame">
+        <div class="screen qz">
+          <div class="qz-top">
+            <button class="ico" title="返回"><svg class="ic"><use href="#i-back"/></svg></button>
+            <div class="qz-prog"><i style="width:35%"></i></div>
+            <div class="qz-no">7 / 20</div>
+            <button class="ico" title="收藏"><svg class="ic"><use href="#i-star"/></svg></button>
+          </div>
+
+          <div class="qz-body reveal">
+            <div class="qz-card">
+              <div class="qz-tags">
+                <span class="tagpill g">单选</span>
+                <span class="tagpill">慢阻肺</span>
+                <span class="tagpill">作答 3 次 · 错 2 次</span>
+              </div>
+              <div class="qz-stem">男，68 岁，反复咳嗽、咳痰 20 年，活动后气促 5 年。最可能的诊断是？</div>
+              <div class="qz-opts">
+                <button class="qopt wrong"><span class="k">A</span><span>支气管哮喘</span><span class="mk">✕</span></button>
+                <button class="qopt right"><span class="k">B</span><span>慢性阻塞性肺疾病</span><span class="mk">✓</span></button>
+                <button class="qopt"><span class="k">C</span><span>支气管扩张症</span></button>
+                <button class="qopt"><span class="k">D</span><span>特发性肺纤维化</span></button>
+              </div>
+            </div>
+
+            <div class="qz-fb">
+              <div class="fb-h"><span class="r">✕</span><b>回答错误</b><span class="st">连对 3 🔥</span></div>
+              <div class="fb-meta">正确答案 <b>B</b> · 你选了 A · 本题累计作答 3 次 · 错 2 次</div>
+              <div class="fb-exp"><b>解析</b>
+                <p><mark>FEV1/FVC &lt; 70%</mark> 是诊断慢阻肺的必备条件；吸入支气管舒张剂后仍不达标才算。长期咳嗽咳痰 + 活动后气促，是慢阻肺最典型的一组表现。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="qz-bot">
+            <button class="ico" title="上一题"><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn sm" id="moreBtn"><svg class="ic"><use href="#i-dots"/></svg> 更多</button>
+            <button class="btn pri">下一题 →</button>
+          </div>
+
+          <div class="scrim" id="scrim"></div>
+          <div class="sheet" id="sheet">
+            <div class="grip"></div>
+            <div class="row">
+              <button class="btn sm">改解析（已自定义）</button>
+              <button class="btn sm">改答案</button>
+              <button class="btn sm">AI 解析</button>
+              <button class="btn sm">AI 变式题</button>
+              <button class="btn sm">✗ 剔除错题</button>
+              <button class="btn sm">去题库里做这道题</button>
+            </div>
+            <p class="cap" style="text-align:left; margin-top:10px">答题时这些「管理入口」不再摊在题目下面，收进抽屉里，需要时点「⋯ 更多」。</p>
+          </div>
+        </div>
+      </div>
+      <p class="cap">屏 2 · 答题页：沉浸式大卡（无顶栏 / 无底栏，底部只有进度与翻页）<br>选项 12px 圆角、判分有揭示节奏、连对 streak 贴在结果行右侧</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var html = document.documentElement;
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  /* 热力图：12 周 × 7 天，做一个像真的分布出来（固定种子，每次刷新一样） */
+  var hm = document.getElementById('hm');
+  if (hm) {
+    var seed = 20261016, rnd = function () { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    var out = '';
+    for (var i = 0; i < 84; i++) {
+      var v = rnd(), l = 0;
+      if (v > .18) l = 1;
+      if (v > .42) l = 2;
+      if (v > .66) l = 3;
+      if (v > .86) l = 4;
+      var dow = i % 7;
+      if (dow === 5 || dow === 6) l = Math.max(0, l - 1);   /* 周末少一点 */
+      out += '<i data-l="' + l + '" title="' + (l ? l * 7 + ' 题' : '没做') + '"></i>';
+    }
+    hm.innerHTML = out;
+  }
+
+  function skin(mode) {
+    var dark = mode === 'dark' || (mode === 'auto' && mq && mq.matches);
+    html.setAttribute('data-skin', dark ? 'dark' : 'light');
+    html.setAttribute('data-skinmode', mode);
+    document.querySelectorAll('.ctrls [data-skin]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.skin === mode)); });
+  }
+  document.querySelectorAll('.ctrls [data-skin]').forEach(function (b) { b.onclick = function () { skin(b.dataset.skin); }; });
+  if (mq && mq.addEventListener) mq.addEventListener('change', function () { if (html.getAttribute('data-skinmode') === 'auto') skin('auto'); });
+
+  document.querySelectorAll('.ctrls [data-accent]').forEach(function (b) {
+    b.onclick = function () {
+      html.setAttribute('data-accent', b.dataset.accent);
+      document.querySelectorAll('.ctrls [data-accent]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    };
+  });
+  document.querySelectorAll('.ctrls [data-w]').forEach(function (b) {
+    b.onclick = function () {
+      document.documentElement.style.setProperty('--phone-w', b.dataset.w + 'px');
+      document.querySelectorAll('.ctrls [data-w]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    };
+  });
+
+  /* 判分动画重放（验收用：看得清「先摘色 → 翻牌 → 结果最后亮」） */
+  var qz = document.querySelector('.qz-card');
+  function replay() {
+    var box = qz ? qz.parentNode : null;
+    if (!box) return;
+    box.classList.remove('reveal');
+    void box.offsetWidth;
+    box.classList.add('reveal');
+  }
+  var rp = document.getElementById('replay');
+  if (rp) rp.onclick = replay;
+
+  /* 抽屉 */
+  var sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim'), more = document.getElementById('moreBtn');
+  function draw(on) { sheet.classList.toggle('on', on); scrim.classList.toggle('on', on); }
+  if (more) more.onclick = function () { draw(!sheet.classList.contains('on')); };
+  if (scrim) scrim.onclick = function () { draw(false); };
+
+  /* 点选项：先演示「作答前」的选中态，再演示判分后的对错 */
+  document.querySelectorAll('.qopt').forEach(function (o) {
+    o.onclick = function () {
+      var box = o.closest('.qz-body');
+      var done = box.classList.contains('reveal');
+      box.classList.toggle('reveal', !done);
+      if (done) { document.querySelectorAll('.qopt').forEach(function (x) { x.classList.remove('sel'); }); o.classList.add('sel'); }
+    };
+  });
+
+  /* 地址上带参数就能直接定到某一态，方便截图 / 发给别人看：
+     ?skin=dark&accent=indigo&w=375&sheet=1  */
+  var q = new URLSearchParams(location.search);
+  skin(q.get('skin') || 'light');
+  if (q.get('accent')) { var ab = document.querySelector('.ctrls [data-accent="' + q.get('accent') + '"]'); if (ab) ab.click(); }
+  else { document.querySelector('.ctrls [data-accent="teal"]').setAttribute('aria-pressed', 'true'); }
+  if (q.get('w')) { var wb = document.querySelector('.ctrls [data-w="' + q.get('w') + '"]'); if (wb) wb.click(); }
+  else { document.querySelector('.ctrls [data-w="390"]').setAttribute('aria-pressed', 'true'); }
+  if (q.get('sheet')) draw(true);
+})();
+</script>
+</body>
+</html>

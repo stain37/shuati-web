@@ -176,6 +176,8 @@ tags.js                     考点标签（词表可批量导入或让 AI 起一
 report.js                   AI 学情诊断（周报）（#/report：把学情摘要交给模型写诊断，报告存在本机）
 sw.js  manifest.json  icons/ PWA（离线缓存 + 主屏图标）
 robots.txt                  禁止搜索引擎收录（资料库有版权，别被索引）
+v2-sample.html  v2-sample.css   §8 视觉 v2 的**两屏样板**（首页 + 答题页，可现场切明暗 / 主色 / 宽度）；
+                            只是给人看效果的独立页面，不被站点引用，删掉也不影响任何功能
 上传步骤.md                 怎么放到网上（Cloudflare Pages / Netlify Drop / GitHub Pages）+ 手机装 App + 数据搬家
 UI优化方案.md               UI / 交互优化执行方案（第一批「设置分层 / 复习曲线档位 / #kb 标签页 / 触屏收起快捷键提示」
                             已做完上线；后面还有第二批导航重构、第三批细节、§3.5 候补池 8 条、第四批视觉焕新）
@@ -225,11 +227,15 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v53-web39**）
+（缓存版本 **shuati-v54-web40**）
+
+最近的改动分两轮，先说清哪轮动了站点：
+- **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**，缓存戳一个没变。体检 `工作1\v2-sample-check.py`（19 条 0 fail），截图 `工作1\shots\v2-*.png`。
+- **shuati-v53-web39（进阶交互包）**：就是下面这张表。
 
 | 问题 | 说明 |
 | --- | --- |
-| 答题时上面下面全是按钮，晃眼 | **§3.6-P0① 专注模式**：答题页题目头加 `#btnFocus`（`⛶ 专注`，开着加 `.on`）、`index.html` 里加浮出的 `#btnFocusExit`（`body.focus` 时才 `display:flex`）；设置面板加 `#setFocus` 开关。状态走 `SET.focus`（`SET_DEF` 里加 `focus: false`），由 `applyLook()` 统一 `body.classList.toggle('focus', …)`，切换走 `uiSetFocus(on, quiet)`；Esc 改成「先退专注、没专注才 `closeAll()`」，刷新后仍是专注态。CSS：`body.focus .top,.bnav{display:none!important}` + 正文留白 `84px` |
+| 答题时上面下面全是按钮，晃眼 | **§3.6-P0① 专注模式**：答题页题目头加 `#btnFocus`（`⛶ 专注`，开着加 `.on`）、`index.html` 里加浮出的 `#btnFocusExit`（`body.focus` 时才 `display:flex`）；设置面板加 `#setFocus` 开关。状态走 `SET.focus`（`SET_DEF` 里加 `focus: false`），由 `applyLook()` 统一 `body.classList.toggle('focus', …)`，切换走 `uiSetFocus(on, quiet)`；Esc 改成「先退专注、没专注才 `closeAll()`」，刷新后仍是专注态。CSS：`body.focus .top{display:none!important}` + `body.quiz.focus .bnav{display:none!important}`（**只有答题页收底栏**）+ 浮标 `bottom: calc(78px + 安全区)`（原 `14px` 正好压住「下一题」） |
 | 判完分「啪」一下全亮，眼睛不知道看哪 | **§3.6-P0② 判分仪式感**：新增 `uiReveal(bank, q, st)` —— 先把对错色摘掉（`plan.forEach(m => m.el.classList.remove('right','wrong'))`），正确的那个先翻牌（`.opt.flip-in` + `@keyframes optFlip`），错项随后淡入，节奏 `90 + i * 110` ms；结果框先 `.fb.fb-hold`（`opacity:0`）按住，最后 `fbPop` 亮出来。`judge()` 里改成 `uiReveal(bank, q, ANS[k] || { ok: ok })`；`uiMotionOK()` 为假（系统开了减少动态效果）时整段 `return`，判完直接出结果 |
 | 答对答错都一个样，没点「连击」的感觉 | **§3.6-P0② 连对 streak**：`QZ` 里加 `streak: 0`（只在内存，不落盘）；`uiStreakBump(ok)` 答对 +1、答错清零，`n === 3 \|\| (n > 3 && n % 5 === 0)` 时 `toast('连对 ' + n + ' 题 🔥', 1600, 'ok')`（刻意不上 `fx.js` 彩带，答题时太吵） |
 | 今天欠多少复习，得点进去才知道 | **§3.6-P0③ 待复习角标**：`uiDueCount()` 数 `wrong > 0` 且 `due <= now`（与 `isDue()` 同一套判据），`uiPaintBadge()` 把数字挂到 `#btnGoWrong` 和底部导航「错题」那个按钮上（`.nb-badge`，>99 显示 `99+`，`title` 写「今天有 N 道错题到期该复习」，`data-due` 留痕，**0 就把角标摘掉**）；刷新点在 `renderInner()` 收尾（`try { uiPaintBadge(); } catch (e) {}`）。纯读 `ANS`，不新增字段 |
