@@ -782,8 +782,10 @@ function aiPdfViewerWarm() {
   if (AI_PDF_VIEWER_WARM) return;
   AI_PDF_VIEWER_WARM = true;
   const base = aiPdfBase();
-  ['pdfjs/web/viewer.html', 'pdfjs/web/viewer.css', 'pdfjs/web/viewer.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs']
-    .forEach((p, i) => { setTimeout(() => { try { fetch(base + p).catch(() => {}); } catch (e) {} }, 1500 + i * 400); });
+  const files = aiPdfLiteFirst()
+    ? ['pdfjs/lite.html', 'pdfjs/v4/pdf.min.mjs', 'pdfjs/v4/pdf.worker.min.mjs']
+    : ['pdfjs/web/viewer.html', 'pdfjs/web/viewer.css', 'pdfjs/web/viewer.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs'];
+  files.forEach((p, i) => { setTimeout(() => { try { fetch(base + p).catch(() => {}); } catch (e) {} }, 1500 + i * 400); });
 }
 function aiPdfAbs(h) {
   const rel = String(aiPdfHref(h) || '').split('#')[0];
@@ -975,6 +977,24 @@ async function aiPdfDiagShow() {
   on('pdfDiagCopy', () => { try { ta.select(); document.execCommand('copy'); toast('已复制，粘给我就行'); } catch (e) { toast('复制失败，手动全选复制'); } });
   on('pdfDiagClose', () => box.remove());
 }
+/* 轻量阅读器（pdfjs 4.6.82 legacy + 自己写的界面，2026-10-16）
+   为什么需要：官方那份 pdf.js 6.5 的阅读器要靠一堆最新的 JS API，华为平板那种内核（ArkWeb）上
+   直接报 Uint8Array.toHex / Map.getOrInsertComputed 缺失 —— 而且 worker 里也在用，垫主线程没用。
+   这份 v4 的 legacy 构建是专为老引擎转译的，界面只要翻页 / 跳页 / 缩放，还自己建 worker（三种方式回退）。 */
+function aiPdfLiteUrl(rel, anchor) {
+  const abs = aiPdfMirUrl(rel, aiPdfMirId() || PDF_MIRS[0].id);
+  return aiPdfBase() + 'pdfjs/lite.html?file=' + encodeURIComponent(abs) + (anchor ? '&page=' + anchor : '');
+}
+function aiPdfLiteHref(h) {
+  const rel = String(aiPdfHref(h) || '').split('#')[0];
+  if (!rel) return '';
+  return aiPdfLiteUrl(rel, h.pdfp || h.page || '');
+}
+/* 华为 / 鸿蒙那一类内核：官方阅读器基本跑不起来，直接用轻量的 */
+function aiPdfLiteFirst() {
+  try { if (window.__pdfLiteFirst != null) return !!window.__pdfLiteFirst; } catch (e) {}
+  try { return /ArkWeb|HuaweiBrowser|HarmonyOS|OpenHarmony/i.test(navigator.userAgent || ''); } catch (e) { return false; }
+}
 /* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
    window.__pdfTouch 是给探针用的开关，能强扮手机 / 电脑。 */
 function aiPdfTouch() {
@@ -1002,23 +1022,26 @@ function aiPdfBlockHtml(h, full) {
   /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
      直接给站内网页阅读器 —— 它跟普通网页一样，在浏览器 / 加到主屏的 App 里都能开。 */
   const viewer = aiPdfViewerHref(h);
+  const lite = aiPdfLiteHref(h);
   /* 浏览器太旧（跑不动 pdf.js 5）、或者这台设备上看门狗已经确认打不开：
      别给阅读器，直接给「系统阅读器打开」那条路 */
-  if (viewer && (!aiPdfViewerOK() || aiPdfNoViewer())) {
-    const why = aiPdfNoViewer() ? '这台设备上站内阅读器打不开（已经记住，不再重试）' : '这台设备的浏览器版本较旧（跑不动站内阅读器）';
+  if (viewer && (!aiPdfViewerOK())) {
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<a class="btn tiny primary" href="' + esc(direct + (anchor ? '#page=' + anchor : '')) + '" target="_blank" rel="noopener" title="用系统阅读器 / 浏览器直接打开这一节（原站直链）">📄 ' + label + ' ↗</a>'
-      + '<button class="btn tiny" type="button" data-pdf-retryviewer="1">再试一次站内阅读器</button>'
       + '</div>'
-      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">' + esc(why) + '，已经改成用系统阅读器打开。'
-      + '<a href="javascript:void 0" data-pdf-diag="1" style="margin-left:6px">看看为什么？</a></div>';
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">这台设备的浏览器版本较旧（跑不动站内阅读器），已经改成用系统阅读器打开。</div>';
   }
   if (viewer && aiPdfTouch()) {
+    /* 这台设备上「标准阅读器」以前失败过（华为内核 / 看门狗标记）→ 直接用轻量的那个 */
+    const useLite = !!lite && (aiPdfLiteFirst() || aiPdfNoViewer());
+    const primary = useLite ? lite : viewer;
+    const plabel = useLite ? '📖 看原页（轻量阅读器）' : '📖 看原页（网页阅读器）';
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="在本站里用网页阅读器打开原页（纯网页渲染，安卓 / iPhone 都行；Esc 或右上角关闭退出）">📖 看原页（网页阅读器）</button>'
+      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(primary) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="' + (useLite ? '1' : '0') + '" data-title="' + esc(title) + '" title="在本站里打开原页（纯网页渲染，安卓 / iPhone / 华为平板都行；Esc 或右上角关闭退出）">' + plabel + '</button>'
       + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
+      + ((useLite || !lite) ? '' : '<button class="btn tiny pdf-lite" type="button" data-pdf="' + esc(lite) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="1" data-title="' + esc(title) + '" title="轻量阅读器：给官方那份跑不起来的老内核用">轻量阅读器</button>')
       + '</div>'
-      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的网页阅读器会直接翻开这一页（走加速线路，比直连快十几倍），能翻页、双指放大。</div>';
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的阅读器会直接翻开这一页（走加速线路，比直连快十几倍），能翻页、双指放大。</div>';
   }
   /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
   return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
@@ -1068,13 +1091,17 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
       return !!(w && w.PDFViewerApplication && w.PDFViewerApplication.pdfDocument);
     } catch (e) { return false; }
   };
+  const tip = t => { try { const el = box.querySelector('.pdfFsTip'); if (el) el.textContent = t; } catch (e) {} };
   const tRetry = setTimeout(() => {
     if (!box.isConnected || openedNow() || !rel) return;
+    if (document.getElementById('pdfFsFail')) return;
     try {
       const f = box.querySelector('iframe');
-      if (f) f.src = aiPdfViewerUrlCompat(rel, anchor, aiPdfMirId() || PDF_MIRS[0].id);
-      const t = box.querySelector('.pdfFsTip');
-      if (t) t.textContent = '第一次没打开，正在换成「不用后台线程」的方式再试一次…';
+      const cur = (f && f.getAttribute('src')) || '';
+      if (cur.indexOf('lite.html') < 0) {          /* 标准阅读器没开出来 → 换成轻量阅读器再试一次 */
+        if (f) f.src = aiPdfLiteUrl(rel, anchor);
+        tip('第一次没打开，正在换成「轻量阅读器」再试一次…');
+      }
     } catch (e) {}
   }, 12000);
   const tGiveUp = setTimeout(() => {
@@ -1084,12 +1111,15 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
       const bar = document.createElement('div');
       bar.id = 'pdfFsFail';
       bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;color:#fff;font-size:13px';
-      bar.innerHTML = '<span>这一页在这台设备上没打开成功（以后这里会直接用系统阅读器）。</span>'
+      bar.innerHTML = '<span>这一页在这台设备上没打开成功（以后这里会优先用轻量阅读器）。</span>'
+        + '<button class="btn tiny" type="button" id="pdfFsLite">试试轻量阅读器</button>'
         + '<button class="btn tiny" type="button" id="pdfFsAgain">换条线路重试</button>'
         + (directUrl ? '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(directUrl) + '">用系统阅读器直接打开 ↗</a>' : '')
         + '<button class="btn tiny" type="button" id="pdfFsWhy">为什么打不开？</button>';
       const head = box.firstElementChild;
       if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling);
+      const liteBtn = bar.querySelector('#pdfFsLite');
+      if (liteBtn) liteBtn.onclick = () => { try { close(); aiPdfFullscreen(aiPdfLiteUrl(rel, anchor), title, rel, anchor); } catch (e) {} };
       const again = bar.querySelector('#pdfFsAgain');
       if (again) again.onclick = () => { const f = box.querySelector('iframe'); if (f) f.src = f.src; };
       const why = bar.querySelector('#pdfFsWhy');
@@ -1119,7 +1149,7 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
 }
 /* 「⛶ 全屏看原页」按钮的绑定 */
 function aiBindPdfInline(root) {
-  (root || document).querySelectorAll('.pdf-full').forEach(btn => {
+  (root || document).querySelectorAll('.pdf-full, .pdf-lite').forEach(btn => {
     btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF', btn.dataset.rel || '', btn.dataset.anchor || '');
   });
   /* 「再试一次站内阅读器」：清掉「这台设备打不开」的标记，下次又给阅读器 */

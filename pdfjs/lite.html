@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>讲义阅读器（轻量）</title>
+<!-- 轻量阅读器（2026-10-16，刷题站自用）
+     为什么另写一个：官方那份 pdf.js 6.5 的阅读器要求一大堆最新的 JS API
+     （Uint8Array.toHex、Map.getOrInsertComputed 等），华为平板那种内核（ArkWeb）上直接报错 ——
+     所以这里用 pdf.js 的 **4.6.82 legacy 构建**（专为老引擎转译过），阅读器界面自己写，
+     只保留最要紧的：翻页、跳页、缩放、适应宽度。没有同源限制，加速线路的 PDF 直接能取。
+     地址约定（跟官方那个一致）：lite.html?file=<绝对地址>&page=N（也认 #page=N） -->
+<style>
+  :root { color-scheme: dark light; }
+  html, body { margin: 0; height: 100%; background: #0f172a; color: #e5e7eb; font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  #bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #111c34; border-bottom: 1px solid #24304d; flex-wrap: wrap; }
+  #bar button, #bar a { background: #1e2a47; color: #e5e7eb; border: 1px solid #2f3d5f; border-radius: 9px; padding: 5px 10px; font-size: 13px; text-decoration: none; cursor: pointer; }
+  #bar button:active { background: #26365c; }
+  #bar input { width: 58px; background: #0b1324; color: #e5e7eb; border: 1px solid #2f3d5f; border-radius: 9px; padding: 5px 6px; text-align: center; font-size: 13px; }
+  #st { color: #9fb0cc; font-size: 12.5px; }
+  #wrap { position: absolute; inset: 46px 0 0 0; overflow: auto; -webkit-overflow-scrolling: touch; text-align: center; padding: 8px 0 24px; }
+  canvas { background: #fff; border-radius: 6px; box-shadow: 0 2px 16px rgba(0,0,0,.45); max-width: 100%; }
+  #err { display: none; margin: 30px auto; max-width: 520px; text-align: left; background: #2a1520; border: 1px solid #5b2136; border-radius: 12px; padding: 14px; white-space: pre-wrap; font-size: 13px; }
+  #err b { color: #fca5a5; }
+  @media (max-width: 640px) { #bar { gap: 6px; padding: 6px; } #bar button, #bar a { padding: 5px 8px; } #wrap { inset: 44px 0 0 0; } }
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="prev" title="上一页">‹</button>
+  <span><input id="pn" type="number" min="1" value="1" inputmode="numeric"> / <b id="pc">?</b></span>
+  <button id="next" title="下一页">›</button>
+  <button id="zo" title="缩小">−</button>
+  <button id="zi" title="放大">+</button>
+  <button id="fit" title="按屏幕宽度显示">适应宽度</button>
+  <span id="st">加载中…</span>
+  <span style="flex:1"></span>
+  <a id="dl" target="_blank" rel="noopener" title="在新窗口打开原始 PDF（下载/系统阅读器）">新窗口打开 ↗</a>
+</div>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="err"></div>
+
+<script type="module">
+import * as pdfjsLib from './v4/pdf.min.mjs';
+
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+const hs = new URLSearchParams(String(location.hash || '').replace(/^#/, ''));
+const FILE = qs.get('file') || hs.get('file') || '';
+let pageNo = parseInt(hs.get('page') || qs.get('page') || '1', 10) || 1;
+const cv = $('cv'), ctx = cv.getContext('2d');
+const WRAP = $('wrap');
+let doc = null, scale = 1, fitMode = true, busy = false, workerHow = '?';
+const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+function st(t) { $('st').textContent = t; }
+function fail(msg, hint) {
+  const e = $('err');
+  e.style.display = 'block';
+  e.innerHTML = '<b>打不开这一页</b>\n' + String(msg) + (hint ? '\n\n' + hint : '')
+    + (FILE ? '\n\n<a style="color:#93c5fd" target="_blank" rel="noopener" href="' + FILE.replace(/"/g, '&quot;') + '">→ 用系统阅读器 / 浏览器直接打开这个 PDF</a>' : '');
+  window.__liteError = String(msg);
+  st('出错');
+}
+
+/* 建 worker：① 直接拿 URL 建模块 worker ② 拉源码做 blob worker ③ 交给 pdf.js 自己建 */
+async function makeWorker() {
+  const src = new URL('./v4/pdf.worker.min.mjs', location.href).href;
+  try {
+    const w = new Worker(src, { type: 'module' });
+    pdfjsLib.GlobalWorkerOptions.workerPort = w;
+    return '模块worker(URL)';
+  } catch (e) { }
+  try {
+    const rs = await fetch(src, { cache: 'force-cache' });
+    const txt = await rs.text();
+    const w = new Worker(URL.createObjectURL(new Blob([txt], { type: 'text/javascript' })), { type: 'module' });
+    pdfjsLib.GlobalWorkerOptions.workerPort = w;
+    return '模块worker(blob)';
+  } catch (e) { }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = src;
+  return 'workerSrc';
+}
+
+async function draw() {
+  if (!doc || busy) return;
+  busy = true;
+  try {
+    pageNo = Math.max(1, Math.min(doc.numPages, pageNo | 0));
+    st('正在画第 ' + pageNo + ' 页…');
+    const page = await doc.getPage(pageNo);
+    const base = page.getViewport({ scale: 1 });
+    let s = scale;
+    if (fitMode) s = Math.max(0.2, (WRAP.clientWidth - 18) / base.width);
+    const vp = page.getViewport({ scale: s * DPR });
+    cv.width = Math.max(1, Math.floor(vp.width));
+    cv.height = Math.max(1, Math.floor(vp.height));
+    cv.style.width = (vp.width / DPR) + 'px';
+    cv.style.height = (vp.height / DPR) + 'px';
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    $('pn').value = String(pageNo);
+    st('第 ' + pageNo + ' / ' + doc.numPages + ' 页' + (fitMode ? ' · 适应宽度' : ' · ' + Math.round(scale * 100) + '%') + '　（' + workerHow + '）');
+    window.scrollTo ? null : null;
+    WRAP.scrollTop = 0;
+  } catch (e) {
+    fail('渲染失败：' + (e && e.message || e));
+  } finally { busy = false; }
+}
+
+async function open() {
+  if (!FILE) { fail('地址里没有 file= 参数'); return; }
+  $('dl').href = FILE;
+  try { st('准备解析器…'); } catch (e) { }
+  workerHow = await makeWorker();
+  st('正在打开 PDF…（' + workerHow + '）');
+  try {
+    const task = pdfjsLib.getDocument({ url: FILE });
+    doc = await task.promise;
+  } catch (e) {
+    fail('打开失败：' + (e && e.message || e), '（pdf.js 4.6.82 legacy / ' + workerHow + '）');
+    return;
+  }
+  /* 让外层的看门狗认得出「已经打开了」——刷题站的 ai.js 就是查这个字段 */
+  window.PDFViewerApplication = { pdfDocument: doc, numPages: doc.numPages };
+  window.__liteReady = true;
+  $('pc').textContent = doc.numPages;
+  await draw();
+}
+
+$('prev').onclick = () => { pageNo--; draw(); };
+$('next').onclick = () => { pageNo++; draw(); };
+$('pn').onchange = () => { pageNo = parseInt($('pn').value || '1', 10) || 1; draw(); };
+$('zi').onclick = () => { fitMode = false; scale = Math.min(4, scale * 1.25); draw(); };
+$('zo').onclick = () => { fitMode = false; scale = Math.max(0.25, scale / 1.25); draw(); };
+$('fit').onclick = () => { fitMode = true; draw(); };
+let rz = 0;
+window.addEventListener('resize', () => { if (!fitMode) return; clearTimeout(rz); rz = setTimeout(draw, 250); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') { pageNo--; draw(); }
+  else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { pageNo++; draw(); }
+});
+open();
+</script>
+</body>
+</html>
