@@ -1441,3 +1441,12 @@ body.sheet-open{ overflow:hidden; }
 @keyframes skPulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
 @media (prefers-reduced-motion: reduce){ .skel .sk-bl{ animation:none; opacity:.75; } }
 @media (max-width:420px){ .sk-grid{ grid-template-columns:1fr; } }
+
+/* §3.6-P2⑧ 手势增强：答题卡横向跟手 / 松手回弹。
+   touch-action:pan-y 的意思是「纵向滚动还是你的，横向手势留给脚本」——
+   .vstrip 是 flex-wrap 换行排的（不是横向滚动条），不用单独开 pan-x。
+   点选项、点题号、输入框里划，都由 app.js 的 uiSwipeBind() 提前挡掉；这里只管手感。 */
+#view .card:has(#qBody){ touch-action:pan-y; }
+#view .card.swiping{ transition:none; will-change:transform; }
+#view .card.snapping{ transition:transform .18s var(--ease, ease-out); }
+@media (prefers-reduced-motion:reduce){ #view .card.snapping{ transition:none; } }

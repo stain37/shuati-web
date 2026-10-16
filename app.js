@@ -2612,6 +2612,57 @@ if (window.matchMedia) {
 paintThemeBtn();
 document.querySelectorAll('.mask').forEach(m => m.onclick = e => { if (e.target === m) closeAll(); });
 
+/* §3.6-P2⑧ 手势增强：答题页左右滑动翻题（左滑 = 下一题、右滑 = 上一题）
+   三条纪律：① 只在触屏上认（pointerType 是 mouse 的直接不管）；
+   ② 得先过 30px 且横向明显大于纵向才成立 —— 不然会跟纵向滚动、点选项、点题号打架；
+   ③ 翻页只调现成的 step(±1)，不另立一套。卡片跟手那点位移是次要的，reduced-motion 下干脆不动。 */
+const SWIPE_MIN = 30;
+let _sw = null;                     /* 手上这一笔：{x,y,id,card,dx,ok} */
+function uiSwipeBind() {
+  const v = $('view');
+  if (!v || v.dataset.swipe === '1') return;
+  v.dataset.swipe = '1';
+  v.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || e.button) return;
+    const card = e.target.closest('.card');
+    if (!card || !card.querySelector('#qBody')) return;            /* 只认题目卡 */
+    if (e.target.closest('input, textarea, select, [contenteditable="true"], .vstrip, .qsheet, .mask')) return;
+    _sw = { x: e.clientX, y: e.clientY, id: e.pointerId, card, dx: 0, ok: false };
+  });
+  v.addEventListener('pointermove', e => {
+    if (!_sw || e.pointerId !== _sw.id) return;
+    const dx = e.clientX - _sw.x, dy = e.clientY - _sw.y;
+    if (!_sw.ok) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) <= Math.abs(dy)) { _sw = null; return; }    /* 往纵向走：交回给页面滚动 */
+      _sw.ok = true;
+      _sw.card.classList.add('swiping');
+    }
+    _sw.dx = Math.max(-100, Math.min(100, dx));
+    if (uiMotionOK()) _sw.card.style.transform = 'translateX(' + (_sw.dx * 0.45).toFixed(1) + 'px)';
+  });
+  const up = e => {
+    if (!_sw || e.pointerId !== _sw.id) return;
+    const st = _sw; _sw = null;
+    st.card.classList.remove('swiping');
+    /* 被系统打断（pointercancel：比如浏览器把这一笔当成滚动了）就不当翻页，
+       免得「想滚页面结果题跳了」 */
+    const cut = e.type === 'pointercancel';
+    if (!cut && st.ok && st.dx <= -SWIPE_MIN) { step(1); return; }  /* 左滑 → 下一题 */
+    if (!cut && st.ok && st.dx >= SWIPE_MIN) { step(-1); return; }  /* 右滑 → 上一题 */
+    if (st.card.style.transform) {                                  /* 没过阈值：弹回原位 */
+      if (uiMotionOK()) {
+        st.card.classList.add('snapping');
+        setTimeout(() => st.card.classList.remove('snapping'), 240);
+      }
+      st.card.style.transform = '';
+    }
+  };
+  v.addEventListener('pointerup', up);
+  v.addEventListener('pointercancel', up);
+}
+uiSwipeBind();
+
 /* §3.6-P2⑦：g 后面第二个键去哪儿（'top' 是回到页面最上面，不是换页） */
 const GO_KEYS = {
   h: ['#/', '首页'],
