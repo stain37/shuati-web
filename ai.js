@@ -1425,9 +1425,24 @@ function aiSaveOut(host) {
     st.onUse(text); toast('已写进解析框，记得点保存', 2600); return;
   }
   if (!st.k || typeof NOTES === 'undefined') { toast('这道题没有可保存的位置', 2600, 'bad'); return; }
-  if (st.ctx && st.ctx.hits && st.ctx.hits.length) { try { aiSrcSaveFor(st.k, st.ctx.hits); } catch (e) {} }   /* 参考资料跟着解析一起存下（出错也不拦存正文） */
+  /* 页面上那条解析自己的键：套卷 / 临时卷 / 编辑态下有可能跟面板的键不是一个
+     （用户 2026-10-16 报「按了无数下，上面那条解析不变」）。不管谁对，
+     两边的键都写一份 —— 保证眼前这条一定更新。 */
+  let extraKey = '';
+  try {
+    const wraps = document.querySelectorAll('.exp-wrap[data-note-for]');
+    if (wraps.length === 1) {                    /* 只有页面上只有一条解析时才敢这么做（答题页就是）*/ 
+      const k2 = wraps[0].getAttribute('data-note-for');
+      if (k2 && k2 !== st.k) extraKey = k2;
+    }
+  } catch (e) {}
+  if (st.ctx && st.ctx.hits && st.ctx.hits.length) { try { aiSrcSaveFor(st.k, st.ctx.hits); if (extraKey) aiSrcSaveFor(extraKey, st.ctx.hits); } catch (e) {} }   /* 参考资料跟着解析一起存下（出错也不拦存正文） */
   const old = NOTES[st.k] || {};
   NOTES[st.k] = { text: text, imgs: old.imgs || [], ts: Date.now(), ai: true };
+  if (extraKey) {
+    const o2 = NOTES[extraKey] || {};
+    NOTES[extraKey] = { text: text, imgs: o2.imgs || [], ts: Date.now(), ai: true };
+  }
   if (!saveNotes()) { toast('保存失败：浏览器存储满了', 2800, 'bad'); return; }
   toast('已存为本题解析');
   const stid = st.id;
@@ -1463,7 +1478,7 @@ function aiSaveOut(host) {
           }, 120);
           tip.textContent = '✓ 已存进本题解析 —— 就是下面这条（已经滚过去闪了一下）';
         } else {
-          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + '）—— 页面上没找到对应的解析块';
+          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + '）—— 页面上没找到对应的解析块';
         }
       } catch (e) {}
       setTimeout(() => { if (sb) { sb.disabled = false; sb.textContent = h2.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析'; } if (tip.isConnected) tip.remove(); }, 6000);
