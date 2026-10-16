@@ -1,4 +1,4 @@
-﻿# 刷题站
+# 刷题站
 
 纯静态的刷题网站：选择题即时判分，**选错立刻出解析**；错题自动进错题本，带统计、可以改解析、可以按需导出。
 题库随时可以往里加。
@@ -227,15 +227,23 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v63-web49**）
+（缓存版本 **shuati-v67-web54**）
 
 最近几轮按倒序说清各自动了什么：
-- **shuati-v63-web49（方案九 + 方案十，外加图标视图的「⋯」、批量模式支持目录）**：就是下面第一张表。
-- **批量模式支持目录（同批并入）**：批量管理里能选目录（单击选中 / 双击进去 / 框选也框得到；移动含目录，删除只删空目录）。
-- **shuati-v57-web43（题库视图三档卡片 + 减少动态效果开关）**：`qbank.view.v1` 从两档扩成大/中/小卡片 + 列表，设置面板加 `#setReduceMotion`（`SET.reduceMotion`，接通 `uiMotionOK()` 与 `body.reduce-motion`），`sync.js` 的指纹补上考点标签 / 词表。
-- **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**，缓存戳一个没变。线上：`https://stain37.github.io/shuati-web/v2-sample.html`。体检 `工作1\v2-sample-check.py`（28 条 0 fail，本地 + 线上都查），截图 `工作1\shots\v2-*.png`。
-- **shuati-v53-web39（进阶交互包）**：下面第二张表。
+- **shuati-v67-web54（§8 视觉 v2 铺到在用的站点上）**：就是下面第一张表。
+- **shuati-v66-web53（修深色模式下「改答案」勾选看不出高亮 + 病理知识库补页码）**：`body.dark .fixopt` → `body.dark .fixopt:not(.on)`（同理 `body.dark .kbrow:not(.on)`）；`make-kb.py` 新增 `page_from_filename()`（没书签的 PDF 从文件名取页码，和页数对不上就不采信），病理 27 篇补上页码。
+- **shuati-v63-web49（方案九 + 方案十，外加图标视图的「⋯」、批量模式支持目录）**：下面第二张表。
+- **shuati-v57-web43（题库视图三档卡片 + 减少动态效果开关）**：`qbank.view.v1` 从两档扩成大/中/小卡片 + 列表，设置面板加 `#setReduceMotion`（`SET.reduceMotion`，接通 `uiMotionOK()` 与 `body.reduce-motion`），`sync.js` 的指纹补上考点标签 / 词表；批量管理里也能选目录了。
+- **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**。线上：`https://stain37.github.io/shuati-web/v2-sample.html`。体检 `工作1\v2-sample-check.py`（28 条 0 fail，本地 + 线上都查），截图 `工作1\shots\v2-*.png`。
+- **shuati-v53-web39（进阶交互包）**：下面第二张表（专注模式 / 判分揭示 / 待复习角标 / 解析浮条）。
 
+| 问题 | 说明 |
+| --- | --- |
+| 站点还是「工具站审美」，跟样板两回事 | **§8 铺开的 token 层**：`style.css` 的 `:root` / `body.dark` / `html[data-theme=…]` 换成样板那套 —— 卡片圆角 `--radius:16px → 22px`、按钮 12px、一套配色（背景 `--bg:#eef1f7` + `--bg-wash` 双径向渐变，深色 `#080c14` / 卡 `#121826`），**四套主题色名字对齐样板**：`teal`（默认，`#0d9488`）/ `indigo` / `warm`（蓝 + 暖橙）/ `violet`，`app.js` 的 `THEME_COLORS` 与 `index.html` 的 `#setColor` 选项同步；`SET_DEF.color` 默认 `'teal'`，另加 `SET_DEF.wash`（设置里能关背景渐变）。存储一个字节没动 |
+| 首页看不出「今天该干什么」 | **首页 Bento**：`cat.js` 的 `homeHtml()` 在 hero 下面插一段 `bentoHtml` —— 继续刷题大卡（`.vb-card.span2`，题库名 / 上次做到第几题 / 正确率 / 进度条 / 继续刷题）、今日复习圆环（`.vb-ring`，`--p` = 待复习 / (待复习 + 到期)）、「今天」卡（今日已答 / 正确率 / 近 7 天）、学习热力图、四个快捷入口（搜索全部 / 学习统计 / 错题本 / 收藏）；原来的目录树 / 工具条 / 题库列表 / 本机题库文件 / 数据备份**原样保留**，hero 里重复的那排「今日」小统计用 `.hero .hstat.today{display:none}` 收掉（DOM 保留） |
+| 想一眼看出「这阵子有没有在学」 | **§3.6-P1④ 学习热力图**：`app.js` 新增 `heatStats(weeks)`，拿现有 `ANS[k].ts` 按天分桶（纯读，**不新增存储**），`w` 限 4–26 默认 12 周，首页渲成 `12×7` 的 `.hm` 格子（`data-l` 五档，`color-mix` 跟主色走），空格底色 `color-mix(in srgb, var(--text) 9%, var(--card))` 深浅两态都看得见 |
+| 答题页选项下面摊着一排管理按钮，吵 | **答题页「⋯ 更多」抽屉**：`renderQuiz()` 里那排 `.actions` 改成 `.actions.qz-more`，只留 `#doSubmit`（X 型题）与一颗 `#doMore`（`⋯ 更多`）；点开是从底部升起的 `#qSheet`（`.qsheet` + `.qscrim` 遮罩 + `.qgrip` 抓手 + `role="dialog"`），里面还是那五件事（`#doRedo` / `#doNote` / `#doFix` / `#doAI` / `#doVariant`）。`qSheetToggle(on)` 负责开关，Esc 分支改成「先退专注 → 再关抽屉 → 最后 `closeAll()`」，开抽屉时给 `body` 挂 `.qsheet-on`。存储没动 |
+| 老探针的断言过期了 | `batch4-probe.py` 的「主题色」一节改成真话（四套 = `teal` 默认 / `indigo` / `warm` / `violet`，浅色默认主色 `#0d9488`，深色底 `#080c14`）→ **71 条 / 0 fail**；`batch6-probe.py` 的 Esc needle 改成 `… uiSetFocus(false); return; } qSheetToggle(false); closeAll();` → **119 条 / 0 fail**；新探针 `工作1\v2-site-probe.py` **68 条 / 0 fail**（四套主色变量、wash 开关、Bento 各块、`heatStats` 桶数、`[data-qsheet]` 抽屉开 / Esc 关 / 五件事都在） |
 | 问题 | 说明 |
 | --- | --- |
 | 刷完一套题要一题一题点「下一题」 | **方案九 · ⚡ 速刷**：`SET.quizMode`（`'normal'｜'speed'｜'recite'`，不新增存储 key）+ `QUIZ_MODES` 三 chip 模式条（`.qmode`，`data-qm`）；`uiSpeedFx(bank,q,ok)` 在判分后往 `#view .card` 叠 `#spFx.sp-fx.ok/.bad`（「✓ 对」/「✗ 答案 X」+ `#spStop` 停下看解析），`SP_JUMP = setTimeout(…, 1200)` 到点前先确认 `String(QZ.cur) === qid` 再 `step(1)`；`uiSpeedStop()` 在换题 / 重画 / 切模式时收干净；速刷下把「再答一次 / 改解析 / 改答案 / AI 解析 / 变式题」整排用 `${speed ? '' : …}` 收掉（`#doSubmit` 留在外面，X 型照旧手动提交）；`judge()` 里那句 `SET.autoNext` 的自动跳加了 `&& SET.quizMode !== 'speed'`，免得连跳两题 |

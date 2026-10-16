@@ -161,7 +161,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -189,11 +189,12 @@ function migrate() {
 migrate();
 
 /* ---------- 外观：深色模式 + 字号 + 主题色 ---------- */
-/* 第四批：4 套主题色（默认蓝）。只改 <html data-theme> 和几个变量，
-   style.css 里 html[data-theme=…] 覆盖 --primary / --primary-weak / --primary-line，
-   全站的按钮、链接、进度条、高亮、底部导航都跟着变。 */
-const THEME_COLORS = ['blue', 'indigo', 'teal', 'violet'];
-const THEME_META = { blue: ['#2563eb', '#0f1420'], indigo: ['#4f46e5', '#0f1420'], teal: ['#0d9488', '#0e131f'], violet: ['#7c3aed', '#0f1420'] };
+/* §8 视觉 v2：主色默认改成「① 冷静青」，另有 靛 / 蓝+暖橙（②）/ 紫。
+   只改 <html data-theme> 和几个变量，style.css 里 html[data-theme=…] 覆盖
+   --primary / --a1~--a3 / --grad / --a-top，全站的按钮、链接、进度条、高亮、
+   底部导航、热力图都跟着变。老用户存的 'blue' 会落到默认的 teal 上。 */
+const THEME_COLORS = ['teal', 'indigo', 'warm', 'violet'];
+const THEME_META = { teal: ['#0d9488', '#080c14'], indigo: ['#4f46e5', '#080c14'], warm: ['#2563eb', '#080c14'], violet: ['#7c3aed', '#080c14'] };
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -201,10 +202,10 @@ function applyLook() {
   document.body.classList.toggle('fs-s', SET.fs === 's');
   document.body.classList.toggle('fs-l', SET.fs === 'l');
   document.body.classList.toggle('fs-xl', SET.fs === 'xl');
-  const color = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
+  const color = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.blue)[dark ? 1 : 0]);
+  if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.teal)[dark ? 1 : 0]);
   /* §3.6-P0① 专注模式：只加一个 body 类，隐藏顶栏/底栏交给 CSS（退出按钮 .focus-exit 只在这时露出来） */
   document.body.classList.toggle('focus', !!SET.focus);
   /* 「减少动态效果」（设置里的开关）：加个 body 类，style.css 里那条规则把全站动画/过渡关掉；
@@ -703,6 +704,16 @@ function uiSetFocus(on, quiet) {
   setLook('focus', v);                       /* 写 LS + applyLook（body.focus 一起切） */
   if (!quiet) toast(v ? '专注模式：顶栏和底栏收起来了（Esc 退出）' : '已退出专注模式', 1800, v ? '' : 'ok');
 }
+/* §8 视觉 v2：答题页的「⋯ 更多」抽屉（改解析 / 改答案 / AI 解析 / AI 变式题 收进来）。
+   on 不给就按当前状态反切；面板本身留在 DOM 里，所以探针用 getElementById('doNote').click()
+   照样点得到（display:none 不妨碍程序化 click）。 */
+function qSheetToggle(on) {
+  const s = document.getElementById('qSheet');
+  if (!s) return;
+  const want = (on === undefined || on === null) ? s.hasAttribute('hidden') : !!on;
+  if (want) s.removeAttribute('hidden'); else s.setAttribute('hidden', '');
+  if (document.body) document.body.classList.toggle('sheet-open', want);
+}
 /* 列表入场：给「错题本 / 收藏 / 搜索」的卡片排上入场延迟。   只算前 12 个（长列表一次性动会掉帧），--i 交给 style.css 的 .stagger > * 用。 */
 function staggerList(host) {
   const box = host || $('view');
@@ -910,6 +921,33 @@ function todayStats() {
     else if (i > 0) break;      // 今天还没做不算断
   }
   return { dNum: dNum, dOk: dOk, streak: streak, weekN: weekN };
+}
+
+/* §3.6-P1④ 学习热力图：拿现有作答记录的时间戳（ANS[k].ts）按天分桶，不新增任何存储。
+   返回 cells 按时间正序，每格 { ts, n, l }（l = 0..4 的档位，给颜色用），外加 total / max / weeks。
+   排布：7 行（周一…周日）× weeks 列，最后一列是本周。 */
+function heatStats(weeks) {
+  const w = Math.max(4, Math.min(26, Math.round(+weeks || 12)));
+  const dayOf = ts => { const d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+  const cnt = {};
+  Object.keys(ANS).forEach(k => {
+    const a = ANS[k]; if (!a || !a.ts) return;
+    const d = dayOf(a.ts); cnt[d] = (cnt[d] || 0) + 1;
+  });
+  const base = new Date(); base.setHours(0, 0, 0, 0);
+  const dow = (base.getDay() + 6) % 7;                       // 0 = 周一
+  const start = base.getTime() - (dow + (w - 1) * 7) * 86400000;
+  const cells = []; let total = 0, max = 0;
+  for (let i = 0; i < w * 7; i++) {
+    const ts = start + i * 86400000;
+    const n = cnt[dayOf(ts)] || 0;
+    total += n; if (n > max) max = n;
+    cells.push({ ts: ts, n: n });
+  }
+  cells.forEach(c => {
+    c.l = c.n <= 0 ? 0 : c.n <= 2 ? 1 : c.n <= 5 ? 2 : c.n <= 10 ? 3 : 4;
+  });
+  return { cells: cells, total: total, max: max, weeks: w };
 }
 
 /* 候补池 C：一题都还没有时的「三步就能开始」引导卡（有题库了返回空串）。
@@ -1376,15 +1414,25 @@ function renderQuiz(bankId) {
       ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
       </div>
-      <div class="actions">
+      <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
-        ${speed ? '' : `
-        ${rec ? `<button class="btn" id="doRedo">再答一次</button>` : ''}
-        <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
-        <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
-        <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
-        <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>`}
+        ${speed ? '' : `<button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>`}
       </div>
+      ${speed ? '' : `<div class="qsheet" id="qSheet" hidden>
+        <div class="qsheet-scrim" data-qsheet="0"></div>
+        <div class="qsheet-panel" role="dialog" aria-label="这题的管理动作">
+          <div class="grip"></div>
+          <div class="qsheet-cap">这题还能做什么</div>
+          <div class="qsheet-grid">
+            ${rec ? `<button class="btn" id="doRedo">再答一次</button>` : ''}
+            <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
+            <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
+            <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
+            <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
+          </div>
+          <button class="btn" data-qsheet="0">取消</button>
+        </div>
+      </div>`}
       <div class="fb" id="fb"></div>
       <div class="keyhint">
         <span><span class="kbd">A</span>–<span class="kbd">H</span> 选选项</span>
@@ -1401,6 +1449,9 @@ function renderQuiz(bankId) {
     </div>`;
 
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
+  /* §8：管理动作抽屉的开关（「⋯ 更多」按钮 / 遮罩 / 取消 三处都关） */
+  on('doMore', () => qSheetToggle(true));
+  $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
   else $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
@@ -2333,7 +2384,7 @@ function openSettings() {
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
-  if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
+  if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
   srsPaintEls();
   $('setMask').classList.add('show');
@@ -2445,7 +2496,7 @@ document.addEventListener('keydown', e => {
     if (hm && hm.classList.contains('show')) { hideMask(hm); return; }
     showHelp(); return;
   }
-  if (e.key === 'Escape') { if (SET.focus) { uiSetFocus(false); return; } closeAll(); return; }
+  if (e.key === 'Escape') { if (SET.focus) { uiSetFocus(false); return; } qSheetToggle(false); closeAll(); return; }
   const rn = route().name;
   /* 搜索页（或任何页面）：按 / 跳到搜索框并聚焦 */
   if (e.key === '/') {

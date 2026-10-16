@@ -659,6 +659,35 @@ function aiPaintHist(host) {
     + '<div class="aih-a">' + ((typeof mdToHtml === 'function') ? mdToHtml(h.a || '') : esc(h.a || '').replace(/\n/g, '<br>')) + '</div></div>').join('');
   box.innerHTML = '<details class="fold"><summary>之前的 ' + hist.length + ' 轮追问（点开看）</summary><div class="fold-body">' + rnd + '</div></details>';
 }
+/* ---------- 「打开 PDF 第 N 页」（只在本机可用）----------
+   桌面用 本地服务器.bat（localhost:5173）或直接双击 index.html 时，参考资料下面多一个按钮，
+   点一下用系统 PDF 阅读器打开这一节、跳到对应页（`pdf/科目/文件名.pdf#page=N`）。
+   站点目录里的 pdf\ 是五个指向桌面精编版文件夹的 junction（本机才有，不随部署上传），
+   手机（局域网 IP）和线上（github.io）上这份 PDF 根本不存在，所以那边干脆不画这个按钮。 */
+function aiPdfOk() {
+  try {
+    if (location.protocol === 'file:') return true;
+    const h = location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+  } catch (e) { return false; }
+}
+function aiPdfHref(h) {
+  if (!h || !h.file) return '';
+  const parts = String(h.file).split(/[\\\/]/).filter(Boolean).map(encodeURIComponent);
+  if (!parts.length) return '';
+  const lib = h.kb ? encodeURIComponent(h.kb) + '/' : '';
+  /* pdfp 优先：病理那种「文件名兜底」的篇，page 是原书页码（如 110），
+     而 PDF 文件本身只有 8 页 —— 直接 #page=110 会被浏览器弹到最后一页，得用 pdfp（= 1） */
+  const anchor = h.pdfp || h.page;
+  return 'pdf/' + lib + parts.join('/') + (anchor ? '#page=' + anchor : '');
+}
+function aiPdfLinkHtml(h) {
+  if (!aiPdfOk()) return '';
+  const href = aiPdfHref(h);
+  if (!href) return '';
+  const label = h.page ? ('打开 PDF 第 ' + h.page + ' 页') : '打开 PDF';
+  return '<div style="margin:0 0 7px"><a class="btn tiny" href="' + esc(href) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（只在本地服务器 / 双击网页打开时可用，手机上不显示；这些 PDF 不会上传到网上）">' + label + ' ↗</a></div>';
+}
 /* 参考资料标签上的名字：优先用源文件名（如「1.1 外科 颈部疾病」），没有就用节标题 */
 function aiSrcName(h) {
   const f = String(h.file || '').split(/[\\\/]/).pop();
@@ -695,6 +724,7 @@ function aiPaintSrc(host, ctx) {
       d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
         + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
         + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
+        + aiPdfLinkHtml(h)
         + '<div class="aisrc-text">' + esc(full).replace(/\n/g, '<br>') + '</div>';
       box.appendChild(d);
       el.classList.add('on');

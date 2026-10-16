@@ -9,6 +9,11 @@
       .docx 需要 python-docx（没有也能读：会退回直接解压的方式）
       .pdf  需要 pypdf（pip install pypdf），没装就跳过并提示
 
+页码：
+    · PDF 有书签 → 按书签切小节，每节记起始页（page / pages）；
+    · PDF 没书签 → 看文件名里有没有页码（如「1.结核_110-117.pdf」），有就记下起始页。
+      病理那 27 个精编版就是这种：本身没书签，但文件名写了它在原书第几页。
+
 默认「合并 + 增量」：
     · 合并：读现有 知识库.js，同名库（按 id）被替换、其它库原样保留 —— 不再整份覆盖丢库。
     · 增量：每个文件算 md5 存进 知识库.清单.json，没变的文件直接复用旧正文、不重新解析，
@@ -144,6 +149,25 @@ def _pdf_outline_top(reader):
     return dedup
 
 
+def page_from_filename(path, pages_total=None):
+    """没书签时的兜底：有的精编版 PDF 是「按考点从原书里切出来的」，本身没有书签，
+       但文件名里写着这一节在原书第几页 —— 如「1.结核_110-117.pdf」「1.感染性心内膜炎_34.pdf」。
+       取到起始页就记下来（显示时就是用户翻书要找的那一页）。
+       带范围时和 PDF 实际页数对一下：对不上就不采信（怕误伤别的文件名）。
+       返回 1 基起始页，或 None。"""
+    base = os.path.splitext(os.path.basename(path))[0]
+    m = re.search(r'[_\-―－–—]\s*(\d{1,4})\s*(?:[-–—~～]\s*(\d{1,4}))?\s*$', base)
+    if not m:
+        return None
+    a = int(m.group(1))
+    b = int(m.group(2)) if m.group(2) else a
+    if b < a:
+        return None
+    if pages_total and b > a and (b - a + 1) != pages_total:
+        return None
+    return a
+
+
 def read_pdf(path):
     PdfReader = _pdf_reader()
     if PdfReader is None:
@@ -188,7 +212,12 @@ def read_pdf(path):
                     sections[0]['page'] = 1
             if len(sections) >= 2:
                 return sections
-    return [{'name': None, 'text': whole, 'page': None, 'pages': pages_total}]
+    fp = page_from_filename(path, pages_total)
+    if fp:
+        print('    （没有书签，按文件名记页码：第 ' + str(fp) + ' 页）')
+    # pdfp：这一节在 PDF 文件里的第几页（文件名兜底时恒为 1 —— 文件本身就是从 fp 那页切出来的，
+    # 直接拿 fp 当 #page= 会跳到文件最后一页）
+    return [{'name': None, 'text': whole, 'page': fp, 'pages': None if fp else pages_total, 'pdfp': 1 if fp else None}]
 
 
 def load_doc(path):
@@ -252,7 +281,7 @@ def scan(dirpath, old_by_file, old_md5):
             if not OVERWRITE and old_md5.get(rel) == md5 and rel in old_by_file:
                 n = 0
                 for d in old_by_file[rel]:
-                    docs.append({'name': d['name'], 'text': d['text'], 'file': rel, 'page': d.get('page'), 'pages': d.get('pages')})
+                    docs.append({'name': d['name'], 'text': d['text'], 'file': rel, 'page': d.get('page'), 'pages': d.get('pages'), 'pdfp': d.get('pdfp')})
                     n += 1
                 if n:
                     print('  = ' + rel + '（没变，复用' + ('' if n == 1 else ' ' + str(n) + ' 节') + '）')
@@ -266,7 +295,7 @@ def scan(dirpath, old_by_file, old_md5):
                     text = text[:MAX_CHARS]
                 if not text:
                     continue
-                docs.append({'name': name, 'text': text, 'file': rel, 'page': s.get('page'), 'pages': s.get('pages')})
+                docs.append({'name': name, 'text': text, 'file': rel, 'page': s.get('page'), 'pages': s.get('pages'), 'pdfp': s.get('pdfp')})
                 added += 1
             if added:
                 chars = sum(len(d['text']) for d in docs[-added:])
@@ -308,7 +337,7 @@ def existing_by_file(lib):
     m = {}
     for d in lib.get('docs', []):
         f = d.get('file') or d.get('name') or ''
-        m.setdefault(f, []).append({'name': d.get('name') or '', 'text': d.get('text') or '', 'page': d.get('page'), 'pages': d.get('pages')})
+        m.setdefault(f, []).append({'name': d.get('name') or '', 'text': d.get('text') or '', 'page': d.get('page'), 'pages': d.get('pages'), 'pdfp': d.get('pdfp')})
     return m
 
 

@@ -278,7 +278,7 @@ function kbSnippet(t, q, n) {
 function kbDetail(hits, query) {
   return hits.map(h => {
     const d = (KB_MEM[h.id] && KB_MEM[h.id].docs || [])[h.ch.d] || {};
-    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci, kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, file: d.file || '', full: d.text || '', head: h.ch.h || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
+    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci, kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
   });
 }
 /* 确保这几个库已挂载并建好索引 */
@@ -373,7 +373,7 @@ function kbIngestFiles(force) {
     const id = 'file:' + (b.id || i);
     if (kbIsSkipped(id)) return;              /* 你删掉的库：不再自动挂载 */
     if (KB_LIST.some(x => x.id === id)) return;
-    const docs = (b.docs || []).map(d => ({ name: d.name || '资料', page: d.page, pages: d.pages, file: d.file, text: d.text || '', chunks: Array.isArray(d.chunks) ? d.chunks : kbChunk(d.text || '') }));
+    const docs = (b.docs || []).map(d => ({ name: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file, text: d.text || '', chunks: Array.isArray(d.chunks) ? d.chunks : kbChunk(d.text || '') }));
     KB_MEM[id] = { docs: docs };
     const st = kbStats({ docs: docs });
     KB_LIST.push({ id: id, name: b.name || ('资料 ' + (i + 1)), src: 'file', addedAt: Date.now(), auto: true, chars: st.chars, docs: st.docs, chunks: st.chunks });

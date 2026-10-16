@@ -4,51 +4,75 @@
    - 之后按页面分区：顶栏、通用组件、首页、答题、答题卡、列表、统计、AI…
    - 想改配色只动 :root 和 body.dark 两处即可
    ============================================================ */
+/* ---------- §8 视觉 v2（2026-10-16）：换脸 ----------
+   设计语言：背景略灰 + 卡片纯白、一卡一层（不再堆细边框）；卡片 22px、按钮 12px；
+   阴影分层；主色默认改成「① 冷静青」，另有 靛 / 蓝+暖橙 / 紫 三套。
+   这一层只动变量，所有组件跟着变 —— 想再调色只改这里和 body.dark。 */
 :root{
-  --bg:#f4f6fb; --bg2:#eef1f7; --card:#fff; --line:#e6e9f0; --line2:#f1f3f8;
-  --text:#0f172a; --sub:#64748b;
-  --primary:#2563eb; --primary-weak:#eef4ff; --primary-line:#bfd4ff; --primary-soft:rgba(37,99,235,.10);
-  --ok:#15803d; --okbg:#eefaf1; --ok-line:#bbf0cd;
-  --bad:#dc2626; --badbg:#fdeeee; --bad-line:#fbc4c4;
+  --bg:#eef1f7; --bg2:#e7ecf5; --card:#fff; --card2:#f5f8fc; --card3:#eef2f9;
+  --line:rgba(13,23,42,.07); --line2:rgba(13,23,42,.045);
+  --text:#0b1220; --sub:#5d6b81;
+  /* 主色 = ① 冷静青（默认） */
+  --primary:#0d9488; --primary-weak:#e6faf7; --primary-line:#a5e6dd; --primary-soft:rgba(13,148,136,.10);
+  --a1:#0d9488; --a2:#14b8a6; --a3:#38bdf8; --a-top:#0d9488;
+  --grad:linear-gradient(135deg,#0d9488,#14b8a6 58%,#38bdf8);
+  --ok:#0f9d63; --okbg:#eafaf1; --ok-line:#b6e9cd;
+  --bad:#df4040; --badbg:#fdeeee; --bad-line:#f7c6c6;
   --warn:#b45309;
-  --radius:16px; --r-s:10px; --r-m:12px; --r-l:18px;
+  /* 圆角：卡片 22 / 按钮 12 / 胶囊 999 */
+  --radius:22px; --r-card:22px; --r-s:10px; --r-m:12px; --r-l:18px; --r-pill:999px;
   --fs:15px;
-  --sh-1:0 1px 2px rgba(15,23,42,.05),0 1px 3px rgba(15,23,42,.04);
-  --sh-2:0 6px 18px rgba(15,23,42,.09);
-  --sh-pop:0 -8px 28px rgba(15,23,42,.16);
+  /* 阴影：一卡一层，卡片只用最轻那层 */
+  --sh-1:0 1px 2px rgba(13,23,42,.04),0 2px 8px rgba(13,23,42,.05);
+  --sh-2:0 10px 28px rgba(13,23,42,.10);
+  --sh-card:0 1px 2px rgba(13,23,42,.04),0 8px 24px rgba(13,23,42,.06);
+  --sh-pop:0 -10px 34px rgba(13,23,42,.18);
   --tap:34px;
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(13,148,136,.10),transparent 62%),
+            radial-gradient(900px 540px at 100% 0%,rgba(56,189,248,.10),transparent 60%);
 }
 body.dark{
-  --bg:#0e131f; --bg2:#141b29; --card:#161d2b; --line:#28324a; --line2:#1d2536;
-  --text:#e7ebf3; --sub:#93a1b8;
-  --primary:#6b96ff; --primary-weak:#1a2a49; --primary-line:#33507f; --primary-soft:rgba(107,150,255,.14);
+  --bg:#080c14; --bg2:#0c121d; --card:#121826; --card2:#161d2d; --card3:#1b2434;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.05);
+  --text:#e9eef7; --sub:#8fa0b8;
+  --primary:#2dd4bf; --primary-weak:#0f2f2c; --primary-line:#2a6159; --primary-soft:rgba(45,212,191,.14);
+  --a1:#2dd4bf; --a2:#5eead4; --a3:#38bdf8; --a-top:#2dd4bf;
+  --grad:linear-gradient(135deg,#0f766e,#14b8a6 58%,#0ea5e9);
   --ok:#4ade80; --okbg:#12251b; --ok-line:#2c6644;
   --bad:#f87171; --badbg:#2a1618; --bad-line:#7a3236;
   --warn:#fbbf24;
-  --sh-1:0 1px 2px rgba(0,0,0,.35); --sh-2:0 8px 22px rgba(0,0,0,.42);
-  --sh-pop:0 -8px 28px rgba(0,0,0,.5);
+  --sh-1:0 1px 2px rgba(0,0,0,.40),0 2px 10px rgba(0,0,0,.34);
+  --sh-2:0 12px 30px rgba(0,0,0,.50);
+  --sh-card:0 1px 2px rgba(0,0,0,.40),0 10px 26px rgba(0,0,0,.38);
+  --sh-pop:0 -10px 34px rgba(0,0,0,.55);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(20,184,166,.10),transparent 62%),
+            radial-gradient(900px 540px at 100% 0%,rgba(56,189,248,.08),transparent 60%);
   color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 
-/* ---------- 第四批：主题色（4 套预设，默认仍是蓝） ----------
+/* ---------- 第四批：主题色（§8 改成「青」打底，另有靛 / 蓝+暖橙 / 紫） ----------
    只覆盖几个主色变量，组件一个都不用改：按钮 / 链接 / 进度条 / 选中态 /
    底部导航高亮 / 聚焦圈全都会跟着变。深色再单独覆盖一层。
    色值都保住了正文对比度（≥4.5:1），浅色底 + 深色字、深色底 + 亮色字。 */
-html[data-theme="indigo"]{--primary:#4f46e5;--primary-weak:#eef0ff;--primary-line:#c7c9ff;--primary-soft:rgba(79,70,229,.10)}
-html[data-theme="teal"]  {--primary:#0d9488;--primary-weak:#e6faf7;--primary-line:#a5e6dd;--primary-soft:rgba(13,148,136,.10)}
-html[data-theme="violet"]{--primary:#7c3aed;--primary-weak:#f5eeff;--primary-line:#ddc8ff;--primary-soft:rgba(124,58,237,.10)}
-html[data-theme="indigo"] body.dark{--primary:#8f9bff;--primary-weak:#1e2148;--primary-line:#3b4180;--primary-soft:rgba(143,155,255,.14)}
-html[data-theme="teal"]   body.dark{--primary:#4fd1c5;--primary-weak:#0f2f2c;--primary-line:#2a6159;--primary-soft:rgba(79,209,197,.14)}
-html[data-theme="violet"] body.dark{--primary:#b794ff;--primary-weak:#2a1d47;--primary-line:#543c86;--primary-soft:rgba(183,148,255,.14)}
-/* 首页大卡片 / 底栏「下一题」用的渐变也得跟着主色走，否则换了主题还是蓝的 */
-html[data-theme="indigo"]{--grad:linear-gradient(135deg,#4f46e5,#6366f1 58%,#38bdf8)}
-html[data-theme="teal"]  {--grad:linear-gradient(135deg,#0d9488,#14b8a6 58%,#38bdf8)}
-html[data-theme="violet"]{--grad:linear-gradient(135deg,#7c3aed,#a855f7 58%,#38bdf8)}
-html[data-theme="indigo"] body.dark{--grad:linear-gradient(135deg,#4338ca,#6366f1 58%,#0ea5e9)}
-html[data-theme="teal"]   body.dark{--grad:linear-gradient(135deg,#0f766e,#14b8a6 58%,#0ea5e9)}
-html[data-theme="violet"] body.dark{--grad:linear-gradient(135deg,#6d28d9,#a855f7 58%,#0ea5e9)}
+html[data-theme="indigo"]{--primary:#4f46e5;--primary-weak:#eef0ff;--primary-line:#c7c9ff;--primary-soft:rgba(79,70,229,.10);
+  --a1:#4f46e5;--a2:#6366f1;--a3:#38bdf8;--a-top:#4f46e5;--grad:linear-gradient(135deg,#4f46e5,#6366f1 58%,#38bdf8)}
+html[data-theme="teal"]  {--primary:#0d9488;--primary-weak:#e6faf7;--primary-line:#a5e6dd;--primary-soft:rgba(13,148,136,.10);
+  --a1:#0d9488;--a2:#14b8a6;--a3:#38bdf8;--a-top:#0d9488;--grad:linear-gradient(135deg,#0d9488,#14b8a6 58%,#38bdf8)}
+html[data-theme="violet"]{--primary:#7c3aed;--primary-weak:#f5eeff;--primary-line:#ddc8ff;--primary-soft:rgba(124,58,237,.10);
+  --a1:#7c3aed;--a2:#a855f7;--a3:#38bdf8;--a-top:#7c3aed;--grad:linear-gradient(135deg,#7c3aed,#a855f7 58%,#38bdf8)}
+/* ② 蓝 + 暖橙：蓝打底，连对 streak / 热力图最高一档用暖橙点缀 */
+html[data-theme="warm"]  {--primary:#2563eb;--primary-weak:#eef4ff;--primary-line:#bfd4ff;--primary-soft:rgba(37,99,235,.10);
+  --a1:#2563eb;--a2:#3b82f6;--a3:#60a5fa;--a-top:#f97316;--grad:linear-gradient(135deg,#2563eb,#3b82f6 58%,#60a5fa)}
+html[data-theme="indigo"] body.dark{--primary:#8f9bff;--primary-weak:#1e2148;--primary-line:#3b4180;--primary-soft:rgba(143,155,255,.14);
+  --a1:#8f9bff;--a2:#a5b4fc;--a3:#38bdf8;--a-top:#8f9bff;--grad:linear-gradient(135deg,#4338ca,#6366f1 58%,#0ea5e9)}
+html[data-theme="teal"]   body.dark{--primary:#2dd4bf;--primary-weak:#0f2f2c;--primary-line:#2a6159;--primary-soft:rgba(45,212,191,.14);
+  --a1:#2dd4bf;--a2:#5eead4;--a3:#38bdf8;--a-top:#2dd4bf;--grad:linear-gradient(135deg,#0f766e,#14b8a6 58%,#0ea5e9)}
+html[data-theme="violet"] body.dark{--primary:#b794ff;--primary-weak:#2a1d47;--primary-line:#543c86;--primary-soft:rgba(183,148,255,.14);
+  --a1:#b794ff;--a2:#c4b5fd;--a3:#38bdf8;--a-top:#b794ff;--grad:linear-gradient(135deg,#6d28d9,#a855f7 58%,#0ea5e9)}
+html[data-theme="warm"]   body.dark{--primary:#7ea6ff;--primary-weak:#16203a;--primary-line:#33456e;--primary-soft:rgba(126,166,255,.14);
+  --a1:#7ea6ff;--a2:#93b4ff;--a3:#38bdf8;--a-top:#fb923c;--grad:linear-gradient(135deg,#1d4ed8,#3b82f6 58%,#60a5fa)}
 
 /* ---------- 第四批：层次与微动效 ---------- */
 h2.sec{font-weight:800}
@@ -1259,3 +1283,100 @@ body.focus .focus-exit { display: flex; }
   .qmode .qm { font-size: 12px; padding: 5px 9px; }
   .sp-fx { bottom: calc(88px + env(safe-area-inset-bottom)); padding: 8px 10px 8px 12px; }
 }
+
+
+/* ==========================================================================
+   §8 视觉 v2 铺开（一）：首页 Bento + 学习热力图 + 快捷入口
+   —— 追加覆盖层：既有选择器一个都没删（探针依赖的 needle 全在），
+      新增类一律 vb- / hm- / ring 前缀，免得撞上别人的改动。
+   ========================================================================== */
+body{ background-image:var(--bg-wash); background-repeat:no-repeat; background-attachment:fixed; }
+
+.vbento{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 4px; }
+.vb-card{ position:relative; display:flex; flex-direction:column; gap:8px; min-width:0;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+  box-shadow:var(--sh-card); padding:14px; }
+.vb-card.span2{ grid-column:span 2; }
+.vb-card .resume{ background:transparent; border:0; box-shadow:none; padding:0; margin:0; }
+.vb-card .resume:hover{ box-shadow:none; }
+.vb-cap{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+  font-size:12px; color:var(--sub); font-weight:600; letter-spacing:.02em; }
+.vb-cap-n{ font-weight:600; }
+
+/* 今日复习圆环 */
+.vb-ring{ align-items:center; justify-content:center; }
+.ring-wrap{ position:relative; width:104px; height:104px; display:grid; place-items:center; margin:2px auto 0; }
+.ring-wrap .ring{ position:absolute; inset:0; width:104px; height:104px; transform:rotate(-90deg); }
+.rg-bg{ fill:none; stroke:var(--bg2); stroke-width:4.5; }
+.rg-fg{ fill:none; stroke:var(--primary); stroke-width:4.5; stroke-linecap:round;
+  stroke-dasharray:113; stroke-dashoffset:calc(113 - 113 * var(--p,0) / 100); transition:stroke-dashoffset .5s ease; }
+.vb-ring-n{ position:relative; display:flex; flex-direction:column; align-items:center; gap:1px; }
+.vb-ring-n b{ font-size:27px; line-height:1.05; font-variant-numeric:tabular-nums; }
+.vb-ring-n span{ font-size:11.5px; color:var(--sub); }
+.vb-ring .btn{ margin-top:2px; }
+
+/* 今天 */
+.vb-today .vb-big{ display:flex; align-items:baseline; gap:6px; }
+.vb-today .vb-big b{ font-size:30px; line-height:1.05; font-variant-numeric:tabular-nums; }
+.vb-today .vb-big span{ font-size:12px; color:var(--sub); }
+.vb-line{ font-size:12.5px; color:var(--sub); }
+.vb-line b{ color:var(--text); font-variant-numeric:tabular-nums; }
+
+/* 学习热力图（§3.6-P1④）：7 行（周一…周日）× 12 列 */
+.vb-heat .hm{ display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); grid-auto-columns:11px;
+  gap:3px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+.vb-heat .hm::-webkit-scrollbar{ display:none; }
+.hm-c{ display:block; width:11px; height:11px; border-radius:3px; background:var(--bg2); }
+.hm-c[data-l="1"]{ background:color-mix(in srgb, var(--primary) 22%, var(--bg2)); }
+.hm-c[data-l="2"]{ background:color-mix(in srgb, var(--primary) 42%, var(--bg2)); }
+.hm-c[data-l="3"]{ background:color-mix(in srgb, var(--primary) 68%, var(--bg2)); }
+.hm-c[data-l="4"]{ background:var(--primary); }
+.hm-legend{ display:flex; align-items:center; gap:4px; margin-top:2px; }
+.hm-legend .hm-c{ width:10px; height:10px; }
+.hm-legend .small{ margin:0 2px; }
+
+/* 快捷入口 */
+.vb-quick{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; padding:10px; }
+.vb-q{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:9px 4px; cursor:pointer;
+  background:transparent; border:1px solid transparent; border-radius:var(--r-m); color:var(--text); font-size:12px;
+  transition:background .15s, border-color .15s, transform .12s; }
+.vb-q:hover{ background:var(--bg2); border-color:var(--line); transform:translateY(-1px); }
+.vb-q:active{ transform:none; }
+.vb-q-i{ width:30px; height:30px; border-radius:10px; display:grid; place-items:center; font-size:15px;
+  background:var(--primary-weak); color:var(--primary); }
+body.dark .vb-card{ box-shadow:var(--sh-card); }
+@media (max-width:420px){
+  .vbento{ gap:10px; }
+  .vb-card{ padding:12px; }
+  .vb-quick{ padding:8px; gap:6px; }
+  .vb-q{ font-size:11.5px; }
+  .ring-wrap, .ring-wrap .ring{ width:92px; height:92px; }
+  .vb-ring-n b{ font-size:24px; }
+}
+
+/* §8 视觉 v2 铺开（二）：答题页「⋯ 更多」抽屉 —— 管理动作不再摊在题目下面 */
+.actions.qz-more{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.qsheet{ position:fixed; inset:0; z-index:900; display:flex; align-items:flex-end; justify-content:center; }
+.qsheet[hidden]{ display:none; }
+.qsheet-scrim{ position:absolute; inset:0; background:rgba(8,12,20,.42);
+  animation:v2fade .18s ease both; }
+.qsheet-panel{ position:relative; width:100%; max-width:520px; background:var(--card);
+  border:1px solid var(--line); border-radius:22px 22px 0 0; box-shadow:var(--sh-pop);
+  padding:12px 14px calc(16px + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:8px;
+  animation:qsheetIn .24s cubic-bezier(.2,.9,.3,1) both; }
+.qsheet-panel .grip{ width:38px; height:4px; border-radius:99px; background:var(--line2); margin:0 auto 4px; }
+.qsheet-cap{ font-size:12.5px; color:var(--sub); font-weight:600; }
+.qsheet-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.qsheet-grid .btn{ width:100%; }
+body.sheet-open{ overflow:hidden; }
+@keyframes qsheetIn{ from{ transform:translateY(16px); opacity:0 } to{ transform:none; opacity:1 } }
+@keyframes v2fade{ from{ opacity:0 } to{ opacity:1 } }
+@media (max-width:420px){ .qsheet-grid{ grid-template-columns:1fr 1fr; gap:6px; } }
+
+/* §8 视觉 v2 铺开（三）：两处透气调整 —— 热力图空格/圆环底色在深浅两态都要看得见；
+   首页 hero 里那排「今日」小统计跟 Bento 的「今天」卡重复，视觉上收掉（DOM 保留，探针照数）。 */
+.hm-c{ background:color-mix(in srgb, var(--text) 9%, var(--card)); }
+.rg-bg{ stroke:color-mix(in srgb, var(--text) 11%, var(--card)); }
+.hero .hstat.today{ display:none; }
+@media (max-width:420px){ .vb-heat .hm{ grid-template-rows:repeat(7,10px); grid-auto-columns:10px; gap:2.5px; } }

@@ -522,6 +522,55 @@
         + '</div><button class="btn primary" id="toResume" data-act="resume">继续刷题</button></div>';
     }
 
+    /* §8 视觉 v2 铺开：首页 Bento（继续刷题大卡 + 今日复习圆环 + 今天 + 热力图 + 快捷入口）。
+       数字全来自已有数据（ANS / FAV / todayStats / heatStats），不新增存储；动作全用现有 data-act。 */
+    var bentoHtml = '';
+    (function () {
+      var hm = (typeof heatStats === 'function') ? heatStats(12) : { cells: [], total: 0, weeks: 12 };
+      var cap = (srsCap && dueN > srsCap) ? srsCap : dueN;
+      var p = (TODAY.dNum + dueN) ? Math.round(TODAY.dNum / (TODAY.dNum + dueN) * 100) : 0;
+      var dOf = function (ts) { var d = new Date(ts); return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日'; };
+      var cells = hm.cells.map(function (c) {
+        return '<i class="hm-c" data-l="' + c.l + '" title="' + dOf(c.ts) + ' · ' + c.n + ' 题"></i>';
+      }).join('');
+      var res = resumeHtml || ('<div class="resume"><div class="rinfo"><div class="rtitle">还没有题库</div>'
+        + '<div class="rmeta">建一个自建题库，或者从文件 / 文件夹导入现有的</div></div>'
+        + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button></div>');
+      bentoHtml = '<div class="vbento">'
+        + '<div class="vb-card span2 vb-resume">' + res + '</div>'
+        + '<div class="vb-card vb-ring">'
+        + '<div class="ring-wrap">'
+        + '<svg class="ring" viewBox="0 0 44 44" aria-hidden="true">'
+        + '<circle class="rg-bg" cx="22" cy="22" r="18"></circle>'
+        + '<circle class="rg-fg" cx="22" cy="22" r="18" style="--p:' + p + '"></circle>'
+        + '</svg>'
+        + '<div class="vb-ring-n"><b>' + dueN + '</b><span>待复习</span></div>'
+        + '</div>'
+        + '<button class="btn small' + (dueN ? ' primary' : '') + '" data-act="review"' + (dueN ? ' data-n="' + cap + '"' : ' data-n="0"') + '>开始复习</button>'
+        + '</div>'
+        + '<div class="vb-card vb-today">'
+        + '<div class="vb-cap">今天</div>'
+        + '<div class="vb-big"><b>' + TODAY.dNum + '</b><span>已答</span></div>'
+        + '<div class="vb-line">正确率 <b>' + (TODAY.dNum ? Math.round(TODAY.dOk / TODAY.dNum * 100) : 0) + '%</b></div>'
+        + '<div class="vb-line">近 7 天 <b>' + TODAY.weekN + '</b> 题</div>'
+        + '</div>'
+        + '<div class="vb-card span2 vb-heat">'
+        + '<div class="vb-cap">近 12 周<span class="vb-cap-n">共 ' + hm.total + ' 题</span></div>'
+        + '<div class="hm">' + (cells || '<i class="hm-c" data-l="0"></i>') + '</div>'
+        + '<div class="hm-legend"><span class="small muted">少</span>'
+        + '<i class="hm-c" data-l="0"></i><i class="hm-c" data-l="1"></i><i class="hm-c" data-l="2"></i>'
+        + '<i class="hm-c" data-l="3"></i><i class="hm-c" data-l="4"></i>'
+        + '<span class="small muted">多</span></div>'
+        + '</div>'
+        + '<div class="vb-card span2 vb-quick">'
+        + '<button class="vb-q" data-act="go" data-hash="#/search"><span class="vb-q-i">⌕</span>搜索全部</button>'
+        + '<button class="vb-q" data-act="go" data-hash="#/stats"><span class="vb-q-i">▤</span>学习统计</button>'
+        + '<button class="vb-q" data-act="go" data-hash="#/wrong"><span class="vb-q-i">✗</span>错题本</button>'
+        + '<button class="vb-q" data-act="go" data-hash="#/fav"><span class="vb-q-i">★</span>收藏</button>'
+        + '</div>'
+        + '</div>';
+    })();
+
     var paperList = papers.map(function (b) {
       var done = 0, ok = 0;
       b.questions.forEach(function (q) { var a = ANS[kOf(b, q)]; if (a && !a.redo) { done++; if (a.ok) ok++; } });
@@ -580,7 +629,7 @@
       + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 连续刷题天数"><b>' + TODAY.streak + '</b>连续天数</button>'
       + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 最近 7 天"><b>' + TODAY.weekN + '</b>近 7 天</button>'
       + '</div></div>'
-      + resumeHtml
+      + bentoHtml
       + ((typeof firstGuideHtml === 'function') ? firstGuideHtml() : '')
       + '<div class="nb-nav" id="nbNav">'
       + '<div class="nb-crumbs">' + crumbHtml() + '</div>'
