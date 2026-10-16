@@ -191,7 +191,8 @@
 > ✅ **P1④ 学习热力图**（2026-10-16 下午，随 §8 铺开一起上：`heatStats(weeks)` + 首页 `.hm`）、✅ **P1⑤ 解析 ↔ 选项联动 + 追问 chips**（2026-10-16 傍晚，`shuati-v67-web61`，探针 `工作1\p15-probe.py` 52 条 0 fail）。
 > ✅ **P2⑥ 骨架屏**（2026-10-16 晚，`app.js` 的 `skelHtml/skelNeeded/skelPaint/skelDrop` + `index.html` 静态首屏骨架；探针 `工作1\p26-probe.py` 44 条 0 fail）。
 > ✅ **P2⑦ Vim 双键**（2026-10-16 深夜，`app.js` 的 `GO_KEYS` / `_gAt`：`g` 开头的七个跳页 + `j` / `k` 翻题，答题卡挪到 `O`；探针 `工作1\p27-probe.py` 54 条 0 fail）。
-> 还没做：P2⑧（手势增强）。
+> ✅ **P2⑧ 手势增强**（2026-10-16 深夜④，`app.js` 的 `SWIPE_MIN` / `uiSwipeBind()`：答题卡片左滑下一题、右滑上一题，跟手位移带阻尼，只认触屏；探针 `工作1\p28-probe.py` 47 条 0 fail）。
+> §3.6 到此**全部做完并上线**。
 
 ### P0（最出效果，优先）
 1. **沉浸 / 专注模式**
