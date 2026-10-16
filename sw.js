@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v67-web70';   // 2026-10-16：手机看不了 PDF → 站内网页阅读器（pdfjs\）+ ai.js 触屏不再嵌 iframe + SW 不把阅读器导航回落成首页；上一版：口诀便签并入云同步
+const VERSION = 'shuati-v67-web71';   // 2026-10-16：解析引用的「参考资料」也进云同步（qbank.aisrc.v1 + 墓碑 + 指纹）；上一版：手机站内网页阅读器（pdfjs\）
 const CORE = [
   './',
   './index.html',

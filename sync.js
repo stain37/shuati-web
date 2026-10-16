@@ -32,7 +32,7 @@ function syncSlug() { return SYC.owner + '/' + SYC.repo; }
 /* 同步范围（界面上那几行勾选框） */
 const SYNC_SCOPES = [
   { k: 'ans', label: '作答记录 · 错题 · 收藏', tip: '对错、次数、复习排期、错题本、收藏' },
-  { k: 'note', label: '笔记 · 自定义解析 · 修正答案', tip: '你写过的东西，还有手动改过的正确答案' },
+  { k: 'note', label: '笔记 · 自定义解析 · 修正答案', tip: '你写过的东西、手动改过的正确答案，以及 AI 解析引用到的参考资料清单（只存出处，正文在资料库 / PDF 里）' },
   { k: 'qtn', label: '口诀 / 思路便签', tip: '答题页右侧那份小便签（几个字的口诀、判别法、易错点）。跟解析分开存，所以单独一项。' },
   { k: 'paper', label: '套卷（组卷）', tip: '临时套卷的定义' },
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
@@ -239,6 +239,8 @@ async function syncPayload() {
   const s = SYC.scope, d = {};
   if (s.ans) { d.answers = ANS; d.favs = FAV; }
   if (s.note) { d.notes = NOTES; d.fixes = FIX; }
+  /* AI 解析引用到的参考资料清单（qbank.aisrc.v1）：跟着解析走，不单独一项 */
+  if (s.note && typeof aiSrcNorm === 'function') { const m = aiSrcNorm(); if (Object.keys(m).length) d.aisrc = m; }
   if (s.qtn) d.qtn = QTN;
   if (s.paper) d.papers = PAPERS;
   if (s.cat) d.cats = catRows();
@@ -250,6 +252,7 @@ async function syncPayload() {
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
   if (s.qtn) tomb.qtn = TOMB.qtn || {};              /* 便签的「清空即删除」也靠墓碑传播，不然会在另一台设备上复活 */
+  if (s.note) tomb.aisrc = TOMB.aisrc || {};         /* 解析删了，它带的那份参考资料也一起走 */
   if (s.tag) tomb.tag = TOMB.tag || {};
   tomb.wipe = TOMB.wipe || {};
   const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
@@ -263,7 +266,7 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
-  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'qtn'].forEach(k => {
+  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'qtn', 'aisrc'].forEach(k => {
     const mine = TOMB[k] = TOMB[k] || {}, theirs = ct[k] || {};
     Object.keys(theirs).forEach(x => { if (!mine[x] || theirs[x] > mine[x]) mine[x] = theirs[x]; });
   });
@@ -279,6 +282,7 @@ function syncMergeCloud(cloud) {
   };
   if (s.ans) { put(ANS, d.answers); saveAns(); put(FAV, d.favs); saveFav(); }
   if (s.note) { put(NOTES, d.notes); saveNotes(); put(FIX, d.fixes); saveFix(); }
+  if (s.note && d.aisrc && typeof aiSrcMergeIn === 'function') added += aiSrcMergeIn(d.aisrc);   /* 参考资料：同一条按 ts 新的为准（mergeWrite 会顺带看墓碑） */
   if (s.qtn) { put(QTN, d.qtn); if (typeof saveQtn === 'function') saveQtn(); }   /* 便签同一条按时间戳新的为准（mergeWrite 会顺带看墓碑） */
 
   /* 3) 数组类：同 id 以本机为准（本机的可能更新），云端独有的补进来 */
@@ -453,7 +457,7 @@ async function syncCreateRepo() {
 /* ---------- 自动同步 ---------- */
 function syncFp() {
   let s = '';
-  [LS.ans, LS.fav, LS.note, LS.qtn, LS.fix, LS.paper, LS.cat, LS.srs, TOMB_KEY].forEach(k => { s += k + '=' + (localStorage.getItem(k) || '') + '|'; });
+  [LS.ans, LS.fav, LS.note, LS.qtn, LS.fix, LS.paper, LS.cat, LS.srs, TOMB_KEY, 'qbank.aisrc.v1'].forEach(k => { s += k + '=' + (localStorage.getItem(k) || '') + '|'; });
   try { if (typeof AI_LS === 'string') s += AI_LS + '=' + (localStorage.getItem(AI_LS) || '') + '|'; } catch (e) {}
   const b = localStorage.getItem(LS.banks);            // 自建题库可能几 MB，只看长度
   s += LS.banks + '=' + (b ? b.length : 0);

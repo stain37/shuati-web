@@ -929,19 +929,72 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
    不用重新跑一次 AI 也能看 PDF。 */
 const AISRC_LS = 'qbank.aisrc.v1';
 function aiSrcAll() { try { return JSON.parse(localStorage.getItem(AISRC_LS) || '{}') || {}; } catch (e) { return {}; } }
+/* 存量格式有两种：老的是裸数组 all[题号] = [hit,…]，现在换成 all[题号] = { hits, ts }
+   （ts 是云同步按时间戳合并用的；老数据读出来当 ts=0，下次再存就升级成新格式） */
+function aiSrcHits(v) { return Array.isArray(v) ? v : ((v && Array.isArray(v.hits)) ? v.hits : []); }
+function aiSrcTs(v) { return Array.isArray(v) ? 0 : (+((v || {}).ts) || 0); }
 function aiSrcSaveFor(k, hits) {
   if (!k || !hits || !hits.length) return false;
   const all = aiSrcAll();
-  all[k] = aiUniqHits(hits).slice(0, 8).map(h => ({
-    kb: h.kb, file: h.file || '', page: h.page, pdfp: h.pdfp, pages: h.pages,
-    doc: h.doc, head: h.head, snip: String(h.snip || '').slice(0, 160)
-  }));
+  all[k] = {
+    hits: aiUniqHits(hits).slice(0, 8).map(h => ({
+      kb: h.kb, file: h.file || '', page: h.page, pdfp: h.pdfp, pages: h.pages,
+      doc: h.doc, head: h.head, snip: String(h.snip || '').slice(0, 160)
+    })),
+    ts: Date.now()
+  };
+  /* 跟解析 / 便签一样走「合并写入」：多标签不互盖，删除才能跟着墓碑走 */
+  if (typeof mergeWrite === 'function') return mergeWrite(AISRC_LS, all, 'aisrc') !== false;
   try { localStorage.setItem(AISRC_LS, JSON.stringify(all)); return true; } catch (e) { return false; }
 }
-function aiSrcFor(k) {
-  const v = aiSrcAll()[k];
-  return Array.isArray(v) ? v : [];
+function aiSrcFor(k) { return aiSrcHits(aiSrcAll()[k]); }
+/* 解析被删掉时就把它一起清掉（下面那个 tombAdd 包装会在 tombAdd('note', 键) 时叫到这里），
+   并且记一笔墓碑 —— 否则别的设备一同步，云端的旧副本又把它带回来了 */
+function aiSrcDrop(k) {
+  if (!k) return;
+  const all = aiSrcAll();
+  if (Object.prototype.hasOwnProperty.call(all, k)) {
+    delete all[k];
+    try { localStorage.setItem(AISRC_LS, JSON.stringify(all)); } catch (e) {}
+  }
+  if (typeof tombAdd === 'function') { try { tombAdd('aisrc', k); } catch (e) {} }
 }
+/* 云同步用：规范形状（老数组格式顺手升级），以及把云端那份并进本机（同一条按 ts 新的为准）*/
+function aiSrcNorm() {
+  const all = aiSrcAll(), out = {};
+  Object.keys(all).forEach(k => {
+    const hits = aiSrcHits(all[k]);
+    if (hits.length) out[k] = { hits: hits, ts: aiSrcTs(all[k]) };
+  });
+  return out;
+}
+function aiSrcMergeIn(map) {
+  if (!map || typeof map !== 'object') return 0;
+  const mine = aiSrcAll();
+  let added = 0;
+  Object.keys(map).forEach(k => {
+    const th = map[k], hits = aiSrcHits(th);
+    if (!hits.length) return;
+    const mi = mine[k];
+    if (!mi) { mine[k] = { hits: hits, ts: aiSrcTs(th) }; added++; return; }
+    if (aiSrcTs(th) > aiSrcTs(mi)) mine[k] = { hits: hits, ts: aiSrcTs(th) };
+  });
+  if (typeof mergeWrite === 'function') mergeWrite(AISRC_LS, mine, 'aisrc');
+  else { try { localStorage.setItem(AISRC_LS, JSON.stringify(mine)); } catch (e) {} }
+  return added;
+}
+try {
+  const _tombAdd = window.tombAdd;
+  if (typeof _tombAdd === 'function' && !_tombAdd.__aiSrcWrapped) {
+    const wrapped = function (kind, key) {
+      const out = _tombAdd.apply(this, arguments);
+      try { if (kind === 'note') aiSrcDrop(key); } catch (e) {}
+      return out;
+    };
+    wrapped.__aiSrcWrapped = true;
+    window.tombAdd = wrapped;
+  }
+} catch (e) {}
 /* 解析下面那行参考资料：就地画出来（数据是存下来的，不需要重新生成） */
 function aiSrcPaintFor(container, k) {
   if (!container || !container.querySelector || !k) return;

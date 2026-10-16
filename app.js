@@ -72,7 +72,7 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   TOMB.wipe[kind] = Date.now();
   writeLS(TOMB_KEY, TOMB);
 }
-function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, fix: {}, paper: {}, tag: {}, report: {}, qtn: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, qtn: {}, aisrc: {}, fix: {}, paper: {}, tag: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
@@ -1304,7 +1304,8 @@ function catRows() {
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
 async function exportAllData() {
   let tipCats = 0;
-  const data = { app: 'shuati', version: 7, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
+  const data = { app: 'shuati', version: 8, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
+    aisrc: (typeof aiSrcNorm === 'function' ? aiSrcNorm() : readLS('qbank.aisrc.v1', {})),
     tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
     tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
     report: (window.REPORT && REPORT.data) ? REPORT.data() : readLS(LS.report, []) };
@@ -1332,7 +1333,7 @@ function importAllData(e) {
       const kbCnt = (d.kb && (d.kb.list || []).length) || 0;
       const tagCnt = Object.keys(d.tags || {}).length;
       const repCnt = Array.isArray(d.report) ? d.report.length : 0;
-      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、口诀便签 ${cnt('qtn')} 条、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${repCnt ? '、学情报告 ' + repCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
+      if (!confirm(`即将导入：作答 ${cnt('answers')} 条、自建题库 ${(d.banks || []).length} 个、收藏 ${cnt('favs')} 条、自定义解析 ${cnt('notes')} 条、口诀便签 ${cnt('qtn')} 条、解析参考资料 ${cnt('aisrc')} 道题、修正答案 ${cnt('fixes')} 条${tagCnt ? '、考点标签 ' + tagCnt + ' 道题' : ''}${repCnt ? '、学情报告 ' + repCnt + ' 份' : ''}${kbCnt ? '、知识库 ' + kbCnt + ' 个' : ''}。\n\n导入会与现有数据合并（同一条以导入的为准），不会删除其它记录。继续？`)) return;
       Object.assign(ANS, d.answers || {});
       Object.assign(FAV, d.favs || {});
       Object.assign(NOTES, d.notes || {});
@@ -1388,6 +1389,8 @@ function importAllData(e) {
         } catch (err) {}
       }
       tombClear();   // 导入＝以这份备份为准，清掉本机墓碑，别把要恢复的记录挡回去
+      /* 解析参考资料：放在 tombClear 之后并（走的 mergeWrite 会看墓碑）*/
+      if (d.aisrc && typeof aiSrcMergeIn === 'function') { try { aiSrcMergeIn(d.aisrc); } catch (e) {} }
       migrate();
       invalidateBanks();
       saveAns(); saveFav(); saveNotes(); saveQtn(); writeLS(LS.banks, LOCAL); savePapers(); writeLS(LS.set, SET);
