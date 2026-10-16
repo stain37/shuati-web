@@ -1469,7 +1469,17 @@ function aiSaveOut(host) {
         const key = String(st.k || '');
         const wrap = document.querySelector('.exp-wrap[data-note-for="' + key.replace(/"/g, '\\"') + '"]');
         if (wrap) {
+          /* 不再依赖「重画」：直接把正文写进页面上那条解析里（storage 里也已经写了一份）。
+             用户 2026-10-16 报「存了但上面不变」——不管中间哪一步抽风，这一步能把眼前这条改成新内容。 */
           setTimeout(() => {
+            try {
+              const ed = document.querySelector('.exp.rich-edit[data-note-for="' + key.replace(/"/g, '\\"') + '"]');
+              if (ed && typeof renderRich === 'function') {
+                ed.innerHTML = renderRich(key, text);
+                const lb = wrap.querySelector('.lb');
+                if (lb && lb.textContent.indexOf('自定义') < 0) lb.textContent = (lb.textContent || '解析').replace(/：\s*$/, '') + '（自定义）：';
+              }
+            } catch (e) {}
             try { wrap.scrollIntoView({ block: 'center' }); } catch (e) {}
             wrap.style.transition = 'box-shadow .25s';
             const prev = wrap.style.boxShadow;
