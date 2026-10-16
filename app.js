@@ -1369,11 +1369,13 @@ function renderQuiz(bankId) {
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
       </div>
+      <div class="vstrip" id="vStrip"></div>
+      <div id="qBody">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
       <div class="stem">${esc(q.stem)}</div>
       ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
-      <div class="vstrip" id="vStrip"></div>
+      </div>
       <div class="actions">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
         ${speed ? '' : `

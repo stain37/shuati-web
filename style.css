@@ -434,7 +434,9 @@ body.dark .wmeta.good{color:#86efac}
 .srsline{margin-top:9px;font-size:12.5px;color:var(--sub);line-height:1.75;background:var(--card);border:1px dashed var(--line);border-radius:var(--r-s);padding:8px 10px}
 .srsline b{color:var(--text)}
 body.dark .fixbox,body.dark .srsbox{background:#131a27}
-body.dark .fixopt{background:#1b2334;border-color:var(--line)}
+/* 深色下只改「没选中」的胶囊：写成 :not(.on)，否则 body.dark .fixopt 的优先级
+   （类2+元素1）会盖掉上面的 .fixopt.on（类2），选中态就变成看不出高亮 */
+body.dark .fixopt:not(.on){background:#1b2334;border-color:var(--line)}
 body.dark .srsgrid input[type=number],body.dark .srsgrid select{background:#111827;color:var(--text)}
 body.dark .srsline{background:var(--card);border-color:var(--line)}
 
@@ -520,7 +522,8 @@ body.dark .aichip.on{background:var(--primary);border-color:var(--primary)}
 .kb-ta{width:100%;min-height:88px;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card);color:var(--text);resize:vertical}
 .kbhit{font-size:13px;line-height:1.8;border-left:3px solid var(--primary);padding:2px 0 2px 10px;margin:8px 0;background:var(--bg2);border-radius:0 var(--r-s) var(--r-s) 0}
 .kbhit-h{color:var(--sub);font-size:12.5px}
-body.dark .kbrow,body.dark .kb-ta{background:var(--card)}
+/* 同样 :not(.on)：不然深色下 .kbrow.on 的浅蓝底会被这条盖掉（同一类优先级坑） */
+body.dark .kbrow:not(.on),body.dark .kb-ta{background:var(--card)}
 
 /* ===== 出错提示条（任何一个模块报错都不再白屏） ===== */
 #fatalBar{position:fixed;left:0;right:0;top:0;z-index:9999;background:var(--badbg);border-bottom:1px solid var(--bad);color:var(--bad);box-shadow:var(--sh-2)}

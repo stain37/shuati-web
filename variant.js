@@ -528,7 +528,7 @@
        · 收藏是【单条】的：FAV['var:'+原题key+'#'+序号]，跟原题的 ★ 互不连带。 */
   var VARK = 'qbank.var.v1';
   var VARM = null;
-  var VOPEN = {};            /* '<k>#<i>' → 1：哪道变式展开着 */
+  var VOPEN = {};            /* 题目 key → 当前切到的变式序号（不存 / -1 = 原题） */
   var VPICK = {};            /* '<k>#<i>' → ['A']：刚点的选项（还没提交） */
   function varqAll() {
     if (!VARM) { try { VARM = JSON.parse(localStorage.getItem(VARK) || '{}') || {}; } catch (e) { VARM = {}; } }
@@ -536,13 +536,15 @@
   }
   function varqSave() { try { localStorage.setItem(VARK, JSON.stringify(VARM || {})); } catch (e) {} }
   function varqList(k) { var m = varqAll(); return (m[k] || []).slice(); }
+  function varqStem(q) { return String((q && (q.stem || q.title)) || '').trim(); }
   function varqAdd(k, arr) {
     if (!k || !arr || !arr.length) return 0;
     var m = varqAll(), list = m[k] || (m[k] = []), n = 0;
     arr.forEach(function (q) {
-      if (!q || !q.title || !q.options || !q.options.length) return;
-      if (list.some(function (x) { return x.t === q.title; })) return;      /* 同题干的不重复挂 */
-      list.push({ t: q.title, o: q.options, a: q.answer || [], e: q.explain || '', ts: Date.now() });
+      var stem = varqStem(q);        /* ⚠️ normalizeQ 出来的题目字段是 stem，不是 title —— 拿错字段会一道都存不进 */
+      if (!stem || !q.options || !q.options.length) return;
+      if (list.some(function (x) { return x.t === stem; })) return;      /* 同题干的不重复挂 */
+      list.push({ t: stem, o: q.options, a: q.answer || [], e: q.explain || '', ts: Date.now() });
       n++;
     });
     if (n) varqSave();
@@ -550,20 +552,21 @@
   }
   function varqClear(k) { var m = varqAll(); if (m[k]) { delete m[k]; varqSave(); } }
   function varqFK(k, i) { return 'var:' + k + '#' + i; }
-  function varqOpenIdx(k) {
-    var i = -1;
-    Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) i = +x.split('#')[1]; });
-    return i;
-  }
+  function varqOpenIdx(k) { return (typeof VOPEN[k] === 'number') ? VOPEN[k] : -1; }
   function varqPaint(host, k) {
     if (!host) return;
     var list = varqList(k);
-    if (!list.length) { host.innerHTML = ''; return; }
+    /* 切到某道变式时，把【原题正文】藏起来（原题本身没动，切回「原题」就复原）
+       —— 这是「切换」而不是「在下面展开」 */
+    var qb = document.getElementById('qBody');
     var open = varqOpenIdx(k);
-    var chips = '<div class="vstrip-row"><span class="vstrip-lab">变式</span>'
+    if (qb) qb.style.display = (open >= 0 && list[open]) ? 'none' : '';
+    if (!list.length) { host.innerHTML = ''; return; }
+    var chips = '<div class="vstrip-row"><span class="vstrip-lab">题目</span>'
+      + '<button class="vchip vsc' + (open < 0 ? ' on' : '') + '" data-vopen="-1" title="回到原题">原题</button>'
       + list.map(function (v, i) {
           var st = v.r ? (v.r.ok ? ' ok' : ' bad') : '';
-          return '<button class="vchip vsc' + st + (open === i ? ' on' : '') + '" data-vopen="' + i + '" title="点开就地做：不计错题本 / 正确率 / 复习">变式 ' + (i + 1) + (v.r ? (v.r.ok ? ' ✓' : ' ✗') : '') + '</button>';
+          return '<button class="vchip vsc' + st + (open === i ? ' on' : '') + '" data-vopen="' + i + '" title="切到这道变式（纯练习：不计错题本 / 正确率 / 复习）">变式 ' + (i + 1) + (v.r ? (v.r.ok ? ' ✓' : ' ✗') : '') + '</button>';
         }).join('')
       + '<button class="vchip vsc vclr" data-vclr="1" title="清空这道题的所有变式">清空</button></div>';
     var body = '';
@@ -579,7 +582,7 @@
         + '<div class="vexp-hd"><span class="small muted">变式 ' + (open + 1) + '　·　纯练习：不计错题本 / 正确率 / 复习</span><span class="spacer-grow"></span>'
         + (r ? '<button class="btn tiny" data-vredo="1">再做一次</button>' : '')
         + '<button class="btn tiny" data-vfav="' + open + '">' + (FAV[varqFK(k, open)] ? '★ 已收藏' : '☆ 收藏') + '</button>'
-        + '<button class="btn tiny" data-vclose="1">收起</button></div>'
+        + '</div>'
         + '<div class="vstem">' + esc(v.t) + '</div>'
         + '<div class="opts">' + opts + '</div>'
         + (r ? '<div class="vres ' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓ 答对了' : '✗ 正确答案：' + esc((v.a || []).join('') || '（没给答案）')) + '</div>'
@@ -590,16 +593,16 @@
     host.innerHTML = '<div class="vstrip-box">' + chips + body + '</div>';
     host.querySelectorAll('[data-vopen]').forEach(function (b) {
       b.onclick = function () {
-        var i = +b.dataset.vopen, was = varqOpenIdx(k);
-        Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) delete VOPEN[x]; });
-        if (was !== i) VOPEN[k + '#' + i] = 1;
+        var i = +b.dataset.vopen;
+        /* ⚠️ 直接按题目 key 存序号 —— 别从字符串里拆：题目 key 本身就带 '#'（bank12#34），拆出来是题号，不是序号 */
+        if (i >= 0) VOPEN[k] = i; else delete VOPEN[k];
         varqPaint(host, k);
       };
     });
     var clr = host.querySelector('[data-vclr]');
     if (clr) clr.onclick = function () { if (confirm('清空这道题的所有变式？')) { varqClear(k); varqPaint(host, k); } };
     var cls2 = host.querySelector('[data-vclose]');
-    if (cls2) cls2.onclick = function () { Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) delete VOPEN[x]; }); varqPaint(host, k); };
+    if (cls2) cls2.onclick = function () { delete VOPEN[k]; varqPaint(host, k); };
     if (open < 0) return;
     var key2 = k + '#' + open;
     host.querySelectorAll('[data-vpick]').forEach(function (b) {
