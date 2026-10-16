@@ -352,6 +352,28 @@
     if (!BATCH || !id) return;
     if (BATCH.sel[id]) delete BATCH.sel[id]; else BATCH.sel[id] = 1;
   }
+  /* 7.5 目录也进批量：框选 / 全选 / 反选都能选到目录。
+     批量模式下【单击目录 = 选中，双击 = 进去】（跟资源管理器一个规矩）——
+     这样既能有单个目录的选中入口，又不会把「进目录接着选」这条路由堵死。 */
+  function batSelC(id) { return !!(BATCH && BATCH.cat && BATCH.cat[id]); }
+  function batToggleC(id) {
+    if (!BATCH || !id) return;
+    if (!BATCH.cat) BATCH.cat = {};
+    if (BATCH.cat[id]) delete BATCH.cat[id]; else BATCH.cat[id] = 1;
+  }
+  function batCatCount() { return (BATCH && BATCH.cat) ? Object.keys(BATCH.cat).length : 0; }
+  function batCatList() {
+    if (!BATCH || !BATCH.cat) return [];
+    return Object.keys(BATCH.cat).map(function (id) { return byId(id); }).filter(function (c) { return !!c; });
+  }
+  function visibleCats() {
+    if (QUERY.trim()) {
+      var segs = QUERY.toLowerCase().split(/[\/\s>›→]+/).filter(function (s) { return s; });
+      var r = searchAll(segs.length ? segs : [QUERY.toLowerCase()]);
+      return r.cats || [];
+    }
+    return kids(CUR);
+  }
   function batStat() {
     var bs = batBanks(), q = 0, builtin = 0, local = 0;
     bs.forEach(function (b) { q += b.questions.length; if (b.source === 'local') local++; else builtin++; });
@@ -371,8 +393,8 @@
     var s = batStat(), vis = visibleBanks().length;
     return '<div class="nb-bspace"></div>'
       + '<div class="nb-bbatch" id="nbBatchBar">'
-      + '<div class="bb-txt">已选 <b>' + s.n + '</b> 个题库 · 共 ' + s.q + ' 题'
-      + '<span class="small muted">点题库卡片选中 / 取消；进目录可以接着选；'
+      + '<div class="bb-txt">已选 <b>' + s.n + '</b> 个题库' + (batCatCount() ? ' · <b>' + batCatCount() + '</b> 个目录' : '') + ' · 共 ' + s.q + ' 题'
+      + '<span class="small muted">单击题库 / 目录选中，双击目录进去接着选，空白处可拉框框选；'
       + (s.builtin ? '内置题库 ' + s.builtin + ' 个不能删除' : '现在选中的都能删、能移') + '</span></div>'
       + '<div class="bb-btns">'
       + '<button class="btn small" data-act="bAll">全选本页（' + vis + '）</button>'
@@ -517,23 +539,26 @@
     if (QUERY.trim()) {
       var segs = QUERY.toLowerCase().split(/[\/\s>›→]+/).filter(function (s) { return s; });
       var r = searchAll(segs.length ? segs : [QUERY.toLowerCase()]);
-      var sc = r.cats.map(function (c) { return catCardHtml(c, true); }).join('');
-      var sb = r.banks.map(function (b) { return bankCardHtml(b, true); }).join('');
+      var sic = r.cats.map(function (c) { return catIconHtml(c); }).join('')
+        + r.banks.map(function (b) { return bankIconHtml(b); }).join('');
       var scr = r.cats.map(function (c) { return catRowHtml(c, true); }).join('');
       var sbr = r.banks.map(function (b) { return bankRowHtml(b, true); }).join('');
+      var sdet = detailsHtml(r.cats, r.banks, true);
       body = sechead('搜索「' + E(QUERY) + '」的结果')
-        + ((sc || sb) ? viewWrap(sc + sb, scr + sbr) : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>');
+        + ((sic || sdet) ? viewWrap(sic, scr + sbr, sdet) : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>');
     } else {
       var dirs = kids(CUR), bs = dirBanks(CUR);
       var curTitle = CUR ? TITLE(byId(CUR)) : '全部题库';
-      var cards = dirs.map(function (c) { return catCardHtml(c, false); }).join('')
-        + bs.slice().sort(sortBank).map(function (b) { return bankCardHtml(b, false); }).join('');
+      var bsorted = bs.slice().sort(sortBank);
+      var icons = dirs.map(function (c) { return catIconHtml(c); }).join('')
+        + bsorted.map(function (b) { return bankIconHtml(b); }).join('');
       var rows = dirs.map(function (c) { return catRowHtml(c, false); }).join('')
-        + bs.slice().sort(sortBank).map(function (b) { return bankRowHtml(b, false); }).join('');
+        + bsorted.map(function (b) { return bankRowHtml(b, false); }).join('');
+      var det = detailsHtml(dirs, bsorted, false);
       var agg = CUR ? subStat(CUR) : null;
       body = sechead(E(curTitle))
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
-        + (cards ? viewWrap(cards, rows) : emptyHint());
+        + ((icons || det) ? viewWrap(icons, rows, det) : emptyHint());
     }
 
     return ''
@@ -604,28 +629,60 @@
   }
 
   /* 目录树（侧边/顶部折叠）：整个分类结构一次看全 */
-  /* ---------- 7.2 卡片 / 列表 视图切换（像资源管理器） ----------
-     视图选择存 qbank.view.v1，刷新记住；两套视图共用同一份数据和同一批
-     data-act，所以列表行里的「开始 / 错题 / 随机 / 移动 / ⋯」跟卡片上完全一样。 */
+  /* ---------- 7.2 视图（照 Windows 资源管理器 / macOS 访达 的两个轴来） ----------
+     ① 视图类型：icon 图标 / list 列表 / details 详细信息（表格，表头可点排序）
+     ② 图标大小：xl 超大 / lg 大 / md 中 / sm 小（只在「图标」视图下出现）
+     分别存 qbank.view.v1 / qbank.iconsize.v1，刷新记住。 */
   var VIEW_KEY = 'qbank.view.v1';
+  var SIZE_KEY = 'qbank.iconsize.v1';
+  var VIEW_TYPES = ['icon', 'list', 'details'];
+  var ICON_SIZES = ['xl', 'lg', 'md', 'sm'];
   function viewMode() {
-    try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'; } catch (e) { return 'cards'; }
+    var v = '';
+    try { v = localStorage.getItem(VIEW_KEY) || ''; } catch (e) {}
+    if (v === 'cards' || v === 'lg' || v === 'md' || v === 'sm') v = 'icon';   /* 老数据：以前那几档卡片 */
+    return VIEW_TYPES.indexOf(v) >= 0 ? v : 'icon';
   }
   function setViewMode(m) {
-    try { localStorage.setItem(VIEW_KEY, m === 'list' ? 'list' : 'cards'); } catch (e) {}
+    try { localStorage.setItem(VIEW_KEY, VIEW_TYPES.indexOf(m) >= 0 ? m : 'icon'); } catch (e) {}
+  }
+  function iconSize() {
+    var v = '';
+    try { v = localStorage.getItem(SIZE_KEY) || ''; } catch (e) {}
+    return ICON_SIZES.indexOf(v) >= 0 ? v : 'md';
+  }
+  function setIconSize(m) {
+    try { localStorage.setItem(SIZE_KEY, ICON_SIZES.indexOf(m) >= 0 ? m : 'md'); } catch (e) {}
+  }
+  /* 详细信息表格的排序：点表头切列 / 升降序 */
+  var DETAIL_SORT = { key: 'name', dir: 1 };
+  function sortDetail(key) {
+    if (DETAIL_SORT.key === key) DETAIL_SORT.dir = -DETAIL_SORT.dir;
+    else { DETAIL_SORT.key = key; DETAIL_SORT.dir = 1; }
   }
   function viewToggleHtml() {
     var v = viewMode();
-    return '<div class="nb-view" role="group" aria-label="视图切换">'
-      + '<button class="vb' + (v === 'cards' ? ' on' : '') + '" data-act="view" data-v="cards" aria-pressed="' + (v === 'cards') + '" title="卡片视图">▦</button>'
-      + '<button class="vb' + (v === 'list' ? ' on' : '') + '" data-act="view" data-v="list" aria-pressed="' + (v === 'list') + '" title="列表视图（像资源管理器那样紧凑）">☰</button>'
-      + '</div>';
+    var T = [
+      ['icon', '图标（像访达：图标在上、名字在下）', '▦'],
+      ['list', '列表（紧凑，一条一行）', '☰'],
+      ['details', '详细信息（表格，点表头排序）', '▤']
+    ];
+    var view = '<div class="nb-view" role="group" aria-label="视图切换">' + T.map(function (x) {
+      return '<button class="vb' + (v === x[0] ? ' on' : '') + '" data-act="view" data-v="' + x[0] + '" aria-pressed="' + (v === x[0]) + '" title="' + x[1] + '">' + x[2] + '</button>';
+    }).join('') + '</div>';
+    /* 图标大小只在「图标」视图下出现（跟资源管理器一样） */
+    if (v !== 'icon') return view;
+    var cur = iconSize();
+    var M = [['xl', '超大', 'sq sq-xl'], ['lg', '大', 'sq sq-lg'], ['md', '中', 'sq sq-md'], ['sm', '小', 'sq sq-sm']];
+    return '<span class="nb-vwrap">' + view + '<span class="nb-isize" role="group" aria-label="图标大小">' + M.map(function (x) {
+      return '<button class="vb' + (cur === x[0] ? ' on' : '') + '" data-act="isize" data-v="' + x[0] + '" aria-pressed="' + (cur === x[0]) + '" title="图标大小：' + x[1] + '"><i class="' + x[2] + '"></i></button>';
+    }).join('') + '</span></span>';
   }
   function sechead(title) { return '<div class="sechead"><h2 class="sec">' + title + '</h2>' + viewToggleHtml() + '</div>'; }
   function catRowHtml(c, inSearch) {
     var s = subStat(c.id);
     var crumb = inSearch ? pathOf(c.parent || null).map(TITLE).join(' › ') : '';
-    return '<div class="nb-lrow nb-ldir" data-trow="' + E(c.id) + '">'
+    return '<div class="nb-lrow nb-ldir' + (batSelC(c.id) ? ' nb-on' : '') + '" data-trow="' + E(c.id) + '">'
       + '<span class="nb-lic">' + ICON_FOLDER + '</span>'
       + '<div class="nb-linfo"><div class="nb-lname">' + E(TITLE(c)) + '</div>'
       + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '') + s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done + '</div></div>'
@@ -658,9 +715,90 @@
           + '<button class="btn tiny" data-act="more" data-id="' + E(b.id) + '">⋯</button>'))
       + '</div></div>';
   }
-  /* 把「卡片们 / 行们」按当前视图包一层；cardsHtml/rowsHtml 都是现成的串 */
-  function viewWrap(cardsHtml, rowsHtml) {
-    return viewMode() === 'list' ? ('<div class="nb-list">' + rowsHtml + '</div>') : ('<div class="nb-cards">' + cardsHtml + '</div>');
+  /* 图标视图：图标在上、名字在下（像访达的图标视图）。
+     用 .nb-dir / .nb-bank 两个类，bind() 里现成的点击/双击就能用，不用额外绑。 */
+  function catIconHtml(c) {
+    var s = subStat(c.id);
+    return '<div class="nb-icon nb-dir' + (batSelC(c.id) ? ' nb-on' : '') + '" data-cat="' + E(c.id) + '" title="' + E(TITLE(c)) + (batOn() ? '（单击选中 / 双击进入）' : '（双击或点名字进入）') + '">'
+      + '<span class="nb-iic">' + ICON_FOLDER + '</span>'
+      + '<span class="nb-iname">' + E(TITLE(c)) + '</span>'
+      + '<span class="nb-imeta">' + s.banks + ' 个库 · ' + s.q + ' 题</span>'
+      + '<span class="nb-ibar"><i style="width:' + (s.q ? (s.done / s.q * 100).toFixed(1) : 0) + '%"></i></span>'
+      + '</div>';
+  }
+  function bankIconHtml(b) {
+    var s = bankStat(b), pick = batOn(), on = pick && batSel(b.id);
+    return '<div class="nb-icon nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="' + (pick ? 'false' : 'true') + '" title="' + E(b.title) + '（' + b.questions.length + ' 题）">'
+      + '<span class="nb-iic">' + ICON_BANK + '</span>'
+      + '<span class="nb-iname">' + E(b.title) + '</span>'
+      + '<span class="nb-imeta">' + b.questions.length + ' 题 · ' + s.acc + '%</span>'
+      + '<span class="nb-ibar"><i style="width:' + s.pct.toFixed(1) + '%"></i></span>'
+      /* 图标视图也得有个「⋯」：速刷 / 背题 / 模拟考试三个入口都在这个菜单里。
+         平时淡出，鼠标停上去（或键盘 Tab 到）才实，免得图标视图看着太闹。 */
+      + (pick ? '' : '<button class="nb-more" data-act="more" data-id="' + E(b.id) + '" title="更多：速刷 / 背题 / 模拟考试 / 移动 / 导出…">⋯</button>')
+      + '</div>';
+  }
+
+  /* 详细信息：表格 + 表头可点排序（像资源管理器的「详细信息」） */
+  function detailItems(dirs, banks, inSearch) {
+    var items = [];
+    (dirs || []).forEach(function (c) {
+      var s = subStat(c.id);
+      items.push({ kind: 'dir', id: c.id, name: TITLE(c), type: '目录',
+        q: s.q, done: s.done, acc: s.done ? Math.round(s.ok / s.done * 100) : 0, wr: s.wr,
+        crumb: inSearch ? pathOf(c.parent || null).map(TITLE).join(' › ') : '' });
+    });
+    (banks || []).forEach(function (b) {
+      var s = bankStat(b);
+      items.push({ kind: 'bank', id: b.id, name: b.title, type: b.source === 'local' ? '自建' : '内置',
+        q: b.questions.length, done: s.done, acc: s.acc, wr: s.wr,
+        crumb: inSearch ? pathOf(b.cat || null).map(TITLE).join(' › ') : '' });
+    });
+    var K = DETAIL_SORT.key, D = DETAIL_SORT.dir;
+    items.sort(function (a, b2) {
+      if (K === 'name') return String(a.name).localeCompare(String(b2.name), 'zh') * D;
+      if (K === 'type') return String(a.type).localeCompare(String(b2.type), 'zh') * D;
+      return ((a[K] || 0) - (b2[K] || 0)) * D;
+    });
+    return items;
+  }
+  function detailsHtml(dirs, banks, inSearch) {
+    var items = detailItems(dirs, banks, inSearch);
+    if (!items.length) return '';
+    var S = DETAIL_SORT;
+    function th(key, label) {
+      var on = S.key === key;
+      return '<th class="' + (on ? 'on' : '') + '" data-act="sort" data-v="' + key + '" title="点一下按「' + label + '」排序（再点一下倒过来）">'
+        + label + (on ? (S.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
+    }
+    var rows = items.map(function (it) {
+      var attr = it.kind === 'dir' ? ('data-cat="' + E(it.id) + '"') : ('data-bank="' + E(it.id) + '"');
+      var acts = it.kind === 'dir'
+        ? '<button class="btn tiny" data-act="open" data-id="' + E(it.id) + '">打开</button><button class="btn tiny" data-act="menu" data-id="' + E(it.id) + '">⋯</button>'
+        : '<button class="btn tiny primary" data-act="start" data-id="' + E(it.id) + '">' + (it.done ? '继续' : '开始') + '</button><button class="btn tiny" data-act="more" data-id="' + E(it.id) + '">⋯</button>';
+      var on = it.kind === 'dir' ? batSelC(it.id) : batSel(it.id);
+      return '<tr class="nb-drow nb-' + it.kind + (on ? ' nb-on' : '') + '" ' + attr + '>'
+        + '<td class="nb-dname"><span class="nb-dic">' + (it.kind === 'dir' ? ICON_FOLDER : ICON_BANK) + '</span>'
+        + '<span class="nb-dtext">' + E(it.name) + (it.crumb ? '<span class="small muted">　在 ' + E(it.crumb) + '</span>' : '') + '</span></td>'
+        + '<td class="small muted">' + it.type + '</td>'
+        + '<td class="num">' + it.q + '</td>'
+        + '<td class="num">' + it.done + '</td>'
+        + '<td class="num">' + (it.done ? it.acc + '%' : '—') + '</td>'
+        + '<td class="num' + (it.wr ? ' warn' : '') + '">' + (it.wr || '—') + '</td>'
+        + '<td class="nb-dacts">' + acts + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<table class="nb-table"><thead><tr>'
+      + th('name', '名称') + th('type', '类型') + th('q', '题目数') + th('done', '已答') + th('acc', '正确率') + th('wr', '错题')
+      + '<th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  /* 按当前视图包一层：图标 / 列表 / 详细信息（三套都从同一份数据来） */
+  function viewWrap(iconHtml, listHtml, detHtml) {
+    var v = viewMode();
+    if (v === 'details') return '<div class="nb-details">' + detHtml + '</div>';
+    if (v === 'list') return '<div class="nb-list">' + listHtml + '</div>';
+    return '<div class="nb-icons nb-icons-' + iconSize() + '">' + iconHtml + '</div>';
   }
 
   function treeHtml() {
@@ -754,7 +892,11 @@
       a.onclick = function (e) { e.preventDefault(); openDir(a.dataset.crumb || null); };
     });
     host.querySelectorAll('[data-trow]').forEach(function (row) {
-      row.onclick = function () { openDir(row.dataset.trow); };
+      row.onclick = function () {
+        /* 批量模式：列表里的目录行也是「单击选中」（目录树 #nbTree 里的行除外，那是导航） */
+        if (BATCH && row.dataset.trow && !(row.closest && row.closest('#nbTree'))) { batToggleC(row.dataset.trow); repaint(); return; }
+        openDir(row.dataset.trow);
+      };
     });
     /* 7.1 目录树点不动：`#nbTree` 初始是空的，树节点是点「展开 / 收起目录树」
        （doAct('expandAll') → treeHtml()）之后才注入的，那些节点赶不上上面那轮绑定。
@@ -809,6 +951,8 @@
         if (e.target.closest('[data-act]')) return;
         if (e.detail > 1) return;
         if (dragSticky()) return;              // 长按选中后，这一下点击不算「打开」
+        /* 批量模式：单击 = 选中这个目录，双击才是进去（跟资源管理器一样） */
+        if (BATCH) { batToggleC(row.dataset.cat); repaint(); return; }
         openDir(row.dataset.cat);
       });
     });
@@ -826,11 +970,25 @@
       });
     });
     attachDrag(host);
+    attachMarquee(host);
   }
 
   function startBankWrapped(id) {
     QUERY = '';
     if (typeof startBank === 'function') startBank(id);
+  }
+
+  /* 方案九：⏱ 模拟考试 —— 只给题库卡片加一个入口，`exam.js` 一行不改。
+     题数 × 60 秒（西综 180 题 / 180 分钟那个口径），打乱顺序后交给 makePaper，
+     它会自己跳 #/exam/。 */
+  function startExam(id) {
+    var b = bankOf(id); if (!b || !b.questions.length) return;
+    var keys = b.questions.map(function (q) { return kOf(b, q); });
+    for (var i = keys.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = keys[i]; keys[i] = keys[j]; keys[j] = t;
+    }
+    if (typeof makePaper === 'function') makePaper(b.title + ' · 模拟考试', keys, { exam: true, duration: keys.length * 60 });
   }
 
   function openDir(id) {
@@ -854,7 +1012,9 @@
     switch (act) {
       case 'open': openDir(id || null); break;
       /* 7.2 视图切换：卡片 ▦ / 列表 ☰（存 qbank.view.v1，刷新记住） */
-      case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'cards'); repaint(); break;
+      case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'icon'); repaint(); break;
+      case 'isize': setIconSize(el && el.dataset ? el.dataset.v : 'md'); repaint(); break;
+      case 'sort': sortDetail(el && el.dataset ? el.dataset.v : 'name'); repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
       case 'newcat': askNewCat(); break;
       case 'newbank': if (typeof go === 'function') go('#/import'); break;
@@ -865,11 +1025,11 @@
       case 'rand': if (typeof randomPaper === 'function') randomPaper([bankOf(id)], 30); break;
       case 'move': askMoveBank(id); break;
       /* 批量管理 */
-      case 'batch': BATCH = { sel: {} }; DRAG = null; LOCK = false; T('批量管理：点题库卡片选中，底部那排按钮操作'); repaint(); break;
+      case 'batch': BATCH = { sel: {}, cat: {} }; DRAG = null; LOCK = false; T('批量管理：单击题库 / 目录选中，双击目录进去接着选'); repaint(); break;
       case 'batchExit': BATCH = null; repaint(); break;
       case 'batchDir': batPickDir(id); break;
-      case 'bAll': if (!BATCH) break; visibleBanks().forEach(function (b) { BATCH.sel[b.id] = 1; }); repaint(); break;
-      case 'bInv': if (!BATCH) break; visibleBanks().forEach(function (b) { if (BATCH.sel[b.id]) delete BATCH.sel[b.id]; else BATCH.sel[b.id] = 1; }); repaint(); break;
+      case 'bAll': if (!BATCH) break; visibleBanks().forEach(function (b) { BATCH.sel[b.id] = 1; }); visibleCats().forEach(function (c) { BATCH.cat[c.id] = 1; }); repaint(); break;
+      case 'bInv': if (!BATCH) break; visibleBanks().forEach(function (b) { if (BATCH.sel[b.id]) delete BATCH.sel[b.id]; else BATCH.sel[b.id] = 1; }); visibleCats().forEach(function (c) { if (BATCH.cat[c.id]) delete BATCH.cat[c.id]; else BATCH.cat[c.id] = 1; }); repaint(); break;
       case 'bMove': askBatchMove(); break;
       case 'bDel': askBatchDel(); break;
       case 'bExport': batchExport(); break;
@@ -1159,6 +1319,9 @@
     var isLocal = b.source === 'local';
     var items = [
       { value: 'start', label: '开始 / 继续刷题' },
+      { value: 'modeSpeed', label: '⚡ 速刷模式', note: '判完自动跳下一题' },
+      { value: 'modeRecite', label: '📖 背题模式', note: '直接看答案 + 解析，不记作答' },
+      { value: 'modeExam', label: '⏱ 模拟考试', note: b.questions.length + ' 题 · 限时 ' + b.questions.length + ' 分钟' },
       { value: 'move', label: '移动到其它目录…' },
       { value: 'export', label: '导出这个题库（JSON）' }
     ];
@@ -1170,6 +1333,9 @@
     BFUI.pick({ title: b.title, desc: pathOf(b.cat || null).map(TITLE).join(' › ') + '　·　' + b.questions.length + ' 题', items: items })
       .then(function (v) {
         if (v === 'start') startBankWrapped(id);
+        else if (v === 'modeSpeed') { if (typeof setLook === 'function') setLook('quizMode', 'speed'); startBankWrapped(id); }
+        else if (v === 'modeRecite') { if (typeof setLook === 'function') setLook('quizMode', 'recite'); startBankWrapped(id); }
+        else if (v === 'modeExam') startExam(id);
         else if (v === 'move') askMoveBank(id);
         else if (v === 'export') { if (typeof exportBank === 'function') exportBank(b); }
         else if (v === 'rename') askRenameBank(id);
@@ -1239,36 +1405,53 @@
   }
   function askBatchMove() {
     if (!BATCH) return;
-    var bs = batBanks();
-    if (!bs.length) { T('先点题库卡片选中要移动的题库'); return; }
+    var bs = batBanks(), cs = batCatList();
+    if (!bs.length && !cs.length) { T('先选中要移动的题库 / 目录'); return; }
+    /* 目标里排掉「选中的目录自己 + 它的子目录」，否则会把目录塞进自己里面 */
+    var banned = {};
+    cs.forEach(function (c) { banned[c.id] = 1; descIds(c.id).forEach(function (d) { banned[d] = 1; }); });
     var items = [{ value: '__ROOT__', label: '🏠 顶层（根目录）' }];
     catsAll().forEach(function (c) {
+      if (banned[c.id]) return;
       items.push({ value: c.id, label: pathOf(c.id).map(TITLE).join(' › '), note: dirBanks(c.id).length + ' 个题库' });
     });
-    var desc = bs.slice(0, 6).map(function (b) { return b.title; }).join('、') + (bs.length > 6 ? ' 等 ' + bs.length + ' 个' : '');
-    BFUI.pick({ title: '把这 ' + bs.length + ' 个题库移动到…', desc: desc, items: items }).then(function (v) {
+    var desc = bs.slice(0, 4).map(function (b) { return b.title; }).join('、')
+      + (bs.length > 4 ? ' 等 ' + bs.length + ' 个题库' : '')
+      + (cs.length ? (bs.length ? '、' : '') + cs.slice(0, 4).map(TITLE).join('、') + (cs.length > 4 ? ' 等 ' + cs.length + ' 个目录' : '') : '');
+    BFUI.pick({ title: '把这些移动到…', desc: desc, items: items }).then(function (v) {
       if (v == null) return;
       var dir = v === '__ROOT__' ? null : v;
       var n = 0;
       bs.forEach(function (b) { if (moveBank(b.id, dir)) n++; });
+      cs.forEach(function (c) { if (moveCat(c.id, dir)) n++; });
       saveBankOrder();
+      try { saveCats(); } catch (e) {}
       BATCH = null;
-      T('已把 ' + n + ' 个题库移到 ' + (dir ? pathOf(dir).map(TITLE).join(' › ') : '顶层'));
+      T('已移动 ' + n + ' 项到 ' + (dir ? pathOf(dir).map(TITLE).join(' › ') : '顶层'));
       repaint();
     });
   }
   function askBatchDel() {
     if (!BATCH) return;
-    var bs = batBanks();
-    if (!bs.length) { T('先点题库卡片选中要删除的题库'); return; }
+    var bs = batBanks(), cs = batCatList();
+    if (!bs.length && !cs.length) { T('先选中要删除的题库 / 目录'); return; }
     var dels = bs.filter(function (b) { return b.source === 'local'; });
     var skip = bs.length - dels.length;
-    if (!dels.length) { T('内置题库不能删除'); return; }
+    /* 目录只删【空目录】（没有子目录、也没直接挂题库）—— 避免“删个目录连题库一起没了”这种不可逆事故 */
+    var cdels = cs.filter(function (c) { return !kids(c.id).length && !dirBanks(c.id).length; });
+    var cskip = cs.length - cdels.length;
+    if (!dels.length && !cdels.length) { T(skip ? '内置题库不能删除' : '选中的目录都不是空的（先清空里面再删）'); return; }
     var names = dels.slice(0, 8).map(function (b) { return E(b.title); }).join('、') + (dels.length > 8 ? ' 等 ' + dels.length + ' 个' : '');
+    var cnames = cdels.slice(0, 8).map(function (c) { return E(TITLE(c)); }).join('、') + (cdels.length > 8 ? ' 等 ' + cdels.length + ' 个' : '');
     BFUI.confirm({
-      title: '删除选中的 ' + dels.length + ' 个题库？',
-      html: names + '<br>它们下面所有题目的作答记录、收藏、自定义解析也会一起清掉，<b>不可恢复</b>。'
-        + (skip ? '<div class="small muted" style="margin-top:6px">另有 ' + skip + ' 个内置题库会跳过（不能删）。</div>' : ''),
+      title: '删除选中的 ' + dels.length + ' 个题库' + (cdels.length ? ' + ' + cdels.length + ' 个空目录' : '') + '？',
+      html: (dels.length ? names + '<br>它们下面所有题目的作答记录、收藏、自定义解析也会一起清掉，' : '')
+        + (cdels.length ? '目录：' + cnames + '<br>' : '')
+        + '<b>不可恢复</b>。'
+        + (skip || cskip ? '<div class="small muted" style="margin-top:6px">'
+          + (skip ? '另有 ' + skip + ' 个内置题库会跳过（不能删）。' : '')
+          + (cskip ? (skip ? ' ' : '') + '另有 ' + cskip + ' 个非空目录会跳过（先清空里面再删）。' : '')
+          + '</div>' : ''),
       okText: '全部删除', danger: true
     }).then(function (ok) {
       if (!ok) return;
@@ -1283,6 +1466,11 @@
         if (typeof LOCAL !== 'undefined') LOCAL = LOCAL.filter(function (x) { return x.id !== b.id; });
         try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}
       });
+      /* 空目录删掉（只从分类表里摘掉；里面本来就是空的，没有子目录也没题库） */
+      cdels.forEach(function (c) {
+        for (var i = CAT.length - 1; i >= 0; i--) { if (CAT[i].id === c.id) CAT.splice(i, 1); }
+      });
+      try { saveCats(); } catch (e) {}
       if (typeof invalidateBanks === 'function') invalidateBanks();
       try { if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
       if (typeof saveAns === 'function') saveAns();
@@ -1290,7 +1478,7 @@
       if (typeof saveNotes === 'function') saveNotes();
       notifyFile();
       BATCH = null;
-      T('已删除 ' + dels.length + ' 个题库（' + qn + ' 题）' + (skip ? '，跳过 ' + skip + ' 个内置题库' : ''));
+      T('已删除 ' + dels.length + ' 个题库（' + qn + ' 题）' + (cdels.length ? ' + ' + cdels.length + ' 个空目录' : '') + (skip ? '，跳过 ' + skip + ' 个内置题库' : '') + (cskip ? '，跳过 ' + cskip + ' 个非空目录' : ''));
       repaint();
     });
   }
@@ -1328,9 +1516,80 @@
     DRAG = null;
     repaint();
   });
+  /* ---------- 7.4 框选（拉方框批量选）：批量模式下，在空白处拖着拉出一个方框，
+     框住哪个题库就选哪个（像 Windows 资源管理器 / 访达）。
+     · 只在鼠标下生效（触屏还是滚动 / 长按，不抢手势）
+     · 点在题/目录/按钮上不拉框，交给原来的点击选中
+     · 默认【替换】当前选择；按住 Ctrl / ⌘ / Shift 是【追加】
+     · 拉框过程中框到的先高亮预览（.nb-hit），松手才真的写进 BATCH.sel */
+  function attachMarquee(host) {
+    if (!BATCH) return;
+    var box = host.querySelector('.nb-icons, .nb-list, .nb-details');
+    if (!box || box.dataset.marq) return;
+    box.dataset.marq = '1';
+    var marq = null, sx = 0, sy = 0, additive = false, moved = false;
+
+    function paint(clientX, clientY) {
+      var x = Math.min(sx, clientX), y = Math.min(sy, clientY);
+      var w = Math.abs(clientX - sx), h = Math.abs(clientY - sy);
+      if (!moved && (w > 4 || h > 4)) { moved = true; document.body.classList.add('nbm'); }
+      if (!moved) return;
+      marq.style.left = x + 'px';
+      marq.style.top = y + 'px';
+      marq.style.width = w + 'px';
+      marq.style.height = h + 'px';
+      var r = { l: x, t: y, r: x + w, b: y + h };
+      box.querySelectorAll('.nb-bank, .nb-dir').forEach(function (el) {
+        var b = el.getBoundingClientRect();
+        el.classList.toggle('nb-hit', !(b.right < r.l || b.left > r.r || b.bottom < r.t || b.top > r.b));
+      });
+    }
+
+    function finish() {
+      if (!marq) return;
+      if (marq.parentNode) marq.parentNode.removeChild(marq);
+      marq = null;
+      document.body.classList.remove('nbm');
+      if (!moved) return;
+      var hb = [], hc = [];
+      box.querySelectorAll('.nb-bank.nb-hit, .nb-dir.nb-hit').forEach(function (el) {
+        el.classList.remove('nb-hit');
+        if (el.dataset.bank) hb.push(el.dataset.bank);
+        else if (el.dataset.cat) hc.push(el.dataset.cat);
+      });
+      if (!BATCH) return;
+      if (!BATCH.cat) BATCH.cat = {};
+      if (!additive) {
+        Object.keys(BATCH.sel).forEach(function (k) { delete BATCH.sel[k]; });
+        Object.keys(BATCH.cat).forEach(function (k) { delete BATCH.cat[k]; });
+      }
+      hb.forEach(function (id) { BATCH.sel[id] = 1; });
+      hc.forEach(function (id) { BATCH.cat[id] = 1; });
+      if (!hb.length && !hc.length) T('没框到东西');
+      else T('框选了 ' + hb.length + ' 个题库' + (hc.length ? ' · ' + hc.length + ' 个目录' : '') + '（共 ' + batCount() + ' 个题库）');
+      repaint();
+    }
+
+    box.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      var t = e.target;
+      if (t.closest('[data-act]')) return;
+      if (t.closest('.nb-bank, .nb-dir')) return;
+      sx = e.clientX; sy = e.clientY; moved = false;
+      additive = !!(e.ctrlKey || e.metaKey || e.shiftKey);
+      marq = document.createElement('div');
+      marq.className = 'nb-marquee';
+      document.body.appendChild(marq);
+      try { box.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    box.addEventListener('pointermove', function (e) { if (marq) paint(e.clientX, e.clientY); });
+    box.addEventListener('pointerup', finish);
+    box.addEventListener('pointercancel', finish);
+  }
+
   function attachDrag(host) {
     if (BATCH) return;                     // 批量多选时不做拖拽，免得点一下就被当成拖动
-    var cards = host.querySelectorAll('.nb-card[draggable="true"]');
+    var cards = host.querySelectorAll('.nb-card[draggable="true"], .nb-icon[draggable="true"]');
     cards.forEach(function (card) {
       /* 桌面：HTML5 拖放 */
       card.addEventListener('dragstart', function (e) {

@@ -161,8 +161,13 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false, focus: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
+/* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
+   speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
+if (['normal', 'speed', 'recite'].indexOf(SET.quizMode) < 0) SET.quizMode = 'normal';
+SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
+const QUIZ_MODES = [['normal', '普通'], ['speed', '⚡ 速刷'], ['recite', '📖 背题']];
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
 function migrate() {
@@ -202,6 +207,9 @@ function applyLook() {
   if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.blue)[dark ? 1 : 0]);
   /* §3.6-P0① 专注模式：只加一个 body 类，隐藏顶栏/底栏交给 CSS（退出按钮 .focus-exit 只在这时露出来） */
   document.body.classList.toggle('focus', !!SET.focus);
+  /* 「减少动态效果」（设置里的开关）：加个 body 类，style.css 里那条规则把全站动画/过渡关掉；
+     系统级的 prefers-reduced-motion 仍然独立生效（两条并存）。 */
+  document.body.classList.toggle('reduce-motion', !!SET.reduceMotion);
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -512,6 +520,7 @@ function toast(msg, ms, kind, action) {
 }
 /* 动效开关：系统开了「减少动态效果」就连脉冲 / 震动一起省掉（sticky 到本页） */
 function uiMotionOK() {
+  try { if (typeof SET !== 'undefined' && SET && SET.reduceMotion) return false; } catch (e) {}
   try { return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return true; }
 }
 /* 判分后的即时反馈（候补池 B）：触屏轻轻震一下 + 选项脉冲一次 + 答错给一句小提示 */
@@ -804,6 +813,7 @@ function showFatal(err) {
   if (cl) cl.onclick = () => { bar.remove(); FATAL_SHOWN = false; };
 }
 function render() {
+  if (typeof richFlush === 'function') richFlush();          // 方案十：换页 / 重画前先保存就地编辑
   try { renderInner(); }
   catch (err) { showFatal(err); }
 }
@@ -1294,6 +1304,7 @@ function importAllData(e) {
    答题页
    ============================================================ */
 function renderQuiz(bankId) {
+  if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
   const bank = bankById(bankId);
   if (!bank) { go('#/'); return; }
   if (bank.exam) { go('#/exam/' + bank.id); return; }   // 模考走专用页面
@@ -1310,9 +1321,12 @@ function renderQuiz(bankId) {
   if (QZ.cur == null || !pool.some(q => String(q.id) === String(QZ.cur))) QZ.cur = pool[0].id;
   const q = pool.find(x => String(x.id) === String(QZ.cur));
   const k = kOf(bank, q);
-  const locked = answered(k);
+  const speed = SET.quizMode === 'speed';
+  const recite = SET.quizMode === 'recite';
+  uiSpeedStop();                                  // 换题 / 重画：先把上一题的速刷浮层和待跳计时收掉
+  const locked = !recite && answered(k);
   const rec = recOf(k);
-  const picked = locked ? (rec.sel || []) : (QZ.pending[q.id] || []);
+  const picked = locked ? (rec.sel || []) : (recite ? [] : (QZ.pending[q.id] || []));
   const fk = favKey(bank, q);
   const faved = !!FAV[fk];
   const custom = !!noteOf(fk);
@@ -1321,7 +1335,11 @@ function renderQuiz(bankId) {
   const opts = q.options.map((t, i) => {
     const K = 'ABCDEFGH'[i];
     let cls = 'opt';
-    if (locked) {
+    if (recite) {
+      /* 背题模式：选项只读，正确答案直接高亮（点一下只给提示，不判分、不写记录） */
+      cls += ' ro';
+      if (ansOf(fk, q).includes(K)) cls += ' right';
+    } else if (locked) {
       if (ansOf(fk, q).includes(K)) cls += ' right';
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
@@ -1331,13 +1349,22 @@ function renderQuiz(bankId) {
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
   $('view').innerHTML = `
     <div class="card">
+      <div class="qmode" role="tablist" aria-label="刷题模式">
+        ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
+          mk === 'normal' ? '普通模式：点选项判分，看解析' :
+          mk === 'speed' ? '速刷模式：判完约 1.2 秒自动跳下一题（可点浮层上的「停下看解析」）' :
+          '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
+        ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
+        <span class="spacer-grow"></span>
+        <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：判完自动跳' : ''}</span>
+      </div>
       <div class="qhead">
         <span class="qno">第 ${qNo(q, pool)} 题</span>
         <span class="tag">${typeLabel(q, ansOf(fk, q))}</span>
         ${q.groupTitle ? `<span class="tag g">${esc(q.groupTitle)}</span>` : ''}
         ${bank.paper ? `<span class="tag paper-tag">临时套卷</span>` : ''}
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
-        ${rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
+        ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
@@ -1346,13 +1373,15 @@ function renderQuiz(bankId) {
       <div class="stem">${esc(q.stem)}</div>
       ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
+      <div class="vstrip" id="vStrip"></div>
       <div class="actions">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
+        ${speed ? '' : `
         ${rec ? `<button class="btn" id="doRedo">再答一次</button>` : ''}
         <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
         <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
         <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
-        <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
+        <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>`}
       </div>
       <div class="fb" id="fb"></div>
       <div class="keyhint">
@@ -1369,13 +1398,22 @@ function renderQuiz(bankId) {
       <div id="vHost"></div>
     </div>`;
 
-  $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
+  $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
+  if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
+  else $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => redo(bank, q));
-  on('doNote', () => openNoteEditor(fk, $('noteHost'), q, render));
+  /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
+     不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
+  on('doNote', () => {
+    if (typeof richFlush === 'function') richFlush();
+    openNoteEditor(fk, $('noteHost'), q, render);
+  });
   on('doFix', () => openAnsEditor($('fixHost'), fk, q, render));
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
+  /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
+  if (typeof varqBind === 'function') varqBind($('vStrip'), fk);
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
   /* §3.6-P0① 专注模式：就地切，不整页重画（重画会打断正在生成的 AI 面板） */
   on('btnFocus', () => { uiSetFocus(!SET.focus); const b = document.getElementById('btnFocus'); if (b) b.classList.toggle('on', !!SET.focus); });
@@ -1388,7 +1426,9 @@ function renderQuiz(bankId) {
   /* 「AI 变式题」面板同理：翻页 / 答题重画之后挂回来，正在生成的不打断 */
   if (typeof variantReopenFor === 'function') { try { variantReopenFor($('vHost'), fk, q); } catch (e) {} }
 
-  showFb(bank, q);
+  if (recite) uiReciteFb(bank, q); else showFb(bank, q);
+  /* 方案九：速刷限时（默认关，设置里开了才跑）—— 到点算答错，走和普通答错同一条路 */
+  if (speed && !locked && SET.speedSec > 0) uiSpeedClock(bank, q, SET.speedSec);
   /* 3.1 判分后不用滚回底部：解析下面那个「下一题 →」直接用（末题给个灰的） */
   const fbNext = $('fbNext');
   if (fbNext) {
@@ -1571,12 +1611,15 @@ function judge(bank, q, sel) {
   /* §3.6-P0②：选项逐个揭示 + 连对 streak（判分「仪式感」） */
   uiReveal(bank, q, ANS[k] || { ok: ok });
   uiStreakBump(ok);
+  /* 方案九：速刷 —— 判完给极简反馈 + 约 1.2 秒自动跳下一题 */
+  uiSpeedFx(bank, q, ok);
   /* 判完分把反馈（对错 + 解析）滚进视野：手机上尤其需要，不然要点完还得自己往下翻 */
   const fbEl = $('fb');
   if (fbEl && (!ok || SET.expOnOk)) {
     setTimeout(() => { try { fbEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { fbEl.scrollIntoView(); } }, 60);
   }
-  if (ok && SET.autoNext) setTimeout(() => step(1), 650);
+  /* 速刷模式下不叠加 SET.autoNext 那次跳（否则两道跳会连跳两题）—— autoNext 本身的行为没动 */
+  if (ok && SET.autoNext && SET.quizMode !== 'speed') setTimeout(() => step(1), 650);
 }
 
 function redo(bank, q) {
@@ -1587,6 +1630,76 @@ function redo(bank, q) {
   saveAns();
   if (window.FX && FX.reset) FX.reset(bank.id);      /* 再答一次：允许这套题重新庆祝 */
   render();
+}
+
+/* ---------- 方案九：三种刷题模式（⚡ 速刷 / 📖 背题）+ ⏱ 模考入口 ---------- */
+/* 切模式：重画一次（render() 会把 AI 面板挂回来，正在生成的解析不会断） */
+function uiQuizMode(m) {
+  if (['normal', 'speed', 'recite'].indexOf(m) < 0) m = 'normal';
+  if (SET.quizMode === m) return;
+  SET.quizMode = m; writeLS(LS.set, SET);
+  uiSpeedStop();
+  render();
+  toast(m === 'speed' ? '⚡ 速刷模式：判完自动跳下一题' :
+    m === 'recite' ? '📖 背题模式：直接看答案和解析，不记作答' : '普通模式：点选项判分', 1900, 'ok');
+}
+
+/* 速刷的浮层和计时：一次只留一份，换题 / 切模式 / 「停下看解析」都要收干净 */
+let SP_JUMP = null, SP_TICK = null;
+function uiSpeedStop() {
+  if (SP_JUMP) { clearTimeout(SP_JUMP); SP_JUMP = null; }
+  if (SP_TICK) { clearInterval(SP_TICK); SP_TICK = null; }
+  const fx = document.getElementById('spFx'); if (fx) fx.remove();
+}
+/* 判完分：叠一个极简反馈（✓ 对 / ✗ 答案 B），约 1.2 秒后自动跳下一题 */
+function uiSpeedFx(bank, q, ok) {
+  if (SET.quizMode !== 'speed') return;
+  uiSpeedStop();
+  const ans = ansOf(favKey(bank, q), q).join('') || '?';
+  const host = document.querySelector('#view .card') || $('view');
+  if (!host) return;
+  const el = document.createElement('div');
+  el.id = 'spFx';
+  el.className = 'sp-fx ' + (ok ? 'ok' : 'bad');
+  el.innerHTML = `<b class="sp-t">${ok ? '✓ 对' : '✗ 答案 ' + esc(ans)}</b>
+    <button class="btn tiny" id="spStop" title="这一次不自动跳，停下来看解析">停下看解析</button>`;
+  host.appendChild(el);
+  on('spStop', () => { uiSpeedStop(); toast('已停下 —— 看完点「下一题 ›」', 1700); });
+  const qid = String(q.id);
+  SP_JUMP = setTimeout(() => {
+    SP_JUMP = null;
+    const fx = document.getElementById('spFx'); if (fx) fx.remove();
+    if (String(QZ.cur) === qid) step(1);          // 这中间用户自己翻页了就别再跳
+  }, 1200);
+}
+/* 速刷限时（默认关）：到点算答错并自动跳，走的是和普通答错同一条写入路径 */
+function uiSpeedClock(bank, q, sec) {
+  if (SP_TICK) { clearInterval(SP_TICK); SP_TICK = null; }
+  const el = document.getElementById('spClock');
+  if (!el) return;
+  const k = kOf(bank, q);
+  let left = sec;
+  const paint = () => { el.textContent = '⏱ ' + Math.max(0, left) + 's'; el.classList.toggle('hot', left <= 5); };
+  paint();
+  SP_TICK = setInterval(() => {
+    left--;
+    if (left > 0) { paint(); return; }
+    clearInterval(SP_TICK); SP_TICK = null;
+    paint();
+    if (!answered(k) && String(QZ.cur) === String(q.id)) { toast('⏱ 超时，这题算答错', 1700, 'bad'); judge(bank, q, []); }
+  }, 1000);
+}
+/* 背题：不做题，直接把正确答案高亮 + 解析摊开（不写 ANS，收藏照旧可用） */
+function uiReciteFb(bank, q) {
+  const fb = $('fb'); if (!fb) return;
+  const fk = favKey(bank, q);
+  const custom = !!noteOf(fk);
+  fb.className = 'fb show rec';
+  fb.innerHTML = `
+    <div class="res">📖 背题：正确答案 <b>${ansOf(fk, q).join('') || '—'}</b></div>
+    ${richBox(fk, explainOf(fk, q), custom, '解析')}
+    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
+  if (typeof richBindAll === 'function') richBindAll(fb);
 }
 
 function showFb(bank, q) {
@@ -1608,9 +1721,10 @@ function showFb(bank, q) {
       <span class="muted">累计作答 ${st.tries || 1} 次 · 错 ${st.wrong || 0} 次 · 正确率 ${rateOf(st)}%</span></div>
     ${extra}
     ${showExp
-      ? `<div class="exp"><span class="lb">解析${custom ? '（自定义）' : ''}：</span>${renderRich(fk, explainOf(fk, q))}</div>`
+      ? richBox(fk, explainOf(fk, q), custom, '解析')
       : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}
     <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
+  if (showExp && typeof richBindAll === 'function') richBindAll(fb);   // 方案十：解析块就地可改
 }
 
 function renderRich(k, text) {
@@ -1623,6 +1737,7 @@ function renderRich(k, text) {
 }
 
 function step(d) {
+  if (typeof richFlush === 'function') richFlush();          // 方案十：翻页前先把就地编辑的改动存了
   const bank = bankById(QZ.bankId); if (!bank) return;
   const p = poolOf(bank); if (!p.length) return;
   const i = p.findIndex(x => String(x.id) === String(QZ.cur));
@@ -1675,7 +1790,8 @@ function renderGrid() {
 function hideMask(m) {
   if (!m || !m.classList.contains('show')) return;
   var rm = false;
-  try { rm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+  try { rm = !!(typeof SET !== 'undefined' && SET && SET.reduceMotion); } catch (e) {}
+  if (!rm) { try { rm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {} }
   if (rm || m.classList.contains('closing')) { m.classList.remove('show', 'closing'); return; }
   m.classList.add('closing');
   setTimeout(function () { m.classList.remove('show'); m.classList.remove('closing'); }, 190);
@@ -2211,6 +2327,8 @@ function openSettings() {
   $('setFxConfetti').checked = SET.fxConfetti !== false;
   $('setFxNormalBank').checked = !!SET.fxNormalBank;
   if ($('setFocus')) $('setFocus').checked = !!SET.focus;
+  if ($('setSpeedSec')) $('setSpeedSec').value = SET.speedSec || 0;
+  if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
@@ -2226,6 +2344,13 @@ on('setColor', e => { setLook('color', e.target.value); toast('主题色换成' 
 on('closeSet', closeAll);
 on('setExpOnOk', e => { SET.expOnOk = e.target.checked; writeLS(LS.set, SET); render(); }, 'change');
 on('setAutoNext', e => { SET.autoNext = e.target.checked; writeLS(LS.set, SET); }, 'change');
+/* 方案九：⚡ 速刷限时（秒 / 题，0 = 不限时）—— 只在速刷模式生效，改完就重画 */
+on('setSpeedSec', e => {
+  SET.speedSec = Math.max(0, Math.min(300, Math.round(+e.target.value || 0)));
+  e.target.value = SET.speedSec;
+  writeLS(LS.set, SET);
+  if (SET.quizMode === 'speed') render();
+}, 'change');
 on('setShuffle', e => { SET.shuffle = e.target.checked; writeLS(LS.set, SET); QZ.order = null; render(); }, 'change');
 /* 庆祝开关（fx.js）：关掉时把正在放的彩带立刻收掉，别留在屏幕上 */
 on('setFxConfetti', e => {
@@ -2238,6 +2363,11 @@ on('setFxNormalBank', e => {
 }, 'change');
 /* §3.6-P0① 专注模式（设置里的开关，等价于答题页右上角那个「⛶ 专注」） */
 on('setFocus', e => uiSetFocus(e.target.checked), 'change');
+/* 减少动态效果：勾上/取消立即生效（关掉时把正在放的彩带也收掉） */
+on('setReduceMotion', e => {
+  setLook('reduceMotion', e.target.checked);
+  if (SET.reduceMotion && window.FX && FX.stop) FX.stop();
+}, 'change');
 on('resetAll', () => {
   if (!confirm('清空全部题库的作答记录？错题、收藏、自定义解析、临时套卷会被保留。不可恢复。')) return;
   tombWipe('ans'); ANS = {}; saveAns(); closeAll(); render(); toast('已清空作答记录');

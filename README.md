@@ -1,4 +1,4 @@
-# 刷题站
+﻿# 刷题站
 
 纯静态的刷题网站：选择题即时判分，**选错立刻出解析**；错题自动进错题本，带统计、可以改解析、可以按需导出。
 题库随时可以往里加。
@@ -227,15 +227,27 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v54-web40**）
+（缓存版本 **shuati-v63-web49**）
 
-最近的改动分两轮，先说清哪轮动了站点：
+最近几轮按倒序说清各自动了什么：
+- **shuati-v63-web49（方案九 + 方案十，外加图标视图的「⋯」、批量模式支持目录）**：就是下面第一张表。
+- **批量模式支持目录（同批并入）**：批量管理里能选目录（单击选中 / 双击进去 / 框选也框得到；移动含目录，删除只删空目录）。
+- **shuati-v57-web43（题库视图三档卡片 + 减少动态效果开关）**：`qbank.view.v1` 从两档扩成大/中/小卡片 + 列表，设置面板加 `#setReduceMotion`（`SET.reduceMotion`，接通 `uiMotionOK()` 与 `body.reduce-motion`），`sync.js` 的指纹补上考点标签 / 词表。
 - **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**，缓存戳一个没变。线上：`https://stain37.github.io/shuati-web/v2-sample.html`。体检 `工作1\v2-sample-check.py`（28 条 0 fail，本地 + 线上都查），截图 `工作1\shots\v2-*.png`。
-- **shuati-v53-web39（进阶交互包）**：就是下面这张表。
+- **shuati-v53-web39（进阶交互包）**：下面第二张表。
 
 | 问题 | 说明 |
 | --- | --- |
-| 答题时上面下面全是按钮，晃眼 | **§3.6-P0① 专注模式**：答题页题目头加 `#btnFocus`（`⛶ 专注`，开着加 `.on`）、`index.html` 里加浮出的 `#btnFocusExit`（`body.focus` 时才 `display:flex`）；设置面板加 `#setFocus` 开关。状态走 `SET.focus`（`SET_DEF` 里加 `focus: false`），由 `applyLook()` 统一 `body.classList.toggle('focus', …)`，切换走 `uiSetFocus(on, quiet)`；Esc 改成「先退专注、没专注才 `closeAll()`」，刷新后仍是专注态。CSS：`body.focus .top{display:none!important}` + `body.quiz.focus .bnav{display:none!important}`（**只有答题页收底栏**）+ 浮标 `bottom: calc(78px + 安全区)`（原 `14px` 正好压住「下一题」） |
+| 刷完一套题要一题一题点「下一题」 | **方案九 · ⚡ 速刷**：`SET.quizMode`（`'normal'｜'speed'｜'recite'`，不新增存储 key）+ `QUIZ_MODES` 三 chip 模式条（`.qmode`，`data-qm`）；`uiSpeedFx(bank,q,ok)` 在判分后往 `#view .card` 叠 `#spFx.sp-fx.ok/.bad`（「✓ 对」/「✗ 答案 X」+ `#spStop` 停下看解析），`SP_JUMP = setTimeout(…, 1200)` 到点前先确认 `String(QZ.cur) === qid` 再 `step(1)`；`uiSpeedStop()` 在换题 / 重画 / 切模式时收干净；速刷下把「再答一次 / 改解析 / 改答案 / AI 解析 / 变式题」整排用 `${speed ? '' : …}` 收掉（`#doSubmit` 留在外面，X 型照旧手动提交）；`judge()` 里那句 `SET.autoNext` 的自动跳加了 `&& SET.quizMode !== 'speed'`，免得连跳两题 |
+| 速刷想掐时间 | **方案九 · 限时**：`SET.speedSec`（`SET_DEF` 默认 0 = 不限时，`Math.max(0, Math.min(300, …))` 夹住），`index.html` 设置面板加 `#setSpeedSec`；`uiSpeedClock(bank,q,sec)` 每秒刷 `#spClock`（≤5 秒加 `.hot`），到点 `if (!answered(k) && String(QZ.cur) === String(q.id)) judge(bank, q, [])` —— 走的是和普通答错同一条写入路径 |
+| 只想背答案，不想做题 | **方案九 · 📖 背题**：`locked = !recite && answered(k)`、选项在背题时 `cls += ' ro'`（`.opt.ro` 只读）+ 正确答案加 `right`，点一下只 `toast('背题模式直接看答案，不用作答…')`；解析由 `uiReciteFb(bank, q)` 直接摊开（`.fb.show.rec` + `📖 背题：正确答案 X`），**全程不写 `ANS`**，收藏照旧；「本题作答 N 次」标签加 `!recite &&` |
+| 模拟考试藏得太深 | **方案九 · ⏱ 模考入口**：`cat.js` 的 `bankMenu()` 加三项（`modeSpeed` / `modeRecite` / `modeExam`），后者走新增的 `startExam(id)`（Fisher-Yates 打乱 → `makePaper(title + ' · 模拟考试', keys, { exam: true, duration: keys.length * 60 })`）；**`exam.js` 一行没改**（源码级断言反查 `!quizMode`） |
+| 图标视图（默认那档）里没有菜单，速刷 / 背题 / 模考点不到 | **图标视图补「⋯」**：`cat.js` 的 `bankIconHtml(b)` 末尾加 `<button class="nb-more" data-act="more" data-id="…" title="更多：速刷 / 背题 / 模拟考试 / 移动 / 导出…">⋯</button>`（批量模式 `pick` 时不出现）；点击天然安全 —— `bind()` 里 `.nb-bank` 的 click / dblclick 都有 `if (e.target.closest('[data-act]')) return;`，会走 `doAct()` 的 `case 'more': bankMenu(id)`。样式在 `cat.css`：`.nb-icon{position:relative}` + `.nb-more` 绝对定位右上角、默认 `opacity:0`，`.nb-icon:hover / :focus-within` 才亮，`@media (hover:none)` 常显半透明 |
+| 解析要改只能弹个大编辑框 | **方案十 · 就地编辑**：`showFb()` / `uiReciteFb()` 里的解析块换成 `richBox(k, text, custom, '解析')` → `.exp-wrap > .exp.rich-edit[contenteditable]`（观感沿用 `.exp`，聚焦描边、空态 placeholder、`.exp-state` 状态提示）；`richBind()` / `richBindAll(root)` 绑 `input`（只标脏）、失焦 / 切题 / `visibilitychange` 交给 `richFlush()` 写 `NOTES[k].text`（不每次敲字都写 LS）；`step()` / `renderQuiz` / `render` / 点「改解析」进完整编辑器前都先 `richFlush()`；**存储仍是 Markdown**，所以新增 `mdFromHtml(root)`（块模型：`blocks[]` / `flush()`，块间 `\n\n`，`hasBlockChild()` 认得出 `.tbl-wrap` 这类外壳）+ `mdEscText` / `mdEscLineStart` / `mdColorHex`，`mdToHtml()` 入口加 `mdEscOpen()`、出口加 `mdColorEnd`，把用户手打的 `*` `==` `` ` `` `[` 转义掉（HTML→MD→HTML 往返一致，探针里逐条比 `h1 === h2`）；粘贴强制纯文本（`insertText` 失败时退回插文本节点 + 派发 `input`） |
+| 浮条只会往 textarea 里插符号 | **方案十 · 浮条改 DOM**：`fmtBarInit(el)` 按 `el.isContentEditable` 分流到 `fmtDomCmd` / `fmtDomWrap`（`mark` / `<span style="color:…">` 手动 wrap）/ `fmtDomClear`（先沿 `start → .rich-edit` 收集包裹元素——`mark` / `span[style*=color]` / `font[color]`——再逐个解包，避免"选区整段在 mark 里、共同祖先就是它自己"查不到）；`B` 是开关（点第二次取消），`execCommand('bold')` 前先 `el.focus({ preventScroll: true })` |
+
+| 问题 | 说明 |
+| --- | --- |
 | 判完分「啪」一下全亮，眼睛不知道看哪 | **§3.6-P0② 判分仪式感**：新增 `uiReveal(bank, q, st)` —— 先把对错色摘掉（`plan.forEach(m => m.el.classList.remove('right','wrong'))`），正确的那个先翻牌（`.opt.flip-in` + `@keyframes optFlip`），错项随后淡入，节奏 `90 + i * 110` ms；结果框先 `.fb.fb-hold`（`opacity:0`）按住，最后 `fbPop` 亮出来。`judge()` 里改成 `uiReveal(bank, q, ANS[k] || { ok: ok })`；`uiMotionOK()` 为假（系统开了减少动态效果）时整段 `return`，判完直接出结果 |
 | 答对答错都一个样，没点「连击」的感觉 | **§3.6-P0② 连对 streak**：`QZ` 里加 `streak: 0`（只在内存，不落盘）；`uiStreakBump(ok)` 答对 +1、答错清零，`n === 3 \|\| (n > 3 && n % 5 === 0)` 时 `toast('连对 ' + n + ' 题 🔥', 1600, 'ok')`（刻意不上 `fx.js` 彩带，答题时太吵） |
 | 今天欠多少复习，得点进去才知道 | **§3.6-P0③ 待复习角标**：`uiDueCount()` 数 `wrong > 0` 且 `due <= now`（与 `isDue()` 同一套判据），`uiPaintBadge()` 把数字挂到 `#btnGoWrong` 和底部导航「错题」那个按钮上（`.nb-badge`，>99 显示 `99+`，`title` 写「今天有 N 道错题到期该复习」，`data-due` 留痕，**0 就把角标摘掉**）；刷新点在 `renderInner()` 收尾（`try { uiPaintBadge(); } catch (e) {}`）。纯读 `ANS`，不新增字段 |

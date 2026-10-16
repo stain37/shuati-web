@@ -70,6 +70,8 @@ button{font:inherit}
 *::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
 *::-webkit-scrollbar-track{background:transparent}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* 应用内的「减少动态效果」开关（设置里）：和上面那条系统规则同效，靠 body 类触发 */
+body.reduce-motion *{animation:none!important;transition:none!important}
 
 /* ===== 顶栏 ===== */
 .top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);box-shadow:var(--sh-1)}
@@ -224,6 +226,16 @@ body.dark .fb.bad{border-color:var(--bad-line)}
 .exp th,.exp td,.ed-preview th,.ed-preview td{border:1px solid var(--line);padding:6px 9px;vertical-align:top;text-align:left}
 .exp th,.ed-preview th{background:var(--bg2);font-weight:700;white-space:nowrap}
 .exp tbody tr:nth-child(even),.ed-preview tbody tr:nth-child(even){background:var(--bg2)}
+/* ---- 方案十：解析块就地编辑（显示态就是编辑态，不是文本框）---- */
+.exp-wrap{margin-top:8px}
+.exp.lb-row{border-top:1px dashed var(--line);padding-top:10px;display:flex;align-items:baseline;gap:6px}
+.exp.lb-row .exp-state{font-size:12px;color:var(--sub)}
+.exp.rich-edit{border-top:none;padding:4px 6px 7px;margin-top:2px;border-radius:var(--r-s);outline:none;cursor:text;
+  transition:background .18s,box-shadow .18s}
+.exp.rich-edit:hover{background:var(--bg2)}
+.exp.rich-edit:focus,.exp.rich-edit:focus-visible{background:var(--card);box-shadow:0 0 0 2px var(--primary-weak),0 0 0 1px var(--primary) inset}
+.exp.rich-edit:empty::before{content:'点这里写解析…';color:var(--sub)}
+body.dark .exp.rich-edit:focus,body.dark .exp.rich-edit:focus-visible{background:#131a27}
 .actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
 .keyhint{margin-top:12px;font-size:12px;color:var(--sub);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .fav-btn{flex:0 0 auto}
@@ -458,6 +470,28 @@ body.dark .srsline{background:var(--card);border-color:var(--line)}
 .aitag.on{background:var(--primary-weak);border-color:var(--primary-line)}
 .aisrc-full{flex:1 1 100%;width:100%;margin-top:8px;padding:10px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-s);max-height:360px;overflow:auto}
 .aisrc-text{font-size:13px;line-height:1.75;color:var(--text)}
+/* ---------- 方案十一：变式题挂到原题下面（题干下面一排「变式 1/2/3」） ---------- */
+.vstrip{margin:8px 0 0}
+.vstrip:empty{display:none}
+.vstrip-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vstrip-lab{font-size:12px;color:var(--sub);margin-right:2px}
+.vchip.vsc{background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--text)}
+.vchip.vsc:hover{border-color:var(--primary-line)}
+.vchip.vsc.on{background:var(--primary-weak);border-color:var(--primary-line);color:var(--primary);font-weight:700}
+.vchip.vsc.ok{border-color:var(--ok);color:var(--ok)}
+.vchip.vsc.bad{border-color:var(--bad);color:var(--bad)}
+.vchip.vsc.vclr{color:var(--sub)}
+.vexp{margin-top:8px;padding:10px 12px;border:1px dashed var(--line);border-radius:var(--r-m);background:var(--bg2)}
+.vexp-hd{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.vexp-hd .spacer-grow{flex:1}
+.vstem{font-size:calc(var(--fs) * .98);line-height:1.7;margin-bottom:8px}
+.vexp .opts{margin:0}
+.vexp-ft{margin-top:8px}
+.vres{margin-top:8px;font-weight:700}
+.vres.ok{color:var(--ok)}
+.vres.bad{color:var(--bad)}
+.vexp-exp{margin-top:8px;padding-top:8px;border-top:1px solid var(--line2);font-size:calc(var(--fs) * .94);line-height:1.75}
+.vexp-exp img{max-width:100%}
 .aistate.ok{color:var(--ok)}
 .aistate.bad{color:var(--bad)}
 .bad-text{color:var(--bad);font-weight:600}
@@ -1188,3 +1222,37 @@ body.focus .focus-exit { display: flex; }
   padding: 0 4px; border-radius: 999px; background: #dc2626; color: #fff; font-size: 10.5px; font-weight: 700;
   line-height: 16px; text-align: center; box-shadow: 0 2px 6px rgba(220,38,38,.4); }
 @media(max-width:420px){ .focus-exit{ padding: 6px 10px; font-size: 12px } }
+
+/* ---------- 方案九：三种刷题模式（⚡ 速刷 / 📖 背题） + ⏱ 模考入口 ---------- */
+/* 答题页顶部的模式条：复用 .chip 的样子，只加紧凑一点的内边距 */
+.qmode { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: -4px 0 12px; }
+.qmode .qm { font-size: 12.5px; padding: 5px 11px; min-height: 28px; }
+.qmode .qm.on { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 3px 10px rgba(37,99,235,.2); }
+.qmode .qm.on:hover { color: #fff; }
+.qmode .qm-hint { flex: 0 0 auto; }
+/* 速刷限时的秒表：剩 5 秒内变红提醒（只改颜色，不做尺寸动画） */
+.sp-clock { flex: 0 0 auto; font-size: 12.5px; font-variant-numeric: tabular-nums; padding: 4px 9px; border-radius: 999px;
+  background: var(--bg2); color: var(--sub); border: 1px solid var(--line); }
+.sp-clock.hot { color: #fff; background: #dc2626; border-color: #dc2626; }
+/* 速刷判完的极简反馈：贴在下方的浮层（判完 1.2 秒自动跳，「停下看解析」取消） */
+.sp-fx { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 30; display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 14px; border-radius: 999px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--sh-pop); animation: spIn .18s ease both; }
+.sp-fx .sp-t { font-size: calc(var(--fs) * 1.02); }
+.sp-fx.ok { border-color: var(--ok-line); background: var(--okbg); }
+.sp-fx.ok .sp-t { color: var(--ok); }
+.sp-fx.bad { border-color: var(--bad-line); background: var(--badbg); }
+.sp-fx.bad .sp-t { color: var(--bad); }
+.sp-fx .btn.tiny { flex: 0 0 auto; }
+@keyframes spIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+/* 背题模式：选项只读（能看不能点，点了只给提示），正确答案那项直接高亮 */
+.opt.ro { cursor: default; }
+.opt.ro:hover { border-color: var(--line); background: var(--card); transform: none; }
+.opt.ro.right:hover { border-color: var(--ok-line); background: var(--okbg); }
+.fb.rec { background: var(--card); border: 1px solid var(--line); border-left-color: var(--primary); }
+.fb.rec .res { color: var(--primary); display: flex; align-items: center; gap: 6px; }
+@media(max-width:420px){
+  .qmode { gap: 6px; }
+  .qmode .qm { font-size: 12px; padding: 5px 9px; }
+  .sp-fx { bottom: calc(88px + env(safe-area-inset-bottom)); padding: 8px 10px 8px 12px; }
+}

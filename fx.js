@@ -11,6 +11,7 @@
   var MAX_MS = 4000;                     /* 硬上限：超过就收尾，绝不常驻 rAF */
 
   function reduced() {
+    try { if (typeof SET !== 'undefined' && SET && SET.reduceMotion) return true; } catch (e) {}
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }
   function confettiOn() {               /* 设置里的「放彩带」，默认开 */

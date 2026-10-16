@@ -31,9 +31,20 @@ function mdColorEnd(html) {
     .replace(/\u0001H\u0001/g, '<mark>')
     .replace(/\u0001\/H\u0001/g, '</mark>');
 }
+/* 反斜杠转义：让用户打的 * _ ` [ ] = < 这些符号不会被当成格式（方案十的就地编辑器要用）。
+   先把 \x 换成占位符（渲染全程不参与匹配），最后一步再还原成字面量。 */
+function mdEscOpen(s) {
+  return String(s).replace(/\\([\\*_`\[\]=<>#\-+.])/g, (m, c) => '\u0002' + c.charCodeAt(0).toString(36) + '\u0002');
+}
+function mdEscEnd(html) {
+  return String(html).replace(/\u0002([0-9a-z]{1,3})\u0002/g, (m, code) => {
+    const ch = String.fromCharCode(parseInt(code, 36));
+    return ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch;
+  });
+}
 function mdToHtml(md) {
   if (!md) return '';
-  let s = esc(mdColorize(md));
+  let s = esc(mdColorize(mdEscOpen(md)));
   s = s.replace(/!\[([^\]]*)\]\((data:image\/[^)\s]+|[^)\s]+)\)/g, (m, a, u) => `<img alt="${a}" src="${u}">`);
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
@@ -72,7 +83,7 @@ function mdToHtml(md) {
     closeList(); out.push(`<p>${t}</p>`);
   }
   closeList();
-  return mdColorEnd(out.join('\n'));
+  return mdEscEnd(mdColorEnd(out.join('\n')));
 }
 
 /* 表格辅助 */
@@ -205,42 +216,319 @@ function fmtWrap(ta, open, close, refresh) {
   return true;
 }
 function fmtHasSel(ta) { return ta.selectionStart != null && ta.selectionEnd != null && ta.selectionStart !== ta.selectionEnd; }
-function fmtBarInit(ta) {
+
+/* ---- 方案十：浮条作用在 contenteditable 上时，直接改 DOM（不再插 Markdown 记号） ---- */
+function fmtDomHasSel(el) {
+  const s = window.getSelection();
+  if (!s || !s.rangeCount || s.isCollapsed) return false;
+  const n = s.getRangeAt(0).commonAncestorContainer;
+  return !!el && el.contains(n.nodeType === 1 ? n : n.parentNode);
+}
+function fmtDomCmd(cmd) { try { document.execCommand(cmd, false, null); return true; } catch (e) { return false; } }
+function fmtDomWrap(open, close) {
+  const s = window.getSelection();
+  if (!s || !s.rangeCount || s.isCollapsed) return false;
+  const r = s.getRangeAt(0);
+  const box = document.createElement('div');
+  box.appendChild(r.cloneContents());
+  const html = open + box.innerHTML + close;
+  try { document.execCommand('insertHTML', false, html); return true; } catch (e) {
+    const wrap = document.createElement('div'); wrap.innerHTML = html;
+    const frag = document.createDocumentFragment();
+    while (wrap.firstChild) frag.appendChild(wrap.firstChild);
+    const last = frag.lastChild;
+    r.deleteContents(); r.insertNode(frag);
+    if (last) { const nr = document.createRange(); nr.selectNodeContents(last); s.removeAllRanges(); s.addRange(nr); }
+    return true;
+  }
+}
+function fmtDomClear() {
+  const s = window.getSelection();
+  if (!s || !s.rangeCount || s.isCollapsed) return false;
+  fmtDomCmd('removeFormat');
+  const r = s.getRangeAt(0);
+  const n = r.commonAncestorContainer;
+  const start = n.nodeType === 1 ? n : n.parentNode;
+  const host = (start && start.closest) ? start.closest('.rich-edit') : null;
+  const isWrap = w => !!(w && w.matches && w.matches('mark, span[style*="color"], font[color]'));
+  const cand = [];
+  for (let w = start; w && w !== host; w = w.parentElement) if (isWrap(w)) cand.push(w);   // 选区整个落在 <mark> 里时，标记本身就是共同祖先
+  if (host && host.querySelectorAll) {
+    Array.prototype.slice.call(host.querySelectorAll('mark, span[style*="color"], font[color]')).forEach(w => {
+      if (cand.indexOf(w) >= 0) return;
+      if (r.intersectsNode && !r.intersectsNode(w)) return;
+      cand.push(w);
+    });
+  }
+  cand.forEach(w => {
+    const p = w.parentNode; if (!p) return;
+    while (w.firstChild) p.insertBefore(w.firstChild, w);
+    p.removeChild(w);
+  });
+  return true;
+}
+function fmtBarInit(el) {
   const bar = fmtBarEl();
-  FMT_TA = ta;
-  const refresh = () => { if (typeof ta.oninput === 'function') ta.oninput(); };
+  FMT_TA = el;
+  const dom = !!el.isContentEditable;                 // contenteditable（方案十）还是 textarea（§9 的完整编辑器）
+  const refresh = () => {
+    if (dom) { try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} return; }
+    if (typeof el.oninput === 'function') el.oninput();
+  };
+  const hasSel = () => (dom ? fmtDomHasSel(el) : fmtHasSel(el));
   const showAt = (x, y) => {
-    if (!fmtHasSel(ta)) { fmtBarHide(); return; }
-    if (x == null) { const r = ta.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + 46; }
+    if (!hasSel()) { fmtBarHide(); return; }
+    if (x == null) { const r = el.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + 46; }
     fmtPlace(bar, x, y);
   };
   /* 点完按钮把浮条挪到编辑框正上方（选区变了，原先那个位置不一定还贴）。
      别拿浮条自己的 top 当参照 —— 第一次是 0，浮条就会飞到屏幕最上头。 */
-  const keep = () => { if (!fmtHasSel(ta)) { fmtBarHide(); return; } const r = ta.getBoundingClientRect(); fmtPlace(bar, r.left + r.width / 2, r.top + 8); };
+  const keep = () => { if (!hasSel()) { fmtBarHide(); return; } const r = el.getBoundingClientRect(); fmtPlace(bar, r.left + r.width / 2, r.top + 8); };
   bar.onmousedown = ev => ev.preventDefault();
   bar.onclick = ev => {
     const b = ev.target.closest ? ev.target.closest('button[data-fmt],button[data-color]') : null;
     if (!b) return;
     const f = b.dataset.fmt;
-    if (f === 'b') fmtWrap(ta, '**', '**', refresh);
-    else if (f === 'i') fmtWrap(ta, '*', '*', refresh);
-    else if (f === 'c') fmtWrap(ta, '`', '`', refresh);
-    else if (f === 'h') fmtWrap(ta, '==', '==', refresh);
-    else if (f === 'none') fmtWrap(ta, '', '', refresh);
-    else if (b.dataset.color) fmtWrap(ta, '<font color="' + b.dataset.color + '">', '</font>', refresh);
-    try { ta.focus(); } catch (e) {}
+    if (dom) {
+      try { el.focus({ preventScroll: true }); } catch (e) {}    // execCommand 要求焦点在编辑区里（点浮条时焦点可能已经不在）
+      if (f === 'b') fmtDomCmd('bold');
+      else if (f === 'i') fmtDomCmd('italic');
+      else if (f === 'c') fmtDomWrap('<code>', '</code>');
+      else if (f === 'h') fmtDomWrap('<mark>', '</mark>');
+      else if (f === 'none') fmtDomClear();
+      else if (b.dataset.color) fmtDomWrap('<span style="color:' + b.dataset.color + '">', '</span>');
+      refresh();
+    } else {
+      if (f === 'b') fmtWrap(el, '**', '**', refresh);
+      else if (f === 'i') fmtWrap(el, '*', '*', refresh);
+      else if (f === 'c') fmtWrap(el, '`', '`', refresh);
+      else if (f === 'h') fmtWrap(el, '==', '==', refresh);
+      else if (f === 'none') fmtWrap(el, '', '', refresh);
+      else if (b.dataset.color) fmtWrap(el, '<font color="' + b.dataset.color + '">', '</font>', refresh);
+    }
+    try { el.focus(); } catch (e) {}
     keep();
   };
-  ta.addEventListener('mouseup', ev => setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0));
-  ta.addEventListener('touchend', () => setTimeout(() => showAt(), 80));
-  ta.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') showAt(); });
-  ta.addEventListener('scroll', fmtBarHide);
-  ta.addEventListener('blur', () => setTimeout(() => { if (!bar.matches(':hover')) fmtBarHide(); }, 160));
+  /* 元素上的监听只挂一次；bar 的 onclick 每次重指向当前目标（textarea 和 contenteditable 共用一条浮条） */
+  if (el.dataset.fmtBound === '1') return;
+  el.dataset.fmtBound = '1';
+  el.addEventListener('mouseup', ev => setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0));
+  el.addEventListener('touchend', () => setTimeout(() => showAt(), 80));
+  el.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') showAt(); });
+  el.addEventListener('scroll', fmtBarHide);
+  el.addEventListener('blur', () => setTimeout(() => { if (!bar.matches(':hover')) fmtBarHide(); }, 160));
   if (!FMT_DOC) {
     FMT_DOC = true;
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fmtBarHide(); });
     document.addEventListener('mousedown', ev => { if (FMT_EL && !FMT_EL.hidden && !FMT_EL.contains(ev.target)) fmtBarHide(); });
   }
+}
+
+/* ============================================================
+   方案十：解析块「Notion 式」就地编辑
+   显示态就是编辑态（contenteditable），存储格式**仍然是 Markdown**。
+   所以核心是一对互转：mdToHtml（已有）↔ mdFromHtml（下面这个）。
+   为了互转可靠，可编辑格式限制在方案十第 2 节那张表的子集里，未知标签一律取纯文字。
+   ============================================================ */
+function mdColorHex(c) {
+  c = String(c || '').trim();
+  const m = c.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  if (m) c = '#' + [1, 2, 3].map(i => (+m[i]).toString(16).padStart(2, '0')).join('');
+  return mdValidColor(c) ? c : '';
+}
+/* 文本节点里那些「会被当成格式」的符号，加反斜杠转义（mdEscOpen 认这个） */
+function mdEscText(s) {
+  return String(s)
+    .replace(/\*/g, '\\*')
+    .replace(/`/g, '\\`')
+    .replace(/==/g, '\\=\\=')
+    .replace(/\[([^\]\n]*)\]\(/g, '\\[$1\\](')
+    .replace(/<(?=\/?\s*(?:font|span)\b)/gi, '\\<');
+}
+/* 行首的 # - > + 1. 这类块级记号也要挡一下（不然用户打的字会变成标题 / 列表） */
+function mdEscLineStart(s) {
+  return /^(#{1,6}\s|[-*+]\s|&gt;\s|>\s|\d+[.)]\s)/.test(s) ? '\\' + s : s;
+}
+const MD_BLOCK_TAGS = { P: 1, DIV: 1, SECTION: 1, ARTICLE: 1, HEADER: 1, FOOTER: 1, LI: 1, BLOCKQUOTE: 1, PRE: 1, TABLE: 1, UL: 1, OL: 1, HR: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, FIGURE: 1, MAIN: 1, ASIDE: 1, NAV: 1 };
+function mdFromHtml(root) {
+  /* 块之间要留一个空行 —— mdToHtml 是按行识别的，两段之间没空行就会被粘成一段（往返一次就丢格式）。 */
+  const blocks = [];                                // 每个块一个字符串，块内用 \n 分行
+  let cur = [];
+  const flush = () => { if (cur.length) { blocks.push(cur.join('\n')); cur = []; } };
+  const pushRaw = s => cur.push(String(s).replace(/[ \t]+$/, ''));
+  const pushText = s => String(s).split('\n').forEach(x => cur.push(mdEscLineStart(x.replace(/[ \t]+$/, ''))));
+
+  function inlineOf(node, inCode) {                 // 行内内容 → Markdown 片段
+    let s = '';
+    Array.prototype.forEach.call(node.childNodes, n => {
+      if (n.nodeType === 3) {
+        const raw = n.nodeValue.replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ');
+        s += inCode ? raw.replace(/`/g, '') : mdEscText(raw);
+      } else if (n.nodeType === 1) s += inlineEl(n, inCode);
+    });
+    return s;
+  }
+  function inlineEl(n, inCode) {
+    const tag = n.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    if (tag === 'strong' || tag === 'b') return '**' + inlineOf(n, inCode) + '**';
+    if (tag === 'em' || tag === 'i') return '*' + inlineOf(n, inCode) + '*';
+    if (tag === 'mark') return '==' + inlineOf(n, inCode) + '==';
+    if (tag === 'code') return '`' + inlineOf(n, true) + '`';
+    if (tag === 'del' || tag === 's' || tag === 'strike') return inlineOf(n, inCode);
+    if (tag === 'a') { const h = n.getAttribute('href') || ''; return h ? '[' + inlineOf(n, inCode) + '](' + h + ')' : inlineOf(n, inCode); }
+    if (tag === 'img') return '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')';
+    const c = (n.style && n.style.color) ? mdColorHex(n.style.color) : (tag === 'font' ? mdColorHex(n.getAttribute('color')) : '');
+    if (c) return '<font color="' + c + '">' + inlineOf(n, inCode) + '</font>';
+    return inlineOf(n, inCode);                     // 未知标签：丢标签、留文字
+  }
+  function hasBlockChild(n) {                       // 外层只是壳（比如表格的 .tbl-wrap）时还要往里找块
+    if (!n.children || !n.children.length) return false;
+    return Array.prototype.some.call(n.children, c =>
+      MD_BLOCK_TAGS[c.tagName] || (c.children && c.children.length && hasBlockChild(c)));
+  }
+  function blockOf(n) {
+    const tag = n.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) { pushRaw('#'.repeat(Math.min(4, Math.max(1, (+tag[1]) - 2))) + ' ' + inlineOf(n, false).trim()); return; }
+    if (tag === 'hr') { pushRaw('---'); return; }
+    if (tag === 'ul' || tag === 'ol') {
+      Array.prototype.forEach.call(n.children, (li, i) => {
+        if (li.tagName.toLowerCase() !== 'li') return;
+        pushRaw((tag === 'ol' ? (i + 1) + '. ' : '- ') + inlineOf(li, false).replace(/\n+/g, ' ').trim());
+      });
+      return;
+    }
+    if (tag === 'blockquote') {
+      inlineOf(n, false).split('\n').forEach(t => pushRaw('> ' + t.trim()));
+      return;
+    }
+    if (tag === 'pre') { pushText(n.textContent.replace(/^\n+|\n+$/g, '')); return; }
+    if (tag === 'table') {
+      const rows = Array.prototype.slice.call(n.querySelectorAll('tr'));
+      rows.forEach((tr, ri) => {
+        const cells = Array.prototype.slice.call(tr.children).map(td => inlineOf(td, false).replace(/\n+/g, ' ').trim().replace(/\|/g, '\\|'));
+        if (!cells.length) return;
+        pushRaw('| ' + cells.join(' | ') + ' |');
+        if (ri === 0) pushRaw('| ' + cells.map(() => '---').join(' | ') + ' |');
+      });
+      return;
+    }
+    if (hasBlockChild(n)) { walk(n); return; }      // 只是壳（div / section）：进去接着找块
+    inlineOf(n, false).split('\n').forEach(t => pushText(t));   // p / li / 其它块级
+  }
+  function walk(node) {
+    Array.prototype.forEach.call(node.childNodes, n => {
+      if (n.nodeType === 3) {
+        const t = n.nodeValue.replace(/\s+/g, ' ').trim();
+        if (t) pushText(t);
+        return;
+      }
+      if (n.nodeType !== 1) return;
+      if (MD_BLOCK_TAGS[n.tagName]) { flush(); blockOf(n); flush(); }
+      else inlineEl(n, false).split('\n').forEach(t => pushText(t));
+    });
+  }
+  walk(root);
+  flush();
+  let md = blocks.join('\n\n');
+  md = md.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+  return md;
+}
+
+/* ---- 就地编辑器：渲染 / 绑定 / 保存 / 收尾 ---- */
+let RICH = null;                                    // 当前活着的那个就地编辑器
+function richState(el, txt, keep) {
+  const w = el.closest ? el.closest('.exp-wrap') : null;
+  const s = w && w.querySelector('.exp-state');
+  if (!s) return;
+  if (s._t) { clearTimeout(s._t); s._t = null; }
+  s.textContent = txt || '';
+  if (txt && !keep) s._t = setTimeout(() => { s.textContent = ''; s._t = null; }, 1500);
+}
+/* 解析块（含图片）：显示态即编辑态。label 走上面那行，图片不参与 contenteditable */
+function richBox(fk, text, custom, label) {
+  const n = (typeof noteOf === 'function') ? noteOf(fk) : null;
+  const imgs = (n && n.imgs) || [];
+  const imgsHtml = imgs.length
+    ? '<div class="rich-imgs">' + imgs.map(im => `<img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy">`).join('') + '</div>'
+    : '';
+  const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
+  return `<div class="exp-wrap" data-note-for="${esc(fk)}">
+      <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span></div>
+      <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，改完点一下别处自动保存">${body}</div>
+      ${imgsHtml}
+    </div>`;
+}
+function richBind(el, fk) {
+  if (!el || !fk) return null;
+  let before = el.innerHTML;
+  const save = () => {
+    if (!el.isConnected || el.innerHTML === before) return;
+    let md;
+    try { md = mdFromHtml(el); } catch (e) { toast('这段格式没认出来，先没保存（原文一个字没动）', 3000, 'bad'); return; }
+    const cur = NOTES[fk] || {};
+    NOTES[fk] = { text: md, imgs: cur.imgs || [], ts: Date.now(), ai: cur.ai || false };
+    if (typeof saveNotes === 'function' && saveNotes() === false) { toast('保存失败：浏览器存储满了', 3000, 'bad'); return; }
+    before = el.innerHTML;
+    const w = el.closest('.exp-wrap');
+    const lb = w && w.querySelector('.lb');
+    if (lb && lb.textContent.indexOf('自定义') < 0) lb.textContent = '解析（自定义）：';
+    richState(el, '已保存');
+  };
+  RICH = { el: el, fk: fk, save: save };
+  el.addEventListener('input', () => { richState(el, el.innerHTML === before ? '' : '未保存…', true); });
+  el.addEventListener('blur', save, true);
+  el.addEventListener('paste', ev => {              // 从网页 / Word 粘进来的一律只留纯文字
+    ev.preventDefault();
+    const cb = ev.clipboardData || window.clipboardData;
+    const t = (cb ? cb.getData('text/plain') : '') || '';
+    if (!t) return;
+    let doneOk = false;
+    try { doneOk = document.execCommand('insertText', false, t) !== false; } catch (e) { doneOk = false; }
+    if (!doneOk || el.textContent.indexOf(t) < 0) {  // execCommand 被废弃 / 不支持时退化成手工插纯文本节点
+      const node = document.createTextNode(t);
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && el.contains(sel.anchorNode)) {
+        const r = sel.getRangeAt(0);
+        r.deleteContents(); r.insertNode(node); r.setStartAfter(node); r.collapse(true);
+        sel.removeAllRanges(); sel.addRange(r);
+      } else { el.appendChild(node); }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    richState(el, '未保存…', true);
+  });
+  el.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') { ev.stopPropagation(); el.blur(); }
+  });
+  fmtBarInit(el);
+  return RICH;
+}
+/* 一次把页面上还没绑过的就地编辑器都绑上（重画完调一次就行） */function richBindAll(root) {
+  const scope = root || document;
+  if (!scope.querySelectorAll) return;
+  Array.prototype.slice.call(scope.querySelectorAll('.rich-edit[contenteditable]')).forEach(el => {
+    if (el.dataset.richBound === '1') return;
+    const fk = el.dataset.noteFor;
+    if (!fk) return;
+    el.dataset.richBound = '1';
+    richBind(el, fk);
+  });
+}
+/* 完整编辑器（textarea）关掉之后，把浮条重新指回页面上的就地编辑器 */
+function fmtBarRebind() {
+  const el = document.querySelector('.rich-edit[contenteditable]');
+  if (el) fmtBarInit(el);
+}
+/* 切题 / 重画 / 离开页面前，先把没保存的改动落盘（方案十 4.2） */
+function richFlush() {
+  const r = RICH;
+  RICH = null;
+  if (r && r.el && r.el.isConnected) { try { r.save(); } catch (e) {} }
+}
+if (!window.__richHooks) {
+  window.__richHooks = true;
+  document.addEventListener('visibilitychange', () => { if (document.hidden) richFlush(); });
+  window.addEventListener('beforeunload', richFlush);
 }
 function openNoteEditor(k, host, q, onDone) {
   const cur = NOTES[k] || {};
@@ -288,14 +576,14 @@ function paintEditor() {
   host.querySelectorAll('[data-imgdel]').forEach(b => b.onclick = () => { ED.imgs.splice(+b.dataset.imgdel, 1); paintEditor(); });
   /* 重画编辑器之后把「AI 生成解析」的面板挂回来（生成到一半被重画也不会断） */
   if (typeof aiReopenFor === 'function') { try { aiReopenFor(host.querySelector('.ai-host'), k); } catch (e) {} }
-  on('edCancel', () => { if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host')); fmtBarHide(); host.innerHTML = ''; ED = null; });
+  on('edCancel', () => { if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host')); fmtBarHide(); host.innerHTML = ''; ED = null; fmtBarRebind(); });
   on('edReset', () => {
     if (!confirm('恢复成题库自带的解析？你写的 Markdown 和图片都会删掉。')) return;
     delete NOTES[k];
     tombAdd('note', k);
     saveNotes();
     if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
-    fmtBarHide(); host.innerHTML = ''; ED = null; toast('已恢复默认解析'); render();
+    fmtBarHide(); host.innerHTML = ''; ED = null; fmtBarRebind(); toast('已恢复默认解析'); render();
   });
   on('edSave', () => {
     const text = ($('edTa').value || '').trim();
@@ -305,7 +593,7 @@ function paintEditor() {
     const mb = storageBytes() / 1024 / 1024;
     toast(mb > 4 ? '已保存（本机存储已用 ' + mb.toFixed(2) + ' MB，接近上限）' : '已保存');
     if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
-    fmtBarHide(); host.innerHTML = ''; ED = null;
+    fmtBarHide(); host.innerHTML = ''; ED = null; fmtBarRebind();
     render();
   });
 }
@@ -421,6 +709,7 @@ function renderWrong() { renderList('wrong'); }
 function renderFav() { renderList('fav'); }
 
 function renderList(mode) {
+  richFlush();                                   // 方案十：重画前先把就地编辑的改动落盘
   const st = LP[mode];
   const isWrong = (mode === 'wrong');
   $('appTitle').textContent = isWrong ? '错题本' : '我的收藏';
@@ -605,6 +894,7 @@ function renderList(mode) {
     const it = shown.find(x => x.k === node.dataset.k);
     if (it) bindItem(node, mode, it);
   });
+  richBindAll($('view'));                        // 方案十：展开着的解析块可以就地改
 }
 
 /* 列表页通用交互：勾选 + 批量 + 套卷/试卷命名行（各列表页共用） */
@@ -821,7 +1111,7 @@ function itemHtml(it, mode) {
         return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hl(optText(o, K))}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
       }).join('')}</div>
       <div class="small" style="margin:6px 0">我的选择：<b>${(rec.sel || []).join('') || '—'}</b>${rec.ts ? `　最近作答：${fmtTime(rec.ts)}` : ''}　错 ${rec.wrong || 0} 次 / 作答 ${rec.tries || 0} 次${custom ? '　<span class="mini-tag">已自定义解析</span>' : ''}</div>
-      <div class="exp">${renderRich(k, explainOf(k, q))}</div>
+      ${richBox(k, explainOf(k, q), custom, '解析')}
       <div class="actions" style="margin-top:10px">
         <button class="btn" data-act="note">${custom ? '改解析' : '写解析'}</button>
         <button class="btn" data-act="fix" title="题库答案写错了 / 自己点错了：可以在这里改">${hasFix(k) ? '改答案（已修正）' : '改答案'}</button>
@@ -1144,6 +1434,7 @@ function paintSearch(anim) {
     const it = shown.find(x => x.k === node.dataset.k);
     if (it) bindItem(node, 'search', it);
   });
+  richBindAll(host);
   on('sExp', () => doExport('search', shown, 'md', st));
   on('sPaper', () => makePaper('搜索套卷 · ' + shown.length + ' 题', shown.map(it => it.k)));
 }

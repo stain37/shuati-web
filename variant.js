@@ -419,6 +419,15 @@
     } catch (e) { st.parseErr = (e && e.message) || '解析出错'; }
     st.parsed = parsed;
     if (parsed && parsed.length) {
+      /* 方案十一：生成完【自动挂到原题下面】（不用再点「存成新题库」）；
+         顺手把答题页那一栏刷新一下 —— 不然要翻走再回来才看得到 */
+      try {
+        if (typeof varqAdd === 'function' && st.k) {
+          varqAdd(st.k, parsed);
+          var vh = document.getElementById('vStrip');
+          if (vh) varqPaint(vh, st.k);
+        }
+      } catch (e) {}
       for (var i = 0; i < parsed.length; i++) st.sims[i] = simList(parsed[i], (bankOf(st.k) || {}).id);
       st.notes.push('解析出 ' + parsed.length + ' 道');
     }
@@ -510,6 +519,128 @@
     if (!host) return;
     host.innerHTML = '';
   }
+
+  /* ================= 变式题【挂到原题下面】（方案十一）=================
+     用户要求：变式是【这道题的附属】——
+       · 题干下面一排「变式 1 / 2 / 3」，点开就地做；
+       · 作答前不露答案 / 解析；
+       · 做变式【绝不写 ANS】—— 不进错题本、不算正确率、不进 SRS，纯练习；
+       · 收藏是【单条】的：FAV['var:'+原题key+'#'+序号]，跟原题的 ★ 互不连带。 */
+  var VARK = 'qbank.var.v1';
+  var VARM = null;
+  var VOPEN = {};            /* '<k>#<i>' → 1：哪道变式展开着 */
+  var VPICK = {};            /* '<k>#<i>' → ['A']：刚点的选项（还没提交） */
+  function varqAll() {
+    if (!VARM) { try { VARM = JSON.parse(localStorage.getItem(VARK) || '{}') || {}; } catch (e) { VARM = {}; } }
+    return VARM;
+  }
+  function varqSave() { try { localStorage.setItem(VARK, JSON.stringify(VARM || {})); } catch (e) {} }
+  function varqList(k) { var m = varqAll(); return (m[k] || []).slice(); }
+  function varqAdd(k, arr) {
+    if (!k || !arr || !arr.length) return 0;
+    var m = varqAll(), list = m[k] || (m[k] = []), n = 0;
+    arr.forEach(function (q) {
+      if (!q || !q.title || !q.options || !q.options.length) return;
+      if (list.some(function (x) { return x.t === q.title; })) return;      /* 同题干的不重复挂 */
+      list.push({ t: q.title, o: q.options, a: q.answer || [], e: q.explain || '', ts: Date.now() });
+      n++;
+    });
+    if (n) varqSave();
+    return n;
+  }
+  function varqClear(k) { var m = varqAll(); if (m[k]) { delete m[k]; varqSave(); } }
+  function varqFK(k, i) { return 'var:' + k + '#' + i; }
+  function varqOpenIdx(k) {
+    var i = -1;
+    Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) i = +x.split('#')[1]; });
+    return i;
+  }
+  function varqPaint(host, k) {
+    if (!host) return;
+    var list = varqList(k);
+    if (!list.length) { host.innerHTML = ''; return; }
+    var open = varqOpenIdx(k);
+    var chips = '<div class="vstrip-row"><span class="vstrip-lab">变式</span>'
+      + list.map(function (v, i) {
+          var st = v.r ? (v.r.ok ? ' ok' : ' bad') : '';
+          return '<button class="vchip vsc' + st + (open === i ? ' on' : '') + '" data-vopen="' + i + '" title="点开就地做：不计错题本 / 正确率 / 复习">变式 ' + (i + 1) + (v.r ? (v.r.ok ? ' ✓' : ' ✗') : '') + '</button>';
+        }).join('')
+      + '<button class="vchip vsc vclr" data-vclr="1" title="清空这道题的所有变式">清空</button></div>';
+    var body = '';
+    if (open >= 0 && list[open]) {
+      var v = list[open], key = k + '#' + open, mine = VPICK[key] || [], r = v.r;
+      var opts = (v.o || []).map(function (txt, j) {
+        var K = 'ABCDEFGH'[j], cls = 'opt';
+        if (r) { if ((v.a || []).indexOf(K) >= 0) cls += ' right'; else if (mine.indexOf(K) >= 0) cls += ' wrong'; }
+        else if (mine.indexOf(K) >= 0) cls += ' sel';
+        return '<button class="' + cls + '" data-vpick="' + K + '"' + (r ? ' disabled' : '') + '><span class="k">' + K + '</span><span>' + esc(optText(txt, K)) + '</span></button>';
+      }).join('');
+      body = '<div class="vexp">'
+        + '<div class="vexp-hd"><span class="small muted">变式 ' + (open + 1) + '　·　纯练习：不计错题本 / 正确率 / 复习</span><span class="spacer-grow"></span>'
+        + (r ? '<button class="btn tiny" data-vredo="1">再做一次</button>' : '')
+        + '<button class="btn tiny" data-vfav="' + open + '">' + (FAV[varqFK(k, open)] ? '★ 已收藏' : '☆ 收藏') + '</button>'
+        + '<button class="btn tiny" data-vclose="1">收起</button></div>'
+        + '<div class="vstem">' + esc(v.t) + '</div>'
+        + '<div class="opts">' + opts + '</div>'
+        + (r ? '<div class="vres ' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓ 答对了' : '✗ 正确答案：' + esc((v.a || []).join('') || '（没给答案）')) + '</div>'
+              + (v.e ? '<div class="vexp-exp"><b>解析：</b>' + ((typeof mdToHtml === 'function') ? mdToHtml(v.e) : esc(v.e)) + '</div>' : '')
+            : '<div class="vexp-ft"><button class="btn primary" data-vsub="1"' + (mine.length ? '' : ' disabled') + '>提交</button></div>')
+        + '</div>';
+    }
+    host.innerHTML = '<div class="vstrip-box">' + chips + body + '</div>';
+    host.querySelectorAll('[data-vopen]').forEach(function (b) {
+      b.onclick = function () {
+        var i = +b.dataset.vopen, was = varqOpenIdx(k);
+        Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) delete VOPEN[x]; });
+        if (was !== i) VOPEN[k + '#' + i] = 1;
+        varqPaint(host, k);
+      };
+    });
+    var clr = host.querySelector('[data-vclr]');
+    if (clr) clr.onclick = function () { if (confirm('清空这道题的所有变式？')) { varqClear(k); varqPaint(host, k); } };
+    var cls2 = host.querySelector('[data-vclose]');
+    if (cls2) cls2.onclick = function () { Object.keys(VOPEN).forEach(function (x) { if (x.indexOf(k + '#') === 0) delete VOPEN[x]; }); varqPaint(host, k); };
+    if (open < 0) return;
+    var key2 = k + '#' + open;
+    host.querySelectorAll('[data-vpick]').forEach(function (b) {
+      b.onclick = function () {
+        var K = b.dataset.vpick, arr = VPICK[key2] || (VPICK[key2] = []);
+        var at = arr.indexOf(K);
+        if (at >= 0) arr.splice(at, 1); else arr.push(K);
+        varqPaint(host, k);
+      };
+    });
+    var sb = host.querySelector('[data-vsub]');
+    if (sb) sb.onclick = function () {
+      var l = varqAll()[k]; if (!l || !l[open]) return;
+      var mine2 = (VPICK[key2] || []).slice().sort();
+      var corr = (l[open].a || []).slice().sort();
+      var ok = mine2.length === corr.length && mine2.every(function (x, n2) { return x === corr[n2]; });
+      l[open].r = { ok: ok, sel: mine2, ts: Date.now() };   /* 只写变式自己，绝不碰 ANS */
+      varqSave();
+      varqPaint(host, k);
+    };
+    var rb = host.querySelector('[data-vredo]');
+    if (rb) rb.onclick = function () {
+      var l = varqAll()[k];
+      if (l && l[open]) { delete l[open].r; varqSave(); }
+      delete VPICK[key2];
+      varqPaint(host, k);
+    };
+    var fb = host.querySelector('[data-vfav]');
+    if (fb) fb.onclick = function () {
+      var fk2 = varqFK(k, open);
+      if (FAV[fk2]) { delete FAV[fk2]; } else { FAV[fk2] = 1; }
+      try { if (typeof tombAdd === 'function') tombAdd('fav', fk2); } catch (e) {}
+      try { if (typeof saveFav === 'function') saveFav(); } catch (e) {}
+      varqPaint(host, k);
+    };
+  }
+  function varqBind(host, k) { varqPaint(host, k); }
+  window.varqBind = varqBind;
+  window.varqAdd = varqAdd;
+  window.varqList = varqList;
+  window.varqClear = varqClear;
 
   window.openVariant = openVariant;
   window.variantReopenFor = reopenFor;

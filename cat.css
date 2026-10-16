@@ -3,8 +3,84 @@
    只加新类，不动 style.css 里已有的东西。
    ============================================================ */
 
-/* 卡片网格：窗口够宽就一屏两张，窄了自动变一张 */
-.nb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin: 4px 0 18px; }
+/* ---------- 7.2a 图标视图（像访达）：图标在上、名字在下，大小 4 档 ---------- */
+.nb-icons { display: grid; gap: 10px; margin: 4px 0 18px; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+.nb-icons-xl { grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); gap: 14px; }
+.nb-icons-sm { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.nb-icon {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; min-width: 0;
+  padding: 12px 8px; border: 1px solid transparent; border-radius: var(--r-m); cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+/* 图标视图右上角的「⋯」：速刷 / 背题 / 模拟考试都藏在这个菜单里。
+   平时淡出，鼠标停在卡片上或键盘焦点进来才亮；触摸屏（没有 hover）一直显示半透明。 */
+.nb-more { position: absolute; top: 4px; right: 4px; z-index: 2; width: 26px; height: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--sub);
+  background: var(--card); border: 1px solid var(--line);
+  opacity: 0; transition: opacity .15s, color .15s, border-color .15s; }
+.nb-icon:hover .nb-more, .nb-icon:focus-within .nb-more, .nb-more:focus { opacity: 1; }
+.nb-more:hover { color: var(--primary); border-color: var(--primary-line); }
+@media (hover: none) { .nb-more { opacity: .8; } }
+.nb-icon:hover { background: var(--bg2); border-color: var(--line); box-shadow: var(--sh-1); }
+.nb-icon.nb-on { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-weak); }
+.nb-icon.dragging { opacity: .55; border-style: dashed; border-color: var(--primary); }
+.nb-icon.drop-tgt, .nb-icon.drop-hover { border-color: var(--primary); border-style: dashed; box-shadow: var(--sh-pop); }
+.nb-iic { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: var(--bg2); border: 1px solid var(--line); }
+.nb-iic svg { width: 24px; height: 24px; fill: none; stroke: var(--primary); stroke-width: 1.7; stroke-linejoin: round; }
+.nb-dir > .nb-iic { background: var(--primary-weak); border-color: var(--primary-line); }
+.nb-iname { font-size: calc(var(--fs) * .9); font-weight: 700; line-height: 1.35; word-break: break-word; max-width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nb-imeta { font-size: calc(var(--fs) * .78); color: var(--sub); }
+.nb-ibar { display: block; width: 84%; height: 3px; background: var(--line2); border-radius: 99px; overflow: hidden; }
+.nb-ibar i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+/* 大小档：图标格尺寸 + 字号一起变，小档只留图标 + 名字 */
+.nb-icons-xl .nb-iic { width: 64px; height: 64px; }
+.nb-icons-xl .nb-iic svg { width: 38px; height: 38px; }
+.nb-icons-xl .nb-iname { font-size: calc(var(--fs) * .98); }
+.nb-icons-sm .nb-iic { width: 28px; height: 28px; border-radius: 8px; }
+.nb-icons-sm .nb-iic svg { width: 17px; height: 17px; }
+.nb-icons-sm .nb-iname { font-size: calc(var(--fs) * .84); -webkit-line-clamp: 1; }
+.nb-icons-sm .nb-imeta, .nb-icons-sm .nb-ibar { display: none; }
+
+/* ---------- 7.2b 详细信息：表格，表头可点排序 ---------- */
+.nb-details { overflow: auto; border: 1px solid var(--line); border-radius: var(--r-m); margin: 4px 0 18px; background: var(--card); }
+.nb-table { border-collapse: collapse; width: 100%; font-size: calc(var(--fs) * .92); }
+.nb-table th, .nb-table td { padding: 8px 11px; text-align: left; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.nb-table thead th { background: var(--bg2); font-weight: 700; font-size: calc(var(--fs) * .86); color: var(--sub); cursor: pointer; user-select: none; }
+.nb-table thead th:hover { color: var(--text); }
+.nb-table thead th.on { color: var(--primary); }
+.nb-table tbody tr:last-child td { border-bottom: 0; }
+.nb-table tbody tr { cursor: pointer; }
+.nb-table tbody tr:hover { background: var(--bg2); }
+.nb-table tbody tr.nb-on { background: var(--primary-weak); }
+.nb-table td.num { font-variant-numeric: tabular-nums; }
+.nb-table td.warn { color: var(--warn, #b45309); font-weight: 700; }
+.nb-dname { display: flex; align-items: center; gap: 8px; min-width: 200px; white-space: normal; }
+.nb-dic { flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--bg2); }
+.nb-dic svg { width: 14px; height: 14px; fill: none; stroke: var(--primary); stroke-width: 1.8; stroke-linejoin: round; }
+.nb-dacts { text-align: right; }
+
+/* 视图切换那一行：视图类型 + （图标视图下才出现的）图标大小 */
+.nb-vwrap { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nb-isize { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--bg2); }
+.nb-isize .vb { min-width: 28px; min-height: 28px; padding: 0 6px; line-height: 1; border: 0; border-radius: 7px; background: transparent; color: var(--sub); cursor: pointer; }
+.nb-isize .vb:hover { color: var(--text); }
+.nb-isize .vb.on { background: var(--card); color: var(--primary); box-shadow: var(--sh-1); }
+.nb-isize .vb i.sq { display: inline-block; border: 1.5px solid currentColor; border-radius: 2px; vertical-align: middle; }
+.nb-isize .vb i.sq-xl { width: 15px; height: 15px; }
+.nb-isize .vb i.sq-lg { width: 12px; height: 12px; }
+.nb-isize .vb i.sq-md { width: 9px; height: 9px; }
+.nb-isize .vb i.sq-sm { width: 6px; height: 6px; }
+
+/* ---------- 7.4 框选（拉方框批量选，像资源管理器） ---------- */
+.nb-marquee {
+  position: fixed; z-index: 70; pointer-events: none;
+  border: 1px solid var(--primary); border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+body.nbm { user-select: none; -webkit-user-select: none; }
+.nb-icon.nb-hit, .nb-lrow.nb-hit, .nb-table tr.nb-hit { outline: 2px solid var(--primary); outline-offset: -1px; border-radius: var(--r-m); }
 
 .nb-card {
   display: flex; align-items: flex-start; gap: 12px;
@@ -39,6 +115,7 @@
 }
 .nb-view .vb:hover { color: var(--text); }
 .nb-view .vb.on { background: var(--card); color: var(--primary); box-shadow: var(--sh-1); font-weight: 700; }
+/* （图标大小那排按钮的样式在下面 .nb-isize 一段） */
 
 .nb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 18px; }
 .nb-lrow {
