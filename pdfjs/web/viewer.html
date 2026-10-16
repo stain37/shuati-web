@@ -34,6 +34,8 @@ See https://github.com/adobe-type-tools/cmap-resources
 
 <!-- This snippet is used in production (included from viewer.html) -->
 <link rel="resource" type="application/l10n" href="locale/locale.json" />
+<!-- 刷题站自用：老浏览器兼容垫片（Promise.withResolvers / URL.parse），必须在 viewer.mjs 之前 -->
+<script src="compat.js"></script>
 <script src="../build/pdf.mjs" type="module"></script>
 
     <link rel="stylesheet" href="viewer.css" />

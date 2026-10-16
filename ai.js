@@ -806,6 +806,18 @@ function aiPdfViewerUrl(rel, anchor, id) {
   const abs = aiPdfMirUrl(rel, id || aiPdfMirId() || PDF_MIRS[0].id);
   return aiPdfBase() + 'pdfjs/web/viewer.html?file=' + encodeURIComponent(abs) + (anchor ? '#page=' + anchor : '');
 }
+/* 站内阅读器能不能在这台设备上跑：pdf.js 5 靠一堆 ES2022 的东西。
+   旧 iPad（iOS 15.4 之前）/ 旧安卓浏览器会直接白屏 —— 那就别硬上，改走系统阅读器（原生渲染/下载）。
+   （Promise.withResolvers 和 URL.parse 已经由 pdfjs\web\compat.js 垫住了，这里只查没垫的那几个。） */
+function aiPdfViewerOK() {
+  try {
+    return typeof Object.hasOwn === 'function'
+      && typeof Array.prototype.at === 'function'
+      && typeof [].findLast === 'function'
+      && typeof structuredClone === 'function'
+      && typeof ''.replaceAll === 'function';
+  } catch (e) { return false; }
+}
 /* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
    window.__pdfTouch 是给探针用的开关，能强扮手机 / 电脑。 */
 function aiPdfTouch() {
@@ -833,6 +845,13 @@ function aiPdfBlockHtml(h, full) {
   /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
      直接给站内网页阅读器 —— 它跟普通网页一样，在浏览器 / 加到主屏的 App 里都能开。 */
   const viewer = aiPdfViewerHref(h);
+  /* 浏览器太旧（跑不动 pdf.js 5）：别给阅读器，直接给「系统阅读器打开」那条路 */
+  if (viewer && !aiPdfViewerOK()) {
+    return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      + '<a class="btn tiny primary" href="' + esc(direct + (anchor ? '#page=' + anchor : '')) + '" target="_blank" rel="noopener" title="用系统阅读器 / 浏览器直接打开这一节（原站直链）">📄 ' + label + ' ↗</a>'
+      + '</div>'
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">这台设备的浏览器版本较旧（跑不动站内阅读器），已经改成用系统阅读器打开；第一次会慢一点。</div>';
+  }
   if (viewer && aiPdfTouch()) {
     return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="在本站里用网页阅读器打开原页（纯网页渲染，安卓 / iPhone 都行；Esc 或右上角关闭退出）">📖 看原页（网页阅读器）</button>'
@@ -847,7 +866,7 @@ function aiPdfBlockHtml(h, full) {
     + '</div>'
     + '<div class="pdf-embed" style="margin:0 0 9px">'
     + '<iframe src="' + esc(viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
-    + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）</div>'
+    + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）；半天不出来就点上面的「' + esc(label) + ' ↗」用系统阅读器看。</div>'
     + '</div>';
 }
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
@@ -872,6 +891,34 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
   if (btn) btn.onclick = close;
   box.addEventListener('click', e => { if (e.target === box) close(); });
   const sw = document.getElementById('pdfFsSwap');
+  /* 看门狗：站内阅读器是**同源**的，可以直接问它「PDF 打开了没」。
+     14 秒还没打开（老浏览器 / 线路不通 / 设备不让跨域）就在顶上补一条出路，别让人对着白屏发呆。 */
+  const directUrl = rel ? (aiPdfBase() + rel + (anchor ? '#page=' + anchor : '')) : '';
+  let wtries = 0;
+  const watch = setInterval(() => {
+    if (!box.isConnected) { clearInterval(watch); return; }
+    wtries++;
+    let loaded = false;
+    try {
+      const fr = box.querySelector('iframe'), w = fr && fr.contentWindow;
+      loaded = !!(w && w.PDFViewerApplication && w.PDFViewerApplication.pdfDocument);
+    } catch (e) {}
+    if (loaded) { clearInterval(watch); return; }
+    if (wtries >= 7) {
+      clearInterval(watch);
+      if (document.getElementById('pdfFsFail')) return;
+      const bar = document.createElement('div');
+      bar.id = 'pdfFsFail';
+      bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:8px 10px;color:#fff;font-size:13px';
+      bar.innerHTML = '<span>这一页在这台设备上没打开成功。</span>'
+        + '<button class="btn tiny" type="button" id="pdfFsAgain">换条线路重试</button>'
+        + (directUrl ? '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(directUrl) + '">用系统阅读器直接打开 ↗</a>' : '');
+      const head = box.firstElementChild;
+      if (head && head.parentNode) head.parentNode.insertBefore(bar, head.nextSibling);
+      const again = bar.querySelector('#pdfFsAgain');
+      if (again) again.onclick = () => { const f = box.querySelector('iframe'); if (f) f.src = f.src; };
+    }
+  }, 2000);
   if (sw && rel) sw.onclick = function () {
     if (sw.dataset.busy) return;
     sw.dataset.busy = '1'; sw.textContent = '正在试别的线路…';
