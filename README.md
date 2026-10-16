@@ -230,7 +230,7 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 （缓存版本 **shuati-v54-web40**）
 
 最近的改动分两轮，先说清哪轮动了站点：
-- **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**，缓存戳一个没变。体检 `工作1\v2-sample-check.py`（19 条 0 fail），截图 `工作1\shots\v2-*.png`。
+- **shuati-v54-web40（§8 视觉 v2 样板）**：只**新增** `v2-sample.html` + `v2-sample.css`（首页 + 答题页两屏样板，顶上能现场切明暗 / 主色 / 宽度，离线可开、不引外链），**在用的 `style.css` / `index.html` / `app.js` / `collection.js` 一行没动**，缓存戳一个没变。线上：`https://stain37.github.io/shuati-web/v2-sample.html`。体检 `工作1\v2-sample-check.py`（28 条 0 fail，本地 + 线上都查），截图 `工作1\shots\v2-*.png`。
 - **shuati-v53-web39（进阶交互包）**：就是下面这张表。
 
 | 问题 | 说明 |

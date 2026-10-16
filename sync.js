@@ -457,6 +457,11 @@ function syncFp() {
   try {
     ['qbank.kb.list.v1', 'qbank.kb.skip.v1', SYNC_KB_DROP].forEach(k => { s += '|' + k + '=' + (localStorage.getItem(k) || ''); });
   } catch (e) {}
+  /* 考点标签：贴标签会写墓碑（TOMB_KEY 变），但**只改词表不贴题**时不会 —— 词表也要算进指纹，
+     否则「加/删一个考点词」不会触发自动同步，得等别的数据变了才顺带过去。 */
+  try {
+    ['qbank.tags.v1', 'qbank.tagvocab.v1'].forEach(k => { s += '|' + k + '=' + (localStorage.getItem(k) || ''); });
+  } catch (e) {}
   return s;
 }
 let SYNC_FP = '';
