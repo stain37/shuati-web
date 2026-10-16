@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v67-web76';   // 2026-10-16：华为内核缺 Uint8Array.toHex / Map.getOrInsertComputed → 新增轻量阅读器（pdfjs 4.6.82 legacy + 自写界面 pdfjs\lite.html），华为设备直接用它、其他设备打不开时 12 秒自动切过去；上一版：自动重试（disableworker）+ 深入自检
+const VERSION = 'shuati-v67-web77';   // 2026-10-16：「第一次点生成就卡死」→ 知识库预热提前到开机 1.5s、索引分片建（单次卡顿 <400ms）、面板上显示下载/建索引进度；顺修参考资料直链丢 #page= 锚点
 const CORE = [
   './',
   './index.html',

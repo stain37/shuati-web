@@ -148,6 +148,54 @@ function kbChunk(text) {
    为什么要把标题拆出来单算：原来标题是拌进正文里一起算的，标题里的词会被正文的长度归一化稀释掉。
    实测（800 条「按知识点名找那一节」的查询）：标题字段加权后 Top1 从 84.1% 升到 94.5%，
    完整分句 / 真题两类查询不降。参数 k1=1.2 b=0.75 标题×4 文件名×1 是网格搜出来的。 */
+/* 建索引支持「分片 + 让出主线程」：184 万字在pad上要一两秒，一口气跑完页面就冻住了。
+   kbIndex() 是原来的同步版（还在用，兼容）；kbIndexAsync() 每 120 段让一次，页面保持能滚。 */
+const KB_PROG = {};          /* 库id → {done, total}：建索引进度（面板上拿它显示百分比） */
+const KB_BUILD = {};         /* 库id → Promise：同一个库同时只建一次 */
+function kbYield() { return new Promise(r => setTimeout(r, 0)); }
+async function kbIndexAsync(docs, id) {
+  const chunks = [], df = Object.create(null), names = [];
+  let total = 0, totalH = 0, totalN = 0;
+  const flat = [];
+  docs.forEach((d, di) => {
+    const ntf = Object.create(null);
+    let nlen = 0;
+    kbTokens(String(d.name || '').replace(/\.[a-z0-9]+$/i, '')).forEach(t => { ntf[t] = (ntf[t] || 0) + 1; nlen++; });
+    names.push({ ntf: ntf, nlen: nlen });
+    totalN += nlen;
+    (d.chunks || []).forEach((c, ci) => flat.push([d, di, c, ci]));
+  });
+  const n = flat.length || 1;
+  if (id) KB_PROG[id] = { done: 0, total: n };
+  for (let k = 0; k < flat.length; k++) {
+    const [d, di, c, ci] = flat[k];
+    const tf = Object.create(null), hs = Object.create(null);
+    let len = 0, hlen = 0;
+    kbTokens(c.t).forEach(t => { tf[t] = (tf[t] || 0) + 1; len++; });
+    kbTokens(c.h || '').forEach(t => { hs[t] = (hs[t] || 0) + 1; hlen++; });
+    const seen = Object.create(null);
+    Object.keys(tf).forEach(t => { seen[t] = 1; df[t] = (df[t] || 0) + 1; });
+    Object.keys(hs).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
+    Object.keys(names[di] ? names[di].ntf : {}).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
+    total += len; totalH += hlen;
+    chunks.push({ d: di, ci: ci, h: c.h, t: c.t, tf: tf, len: len, hs: hs, hlen: hlen, txt: kbFlat((c.h ? c.h : '') + c.t), ck: kbHash(kbFlat(c.t)) });
+    if (k % 120 === 119) { if (id) KB_PROG[id] = { done: k + 1, total: n }; await kbYield(); }
+  }
+  if (id) KB_PROG[id] = { done: n, total: n };
+  return { chunks: chunks, df: df, names: names,
+    avg: total / n, avgH: totalH / n, avgN: names.length ? totalN / names.length : 1 };
+}
+/* 面板上显示的那行进度文字（没有在干重活就返回空） */
+function kbProgressText() {
+  if (KB_FILES_LOADING && !(window.__KBS__ && window.__KBS__.length)) return '正在下载资料库（第一次约 4.8 MB，下完就缓起来了）…';
+  const ids = Object.keys(KB_PROG);
+  if (!ids.length) return '';
+  let d = 0, t = 0;
+  ids.forEach(k => { d += (KB_PROG[k] || {}).done || 0; t += (KB_PROG[k] || {}).total || 0; });
+  if (!t) return '';
+  const pct = Math.min(99, Math.round(d / t * 100));
+  return '正在准备检索索引 ' + pct + '%（第一次慢，之后就好了）…';
+}
 function kbIndex(docs) {
   const chunks = [], df = Object.create(null), names = [];
   let total = 0, totalH = 0, totalN = 0;
@@ -261,8 +309,14 @@ function kbPickDiverse(hits, K) {
 async function kbEnsure(id) {
   if (KB_IDX[id]) return true;
   if (!KB_MEM[id]) { const d = await kbStoreGet(id); if (!d) return false; KB_MEM[id] = d; }
-  KB_IDX[id] = kbIndex(KB_MEM[id].docs || []);
-  return true;
+  if (KB_BUILD[id]) return KB_BUILD[id];          /* 同一个库同时只建一次 */
+  KB_BUILD[id] = (async () => {
+    try {
+      KB_IDX[id] = await kbIndexAsync(KB_MEM[id].docs || [], id);
+    } finally { delete KB_PROG[id]; delete KB_BUILD[id]; }
+    return true;
+  })();
+  return KB_BUILD[id];
 }
 function kbSnippet(t, q, n) {
   n = n || 200;
@@ -743,13 +797,14 @@ let KB_FILES_PROMISE = null;
 function kbEnsureFilesLoaded() {
   if (KB_FILES_DONE || (window.__KBS__ && window.__KBS__.length)) return Promise.resolve({ ok: true, added: kbIngestFiles() });
   if (KB_FILES_PROMISE) return KB_FILES_PROMISE;
+  KB_FILES_LOADING = true;
   KB_FILES_PROMISE = new Promise(resolve => {
     const s = document.createElement('script');
     s.src = '知识库.js';
     let done = false;
     const fin = ok => {
       if (done) return;
-      done = true; KB_FILES_PROMISE = null;
+      done = true; KB_FILES_PROMISE = null; KB_FILES_LOADING = false;
       const added = kbIngestFiles();
       kbPreheatIndex();
       if (route().name === 'kb') { try { render(); } catch (e) {} }
@@ -761,25 +816,22 @@ function kbEnsureFilesLoaded() {
   });
   return KB_FILES_PROMISE;
 }
-/* 空闲时偷偷先拉一次：第一次点 AI 解析就不用等那 7 MB */
+let KB_FILES_LOADING = false;
+/* 开机一会儿就把知识库拉下来预热：第一次点 AI 解析就不用现等几 MB */
 function kbWarmUp() {
   const go = () => { try { kbEnsureFilesLoaded(); } catch (e) {} };
-  if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 1500);
+  setTimeout(go, 1500);          /* 不再等 requestIdleCallback —— 用户手快时它可能半天不触发 */
 }
 /* 空闲预热检索索引：整库建索引要几百毫秒，别等用户点检索时才卡（每次只做一小会儿就让出主线程） */
 function kbPreheatIndex() {
   const ids = kbSelected().filter(id => KB_MEM[id] && !KB_IDX[id]);
   if (!ids.length) return;
-  let i = 0;
-  const ric = window.requestIdleCallback || function (f) { return setTimeout(() => f({ timeRemaining: () => 6 }), 600); };
-  const step = dl => {
-    const left = () => (dl && dl.timeRemaining ? dl.timeRemaining() : 6);
-    while (i < ids.length && left() > 4) {
-      const id = ids[i++];
-      if (KB_MEM[id] && !KB_IDX[id]) { try { KB_IDX[id] = kbIndex(KB_MEM[id].docs || []); } catch (e) {} }
+  /* 逐个库异步建（kbEnsure 里已经分片 + 让主线程，不会一下子冻住） */
+  (async () => {
+    for (const id of ids) {
+      try { await kbEnsure(id); } catch (e) {}
+      await kbYield();
     }
-    if (i < ids.length) ric(step);
-  };
-  ric(step);
+  })();
 }
 kbWarmUp();

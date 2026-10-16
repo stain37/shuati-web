@@ -432,6 +432,8 @@ function aiAttach(st, host) {
     if (st.onUse) host.dataset.aiuse = '1';
     host.innerHTML = aiPanelHtml(host);
     aiPanelBind(host);
+    /* 面板一开就开始预热资料库：等用户写完要求、点「生成解析」时，索引已经建好了 */
+    try { if (typeof kbWarmUp === 'function') kbWarmUp(); } catch (e) {}
   }
   return true;
 }
@@ -1016,7 +1018,8 @@ function aiPdfBlockHtml(h, full) {
   const title = '《' + aiSrcName(h) + '》' + (h.page ? ' 第 ' + h.page + ' 页' : '');
   const rel = String(pdf).split('#')[0];
   const anchor = h.pdfp || h.page || '';
-  const direct = aiPdfBase() + String(pdf).split('#')[0];
+  /* 直链（系统阅读器 / 下载）保留 #page=N，原生阅读器能直接跳页；阅读器的 file= 参数里去掉锚点 */
+  const direct = aiPdfBase() + rel + (anchor ? '#page=' + anchor : '');
   try { aiPdfMirWarm(rel); } catch (e) {}
   try { aiPdfViewerWarm(); } catch (e) {}
   /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
@@ -1254,9 +1257,17 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   const H = () => (aiFindHost(st) || host);       /* 重画之后画到「当前活着的那个宿主」里，流不会断 */
   H().querySelector('.ai-stop').disabled = false;
   H().querySelector('.ai-go').disabled = true;
-  aiState(H(), '正在检索资料…');
+  aiState(H(), '正在准备资料库…');
+  /* 首次用要下 4.8MB 知识库 + 建索引：这里每半秒把进度写到面板上，
+     不然那几十秒里界面一动不动，看着就像卡死了（用户 2026-10-16 报的）。 */
+  const progT = setInterval(() => {
+    try {
+      const t = (typeof kbProgressText === 'function') ? kbProgressText() : '';
+      aiState(H(), t || '正在检索资料…');
+    } catch (e) {}
+  }, 500);
   let ctx = { hits: [], text: '', count: 0 };
-  try { ctx = await aiContext(st.q, userQ); } catch (e) {}
+  try { ctx = await aiContext(st.q, userQ); } catch (e) {} finally { clearInterval(progT); }
   const rec = aiMyRecText(st.k);
   if (!st.msgs.length) {
     const u = aiUserText(st.q, ctx.text, userQ, st.k) + (rec ? '\n\n' + rec : '');
