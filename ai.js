@@ -1448,6 +1448,24 @@ function aiSaveOut(host) {
       const panel = h2.querySelector('.aipanel') || h2;
       panel.appendChild(tip);
       try { tip.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      /* 再把页面上那条解析本身滚到眼前 + 闪一下 —— 用户说「按了好几次、上面都不更新」，
+         其实就是存在下面而人没看到；顺便当个自检：找不到解析块就把键打在提示里。 */
+      try {
+        const key = String(st.k || '');
+        const wrap = document.querySelector('.exp-wrap[data-note-for="' + key.replace(/"/g, '\\"') + '"]');
+        if (wrap) {
+          setTimeout(() => {
+            try { wrap.scrollIntoView({ block: 'center' }); } catch (e) {}
+            wrap.style.transition = 'box-shadow .25s';
+            const prev = wrap.style.boxShadow;
+            wrap.style.boxShadow = '0 0 0 2px var(--ok)';
+            setTimeout(() => { wrap.style.boxShadow = prev || ''; }, 1800);
+          }, 120);
+          tip.textContent = '✓ 已存进本题解析 —— 就是下面这条（已经滚过去闪了一下）';
+        } else {
+          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + '）—— 页面上没找到对应的解析块';
+        }
+      } catch (e) {}
       setTimeout(() => { if (sb) { sb.disabled = false; sb.textContent = h2.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析'; } if (tip.isConnected) tip.remove(); }, 6000);
     } catch (e) {}
   }, 80);
