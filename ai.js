@@ -1476,7 +1476,7 @@ function aiSaveOut(host) {
             wrap.style.boxShadow = '0 0 0 2px var(--ok)';
             setTimeout(() => { wrap.style.boxShadow = prev || ''; }, 1800);
           }, 120);
-          tip.textContent = '✓ 已存进本题解析 —— 就是下面这条（已经滚过去闪了一下）';
+          tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + '）—— 就是下面这条（已经滚过去闪了一下）';
         } else {
           tip.textContent = '✓ 已存进本题解析（键 ' + (key || '?') + (extraKey ? ' + ' + extraKey : '') + '）—— 页面上没找到对应的解析块';
         }
