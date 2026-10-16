@@ -227,9 +227,10 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v67-web66**）
+（缓存版本 **shuati-v67-web67**）
 
 最近几轮按倒序说清各自动了什么：
+- **shuati-v67-web67（§8 视觉 v2 全站铺开：剩下几页的圆角与「硬编码蓝」收口）**：详见《更新说明.md》最上面那节。
 - **shuati-v67-web66（§3.6-P2⑧ 手势增强：答题页左右滑动翻题）**：详见《更新说明.md》最上面那节。
 - **shuati-v67-web65（§3.6-P2⑦ Vim 双键：g h/w/s/k/f/t/g 跳页 + j/k 翻题，答题卡 K→O）**：详见《更新说明.md》最上面那节。
 - **shuati-v67-web64（§3.6-P2⑥ 骨架屏：大题库 / 知识库 / 统计换页先铺一层灰条）**：详见《更新说明.md》最上面那节。
@@ -247,6 +248,8 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 | --- | --- |
 | 手机上翻题只能点底部按钮 | **§3.6-P2⑧ 手势增强**：`app.js` 加 `const SWIPE_MIN = 30` 与 `uiSwipeBind()`（绑 `#view` 上，只绑一次）—— 按住题目卡横着划，卡片跟手位移（阻尼 ×0.45、夹 ±100px），松手时水平位移 > 30px 就 `step(1)` / `step(-1)`（**复用原翻题逻辑**）。只认触屏（`pointerType === 'mouse'` 不管）、横向位移要明显大于纵向（`|dx| <= |dy|` 交回页面滚动）、输入框 / 笔记 / 题号条 / 抽屉上起手不参与、`pointercancel` 不当翻页；`style.css` 给题目卡 `touch-action: pan-y` + `.swiping` 关过渡 + `.snapping` 回弹 0.18s；reduced-motion 能翻页但不跟手。 |
 | 探针页报「Unexpected end of input」却看不出哪一层没闭合 | 这次写 `工作1\p28-probe.py` 时漏了最外层 IIFE 的收尾 `})();`（站点里注入的脚本要包一层 IIFE，免得和站内全局名撞车）—— 浏览器只说 `Unexpected end of input`。用 `工作1\_p28_check.mjs`（逐行算括号收支 + `new vm.Script`）一眼看出「余额 p:1 c:1」，补一行就好。 |
+| 感觉「有的按钮光晕是蓝的、有的是青的」 | 上一版留下的硬编码蓝：`.btn.primary / .chip.on / .nav .btn.primary / .qmode .qm.on` 的光晕、`--ring` 焦点环、`.exbar` 主按钮底、`.bar i` 进度条渐变，共 19 处换成 `var(--primary)`；四套主色（青 / 靛蓝 / 蓝+暖橙 / 紫）现在都跟手 |
+| 圆角还是一处 10px、一处 12px | `.btn` / `.num` / `.stats > div` 从 10px 提到 12px，和 `.opt` 对齐；卡片保持 22px。新增 `工作1\p29-probe.py`（55 条：9 个路由逐个量计算样式 + 切主题验光晕 + 源码反向断言「写死的蓝只剩 warm 主题 2 处」） |
 | 鼠标点翻页、换题太慢，想全用键盘 | **§3.6-P2⑦ Vim 双键**：`app.js` 新增 `const GO_KEYS`（`h: '#/'` 首页 / `w` 错题本 / `s` 搜索 / `k` 知识库 / `f` 收藏 / `t` 学习统计 / `g` 回到最上面）与 `let _gAt`：按下 `g` 时 `toast()` 把键位念一遍并记时间，第二下在 **1.2 秒**内就跳页（`hit[0] === 'top'` 走 `scrollTo`，其余走 `go()`），过期用 `if (_gAt && gNow - _gAt >= 1200) _gAt = 0;` 清掉；第二下按了表外的键就 `e.preventDefault(); return;` —— 什么也不做（免得「g 之后手滑敲 A」把选项选上），`Esc` 放行用来反悔。答题页 `j` 下一题 / `k` 上一题（`if (k === 'J') { step(1); … }`，考试页同样），**答题卡从 `K` 挪到 `O`**（`k` 让给 Vim 的「上一题」），顶栏提示 / `?` 小抄 / 按钮 title 一起改；「在不在输入框里打字」判的是 `e.target`，所以搜索框 / 笔记 / AI 面板里敲这些键都是普通文字 |
 | 老探针的断言过期了 | 新探针 `工作1\p27-probe.py` **54 条 / 0 fail**（浏览器 28 + 源码 26：七个 `g` 跳页都到位、按错键不选选项、超 1.2 秒作废、焦点在搜索框时不跳页、`j` / `k` 翻题与 `O` 开答题卡、A–H / 数字 / S / ? / Esc 一个没挤掉）；`工作1\ai-survive-probe.py` 里拿 `K` 开答题卡当对照那处改成 `O`。截图 `工作1\shots\r19-help.png`（`?` 里新加的「跳页（都是先按 g，再按一下）」一卡）、`r19-g-toast.png`（按下 `g` 冒出来的那行提示） |
 | 点进大题库 / 知识库会白一下 | **§3.6-P2⑥ 骨架屏**：`index.html` 的 `#view` 里写了**静态首屏骨架**（`.skel` + 带主色渐变的 `.sk-hero` + `.sk-card` + `.sk-grid` 两块小卡，`aria-hidden="true"`），JS 没跑起来就能看见；`app.js` 新增 `skelHtml(kind)`（`home` / `kb` / `quiz` 三种形状）/ `skelNeeded(r)`（考试页不铺；答题页要 `bankById(r.bankId).questions.length >= SKEL_BIG_Q`（`= 200`）；`kb` / `search` / `stats` 一律铺）/ `skelPaint(r)` / `skelDrop()`（只摘 `#view` 的直接子 `.skel`）；`render()` 判断「真换页 + 该铺」时先铺骨架再把真渲染 `setTimeout(…, 0)` 让出一帧，`viewEnter()` 里 `skelDrop()` 兜底。CSS 在 `style.css` 末尾 `§3.6-P2⑥` 一节（`.sk-bl` 用 `color-mix(in srgb, var(--text) 11%, var(--card))`，`@keyframes skPulse`，reduced-motion 不闪，窄屏合成一列） |
