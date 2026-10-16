@@ -568,9 +568,10 @@ function aiPanelBind(host) {
   q('.ai-go').onclick = () => {                 /* 生成解析：带上你写的要求，从头生成（不点就不会开始） */
     const st0 = AI_LAST[host.dataset.aiid];
     if (st0) { st0.text = ''; st0.msgs = []; st0.draft = aiAskText(); st0.host = host; st0.sels = aiSels(host, st0.k); }
+    try { const a = q('.ai-askq'); if (a) a.blur(); } catch (e) {}     /* 收起键盘：不然手机上半个屏幕被键盘占着，看起来就像滑不动 */
     aiRun(host, aiAskText());
   };
-  q('.ai-ask').onclick = () => { const v = aiAskText(); if (!v) { toast('先在框里写一句要问的'); return; } aiRun(host, v); };
+  q('.ai-ask').onclick = () => { const v = aiAskText(); if (!v) { toast('先在框里写一句要问的'); return; } try { const a = q('.ai-askq'); if (a) a.blur(); } catch (e) {} aiRun(host, v); };
   q('.ai-askq').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); q('.ai-go').click(); } };
   { const askq = q('.ai-askq'); if (askq) askq.oninput = () => { const st0 = AI_LAST[host.dataset.aiid]; if (st0) st0.draft = askq.value; }; }
   q('.ai-stop').onclick = () => { const st = AI_LAST[host.dataset.aiid]; if (st && st.ctl) st.ctl.abort(); };
@@ -1444,6 +1445,11 @@ function aiSaveOut(host) {
     NOTES[extraKey] = { text: text, imgs: o2.imgs || [], ts: Date.now(), ai: true };
   }
   if (!saveNotes()) { toast('保存失败：浏览器存储满了', 2800, 'bad'); return; }
+  // 让主区域重新拿回滚动权：存完/重画完，如果焦点落在了可编辑的解析文字里（触屏上会变成选文字），就放开它
+  try {
+    const ae = document.activeElement;
+    if (ae && ae.isContentEditable) ae.blur();
+  } catch (e) {}
   toast('已存为本题解析（' + text.length + ' 字）');
   const stid = st.id;
   if (typeof render === 'function') render();

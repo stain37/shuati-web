@@ -484,6 +484,10 @@ body.dark .srsline{background:var(--card);border-color:var(--line)}
 .aichip.on{background:var(--primary);border-color:var(--primary);color:#fff}
 .aichip-all{font-weight:600}
 .aipanel .aibar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
+/* 手机上别把「上下滑」吃掉：解析块和 AI 输出都是可编辑/可选文字，触屏拖拽会被当成选文字，
+   页面就滞住了（用户 2026-10-16 报「页面不能上下滑动」）。pan-y = 竖向手势还给滚动，
+   长按选字、点进来编辑照样能用。 */
+.exp.rich-edit, .aiout, .aisrc-full, .fold-body{touch-action:pan-y}
 /* 追问那一排（再详细点 / 换个说法 / 出变式题）+ 历史块：保证换行，窄屏不会把最后一个按钮截掉 */
 .aifollow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
 .aifollow>span{flex:0 0 auto}
