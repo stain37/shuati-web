@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v67-web69';   // 2026-10-16：手机看不了 PDF → 站内网页阅读器（pdfjs\）+ ai.js 触屏不再嵌 iframe；上一版：口诀便签并入云同步
+const VERSION = 'shuati-v67-web70';   // 2026-10-16：手机看不了 PDF → 站内网页阅读器（pdfjs\）+ ai.js 触屏不再嵌 iframe + SW 不把阅读器导航回落成首页；上一版：口诀便签并入云同步
 const CORE = [
   './',
   './index.html',
@@ -67,8 +67,14 @@ self.addEventListener('fetch', e => {
   try { isPdf = /\.pdf$/i.test(decodeURIComponent(url.pathname)); } catch (err) {}
   if (isPdf) return;
 
-  /* 页面导航：网络优先，断网回落首页 */
-  if (req.mode === 'navigate') {
+  /* 站内网页阅读器（pdfjs\，手机看原页用的）：它是个**普通网页**，只是常常以 iframe 的形式被打开。
+     ① 它的导航请求不能走下面那条「取不到就回落 index.html」——不然阅读器框里会跳出整个刷题站首页（跟 PDF 那条红线同一类坑）；
+     ② 它的静态资源（viewer.mjs / pdf.worker.mjs 那 4 MB）走普通静态资源的缓存策略就对了。*/
+  let isViewer = false;
+  try { isViewer = /\/pdfjs\//.test(decodeURIComponent(url.pathname)); } catch (err) {}
+
+  /* 页面导航：网络优先，断网回落首页（阅读器除外） */
+  if (req.mode === 'navigate' && !isViewer) {
     e.respondWith(
       fetch(req).catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
     );
@@ -106,6 +112,6 @@ self.addEventListener('fetch', e => {
     .catch(() => null);
   e.waitUntil(netP.then(() => null).catch(() => null));
   e.respondWith(
-    caches.match(req).then(hit => hit || netP.then(res => res || caches.match('./index.html')))
+    caches.match(req).then(hit => hit || netP.then(res => res || (isViewer ? new Response('离线，而且阅读器还没缓存过', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }) : caches.match('./index.html'))))
   );
 });
