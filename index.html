@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261018o">
+<link rel="stylesheet" href="style.css?v=20261018p">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261018a">
 <link rel="manifest" href="manifest.json">
@@ -39,6 +39,9 @@
 </div>
 
 <div class="wrap" id="view"></div>
+
+<!-- §3.6-P0① 专注模式：只在 body.focus 时浮出来（那时顶栏/底栏都收起来了），点它或按 Esc 退出 -->
+<button class="btn focus-exit" id="btnFocusExit" title="退出专注模式（Esc）">⛶ 退出专注</button>
 
 <div class="nav" id="nav" style="display:none">
   <button class="btn" id="prev" title="上一题（←）">‹ 上一题</button>
@@ -107,6 +110,7 @@
   <details class="fold" id="setAdv">
     <summary>高级：复习参数 · 庆祝范围 · 快捷键</summary>
     <div class="fold-body">
+      <label class="chk"><input type="checkbox" id="setFocus"> 专注模式：刷题时把顶栏和底栏收起来，只看题目（答题页右上角「⛶ 专注」，Esc 退出）</label>
       <label class="chk"><input type="checkbox" id="setFxNormalBank"> 普通题库刷完也庆祝（默认只在套卷 / 模考时放）</label>
       <div class="small muted" style="margin-top:10px">下面这些数字就是「复习曲线」的参数。选档位＝一次把它们填好，之后还能逐项微调（改任何一项会自动变成「自定义」）。改档位只影响<b>以后</b>的排期。</div>
       <div class="srsbox">
@@ -156,8 +160,8 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261018q"></script>
-<script src="collection.js?v=20261018g"></script>
+<script src="app.js?v=20261018r"></script>
+<script src="collection.js?v=20261018h"></script>
 <script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261018o"></script>
 <script src="ai.js?v=20261018p"></script>

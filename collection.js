@@ -130,6 +130,118 @@ async function compressImage(file, maxW, quality) {
 
 /* ---------------- 解析编辑器 ---------------- */
 let ED = null;
+
+/* §9：选中文字弹「Notion 式」小浮条 —— 只往 Markdown 里插语法，存储格式一个字没改。
+   浮条是 fixed 定位、挂在 body 上（编辑器重画也不受影响），按钮上 mousedown 会 preventDefault，
+   这样点按钮时 textarea 不会失焦、选区不丢。 */
+const FMT_COLORS = [['red', '红'], ['#f97316', '橙'], ['green', '绿'], ['#2563eb', '蓝'], ['#7c3aed', '紫'], ['gray', '灰']];
+let FMT_EL = null, FMT_TA = null, FMT_DOC = false;
+function fmtBarEl() {
+  if (FMT_EL && FMT_EL.isConnected) return FMT_EL;
+  const bar = document.createElement('div');
+  bar.className = 'fmt-bar';
+  bar.hidden = true;
+  bar.innerHTML =
+    '<button type="button" data-fmt="b" title="加粗（**文字**）"><b>B</b></button>' +
+    '<button type="button" data-fmt="i" title="斜体（*文字*）"><i>I</i></button>' +
+    '<button type="button" data-fmt="c" title="行内代码（`文字`）">&lt;/&gt;</button>' +
+    '<button type="button" data-fmt="h" title="高亮（==文字==）">▨</button>' +
+    '<span class="fmt-sep"></span>' +
+    FMT_COLORS.map(c => '<button type="button" class="fmt-dot" data-color="' + c[0] + '" title="改成' + c[1] + '色"><i style="background:' + c[0] + '"></i></button>').join('') +
+    '<span class="fmt-sep"></span>' +
+    '<button type="button" data-fmt="none" title="清除选中文字上的格式">✕</button>';
+  document.body.appendChild(bar);
+  FMT_EL = bar;
+  return bar;
+}
+function fmtBarHide() { if (FMT_EL) FMT_EL.hidden = true; }
+function fmtPlace(bar, x, y) {
+  bar.hidden = false;
+  const r = bar.getBoundingClientRect(), pad = 8;
+  let left = Math.min(Math.max(pad, x - r.width / 2), Math.max(pad, window.innerWidth - r.width - pad));
+  let top = y - r.height - 10;
+  if (top < pad) top = Math.min(y + 18, window.innerHeight - r.height - pad);
+  bar.style.left = Math.round(left) + 'px';
+  bar.style.top = Math.round(top) + 'px';
+}
+/* 把选中的文字用 open/close 包起来；open 为空是「清除格式」；已经包着的再点一下就脱掉 */
+function fmtWrap(ta, open, close, refresh) {
+  let s = ta.selectionStart, e = ta.selectionEnd;
+  if (s == null || e == null || s === e) return false;
+  let v = ta.value, sel = v.slice(s, e);
+  let nv, ns, ne;
+  if (!open) {
+    /* 往外剥一层：选区正好被一对记号夹着。刚点过色点 / 加粗，接着点 ✕ 就是这种情况 ——
+       这时选区里的字本身是干净的，不往外剥就等于「点了没反应」。 */
+    const before = v.slice(Math.max(0, s - 48), s);
+    const mf = /<font\s+color=["']?[^"'>]+["']?\s*>$/.exec(before);
+    if (mf && v.slice(e, e + 7).toLowerCase() === '</font>') { s -= mf[0].length; e += 7; sel = v.slice(s, e); }
+    else {
+      const pairs = [['**', '**'], ['==', '=='], ['`', '`'], ['*', '*']];
+      for (let i = 0; i < pairs.length; i++) {
+        const op = pairs[i][0], cl = pairs[i][1];
+        if (v.slice(s - op.length, s) === op && v.slice(e, e + cl.length) === cl) {
+          s -= op.length; e += cl.length; sel = v.slice(s, e); break;
+        }
+      }
+    }
+    const plain = sel
+      .replace(/\*\*([\s\S]+?)\*\*/g, '$1').replace(/==([\s\S]+?)==/g, '$1')
+      .replace(/`([\s\S]+?)`/g, '$1').replace(/\*([^*\n]+?)\*/g, '$1')
+      .replace(/<font\s+color=["']?[^"'>]+["']?\s*>([\s\S]*?)<\/font>/gi, '$1')
+      .replace(/<span\s+style=["']?\s*color:[^"'>]+["']?\s*>([\s\S]*?)<\/span>/gi, '$1');
+    nv = v.slice(0, s) + plain + v.slice(e);
+    ns = s; ne = s + plain.length;
+  } else if (v.slice(s - open.length, s) === open && v.slice(e, e + close.length) === close) {
+    nv = v.slice(0, s - open.length) + sel + v.slice(e + close.length);
+    ns = s - open.length; ne = ns + sel.length;
+  } else {
+    nv = v.slice(0, s) + open + sel + close + v.slice(e);
+    ns = s + open.length; ne = ns + sel.length;
+  }
+  ta.value = nv;
+  ta.setSelectionRange(ns, ne);
+  if (typeof refresh === 'function') refresh();
+  return true;
+}
+function fmtHasSel(ta) { return ta.selectionStart != null && ta.selectionEnd != null && ta.selectionStart !== ta.selectionEnd; }
+function fmtBarInit(ta) {
+  const bar = fmtBarEl();
+  FMT_TA = ta;
+  const refresh = () => { if (typeof ta.oninput === 'function') ta.oninput(); };
+  const showAt = (x, y) => {
+    if (!fmtHasSel(ta)) { fmtBarHide(); return; }
+    if (x == null) { const r = ta.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + 46; }
+    fmtPlace(bar, x, y);
+  };
+  /* 点完按钮把浮条挪到编辑框正上方（选区变了，原先那个位置不一定还贴）。
+     别拿浮条自己的 top 当参照 —— 第一次是 0，浮条就会飞到屏幕最上头。 */
+  const keep = () => { if (!fmtHasSel(ta)) { fmtBarHide(); return; } const r = ta.getBoundingClientRect(); fmtPlace(bar, r.left + r.width / 2, r.top + 8); };
+  bar.onmousedown = ev => ev.preventDefault();
+  bar.onclick = ev => {
+    const b = ev.target.closest ? ev.target.closest('button[data-fmt],button[data-color]') : null;
+    if (!b) return;
+    const f = b.dataset.fmt;
+    if (f === 'b') fmtWrap(ta, '**', '**', refresh);
+    else if (f === 'i') fmtWrap(ta, '*', '*', refresh);
+    else if (f === 'c') fmtWrap(ta, '`', '`', refresh);
+    else if (f === 'h') fmtWrap(ta, '==', '==', refresh);
+    else if (f === 'none') fmtWrap(ta, '', '', refresh);
+    else if (b.dataset.color) fmtWrap(ta, '<font color="' + b.dataset.color + '">', '</font>', refresh);
+    try { ta.focus(); } catch (e) {}
+    keep();
+  };
+  ta.addEventListener('mouseup', ev => setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0));
+  ta.addEventListener('touchend', () => setTimeout(() => showAt(), 80));
+  ta.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') showAt(); });
+  ta.addEventListener('scroll', fmtBarHide);
+  ta.addEventListener('blur', () => setTimeout(() => { if (!bar.matches(':hover')) fmtBarHide(); }, 160));
+  if (!FMT_DOC) {
+    FMT_DOC = true;
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fmtBarHide(); });
+    document.addEventListener('mousedown', ev => { if (FMT_EL && !FMT_EL.hidden && !FMT_EL.contains(ev.target)) fmtBarHide(); });
+  }
+}
 function openNoteEditor(k, host, q, onDone) {
   const cur = NOTES[k] || {};
   ED = { k: k, text: cur.text || '', imgs: (cur.imgs || []).map(x => ({ name: x.name || '', src: x.src })), host: host, q: q, onDone: onDone };
@@ -140,7 +252,7 @@ function paintEditor() {
   const custom = !!NOTES[k];
   host.innerHTML = `
     <div class="ed">
-      <div class="hint">支持 Markdown：<b>**加粗**</b>、*斜体*、\`代码\`、# 标题、- 列表、&gt; 引用、[链接](url)，以及表格（如 \`| 表头 | 表头 |\` 下一行 \`| --- | --- |\`）。图片可以直接插进来。</div>
+      <div class="hint">支持 Markdown：<b>**加粗**</b>、*斜体*、\`代码\`、# 标题、- 列表、&gt; 引用、[链接](url)，以及表格（如 \`| 表头 | 表头 |\` 下一行 \`| --- | --- |\`）。图片可以直接插进来。<br><b>选中文字会弹出小工具栏</b>：加粗 / 斜体 / 代码 / 高亮 / 改颜色，不用自己敲符号。</div>
       <textarea class="ed-ta" id="edTa" placeholder="在这里写解析…">${esc(ED.text)}</textarea>
       ${ED.imgs.length ? `<div class="ed-imgs">${ED.imgs.map((im, i) => `
         <div class="thumb"><img src="${im.src}" alt=""><button class="x" data-imgdel="${i}" title="删除">×</button></div>`).join('')}</div>` : ''}
@@ -159,6 +271,8 @@ function paintEditor() {
 
   const ta = $('edTa');
   ta.oninput = () => { ED.text = ta.value; host.querySelector('.ed-preview').innerHTML = mdToHtml(ED.text) + ED.imgs.map(im => `<img src="${im.src}" alt="">`).join(''); };
+  /* §9：选中文字弹浮条（加粗 / 斜体 / 代码 / 高亮 / 颜色） */
+  fmtBarInit(ta);
   on('edImg', () => $('edFile').click());
   on('edAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel(host.querySelector('.ai-host'), k, ED.q, txt => { ED.text = txt; paintEditor(); }); else toast('AI 模块没加载（ai.js）'); });
   on('edFile', async e => {
@@ -174,14 +288,14 @@ function paintEditor() {
   host.querySelectorAll('[data-imgdel]').forEach(b => b.onclick = () => { ED.imgs.splice(+b.dataset.imgdel, 1); paintEditor(); });
   /* 重画编辑器之后把「AI 生成解析」的面板挂回来（生成到一半被重画也不会断） */
   if (typeof aiReopenFor === 'function') { try { aiReopenFor(host.querySelector('.ai-host'), k); } catch (e) {} }
-  on('edCancel', () => { if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host')); host.innerHTML = ''; ED = null; });
+  on('edCancel', () => { if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host')); fmtBarHide(); host.innerHTML = ''; ED = null; });
   on('edReset', () => {
     if (!confirm('恢复成题库自带的解析？你写的 Markdown 和图片都会删掉。')) return;
     delete NOTES[k];
     tombAdd('note', k);
     saveNotes();
     if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
-    host.innerHTML = ''; ED = null; toast('已恢复默认解析'); render();
+    fmtBarHide(); host.innerHTML = ''; ED = null; toast('已恢复默认解析'); render();
   });
   on('edSave', () => {
     const text = ($('edTa').value || '').trim();
@@ -191,7 +305,7 @@ function paintEditor() {
     const mb = storageBytes() / 1024 / 1024;
     toast(mb > 4 ? '已保存（本机存储已用 ' + mb.toFixed(2) + ' MB，接近上限）' : '已保存');
     if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
-    host.innerHTML = ''; ED = null;
+    fmtBarHide(); host.innerHTML = ''; ED = null;
     render();
   });
 }

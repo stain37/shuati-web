@@ -225,7 +225,15 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v51-web37**）
+（缓存版本 **shuati-v53-web39**）
+
+| 问题 | 说明 |
+| --- | --- |
+| 答题时上面下面全是按钮，晃眼 | **§3.6-P0① 专注模式**：答题页题目头加 `#btnFocus`（`⛶ 专注`，开着加 `.on`）、`index.html` 里加浮出的 `#btnFocusExit`（`body.focus` 时才 `display:flex`）；设置面板加 `#setFocus` 开关。状态走 `SET.focus`（`SET_DEF` 里加 `focus: false`），由 `applyLook()` 统一 `body.classList.toggle('focus', …)`，切换走 `uiSetFocus(on, quiet)`；Esc 改成「先退专注、没专注才 `closeAll()`」，刷新后仍是专注态。CSS：`body.focus .top,.bnav{display:none!important}` + 正文留白 `84px` |
+| 判完分「啪」一下全亮，眼睛不知道看哪 | **§3.6-P0② 判分仪式感**：新增 `uiReveal(bank, q, st)` —— 先把对错色摘掉（`plan.forEach(m => m.el.classList.remove('right','wrong'))`），正确的那个先翻牌（`.opt.flip-in` + `@keyframes optFlip`），错项随后淡入，节奏 `90 + i * 110` ms；结果框先 `.fb.fb-hold`（`opacity:0`）按住，最后 `fbPop` 亮出来。`judge()` 里改成 `uiReveal(bank, q, ANS[k] || { ok: ok })`；`uiMotionOK()` 为假（系统开了减少动态效果）时整段 `return`，判完直接出结果 |
+| 答对答错都一个样，没点「连击」的感觉 | **§3.6-P0② 连对 streak**：`QZ` 里加 `streak: 0`（只在内存，不落盘）；`uiStreakBump(ok)` 答对 +1、答错清零，`n === 3 \|\| (n > 3 && n % 5 === 0)` 时 `toast('连对 ' + n + ' 题 🔥', 1600, 'ok')`（刻意不上 `fx.js` 彩带，答题时太吵） |
+| 今天欠多少复习，得点进去才知道 | **§3.6-P0③ 待复习角标**：`uiDueCount()` 数 `wrong > 0` 且 `due <= now`（与 `isDue()` 同一套判据），`uiPaintBadge()` 把数字挂到 `#btnGoWrong` 和底部导航「错题」那个按钮上（`.nb-badge`，>99 显示 `99+`，`title` 写「今天有 N 道错题到期该复习」，`data-due` 留痕，**0 就把角标摘掉**）；刷新点在 `renderInner()` 收尾（`try { uiPaintBadge(); } catch (e) {}`）。纯读 `ANS`，不新增字段 |
+| 自己写解析，想标个红/加粗只能手敲语法 | **§9 解析编辑器浮条**：`collection.js` 编辑器段加 `FMT_COLORS`（红/橙/绿/蓝/紫/灰）+ `fmtBarEl()` / `fmtBarHide()` / `fmtPlace(bar, x, y)`（clamp 在视口内）/ `fmtHasSel()` / `fmtWrap(ta, open, close, refresh)`（已包着再点一下就脱掉；`open` 为空时用正则剥掉 `**` / `==` / 反引号 / `*` / `<font color>` / `<span style=color>`）/ `fmtBarInit(ta)`；`paintEditor()` 里 `fmtBarInit(ta)`，三处关闭编辑器都 `fmtBarHide()`。浮条 `mousedown` 里 `preventDefault()` 保住选区，`mouseup` / `touchend` / `keyup` 唤出，`blur` / 滚动 / Esc / 点别处收起；**存进去的仍是纯 Markdown**（`==高亮==` / `<font color>` 都是 `mdToHtml()` 本来就认的），样式 `.fmt-bar` 放 `style.css` 末尾 |
 
 | 问题 | 说明 |
 | --- | --- |

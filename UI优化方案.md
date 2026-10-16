@@ -184,6 +184,12 @@
 > 比 3.5 更「重」、更出效果，但也更费工。挑 2–3 个做就能明显提升质感。
 > 全部 vanilla JS + CSS，不引库、可离线。选型建议见底部。
 
+> ✅ **P0 三条（①②③）已做完并上线**（2026-10-16 上午，缓存版本 `shuati-v53-web39`，探针 `工作1\batch6-probe.py` 116 条 / 0 fail）。
+> 落地情况：① 答题页 `#btnFocus`（`⛶ 专注`）+ 浮出的 `#btnFocusExit` + 设置面板 `#setFocus`，状态存 `SET.focus`，`body.focus` 由 `applyLook()` 统一 toggle，Esc 先退专注；
+> ② `uiReveal()` 先把对错色摘掉、正确的 `.opt.flip-in` 翻牌、之后每 110ms 揭示一条，结果框从 `.fb.fb-hold` 最后亮出，`QZ.streak` + `uiStreakBump()` 连对 3 道起弹「连对 N 题 🔥」；
+> ③ `uiDueCount()` + `uiPaintBadge()` 把 `.nb-badge` 挂到 `#btnGoWrong` 与底部导航「错题」上（0 就摘掉），**纯读 `ANS`，没新增记录**。
+> 还没做：P1④ 热力图、P1⑤ 解析与题干联动、P2⑥⑦⑧（骨架屏 / Vim 双键 / 手势增强）。
+
 ### P0（最出效果，优先）
 1. **沉浸 / 专注模式**
    - 刷题时一键隐藏顶栏 + 底栏，只剩题目卡片；点卡片边缘或轻触唤回。

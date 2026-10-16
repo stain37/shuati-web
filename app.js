@@ -161,7 +161,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'blue', fxConfetti: true, fxNormalBank: false, focus: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
@@ -200,6 +200,8 @@ function applyLook() {
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.blue)[dark ? 1 : 0]);
+  /* §3.6-P0① 专注模式：只加一个 body 类，隐藏顶栏/底栏交给 CSS（退出按钮 .focus-exit 只在这时露出来） */
+  document.body.classList.toggle('focus', !!SET.focus);
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -463,7 +465,7 @@ function openAnsEditor(host, k, q, done) {
 }
 
 /* ---------- 运行时状态 ---------- */
-const QZ = { bankId: null, filter: 'all', cur: null, pending: {}, order: null };
+const QZ = { bankId: null, filter: 'all', cur: null, pending: {}, order: null, streak: 0 };
 const SS = {
   get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -531,6 +533,34 @@ function uiFeedbackPulse(bank, q, st, picked) {
     });
   } catch (e) {}
   if (!st.ok) toast('已记入错题本', 1500, 'bad');
+}
+/* §3.6-P0② 判分仪式感：选项不瞬间变色，按 ~110ms 一个个「翻」出来，结果框等最后一起亮。
+   系统开了「减少动态效果」就整段跳过 —— 回到老样子（瞬间变色）。 */
+function uiReveal(bank, q, st) {
+  if (!uiMotionOK()) return;
+  const opts = [...document.querySelectorAll('#view .opts .opt')];
+  const marks = opts.filter(el => el.classList.contains('right') || el.classList.contains('wrong'));
+  if (!marks.length) return;
+  const plan = marks.map(el => ({ el: el, cls: el.classList.contains('right') ? 'right' : 'wrong' }));
+  plan.forEach(m => m.el.classList.remove('right', 'wrong'));   /* 先退回去，再一个一个揭示 */
+  const fb = $('fb');
+  if (fb) fb.classList.add('fb-hold');
+  plan.forEach((m, i) => {
+    setTimeout(() => {
+      m.el.classList.add(m.cls, 'flip-in');
+      setTimeout(() => m.el.classList.remove('flip-in'), 620);
+      if (i === plan.length - 1 && fb) {
+        setTimeout(() => { fb.classList.remove('fb-hold'); fb.classList.add('fb-pop'); setTimeout(() => fb.classList.remove('fb-pop'), 640); }, 200);
+      }
+    }, 90 + i * 110);
+  });
+}
+/* §3.6-P0② 连对 streak：答对累加、答错清零，只在 3 连对起、之后每 5 连对轻提示一次（不动 fx.js 那套彩带） */
+function uiStreakBump(ok) {
+  if (!ok) { QZ.streak = 0; return; }
+  QZ.streak = (QZ.streak || 0) + 1;
+  const n = QZ.streak;
+  if (n >= 3 && (n === 3 || n % 5 === 0)) toast('连对 ' + n + ' 题 🔥', 1600, 'ok');
 }
 /* 复制一段文本：站里一直用 execCommand 这一套（file:// 下 navigator.clipboard 常被拦） */
 function uiCopyText(txt, okMsg) {
@@ -625,8 +655,46 @@ function markTop(name) {
     if (on_) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
   });
 }
-/* 列表入场：给「错题本 / 收藏 / 搜索」的卡片排上入场延迟。
-   只算前 12 个（长列表一次性动会掉帧），--i 交给 style.css 的 .stagger > * 用。 */
+/* §3.6-P0③ 待复习角标：数一遍「做错过且今天到期」的题，把数字挂到底部导航的「错题」上。
+   纯读 ANS（`wrong > 0` + `due <= now`，和 isDue 同一套判据），不新增任何记录、不改数据层。 */
+function uiDueCount() {
+  const now = Date.now();
+  let n = 0;
+  for (const k in ANS) {
+    const a = ANS[k];
+    if (!a || !(a.wrong > 0)) continue;
+    const d = (a.due == null ? (a.ts || 0) : a.due);
+    if (d <= now) n++;
+  }
+  return n;
+}
+function uiPaintBadge() {
+  const n = uiDueCount();
+  const els = [];
+  const byId = $('btnGoWrong');
+  if (byId) els.push(byId);
+  const bn = document.querySelector('.bnav');
+  if (bn) bn.querySelectorAll('button').forEach(b => {
+    if (/错题/.test(b.textContent || '') && els.indexOf(b) < 0) els.push(b);
+  });
+  els.forEach(b => {
+    let s = b.querySelector('.nb-badge');
+    if (!n) { if (s) s.remove(); if (!b.hasAttribute('data-due')) b.removeAttribute('title'); return; }
+    if (!s) { s = document.createElement('span'); s.className = 'nb-badge'; b.appendChild(s); }
+    s.textContent = n > 99 ? '99+' : String(n);
+    s.title = '今天有 ' + n + ' 道错题到期该复习';
+    b.setAttribute('data-due', String(n));
+  });
+}
+/* §3.6-P0① 专注模式：`body.focus` 由 applyLook() 统一加（设置里也能开关），这里只管切状态 + 提示。
+   答题页的「⛶ 专注」按钮、右下角浮出的「退出专注」、Esc 都走这里。 */
+function uiSetFocus(on, quiet) {
+  const v = !!on;
+  if (!!SET.focus === v) { if (!v && !quiet) applyLook(); return; }
+  setLook('focus', v);                       /* 写 LS + applyLook（body.focus 一起切） */
+  if (!quiet) toast(v ? '专注模式：顶栏和底栏收起来了（Esc 退出）' : '已退出专注模式', 1800, v ? '' : 'ok');
+}
+/* 列表入场：给「错题本 / 收藏 / 搜索」的卡片排上入场延迟。   只算前 12 个（长列表一次性动会掉帧），--i 交给 style.css 的 .stagger > * 用。 */
 function staggerList(host) {
   const box = host || $('view');
   if (!box) return;
@@ -776,6 +844,7 @@ function renderInner() {
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else renderQuiz(r.bankId);
   markTop(r.name);
+  try { uiPaintBadge(); } catch (e) {}
   viewEnter(r);
 }
 
@@ -1270,6 +1339,7 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
+        <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
       </div>
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
@@ -1307,6 +1377,8 @@ function renderQuiz(bankId) {
   on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
+  /* §3.6-P0① 专注模式：就地切，不整页重画（重画会打断正在生成的 AI 面板） */
+  on('btnFocus', () => { uiSetFocus(!SET.focus); const b = document.getElementById('btnFocus'); if (b) b.classList.toggle('on', !!SET.focus); });
   /* 考点标签那一行：加 / 删 / 小浮层编辑器（就地重画，不整页重画） */
   if (typeof bindTagRow === 'function') { try { bindTagRow($('view'), bank, q); } catch (e) {} }
 
@@ -1496,6 +1568,9 @@ function judge(bank, q, sel) {
   render();
   /* 候补池 B：判完立刻给反馈（触屏震一下 + 选项脉冲 + 答错一句提示） */
   uiFeedbackPulse(bank, q, ANS[k] || { ok: ok }, sel);
+  /* §3.6-P0②：选项逐个揭示 + 连对 streak（判分「仪式感」） */
+  uiReveal(bank, q, ANS[k] || { ok: ok });
+  uiStreakBump(ok);
   /* 判完分把反馈（对错 + 解析）滚进视野：手机上尤其需要，不然要点完还得自己往下翻 */
   const fbEl = $('fb');
   if (fbEl && (!ok || SET.expOnOk)) {
@@ -2097,6 +2172,7 @@ on('btnHome', () => go('#/'));
 on('bnHome', () => go('#/'));
 on('appTitle', () => go('#/'));
 on('btnGoWrong', () => go('#/wrong'));
+on('btnFocusExit', () => uiSetFocus(false));
 on('btnGoFav', () => go('#/fav'));
 on('btnGoSearch', () => go('#/search'));
 on('btnGoKb', () => go('#/kb'));
@@ -2134,6 +2210,7 @@ function openSettings() {
   $('setShuffle').checked = SET.shuffle;
   $('setFxConfetti').checked = SET.fxConfetti !== false;
   $('setFxNormalBank').checked = !!SET.fxNormalBank;
+  if ($('setFocus')) $('setFocus').checked = !!SET.focus;
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'blue';
@@ -2159,6 +2236,8 @@ on('setFxNormalBank', e => {
   SET.fxNormalBank = e.target.checked; writeLS(LS.set, SET);
   if (!SET.fxNormalBank && window.FX && FX.stop) FX.stop();
 }, 'change');
+/* §3.6-P0① 专注模式（设置里的开关，等价于答题页右上角那个「⛶ 专注」） */
+on('setFocus', e => uiSetFocus(e.target.checked), 'change');
 on('resetAll', () => {
   if (!confirm('清空全部题库的作答记录？错题、收藏、自定义解析、临时套卷会被保留。不可恢复。')) return;
   tombWipe('ans'); ANS = {}; saveAns(); closeAll(); render(); toast('已清空作答记录');
@@ -2234,7 +2313,7 @@ document.addEventListener('keydown', e => {
     if (hm && hm.classList.contains('show')) { hideMask(hm); return; }
     showHelp(); return;
   }
-  if (e.key === 'Escape') { closeAll(); return; }
+  if (e.key === 'Escape') { if (SET.focus) { uiSetFocus(false); return; } closeAll(); return; }
   const rn = route().name;
   /* 搜索页（或任何页面）：按 / 跳到搜索框并聚焦 */
   if (e.key === '/') {
