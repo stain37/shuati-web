@@ -717,6 +717,28 @@ function aiPdfHref(h) {
   const anchor = h.pdfp || h.page;
   return 'pdf/' + lib + parts.join('/') + (anchor ? '#page=' + anchor : '');
 }
+/* 站点根（index.html 所在目录）：站内 PDF / 阅读器都从它算绝对地址 */
+function aiPdfBase() { return location.origin + location.pathname.replace(/[^\/]*$/, ''); }
+function aiPdfAbs(h) {
+  const rel = String(aiPdfHref(h) || '').split('#')[0];
+  return rel ? aiPdfBase() + rel : '';
+}
+/* 站内网页阅读器（pdfjs\web\viewer.html，2026-10-16 新增）：
+   安卓 / iOS 的浏览器不认内嵌 PDF（iframe 直接空白，安卓 Chrome 还会把文件整份拉下来），
+   系统阅读器那条路在「加到主屏的 App」里也会变成没反应。这个阅读器是纯 JS 画的（pdf.js），
+   手机上照样能看，能翻页 / 缩放 / 双指放大 / 搜文字，还走 Range 边下边看。 */
+function aiPdfViewerHref(h) {
+  const abs = aiPdfAbs(h);
+  if (!abs) return '';
+  const anchor = h.pdfp || h.page;
+  return aiPdfBase() + 'pdfjs/web/viewer.html?file=' + encodeURIComponent(abs) + (anchor ? '#page=' + anchor : '');
+}
+/* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
+   window.__pdfTouch 是给探针用的开关，能强扮手机 / 电脑。 */
+function aiPdfTouch() {
+  try { if (window.__pdfTouch != null) return !!window.__pdfTouch; } catch (e) {}
+  try { return (navigator.maxTouchPoints || 0) > 0 && !!(window.matchMedia && window.matchMedia('(hover: none)').matches); } catch (e) { return false; }
+}
 /* 展开块的正文：有 PDF 的篇**就是 PDF 本身**（默认内嵌阅读器，不再给提取出来的文字 ——
    讲义是手写/带图的，提取文字只留给 AI 自己搜和引用）；没 PDF（手机 / 线上 / 文件不在）才给文字。 */
 function aiPdfBlockHtml(h, full) {
@@ -730,12 +752,22 @@ function aiPdfBlockHtml(h, full) {
   }
   const label = h.page ? ('打开 PDF 第 ' + h.page + ' 页') : '打开 PDF';
   const title = '《' + aiSrcName(h) + '》' + (h.page ? ' 第 ' + h.page + ' 页' : '');
+  /* 手机 / 平板：不嵌 iframe（安卓浏览器不认，只会白屏；还会白跑几十 MB 流量），
+     直接给站内网页阅读器 —— 它跟普通网页一样，在浏览器 / 加到主屏的 App 里都能开。 */
+  const viewer = aiPdfViewerHref(h);
+  if (viewer && aiPdfTouch()) {
+    return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-title="' + esc(title) + '" title="在本站里用网页阅读器打开原页（纯网页渲染，安卓 / iPhone 都行；Esc 或右上角关闭退出）">📖 看原页（网页阅读器）</button>'
+      + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
+      + '</div>'
+      + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的网页阅读器会直接翻开这一页，能翻页、双指放大，不用先下载几十 MB。</div>';
+  }
   return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
     + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(pdf) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
-    + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（只在本地服务器 / 双击网页打开时可用，手机上不显示；这些 PDF 不会上传到网上）">' + label + ' ↗</a>'
+    + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="在新标签里用系统的 PDF 阅读器打开这一节">' + label + ' ↗</a>'
+    + (viewer ? '<a class="btn tiny" href="' + esc(viewer) + '" target="_blank" rel="noopener" title="站内网页阅读器（手机上用这个；电脑上系统阅读器更全）">📖 网页阅读器 ↗</a>' : '')
     + '</div>'
     + '<div class="pdf-embed" style="margin:0 0 9px">'
-    + '<div class="small muted pdf-touch-hint" style="margin:0 0 6px">手机 / 平板上这块要是空白（安卓的浏览器不认内嵌 PDF），就点上面的「打开 PDF」那颗，它会在新标签里用系统阅读器打开。</div>'
     + '<iframe src="' + esc(pdf) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
     + '</div>';
 }
