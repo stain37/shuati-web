@@ -1380,3 +1380,36 @@ body.sheet-open{ overflow:hidden; }
 .rg-bg{ stroke:color-mix(in srgb, var(--text) 11%, var(--card)); }
 .hero .hstat.today{ display:none; }
 @media (max-width:420px){ .vb-heat .hm{ grid-template-rows:repeat(7,10px); grid-auto-columns:10px; gap:2.5px; } }
+
+/* ================= §3.6-P1⑤：解析 ↔ 选项 联动（纯显示层，不进存储） =================
+   变量用的是站点自己的 --primary / --primary-soft / --primary-line（四套主题色都跟着走） */
+/* 解析里被认出来的 A/B/C/D：像小胶囊，点一下就跳到上面那个选项 */
+.exp .optjump, .aiout .optjump, .aih-a .optjump{
+  display:inline-block; min-width:1.2em; text-align:center;
+  margin:0 .14em; padding:0 .26em; border-radius:6px;
+  font-weight:700; color:var(--primary);
+  background:var(--primary-soft);
+  border:1px solid var(--primary-line);
+  cursor:pointer; user-select:none;
+  transition:background var(--t-fast,.12s), transform var(--t-fast,.12s), box-shadow var(--t-fast,.12s);
+}
+.exp .optjump:hover, .aiout .optjump:hover, .aih-a .optjump:hover{ background:color-mix(in srgb, var(--primary) 20%, var(--card)); }
+.exp .optjump:active{ transform:scale(.9); }
+/* 点了某个选项后，解析里提到它的字母亮一下 */
+.exp .optjump.on, .aiout .optjump.on, .aih-a .optjump.on{
+  background:var(--primary); color:#fff; border-color:var(--primary);
+  box-shadow:0 0 0 4px var(--primary-soft);
+}
+/* 点了解析里的字母后，对应选项整块闪一下 */
+.opt.opt-hit{ animation:optHit 1.05s var(--ease,ease) 1; }
+@keyframes optHit{
+  0%{ box-shadow:0 0 0 0 var(--primary-soft); }
+  35%{ box-shadow:0 0 0 6px var(--primary-soft); }
+  100%{ box-shadow:0 0 0 0 transparent; }
+}
+
+/* AI 解析下的三个快捷追问 */
+.aifollow{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:8px 0 2px; }
+.aifollow[hidden]{ display:none; }
+.aifollow .aifollow-btn{ white-space:nowrap; }
+@media (prefers-reduced-motion: reduce){ .opt.opt-hit{ animation:none; outline:2px solid var(--primary); } }

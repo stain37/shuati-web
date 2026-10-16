@@ -350,7 +350,18 @@ function mdEscLineStart(s) {
   return /^(#{1,6}\s|[-*+]\s|&gt;\s|>\s|\d+[.)]\s)/.test(s) ? '\\' + s : s;
 }
 const MD_BLOCK_TAGS = { P: 1, DIV: 1, SECTION: 1, ARTICLE: 1, HEADER: 1, FOOTER: 1, LI: 1, BLOCKQUOTE: 1, PRE: 1, TABLE: 1, UL: 1, OL: 1, HR: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, FIGURE: 1, MAIN: 1, ASIDE: 1, NAV: 1 };
+/* §3.6-P1⑤：解析里的字母壳（.optjump）只是显示用的装饰，存 Markdown 之前先脱掉 ——
+   不然点一下选项，那个 **A** 就会写进你自己的解析里。所有读编辑器的路径都走这里，所以在这儿剥最稳。 */
+function stripOptJump(root) {
+  if (!root) return root;
+  try {
+    if (typeof root === 'string') return root.replace(/<b class="optjump"[^>]*>([A-H])<\/b>/g, '$1');
+    root.querySelectorAll('.optjump').forEach(b => b.replaceWith(document.createTextNode(b.textContent)));
+  } catch (e) {}
+  return root;
+}
 function mdFromHtml(root) {
+  stripOptJump(root);
   /* 块之间要留一个空行 —— mdToHtml 是按行识别的，两段之间没空行就会被粘成一段（往返一次就丢格式）。 */
   const blocks = [];                                // 每个块一个字符串，块内用 \n 分行
   let cur = [];
@@ -457,6 +468,7 @@ function richBox(fk, text, custom, label) {
       <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span></div>
       <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，改完点一下别处自动保存">${body}</div>
       ${imgsHtml}
+      <div class="aisrc-saved" data-aisrc="${esc(fk)}"></div>
     </div>`;
 }
 function richBind(el, fk) {
@@ -465,7 +477,7 @@ function richBind(el, fk) {
   const save = () => {
     if (!el.isConnected || el.innerHTML === before) return;
     let md;
-    try { md = mdFromHtml(el); } catch (e) { toast('这段格式没认出来，先没保存（原文一个字没动）', 3000, 'bad'); return; }
+    try { md = mdFromHtml(el.cloneNode(true)); } catch (e) { toast('这段格式没认出来，先没保存（原文一个字没动）', 3000, 'bad'); return; }
     const cur = NOTES[fk] || {};
     NOTES[fk] = { text: md, imgs: cur.imgs || [], ts: Date.now(), ai: cur.ai || false };
     if (typeof saveNotes === 'function' && saveNotes() === false) { toast('保存失败：浏览器存储满了', 3000, 'bad'); return; }
@@ -513,6 +525,14 @@ function richBind(el, fk) {
     el.dataset.richBound = '1';
     richBind(el, fk);
   });
+  /* 解析下面那行「参考资料」（存过 AI 参考资料的题）：就地画出来，点开就是 PDF */
+  if (typeof aiSrcPaintFor === 'function') {
+    Array.prototype.slice.call(scope.querySelectorAll('.aisrc-saved[data-aisrc]')).forEach(el => {
+      if (el.dataset.srcBound === '1') return;
+      el.dataset.srcBound = '1';
+      try { aiSrcPaintFor(el, el.dataset.aisrc); } catch (e) {}
+    });
+  }
 }
 /* 完整编辑器（textarea）关掉之后，把浮条重新指回页面上的就地编辑器 */
 function fmtBarRebind() {

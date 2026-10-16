@@ -1753,6 +1753,70 @@ function uiReciteFb(bank, q) {
     ${richBox(fk, explainOf(fk, q), custom, '解析')}
     <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
   if (typeof richBindAll === 'function') richBindAll(fb);
+  uiOptLink(fb);                                                       // §3.6-P1⑤：背题态也能点字母跳选项
+}
+
+/* §3.6-P1⑤：解析里的 A/B/C/D 和上面那排选项互相联动 ——
+   点解析里的字母，闪一下对应选项并滚到它；点某个选项，把这题解析里提到它的字母点亮。
+   只认「本页真有的选项字母」，所以四选项的题里 F/G/H 不会被误包 */
+function uiOptLetters() {
+  const L = {};
+  document.querySelectorAll('#view .opt').forEach(el => { if (el.dataset && el.dataset.k) L[String(el.dataset.k).toUpperCase()] = el; });
+  return L;
+}
+function uiOptHtml(txt) {
+  return String(txt == null ? '' : txt).replace(
+    /(^|[\s（(【\[、，,。；;：:>」』"'“”])([A-H])(?=[\s）)】\]、，,。；;：:<」』"'“”]|$)/g,
+    (m, pre, ch) => pre + '<b class="optjump" data-k="' + ch + '" contenteditable="false">' + ch + '</b>');
+}
+function uiOptFlash(el) {
+  if (!el) return;
+  el.classList.remove('opt-hit'); void el.offsetWidth; el.classList.add('opt-hit');
+  const smooth = !(typeof uiMotionOK === 'function' && !uiMotionOK());
+  try { el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' }); } catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+}
+function uiOptBind(view) {
+  if (!view || view._optBound) return;
+  view._optBound = 1;
+  view.addEventListener('click', e => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const j = t.closest('.optjump');
+    if (j) { uiOptFlash(uiOptLetters()[j.dataset.k]); return; }
+    const o = t.closest('.opt');
+    if (o && o.dataset && o.dataset.k) {
+      view.querySelectorAll('.optjump[data-k="' + o.dataset.k + '"]').forEach(b => {
+        b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 1100);
+      });
+    }
+  });
+}
+/* 只在解析正文里包字母：`.exp.rich-edit` 是就地编辑块、`.aiout / .aih-a` 是 AI 输出 */
+function uiOptLink(root) {
+  if (!root) return;
+  const L = uiOptLetters(), keys = Object.keys(L);
+  uiOptBind(document.getElementById('view') || document.body);
+  if (!keys.length || !root.querySelectorAll) return;
+  root.querySelectorAll('.exp.rich-edit, .aiout, .aih-a').forEach(b => {
+    if (b.dataset.optlinked === '1') return;
+    const walk = document.createTreeWalker(b, NodeFilter.SHOW_TEXT, null);
+    const jobs = [];
+    while (walk.nextNode()) {
+      const t = walk.currentNode;
+      if (!t.nodeValue || !/[A-H]/.test(t.nodeValue)) continue;
+      const p = t.parentNode;
+      if (p && p.closest && p.closest('.optjump, .opt, a, code, pre')) continue;
+      const html = uiOptHtml(esc(t.nodeValue));
+      if (html !== esc(t.nodeValue)) jobs.push([t, html]);
+    }
+    jobs.forEach(([t, html]) => {
+      const wrap = document.createElement('span');
+      wrap.innerHTML = html;
+      wrap.querySelectorAll('.optjump').forEach(b => { if (!L[b.dataset.k]) b.replaceWith(document.createTextNode(b.textContent)); });
+      if (wrap.querySelector('.optjump') && t.parentNode) t.parentNode.replaceChild(wrap, t);
+    });
+    b.dataset.optlinked = '1';
+  });
 }
 
 function showFb(bank, q) {
@@ -1778,6 +1842,7 @@ function showFb(bank, q) {
       : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}
     <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
   if (showExp && typeof richBindAll === 'function') richBindAll(fb);   // 方案十：解析块就地可改
+  uiOptLink(fb);                                                       // §3.6-P1⑤：解析里的 A/B/C/D 与选项联动
 }
 
 function renderRich(k, text) {

@@ -227,9 +227,11 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 ## 本次修复（相对上一版）
 
-（缓存版本 **shuati-v67-web54**）
+（缓存版本 **shuati-v67-web61**）
 
 最近几轮按倒序说清各自动了什么：
+- **shuati-v67-web61（§3.6-P1⑤ 解析 ↔ 选项联动 + AI 快捷追问）**：就是下面第一张表。
+- **shuati-v67-web60（参考资料跟解析一起存）**：详见《更新说明.md》同一轮那节。
 - **shuati-v67-web54（§8 视觉 v2 铺到在用的站点上）**：就是下面第一张表。
 - **shuati-v66-web53（修深色模式下「改答案」勾选看不出高亮 + 病理知识库补页码）**：`body.dark .fixopt` → `body.dark .fixopt:not(.on)`（同理 `body.dark .kbrow:not(.on)`）；`make-kb.py` 新增 `page_from_filename()`（没书签的 PDF 从文件名取页码，和页数对不上就不采信），病理 27 篇补上页码。
 - **shuati-v63-web49（方案九 + 方案十，外加图标视图的「⋯」、批量模式支持目录）**：下面第二张表。
@@ -239,6 +241,9 @@ AI配置.js                    自动填 AI 地址 / 模型 / Key（★ 含明�
 
 | 问题 | 说明 |
 | --- | --- |
+| 看完解析想对照选项，得来回滚 | **§3.6-P1⑤ 解析 ↔ 选项联动**：解析（`.exp.rich-edit`）/ AI 输出（`.aiout`）/ AI 解析折叠区（`.aih-a`）里单独出现的 A–H 由 `uiOptHtml()` 包成 `<b class="optjump" data-k="B">B</b>`（`uiOptLetters()` 用 `TreeWalker` 走文本节点，跳过 `.opt` / 代码块 / 链接；题里没有的字母会还原成纯文字）；点字母 → 上面那个选项 `.opt-hit` 闪一圈并滚过去，点选项 → 解析里提到它的字母 `.on` 变实心（1.1 秒）。两个方向都绑在 `#view` 上做事件委托，翻题 / 重渲染不用重绑。存回去之前 `collection.js` 的 `stripOptJump()` 会把字母壳脱掉（`mdFromHtml()` 里那一步），**解析原文一个字节都不会被污染** |
+| AI 答完想追问，还得自己打字 | **AI 快捷追问 chips**：`ai.js` 的 `AI_FOLLOW`（再详细点 / 换个说法 / 出变式题）+ `aiPaintFollow(host, show)`；`aiRun()` 一开跑先收起来，`finally` 里按「有没有答案」决定显不显示，`aiRestore()` 重开题目时同一条件；点 chip 带着原题和这轮回答再跑一次 |
+| 老探针的断言过期了 | 新探针 `工作1\p15-probe.py` **52 条 / 0 fail**（浏览器 25 + 源码 27，含「题里没有的 E 会还原成纯文字」「存回 Markdown 里没有 `<b class="optjump">`」「点 chip 会再跑一次 AI」）。⚠️ 字母胶囊的样式必须用站点自己的 `--primary` / `--primary-soft` / `--primary-line`；**别再造 `--a` 这种不存在的变量** —— `color-mix()` 里出现未定义变量会让整条声明静默失效（探针 52 条全绿、截图里却看不见底色，就是这么来的） |
 | 站点还是「工具站审美」，跟样板两回事 | **§8 铺开的 token 层**：`style.css` 的 `:root` / `body.dark` / `html[data-theme=…]` 换成样板那套 —— 卡片圆角 `--radius:16px → 22px`、按钮 12px、一套配色（背景 `--bg:#eef1f7` + `--bg-wash` 双径向渐变，深色 `#080c14` / 卡 `#121826`），**四套主题色名字对齐样板**：`teal`（默认，`#0d9488`）/ `indigo` / `warm`（蓝 + 暖橙）/ `violet`，`app.js` 的 `THEME_COLORS` 与 `index.html` 的 `#setColor` 选项同步；`SET_DEF.color` 默认 `'teal'`，另加 `SET_DEF.wash`（设置里能关背景渐变）。存储一个字节没动 |
 | 首页看不出「今天该干什么」 | **首页 Bento**：`cat.js` 的 `homeHtml()` 在 hero 下面插一段 `bentoHtml` —— 继续刷题大卡（`.vb-card.span2`，题库名 / 上次做到第几题 / 正确率 / 进度条 / 继续刷题）、今日复习圆环（`.vb-ring`，`--p` = 待复习 / (待复习 + 到期)）、「今天」卡（今日已答 / 正确率 / 近 7 天）、学习热力图、四个快捷入口（搜索全部 / 学习统计 / 错题本 / 收藏）；原来的目录树 / 工具条 / 题库列表 / 本机题库文件 / 数据备份**原样保留**，hero 里重复的那排「今日」小统计用 `.hero .hstat.today{display:none}` 收掉（DOM 保留） |
 | 想一眼看出「这阵子有没有在学」 | **§3.6-P1④ 学习热力图**：`app.js` 新增 `heatStats(weeks)`，拿现有 `ANS[k].ts` 按天分桶（纯读，**不新增存储**），`w` 限 4–26 默认 12 周，首页渲成 `12×7` 的 `.hm` 格子（`data-l` 五档，`color-mix` 跟主色走），空格底色 `color-mix(in srgb, var(--text) 9%, var(--card))` 深浅两态都看得见 |

@@ -378,6 +378,9 @@ async function aiContext(q, userQ) {
     } catch (e) {}
   }
   clearTimeout(timer);
+  /* 同一份资料的重复段落合并成一个参考位（同一文件 + 同一页只留第一条），
+     不然参考资料里会出现两条一模一样的 —— 面板上、给模型看的提示词里都只留一条 */
+  hits = aiUniqHits(hits);
   const per = Math.max(400, Math.floor((+cfg.maxChars || 3500) / Math.max(1, hits.length)));
   const blocks = [];
   let used = 0;
@@ -451,6 +454,7 @@ function aiRestore(st) {
   const stop = host.querySelector('.ai-stop'), go = host.querySelector('.ai-go');
   if (stop) stop.disabled = !st.running;
   if (go) go.disabled = !!st.running;
+  try { aiPaintFollow(host, !!st.text); } catch (e) {}   /* §3.6-P1⑤：重画后把快捷追问也带回来 */
   try { paintAiChips(); } catch (e) {}
   return true;
 }
@@ -508,7 +512,8 @@ function aiPanelHtml(host) {
   L.push('</div>');
   L.push('<div class="aihist" hidden></div>');                 /* 候补池 D：追问的历史折叠在这里 */
   L.push('<div class="aiout small"></div>');
-  L.push('<div class="aisrc small muted"></div>');
+  L.push('<div class="aisrc small muted"></div>');   /* 参考资料：紧跟解析正文下面（挪上来过，别又放回末尾） */
+  L.push('<div class="aifollow" hidden></div>');               /* §3.6-P1⑤：生成完给三个快捷追问 */
   L.push('</div>');
   return L.join('');
 }
@@ -645,7 +650,26 @@ function aiPaintOut(host, text, force) {
   if (!force && host._aiT && now - host._aiT < 80) return;
   host._aiT = now;
   out.innerHTML = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text).replace(/\n/g, '<br>');
+  if (typeof uiOptLink === 'function') { try { uiOptLink(out); } catch (e) {} }   /* §3.6-P1⑤：AI 解析里的 A/B/C/D 也能点 */
   if (force) host.scrollIntoView({ block: 'nearest' });
+}
+/* §3.6-P1⑤：生成完给三个快捷追问 —— 点一下就接着问，不用自己组织语言 */
+const AI_FOLLOW = [
+  ['再详细点', '上面这段再展开讲讲：把机制 / 判断依据 / 常见易错点讲透，可以长一些。'],
+  ['换个说法', '换个更口语、更好记的说法再讲一遍这道题的考点，别堆术语。'],
+  ['出变式题', '照这道题出 2 道同考点、换数字或换情境的变式题，给出答案和一句话解析。'],
+];
+function aiPaintFollow(host, on) {
+  if (!host || !host.querySelector) return;
+  const box = host.querySelector('.aifollow');
+  if (!box) return;
+  if (!on) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = '<span class="small muted">接着问：</span>' + AI_FOLLOW.map((f, i) =>
+    '<button class="btn tiny aifollow-btn" data-fi="' + i + '" title="' + esc(f[1]) + '">' + esc(f[0]) + '</button>').join('');
+  box.querySelectorAll('.aifollow-btn').forEach(b => {
+    b.onclick = () => { const f = AI_FOLLOW[+b.dataset.fi]; if (f) aiRun(host, f[1]); };
+  });
 }
 /* 候补池 D：追问会把上一轮的回答顶掉，这里把历史收进一个可折叠的块（点开能回看） */
 function aiPaintHist(host) {
@@ -681,12 +705,64 @@ function aiPdfHref(h) {
   const anchor = h.pdfp || h.page;
   return 'pdf/' + lib + parts.join('/') + (anchor ? '#page=' + anchor : '');
 }
-function aiPdfLinkHtml(h) {
-  if (!aiPdfOk()) return '';
-  const href = aiPdfHref(h);
-  if (!href) return '';
+/* 展开块的正文：有 PDF 的篇**就是 PDF 本身**（默认内嵌阅读器，不再给提取出来的文字 ——
+   讲义是手写/带图的，提取文字只留给 AI 自己搜和引用）；没 PDF（手机 / 线上 / 文件不在）才给文字。 */
+function aiPdfBlockHtml(h, full) {
+  const pdf = aiPdfOk() ? aiPdfHref(h) : '';
+  if (!pdf) {
+    /* 手机 / 线上：没有 PDF，只能给文字。存下来的参考资料只存了摘要（没存正文），
+       就把摘要拿出来当正文，总比空一块强 */
+    const t = String(full || h.snip || '');
+    return '<div class="aisrc-text">' + esc(t).replace(/\n/g, '<br>')
+      + (t ? '' : '<span class="muted">（这条只存了出处：' + esc(h.doc || '') + '）</span>') + '</div>';
+  }
   const label = h.page ? ('打开 PDF 第 ' + h.page + ' 页') : '打开 PDF';
-  return '<div style="margin:0 0 7px"><a class="btn tiny" href="' + esc(href) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（只在本地服务器 / 双击网页打开时可用，手机上不显示；这些 PDF 不会上传到网上）">' + label + ' ↗</a></div>';
+  const title = '《' + aiSrcName(h) + '》' + (h.page ? ' 第 ' + h.page + ' 页' : '');
+  return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(pdf) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
+    + '<a class="btn tiny" href="' + esc(pdf) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（只在本地服务器 / 双击网页打开时可用，手机上不显示；这些 PDF 不会上传到网上）">' + label + ' ↗</a>'
+    + '</div>'
+    + '<div class="pdf-embed" style="margin:0 0 9px">'
+    + '<iframe src="' + esc(pdf) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
+    + '</div>';
+}
+/* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
+function aiPdfFullscreen(pdf, title) {
+  const old = document.getElementById('pdfFs');
+  if (old) old.remove();
+  const box = document.createElement('div');
+  box.id = 'pdfFs';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9990;background:rgba(6,10,18,.78);display:flex;flex-direction:column;padding:13px;gap:9px';
+  box.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#fff;font-size:13.5px;flex-wrap:wrap">'
+    + '<span style="flex:1 1 240px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title || 'PDF') + '</span>'
+    + '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(pdf) + '">用阅读器打开 ↗</a>'
+    + '<button class="btn tiny" type="button" id="pdfFsClose">关闭（Esc）</button>'
+    + '</div>'
+    + '<iframe src="' + esc(pdf) + '" title="' + esc(title || 'PDF') + '" style="flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>';
+  document.body.appendChild(box);
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  document.addEventListener('keydown', onKey, true);
+  const btn = document.getElementById('pdfFsClose');
+  if (btn) btn.onclick = close;
+  box.addEventListener('click', e => { if (e.target === box) close(); });
+}
+/* 「⛶ 全屏看原页」按钮的绑定 */
+function aiBindPdfInline(root) {
+  (root || document).querySelectorAll('.pdf-full').forEach(btn => {
+    btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF');
+  });
+}
+/* 同一份资料的重复段落合并成一个：同一文件 + 同一页（没页码就算同一文件）只留第一条。
+   检索回来时合一次（省提示词、省得面板上摆两份一样的），画参考资料时再兜一次（防别的调用方塞重复的进来） */
+function aiUniqHits(hits) {
+  const seen = new Set();
+  return (hits || []).filter(h => {
+    const key = String(h.file || h.doc || '') + '#' + (h.pdfp || h.page || '');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 /* 参考资料标签上的名字：优先用源文件名（如「1.1 外科 颈部疾病」），没有就用节标题 */
 function aiSrcName(h) {
@@ -697,6 +773,7 @@ function aiSrcName(h) {
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
+  if (ctx && ctx.hits) ctx = Object.assign({}, ctx, { hits: aiUniqHits(ctx.hits) });
   if (!ctx || !ctx.hits || !ctx.hits.length) {
     box.innerHTML = (typeof kbList === 'function' && kbList().length)
       ? '<span class="small muted">本次没用知识库（没勾选，或没命中相关内容）</span>'
@@ -724,9 +801,9 @@ function aiPaintSrc(host, ctx) {
       d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
         + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
         + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
-        + aiPdfLinkHtml(h)
-        + '<div class="aisrc-text">' + esc(full).replace(/\n/g, '<br>') + '</div>';
+        + aiPdfBlockHtml(h, full);
       box.appendChild(d);
+      aiBindPdfInline(d);
       el.classList.add('on');
     };
   });
@@ -760,6 +837,7 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   aiPaintSrc(H(), ctx);
   aiPaintHist(H());
   aiPaintOut(H(), fresh ? '' : st.text, true);
+  try { aiPaintFollow(H(), false); } catch (e) {}   /* §3.6-P1⑤：重新生成时先把上一轮的快捷追问收起来 */
   aiState(H(), ctx.count ? ('已取 ' + ctx.count + ' 段资料，正在生成…') : '正在生成…');
   try {
     const full = await aiChat(st.msgs, (txt, rz) => {
@@ -795,16 +873,58 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
     }
   } finally {
     st.running = false; st.endTs = Date.now(); st.ts = Date.now();
+    try { aiPaintFollow(H(), !!(st && st.text)); } catch (e) {}   /* §3.6-P1⑤：出完就给三个快捷追问 */
     try { H().querySelector('.ai-stop').disabled = true; H().querySelector('.ai-go').disabled = false; } catch (e) {}
   }
+}
+/* ---------- 存下来的「参考资料」 ----------
+   AI 面板里那份参考资料（含「点开就是 PDF」）本来只活在这次会话里：一「存入本题解析」、面板一收就没了。
+   所以保存时把命中的资料清单写进 qbank.aisrc.v1[题目key]（只存身份：库/文件/页码/标题/一句摘要，
+   不存正文 —— 正文在 知识库.js 和 PDF 里，存一份反而废空间），以后在解析下面用同一套渲染画出来，
+   不用重新跑一次 AI 也能看 PDF。 */
+const AISRC_LS = 'qbank.aisrc.v1';
+function aiSrcAll() { try { return JSON.parse(localStorage.getItem(AISRC_LS) || '{}') || {}; } catch (e) { return {}; } }
+function aiSrcSaveFor(k, hits) {
+  if (!k || !hits || !hits.length) return false;
+  const all = aiSrcAll();
+  all[k] = aiUniqHits(hits).slice(0, 8).map(h => ({
+    kb: h.kb, file: h.file || '', page: h.page, pdfp: h.pdfp, pages: h.pages,
+    doc: h.doc, head: h.head, snip: String(h.snip || '').slice(0, 160)
+  }));
+  try { localStorage.setItem(AISRC_LS, JSON.stringify(all)); return true; } catch (e) { return false; }
+}
+function aiSrcFor(k) {
+  const v = aiSrcAll()[k];
+  return Array.isArray(v) ? v : [];
+}
+/* 解析下面那行参考资料：就地画出来（数据是存下来的，不需要重新生成） */
+function aiSrcPaintFor(container, k) {
+  if (!container || !container.querySelector || !k) return;
+  /* 容器本身可能就是那个 .aisrc-saved（richBindAll 就是拿它当 host 传进来的），先认一下自己 */
+  const box = (container.classList && container.classList.contains('aisrc-saved'))
+    ? container : container.querySelector('.aisrc-saved');
+  if (!box) return;
+  const hits = aiSrcFor(k);
+  if (!hits.length) { box.innerHTML = ''; return; }
+  let inner = box.querySelector('.aisrc');
+  if (!inner) {
+    inner = document.createElement('div');
+    inner.className = 'aisrc';
+    box.appendChild(inner);
+  }
+  aiPaintSrc(box, { hits: hits });
 }
 function aiSaveOut(host) {
   const st = AI_LAST[host.dataset.aiid];
   if (!st || !st.text) { toast('还没有内容'); return; }
   const text = st.text.trim();
   if (!text) return;
-  if (typeof st.onUse === 'function') { st.onUse(text); toast('已写进解析框，记得点保存'); return; }
+  if (typeof st.onUse === 'function') {
+    if (st.k && st.ctx && st.ctx.hits && st.ctx.hits.length) aiSrcSaveFor(st.k, st.ctx.hits);
+    st.onUse(text); toast('已写进解析框，记得点保存'); return;
+  }
   if (!st.k || typeof NOTES === 'undefined') { toast('这道题没有可保存的位置'); return; }
+  if (st.ctx && st.ctx.hits && st.ctx.hits.length) aiSrcSaveFor(st.k, st.ctx.hits);   /* 参考资料跟着解析一起存下 */
   const old = NOTES[st.k] || {};
   NOTES[st.k] = { text: text, imgs: old.imgs || [], ts: Date.now(), ai: true };
   if (!saveNotes()) { toast('保存失败：浏览器存储满了'); return; }
