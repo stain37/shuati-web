@@ -773,9 +773,12 @@
       var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
       var dirish = items.some(function (it) { try { var en = it.webkitGetAsEntry && it.webkitGetAsEntry(); return !!(en && en.isDirectory); } catch (err) { return false; } });
       var files = dt.files ? Array.prototype.slice.call(dt.files) : [];
-      var multi = files.length > 1;
+      var allBank = files.length > 0 && files.every(function (f) { return /\.(json|txt)$/i.test(f.name || ''); });
+      var multi = files.length > 1 && allBank;   // 多个「题库文件」才走批量导入
       var hasRel = files.some(function (f) { return f.webkitRelativePath && f.webkitRelativePath.indexOf('/') > 0; });
-      if (!dirish && !hasRel && !multi) return;         // 单个文件交给原来的导入逻辑
+      /* 对话卡片 / 对话页里的投放一律归 chat.js：多选 PDF、图片、混合文件不再被这里截走 */
+      var inChat = !!(e.target && e.target.closest && e.target.closest('#chatHome, .chat-page, .chat-drawer'));
+      if (inChat || (!dirish && !hasRel && !multi)) return;
       e.preventDefault();
       e.stopPropagation();
       collectDrop(dt).then(function (r) {

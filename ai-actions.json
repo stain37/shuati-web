@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-17",
+  "note": "动作注册表初稿：AI 只允许调用这里列出的动作；status=ready 表示当前对话指令已支持，ui 表示只有界面入口，todo 表示待接，blocked 表示必须由用户完成文件/外部操作。2026-10-17 web99：实际已接入 31 个动作，以 ai-ops.js 的 AI_OPS.actions() 为准；本文件仍是全量设计地图，status 可能滞后。",
+  "statusLegend": {
+    "ready": "已有对话指令或可直接调用的动作",
+    "ui": "目前只有界面入口，尚未接入对话/计划执行器",
+    "todo": "尚无动作，需要新增",
+    "blocked": "需要用户选文件/系统权限/外部登录，不能假装自动完成"
+  },
+  "confirmLegend": {
+    "none": "只读或可随时撤销，无需确认",
+    "normal": "会改本机数据，执行前简短确认",
+    "destructive": "删除/清空/覆盖类，必须确认并给撤销"
+  },
+  "actions": [
+    { "id": "nav.goto", "title": "去某个页面", "group": "导航", "params": [{ "name": "route", "type": "enum", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "nav.back", "title": "返回上一页", "group": "导航", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "view.set", "title": "切换图标/列表/详细信息", "group": "导航", "params": [{ "name": "mode", "type": "enum", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "search.run", "title": "搜索题目/题库", "group": "导航", "params": [{ "name": "keyword", "type": "string", "required": true }, { "name": "scope", "type": "enum", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "focus.toggle", "title": "专注模式", "group": "导航", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+
+    { "id": "bank.open", "title": "打开题库", "group": "题库", "params": [{ "name": "bankId", "type": "bank", "required": true }], "context": ["currentBank", "lastBank"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "bank.create", "title": "新建题库", "group": "题库", "params": [{ "name": "title", "type": "string", "required": true }], "context": ["currentCat"], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "ui" },
+    { "id": "bank.importText", "title": "粘贴文本建库", "group": "题库", "params": [{ "name": "title", "type": "string", "required": true }, { "name": "text", "type": "string", "required": true }], "context": ["currentCat"], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "ui" },
+    { "id": "bank.importFile", "title": "从文件建库", "group": "题库", "params": [{ "name": "file", "type": "file", "required": true }], "context": ["currentCat"], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "blocked" },
+    { "id": "bank.importFolder", "title": "批量导入文件夹", "group": "题库", "params": [{ "name": "folder", "type": "folder", "required": true }], "context": ["currentCat"], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "blocked" },
+    { "id": "bank.rename", "title": "重命名题库", "group": "题库", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "title", "type": "string", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "ui" },
+    { "id": "bank.move", "title": "移动题库到目录", "group": "题库", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "catId", "type": "cat", "required": false }], "context": [], "confirm": "normal", "undo": ["qbank.local.v2", "qbank.cats.v1"], "status": "ui" },
+    { "id": "bank.delete", "title": "删除题库", "group": "题库", "params": [{ "name": "bankIds", "type": "bank[]", "required": true }], "context": ["currentBank"], "confirm": "destructive", "undo": ["qbank.local.v2", "qbank.answers.v2", "qbank.favs.v2", "qbank.notes.v2", "qbank.tags.v1", "qbank.tomb.v1"], "status": "ready", "command": "删除题库《X》" },
+    { "id": "bank.batchDelete", "title": "批量删除题库", "group": "题库", "params": [{ "name": "bankIds", "type": "bank[]", "required": true }], "context": [], "confirm": "destructive", "undo": ["qbank.local.v2", "qbank.answers.v2", "qbank.favs.v2", "qbank.notes.v2", "qbank.tags.v1", "qbank.tomb.v1"], "status": "ready", "command": "批量删除《A》《B》" },
+    { "id": "bank.export", "title": "导出题库文件", "group": "题库", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "format", "type": "enum", "required": false }], "context": ["currentBank"], "confirm": "none", "undo": false, "status": "ready", "command": "导出题库《X》" },
+    { "id": "bank.saveFile", "title": "保存到本机文件", "group": "题库", "params": [{ "name": "bankId", "type": "bank", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "blocked" },
+    { "id": "bank.openFile", "title": "打开题库文件", "group": "题库", "params": [{ "name": "file", "type": "file", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "blocked" },
+    { "id": "bank.autoSave", "title": "自动写回文件", "group": "题库", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "blocked" },
+
+    { "id": "cat.create", "title": "新建分类", "group": "目录", "params": [{ "name": "title", "type": "string", "required": true }, { "name": "parentId", "type": "cat", "required": false }], "context": ["currentCat"], "confirm": "normal", "undo": ["qbank.cats.v1"], "status": "ui" },
+    { "id": "cat.rename", "title": "重命名目录", "group": "目录", "params": [{ "name": "catId", "type": "cat", "required": true }, { "name": "title", "type": "string", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.cats.v1"], "status": "ui" },
+    { "id": "cat.move", "title": "移动目录", "group": "目录", "params": [{ "name": "catId", "type": "cat", "required": true }, { "name": "parentId", "type": "cat", "required": false }], "context": [], "confirm": "normal", "undo": ["qbank.cats.v1"], "status": "ui" },
+    { "id": "cat.delete", "title": "删除目录（连内容）", "group": "目录", "params": [{ "name": "catId", "type": "cat", "required": true }], "context": [], "confirm": "destructive", "undo": ["qbank.local.v2", "qbank.cats.v1", "qbank.answers.v2", "qbank.favs.v2", "qbank.notes.v2", "qbank.tags.v1", "qbank.tomb.v1"], "status": "ui" },
+
+    { "id": "selection.marquee", "title": "方框多选", "group": "选择", "params": [{ "name": "rect", "type": "rect", "required": true }], "context": ["view"], "confirm": "none", "undo": false, "status": "ready" },
+    { "id": "selection.toChat", "title": "选中项加进对话", "group": "选择", "params": [{ "name": "refs", "type": "refs", "required": true }], "context": ["selection"], "confirm": "none", "undo": false, "status": "ready" },
+    { "id": "batch.select", "title": "批量选中", "group": "选择", "params": [{ "name": "refs", "type": "refs", "required": true }], "context": ["view"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "batch.move", "title": "批量移动", "group": "选择", "params": [{ "name": "refs", "type": "refs", "required": true }, { "name": "catId", "type": "cat", "required": false }], "context": ["selection"], "confirm": "destructive", "undo": ["qbank.local.v2", "qbank.cats.v1"], "status": "ui" },
+
+    { "id": "question.open", "title": "打开某题", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "qid", "type": "question", "required": true }], "context": ["currentBank", "lastQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.select", "title": "选择选项", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }, { "name": "options", "type": "string[]", "required": true }], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.submit", "title": "提交答案", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }, { "name": "options", "type": "string[]", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.answers.v2"], "status": "ui" },
+    { "id": "question.next", "title": "下一题", "group": "题目", "params": [], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.prev", "title": "上一题", "group": "题目", "params": [], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.goto", "title": "跳到第 n 题", "group": "题目", "params": [{ "name": "n", "type": "integer", "required": true }], "context": ["currentBank"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.favorite", "title": "收藏/取消收藏", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]|all", "required": true }, { "name": "on", "type": "boolean", "required": true }], "context": ["currentBank", "currentQuestion"], "confirm": "normal", "undo": ["qbank.favs.v2", "qbank.tomb.v1"], "status": "ready", "command": "收藏《X》/ 收藏《X》第n题 / 取消收藏《X》" },
+    { "id": "question.markWrong", "title": "标为错题", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]", "required": true }], "context": ["currentBank", "currentQuestion"], "confirm": "normal", "undo": ["qbank.answers.v2"], "status": "ready", "command": "把《X》第n题标为错题" },
+    { "id": "question.markMastered", "title": "错题标为已掌握", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]|wrong", "required": true }], "context": ["currentBank"], "confirm": "normal", "undo": ["qbank.answers.v2"], "status": "ready", "command": "把《X》的错题标为已掌握" },
+    { "id": "question.clearWrong", "title": "清除错题标记", "group": "题目", "params": [{ "name": "bankIds", "type": "bank[]|all", "required": true }], "context": ["currentBank"], "confirm": "normal", "undo": ["qbank.answers.v2"], "status": "ready", "command": "清除题库里的错题集" },
+    { "id": "question.clearAnswers", "title": "清空作答记录", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]|all", "required": true }], "context": ["currentBank"], "confirm": "destructive", "undo": ["qbank.answers.v2", "qbank.tomb.v1"], "status": "ready", "command": "清空《X》的作答记录" },
+    { "id": "question.redo", "title": "再答一次", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.editAnswer", "title": "改答案", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "qid", "type": "question", "required": true }, { "name": "answer", "type": "string[]", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.local.v2", "qbank.answerfix.v1", "qbank.answers.v2"], "status": "ui" },
+    { "id": "question.editExplain", "title": "改解析", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "qid", "type": "question", "required": true }, { "name": "text", "type": "string", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.local.v2", "qbank.notes.v2"], "status": "ui" },
+    { "id": "question.note", "title": "口诀/思路", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }, { "name": "text", "type": "string", "required": true }], "context": ["currentQuestion"], "confirm": "none", "undo": ["qbank.qtn.v1"], "status": "ui" },
+    { "id": "question.delete", "title": "删除本题", "group": "题目", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "qids", "type": "question[]", "required": true }], "context": ["currentQuestion"], "confirm": "destructive", "undo": ["qbank.local.v2", "qbank.answers.v2", "qbank.favs.v2", "qbank.notes.v2", "qbank.tags.v1", "qbank.tomb.v1"], "status": "ready", "command": "删除《X》第n题" },
+    { "id": "question.aiExplain", "title": "AI 写解析", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.aiVariant", "title": "AI 变式题", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }, { "name": "n", "type": "integer", "required": false }], "context": ["currentQuestion"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "question.saveAIExplain", "title": "存入本题解析", "group": "题目", "params": [{ "name": "qid", "type": "question", "required": true }, { "name": "text", "type": "string", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.notes.v2"], "status": "ui" },
+
+    { "id": "quiz.start", "title": "开始/继续刷题", "group": "练习", "params": [{ "name": "bankId", "type": "bank", "required": true }], "context": ["currentBank"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "quiz.review", "title": "今日复习", "group": "练习", "params": [{ "name": "count", "type": "integer", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "quiz.random", "title": "随机抽题", "group": "练习", "params": [{ "name": "n", "type": "integer", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "quiz.speed", "title": "速刷/停止", "group": "练习", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "exam.start", "title": "开始套卷/考试", "group": "练习", "params": [{ "name": "bankId", "type": "bank", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "exam.submit", "title": "交卷", "group": "练习", "params": [], "context": ["exam"], "confirm": "destructive", "undo": false, "status": "ui" },
+    { "id": "paper.delete", "title": "删除套卷", "group": "练习", "params": [{ "name": "paperId", "type": "bank", "required": true }], "context": [], "confirm": "destructive", "undo": ["qbank.papers.v2"], "status": "ui" },
+
+    { "id": "tag.add", "title": "给题打标签", "group": "标签", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]|all|wrong|current", "required": true }, { "name": "tags", "type": "string[]", "required": true }], "context": ["currentBank", "currentQuestion"], "confirm": "normal", "undo": ["qbank.tags.v1", "qbank.tagvocab.v1"], "status": "ready", "command": "给《X》/这道题打标签：…" },
+    { "id": "tag.remove", "title": "去掉标签", "group": "标签", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "targets", "type": "question[]", "required": true }, { "name": "tag", "type": "string", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.tags.v1"], "status": "ui" },
+    { "id": "tag.aiOne", "title": "AI 给这道题打标签", "group": "标签", "params": [{ "name": "bankId", "type": "bank", "required": true }, { "name": "qid", "type": "question", "required": true }], "context": ["currentQuestion"], "confirm": "normal", "undo": ["qbank.tags.v1"], "status": "ready", "command": "让 AI 给这道题打标签 / 答题页「AI 标签」" },
+    { "id": "tag.aiAll", "title": "AI 给所有未标签题打标签", "group": "标签", "params": [{ "name": "vocab", "type": "vocab", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.tags.v1"], "status": "ready", "command": "让 AI 给所有题打标签" },
+    { "id": "tag.stop", "title": "停止 AI 打标签", "group": "标签", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ready" },
+    { "id": "tag.vocabImport", "title": "导入考点词表", "group": "标签", "params": [{ "name": "lines", "type": "string[]", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.tagvocab.v1"], "status": "ready", "command": "导入考点词表：…" },
+    { "id": "tag.vocabGenerate", "title": "让 AI 起一份词表", "group": "标签", "params": [], "context": [], "confirm": "normal", "undo": ["qbank.tagvocab.v1"], "status": "ready", "command": "让 AI 起一份考点词表" },
+    { "id": "tag.filter", "title": "按标签筛选", "group": "标签", "params": [{ "name": "tag", "type": "string", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+
+    { "id": "stats.open", "title": "打开学习统计", "group": "统计", "params": [{ "name": "range", "type": "enum", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "wrong.open", "title": "打开错题本", "group": "统计", "params": [{ "name": "filter", "type": "enum", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "fav.open", "title": "打开收藏", "group": "统计", "params": [{ "name": "filter", "type": "enum", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "srs.review", "title": "开始复习", "group": "统计", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+
+    { "id": "set.theme", "title": "深色/浅色/跟随系统", "group": "设置", "params": [{ "name": "mode", "type": "enum", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ready", "command": "切换深色模式" },
+    { "id": "set.font", "title": "字号", "group": "设置", "params": [{ "name": "size", "type": "enum", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ready", "command": "字号大一点" },
+    { "id": "set.color", "title": "主题色", "group": "设置", "params": [{ "name": "color", "type": "enum", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ready", "command": "主题色换成紫色" },
+    { "id": "set.autoNext", "title": "自动下一题", "group": "设置", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ready", "command": "自动下一题" },
+    { "id": "set.expOnOk", "title": "答对也显示解析", "group": "设置", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ready", "command": "答对也显示解析" },
+    { "id": "set.shuffle", "title": "随机顺序", "group": "设置", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ui" },
+    { "id": "set.speedSec", "title": "速刷时长", "group": "设置", "params": [{ "name": "seconds", "type": "integer", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ui" },
+    { "id": "set.focus", "title": "专注模式", "group": "设置", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ui" },
+    { "id": "set.reduceMotion", "title": "减少动画", "group": "设置", "params": [{ "name": "on", "type": "boolean", "required": true }], "context": [], "confirm": "none", "undo": ["qbank.settings.v2"], "status": "ui" },
+
+    { "id": "data.exportAll", "title": "导出全部数据", "group": "数据", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ready", "command": "导出全部数据" },
+    { "id": "data.importBackup", "title": "导入备份", "group": "数据", "params": [{ "name": "file", "type": "file", "required": true }], "context": [], "confirm": "destructive", "undo": false, "status": "blocked" },
+    { "id": "data.resetAll", "title": "清空全部数据", "group": "数据", "params": [], "context": [], "confirm": "destructive", "undo": false, "status": "ui" },
+    { "id": "sync.config", "title": "配置云同步", "group": "数据", "params": [{ "name": "owner", "type": "string", "required": false }, { "name": "token", "type": "string", "required": false }], "context": [], "confirm": "normal", "undo": false, "status": "blocked" },
+    { "id": "sync.now", "title": "立即同步", "group": "数据", "params": [], "context": [], "confirm": "normal", "undo": false, "status": "blocked" },
+
+    { "id": "kb.addText", "title": "粘贴文本入库", "group": "知识库", "params": [{ "name": "name", "type": "string", "required": false }, { "name": "text", "type": "string", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.kb.data", "qbank.kb.list.v1"], "status": "ui" },
+    { "id": "kb.uploadFiles", "title": "上传文件入库", "group": "知识库", "params": [{ "name": "files", "type": "file[]", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.kb.data", "qbank.kb.list.v1"], "status": "blocked" },
+    { "id": "kb.select", "title": "勾选参与检索的库", "group": "知识库", "params": [{ "name": "ids", "type": "string[]", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "kb.search", "title": "检索资料", "group": "知识库", "params": [{ "name": "query", "type": "string", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "kb.delete", "title": "删除/重建知识库", "group": "知识库", "params": [{ "name": "id", "type": "string", "required": true }], "context": [], "confirm": "destructive", "undo": true, "status": "ui" },
+    { "id": "kb.export", "title": "导出知识库/关键词过滤", "group": "知识库", "params": [{ "name": "libIds", "type": "string[]", "required": false }, { "name": "keyword", "type": "string", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ready", "command": "导出知识库里有关心衰的内容" },
+    { "id": "pdf.open", "title": "打开 PDF 阅读器", "group": "知识库", "params": [{ "name": "file", "type": "file", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "blocked" },
+
+    { "id": "import.paste", "title": "粘贴题目文本", "group": "导入", "params": [{ "name": "text", "type": "string", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "import.preview", "title": "解析预览", "group": "导入", "params": [{ "name": "text", "type": "string", "required": false }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "import.saveBank", "title": "保存为题库", "group": "导入", "params": [{ "name": "title", "type": "string", "required": true }, { "name": "questions", "type": "question[]", "required": true }], "context": [], "confirm": "normal", "undo": ["qbank.local.v2"], "status": "ready", "command": "把上面的题存成题库（并收藏）" },
+
+    { "id": "chat.send", "title": "发消息", "group": "对话", "params": [{ "name": "text", "type": "string", "required": true }, { "name": "atts", "type": "attachment[]", "required": false }], "context": ["chat"], "confirm": "none", "undo": false, "status": "ready" },
+    { "id": "chat.stop", "title": "停止生成", "group": "对话", "params": [], "context": ["chat"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "chat.attach", "title": "加附件", "group": "对话", "params": [{ "name": "files", "type": "file[]", "required": true }], "context": ["chat"], "confirm": "none", "undo": false, "status": "blocked" },
+    { "id": "chat.pickBanks", "title": "选题库", "group": "对话", "params": [{ "name": "refs", "type": "refs", "required": true }], "context": ["chat"], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "chat.new", "title": "新对话", "group": "对话", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "chat.switch", "title": "切换会话", "group": "对话", "params": [{ "name": "chatId", "type": "string", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "chat.delete", "title": "删除会话", "group": "对话", "params": [{ "name": "chatId", "type": "string", "required": true }], "context": [], "confirm": "destructive", "undo": ["qbank.chat.v2"], "status": "ui" },
+    { "id": "chat.undo", "title": "撤销上一步操作", "group": "对话", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ready" },
+    { "id": "chat.fullscreen", "title": "全屏对话", "group": "对话", "params": [], "context": [], "confirm": "none", "undo": false, "status": "ui" },
+    { "id": "chat.resize", "title": "调高主页对话", "group": "对话", "params": [{ "name": "height", "type": "integer", "required": true }], "context": [], "confirm": "none", "undo": false, "status": "ui" }
+  ],
+  "plans": [
+    {
+      "id": "wrong.tag.export",
+      "title": "这章错题打标签并导出",
+      "example": "把这章错题打上糖酵解标签，然后导出错题",
+      "steps": ["resolveBank:current", "filterQuestions:wrong", "tag.add:糖酵解", "exportWrong:md"],
+      "confirm": true
+    },
+    {
+      "id": "bank.deleteRange",
+      "title": "删题并更新统计",
+      "example": "删掉《X》第 3–5 题",
+      "steps": ["resolveBank:title", "question.bulkDelete:[3,4,5]", "stats.recalc"],
+      "confirm": "destructive"
+    },
+    {
+      "id": "quiz.saveFavoriteTag",
+      "title": "存题库并收藏打标签",
+      "example": "把刚才的题存成题库、收藏、再打糖酵解标签",
+      "steps": ["chat.lastQuiz", "import.saveBank", "question.favorite:all", "tag.aiOne:all"],
+      "confirm": true
+    }
+  ]
+}

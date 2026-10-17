@@ -152,11 +152,23 @@ body.nbm { user-select: none; -webkit-user-select: none; }
 .nb-crumb:hover { background: var(--primary-weak); border-color: var(--primary-line); }
 .nb-crumb.on { color: var(--text); font-weight: 700; background: var(--bg2); border-color: var(--line); }
 .nb-sep { color: var(--sub); }
-.nb-navbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nb-navbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }\n.nb-treetoggle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
 .nb-trow-root { cursor: pointer; }
 .nb-trow-root.on { background: var(--bg2); border-radius: var(--r-s); }
 .nb-tree { margin-top: 8px; max-height: 44vh; overflow: auto; }
 .nb-trow { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+
+/* 普通模式框选后的浮动操作条：一键加进 AI 对话 */
+.chat-sel-bar {
+  position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 28;
+  display: none; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 99px;
+  background: var(--card); border: 1px solid var(--primary-line);
+  box-shadow: var(--sh-pop); max-width: 94vw;
+}
+.chat-sel-bar.show { display: flex; }
+.chat-sel-bar .csb-t { font-size: calc(var(--fs) * .86); white-space: nowrap; }
 
 /* 批量管理：勾选框 / 选中态 / 底部固定操作条 */
 .nb-box {

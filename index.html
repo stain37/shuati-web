@@ -11,11 +11,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261020d">
+<link rel="stylesheet" href="style.css?v=20261028a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
-<link rel="stylesheet" href="cat.css?v=20261021a">
+<link rel="stylesheet" href="cat.css?v=20261029a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
-<link rel="stylesheet" href="chat.css?v=20261023a">
+<link rel="stylesheet" href="chat.css?v=20261029a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -29,6 +29,7 @@
 
 <div class="top">
   <div class="row">
+    <button class="btn" id="backFix" style="display:none" title="返回上一页">← 返回</button>
     <button class="btn" id="btnHome" style="display:none">⌂ 主页</button>
     <span class="title" id="appTitle">刷题站</span>
     <span class="stat" id="stat"></span>
@@ -178,7 +179,7 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261023a"></script>
+<script src="app.js?v=20261028a"></script>
 <script src="collection.js?v=20261019n"></script>
 <script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261019w"></script>
@@ -188,10 +189,10 @@
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261023a"></script>
+<script src="cat.js?v=20261029a"></script>
 <script src="bf.js?v=20261017e"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
-<script src="bf-folder.js?v=20261014e"></script>
+<script src="bf-folder.js?v=20261025a"></script>
 
 <!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
      它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
@@ -209,13 +210,14 @@
 <!-- 考点标签（tags.js，方案五）：考点词表可以由你批量导入（一行一个）或让 AI 起一份，
      然后让 AI 读每道题、从词表里挑标签贴上去；统计页的「按考点」只汇总这些贴好的标签。
      标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
-<script src="tags.js?v=20261018m"></script>
+<script src="tags.js?v=20261029a"></script>
 
 <!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
      让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->
 <script src="report.js?v=20261018h"></script>
-<script src="guide.js?v=20261022a"></script>
-<script src="chat.js?v=20261023b"></script>
+<script src="guide.js?v=20261024a"></script>
+<script src="chat.js?v=20261029b"></script>
+<script src="ai-ops.js?v=20261029c"></script>
 
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。

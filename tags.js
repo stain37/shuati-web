@@ -139,6 +139,7 @@
     return '<div class="tagrow" data-tagk="' + esc(k) + '">'
       + '<span class="tag-lab">考点</span>' + chips + none
       + '<button class="tagadd" data-tagedit="1" title="加考点标签（可以手动打字，也可以从词表里挑）">＋ 标签</button>'
+      + '<button class="tagadd tagai" data-tagai="1" title="让 AI 从词表里给这道题挑 1–3 个考点">AI 标签</button>'
       + '</div>';
   }
   function editorHtml(k) {
@@ -203,6 +204,16 @@
         if (!t) { if (inp) inp.focus(); return; }
         addTags(k, [t]); rememberVocab([t]);
         if (inp) { inp.value = ''; inp.focus(); }
+        return;
+      }
+      if (e.target.closest('[data-tagai]')) {
+        if (!TAGV.length) { if (typeof toast === 'function') toast('词表是空的：先去「学习统计 → 按考点」导入，或让 AI 起一份'); return; }
+        if (JOB.running) { if (typeof toast === 'function') toast('AI 正在批量打标签，等它跑完再试'); return; }
+        if (typeof toast === 'function') toast('AI 正在读这道题…', 1600);
+        aiTagOne(bank.id, q.id).then(function (r) {
+          if (r && r.ok) { if (typeof toast === 'function') toast('AI 已给这道题打上：' + r.tags.join('、')); }
+          else if (typeof toast === 'function') toast((r && r.err) || 'AI 打标签失败', 3000, 'bad');
+        });
         return;
       }
       if (e.target.closest('[data-tagedit]')) { openEdit(k); return; }
@@ -392,6 +403,38 @@
   }
 
   /* Step 2：分批分类 */
+  /* 单道题让 AI 从词表里挑标签：答题页的「AI 标签」按钮和对话里的「让 AI 给这道题打标签」都用它 */
+  async function aiTagOne(bankId, qid) {
+    var b = (typeof bankById === 'function') ? bankById(bankId) : null;
+    var q = b && (b.questions || []).find(function (x) { return String(x.id) === String(qid); });
+    if (!b || !q) return { ok: false, err: '题目不存在（可能刚被删了）' };
+    if (!TAGV.length) return { ok: false, err: '词表是空的，先导入或让 AI 起一份考点词表' };
+    if (JOB.running) return { ok: false, err: 'AI 正在批量打标签，等它跑完' };
+    if (!cfgOK()) return { ok: false, err: JOB.note || 'AI 还没配好' };
+    var prompt = '你是命题老师。给下面这道题选 1–3 个考点标签，标签**必须**从这份词表里选，不要自创：\n'
+      + '【词表】' + TAGV.join(' / ') + '\n\n'
+      + '只输出 JSON 数组，不要解释、不要代码块：["标签1","标签2"]\n\n'
+      + '【题目】\n' + qLine(q, 0);
+    try {
+      var txt = await aiChat([{ role: 'system', content: (typeof aiSysText === 'function') ? aiSysText() : '你是一位医学教研老师。' },
+        { role: 'user', content: prompt }], function () {});
+      var v = null;
+      try { v = JSON.parse(String(txt || '')); } catch (e) {}
+      if (!v) {
+        var m = String(txt || '').match(/\[[\s\S]*?\]/);
+        if (m) { try { v = JSON.parse(m[0]); } catch (e) {} }
+      }
+      if (v && !Array.isArray(v)) v = v.tags || v.tagsList || v['1'] || null;
+      var arr = norm([].concat(v || [])).filter(function (t) { return TAGV.indexOf(t) >= 0; }).slice(0, 3);
+      if (!arr.length) return { ok: false, err: '模型没挑出词表里的标签：' + String(txt || '').slice(0, 80) };
+      setTags(keyOf(b, q), arr, false);
+      save();
+      return { ok: true, tags: arr };
+    } catch (e) {
+      return { ok: false, err: (e && e.message) || String(e) };
+    }
+  }
+
   async function tagAll() {
     if (JOB.running) return;
     if (!cfgOK()) return;
@@ -637,7 +680,7 @@
     of: tagsOf, set: setTags, add: addTags, del: delTag, all: function () { return TAGV.slice(); },
     vocab: function () { return TAGV.slice(); }, rememberVocab: rememberVocab,
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
-    rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, stop: stop,
+    rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, aiOne: aiTagOne, stop: stop,
     save: function () { save(); saveVocab(); }, reload: function () { rd(); },
     parseVocabList: parseVocabList, addVocabBulk: addVocabBulk,
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,

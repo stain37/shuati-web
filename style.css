@@ -99,6 +99,13 @@ body.reduce-motion *{animation:none!important;transition:none!important}
 
 /* ===== 顶栏 ===== */
 .top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);box-shadow:var(--sh-1)}
+/* 返回键单独固定在视口左上角：顶栏滚出屏幕也点得到（JS 会把它挪到 body 下） */
+#backFix{position:fixed;left:12px;left:max(12px,calc((100vw - 940px)/2 + 12px));top:9px;z-index:28}
+body.has-back .top .row{padding-left:104px}
+@media (max-width:560px){
+  #backFix{left:10px;top:7px}
+  body.has-back .top .row{padding-left:92px}
+}
 .top .row{display:flex;align-items:center;gap:8px;padding:9px 14px;max-width:940px;margin:0 auto}
 .title{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0;cursor:pointer}
 .title:hover{color:var(--primary)}

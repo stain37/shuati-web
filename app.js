@@ -865,6 +865,11 @@ function renderInner() {
   $('btnGrid').style.display = 'none';
   $('btnQuizSet').style.display = 'none';
   $('btnHome').style.display = r.name === 'home' ? 'none' : '';
+  /* 固定返回键：非首页都显示；挪到 body 下才不会被顶栏的 backdrop-filter 限制成随顶栏滚走 */
+  var bfEl = $('backFix');
+  if (bfEl && bfEl.parentNode !== document.body) document.body.appendChild(bfEl);
+  if (bfEl) bfEl.style.display = r.name === 'home' ? 'none' : '';
+  document.body.classList.toggle('has-back', r.name !== 'home');
   /* 底部导航的六个去处：不分页面，一直显示 */
   $('btnGoWrong').style.display = '';
   $('btnGoFav').style.display = '';
@@ -2626,6 +2631,8 @@ on('btnGrid', () => { renderGrid(); $('gridMask').classList.add('show'); });
 on('jumpInfo', () => { renderGrid(); $('gridMask').classList.add('show'); });
 on('gridClose', closeAll);
 on('btnHome', () => go('#/'));
+/* 固定返回键：优先浏览器历史（hash 返回），直接打开的子页就回首页 */
+on('backFix', () => { try { if (history.length > 1) history.back(); else go('#/'); } catch (e) { go('#/'); } });
 on('bnHome', () => go('#/'));
 on('appTitle', () => go('#/'));
 on('btnGoWrong', () => go('#/wrong'));

@@ -28,10 +28,12 @@
   var CAT = null;                        // [{ id, title, parent, order }]
   var CUR = null;                        // 当前目录 id（null = 根）
   var CUR_SET = false;                   // 本次打开页面是否已确定过目录（避免被存档顶回去）
+  var TREE_OPEN = false;                  // 目录树是否展开（从树里点目录后保持展开，不再自动收起）
   var QUERY = '';                        // 当前目录内的搜索词
   var DRAG = null;                       // { type:'cat'|'bank', id, banks:[], cats:[], batch } —— 批量模式下带的是一批
   var LOCK = false;                      // 正在写数据，避免重复触发
   var BATCH = null;                      // 批量管理：null = 关闭；开启时 { sel: { 题库id: 1 } }
+  var CHAT_SEL = null;                   // 普通模式框选用：{ banks:{id:1}, cats:{id:1} }，用来拖 / 一键加进 AI 对话
 
   /* ---------- 小工具（都在 app.js 里，但这里做一次安全取值） ---------- */
   function T(msg, ms) {
@@ -342,6 +344,10 @@
      目录卡片照常点进去，多一个「选中本目录题库」的按钮，可以整目录勾选。 */
   function batOn() { return !!BATCH; }
   function batSel(id) { return !!(BATCH && BATCH.sel[id]); }
+  function chatSelOn() { return !!CHAT_SEL; }
+  function chatSelB(id) { return !!(CHAT_SEL && CHAT_SEL.banks[id]); }
+  function chatSelC(id) { return !!(CHAT_SEL && CHAT_SEL.cats[id]); }
+  function chatSelCount() { return CHAT_SEL ? (Object.keys(CHAT_SEL.banks).length + Object.keys(CHAT_SEL.cats).length) : 0; }
   function batCount() { return BATCH ? Object.keys(BATCH.sel).length : 0; }
   function batBanks() {
     if (!BATCH) return [];
@@ -450,9 +456,9 @@
   function bankCardHtml(b, inSearch) {
     var s = bankStat(b);
     var crumb = inSearch ? pathOf(b.cat || null).map(TITLE).join(' › ') : '';
-    var pick = batOn(), on = pick && batSel(b.id);
+    var pick = batOn(), on = (pick && batSel(b.id)) || chatSelB(b.id);
     return '<div class="nb-card nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true">'
-      + (pick ? '<span class="nb-box' + (on ? ' on' : '') + '" aria-hidden="true"></span>' : '')
+      + ((pick || chatSelOn()) ? '<span class="nb-box' + (on ? ' on' : '') + '" aria-hidden="true"></span>' : '')
       + '<span class="nb-ic">' + ICON_BANK + '</span>'
       + '<div class="nb-info">'
       + '<div class="nb-name">' + E(b.title)
@@ -607,7 +613,12 @@
         + bsorted.map(function (b) { return bankRowHtml(b, false); }).join('');
       var det = detailsHtml(dirs, bsorted, false);
       var agg = CUR ? subStat(CUR) : null;
-      body = sechead(E(curTitle))
+      body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
+        + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
+        + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
+        + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
+        + '</div>'
+        + sechead(E(curTitle), true)
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
         + ((icons || det) ? viewWrap(icons, rows, det) : emptyHint());
     }
@@ -633,16 +644,16 @@
       + '</div></div>'
       + bentoHtml
       + ((typeof firstGuideHtml === 'function') ? firstGuideHtml() : '')
-      + '<div class="nb-nav" id="nbNav">'
-      + '<div class="nb-crumbs">' + crumbHtml() + '</div>'
-      + '<div class="nb-navbtns">'
-      + (CUR ? '<button class="btn small" data-act="up">↑ 上一级</button>' : '')
-      + '<button class="btn small" data-act="expandAll">展开 / 收起目录树</button>'
-      + (DRAG ? '<button class="btn small primary" data-act="dropshow">放到这里</button><button class="btn small" data-act="dropcancel">取消移动</button>' : '')
-      + '</div>'
-      + '<div id="nbTree" class="nb-tree" style="display:none"></div>'
-      + '</div>'
+      + ((BATCH || DRAG)
+        ? '<div class="nb-nav" id="nbNav">'
+        + '<div class="nb-crumbs">' + crumbHtml() + '</div>'
+        + '<div class="nb-navbtns">'
+        + (DRAG ? '<button class="btn small primary" data-act="dropshow">放到这里</button><button class="btn small" data-act="dropcancel">取消移动</button>' : '')
+        + '</div>'
+        + '</div>'
+        : '')   /* 平时不显示面包屑卡片；只有拖动 / 移动模式才出现（那时需要「放到这里」） */
       + '<div class="toolbar main">'
+      + (CUR ? '<button class="btn" data-act="up">↑ 上一级</button>' : '')
       + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button>'
       + (dueN ? '<button class="btn primary" id="toReview" data-act="review" data-n="' + (srsCap && dueN > srsCap ? srsCap : dueN) + '">今日复习 ' + (srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN) + ' 题</button>' : '')
       + '<button class="btn" id="toRand" data-act="randall">随机抽 30 题</button>'
@@ -659,12 +670,7 @@
         : '<button class="btn" data-act="batch">批量管理题库</button>')
       + '</div>'
       + toolbarHtml()
-      + '<div class="card chat-entry" id="chatEntry">'
-      + '<div class="ce-t">💬 AI 对话 <span class="small muted">出题 / 问知识点 / 分析我的题库</span></div>'
-      + '<div class="ce-d small muted">选好知识库，输入知识点就能出题；也可以把题库卡片 / 目录拖到这个卡片上，或者点「选题库」——它会带上你的作答记录总结易错点。</div>'
-      + '<div class="ce-acts"><button class="btn primary" data-act="go" data-hash="#/chat">打开对话</button>'
-      + '<span class="small muted">能直接拖题库 / 目录 / 题库文件 / 整个文件夹上来</span></div>'
-      + '</div>'
+      + '<div id="chatHome"></div>'   /* AI 对话（chat.js 往这里画）：下面就是题库列表，拖上来就能分析 */
       + body
       + (paperList ? '<h2 class="sec">临时套卷</h2>' + paperList : '')
       + '<div id="bfBoot"></div>'
@@ -735,11 +741,15 @@
       return '<button class="vb' + (cur === x[0] ? ' on' : '') + '" data-act="isize" data-v="' + x[0] + '" aria-pressed="' + (cur === x[0]) + '" title="图标大小：' + x[1] + '"><i class="' + x[2] + '"></i></button>';
     }).join('') + '</span></span>';
   }
-  function sechead(title) { return '<div class="sechead"><h2 class="sec">' + title + '</h2>' + viewToggleHtml() + '</div>'; }
+  function sechead(title, withChat) {
+    return '<div class="sechead"><h2 class="sec">' + title + '</h2>'
+      + (withChat ? '<button class="btn small" data-act="chatAll" title="把当前目录（含子目录）的题库都加进 AI 对话">💬 全部加进对话</button>' : '')
+      + viewToggleHtml() + '</div>';
+  }
   function catRowHtml(c, inSearch) {
     var s = subStat(c.id);
     var crumb = inSearch ? pathOf(c.parent || null).map(TITLE).join(' › ') : '';
-    return '<div class="nb-lrow nb-ldir' + (batSelC(c.id) ? ' nb-on' : '') + '" data-trow="' + E(c.id) + '" draggable="true">'
+    return '<div class="nb-lrow nb-ldir' + (((batOn() && batSelC(c.id)) || chatSelC(c.id)) ? ' nb-on' : '') + '" data-trow="' + E(c.id) + '" draggable="true">'
       + '<span class="nb-lic">' + ICON_FOLDER + '</span>'
       + '<div class="nb-linfo"><div class="nb-lname">' + E(TITLE(c)) + '</div>'
       + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '') + s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done + '</div></div>'
@@ -751,7 +761,7 @@
   function bankRowHtml(b, inSearch) {
     var s = bankStat(b);
     var crumb = inSearch ? pathOf(b.cat || null).map(TITLE).join(' › ') : '';
-    var pick = batOn(), on = pick && batSel(b.id);
+    var pick = batOn(), on = (pick && batSel(b.id)) || chatSelB(b.id);
     return '<div class="nb-lrow nb-lbank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true">'
       + '<span class="nb-lic">' + ICON_BANK + '</span>'
       + '<div class="nb-linfo"><div class="nb-lname">' + E(b.title)
@@ -775,8 +785,8 @@
   /* 图标视图：图标在上、名字在下（像访达的图标视图）。
      用 .nb-dir / .nb-bank 两个类，bind() 里现成的点击/双击就能用，不用额外绑。 */
   function catIconHtml(c) {
-    var s = subStat(c.id);
-    return '<div class="nb-icon nb-dir' + (batSelC(c.id) ? ' nb-on' : '') + '" data-cat="' + E(c.id) + '" draggable="true" title="' + E(TITLE(c)) + (batOn() ? '（单击选中 / 双击进入）' : '（双击或点名字进入）') + '">'
+    var s = subStat(c.id), on = (batOn() && batSelC(c.id)) || chatSelC(c.id);
+    return '<div class="nb-icon nb-dir' + (on ? ' nb-on' : '') + '" data-cat="' + E(c.id) + '" draggable="true" title="' + E(TITLE(c)) + (batOn() ? '（单击选中 / 双击进入）' : '（双击或点名字进入）') + '">'
       + '<span class="nb-iic">' + ICON_FOLDER + '</span>'
       + '<span class="nb-iname">' + E(TITLE(c)) + '</span>'
       + '<span class="nb-imeta">' + s.banks + ' 个库 · ' + s.q + ' 题</span>'
@@ -784,7 +794,7 @@
       + '</div>';
   }
   function bankIconHtml(b) {
-    var s = bankStat(b), pick = batOn(), on = pick && batSel(b.id);
+    var s = bankStat(b), pick = batOn(), on = (pick && batSel(b.id)) || chatSelB(b.id);
     return '<div class="nb-icon nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true" title="' + E(b.title) + '（' + b.questions.length + ' 题）">'
       + '<span class="nb-iic">' + ICON_BANK + '</span>'
       + '<span class="nb-iname">' + E(b.title) + '</span>'
@@ -833,7 +843,7 @@
       var acts = it.kind === 'dir'
         ? '<button class="btn tiny" data-act="open" data-id="' + E(it.id) + '">打开</button><button class="btn tiny" data-act="menu" data-id="' + E(it.id) + '">⋯</button>'
         : '<button class="btn tiny primary" data-act="start" data-id="' + E(it.id) + '">' + (it.done ? '继续' : '开始') + '</button><button class="btn tiny" data-act="more" data-id="' + E(it.id) + '">⋯</button>';
-      var on = it.kind === 'dir' ? batSelC(it.id) : batSel(it.id);
+      var on = it.kind === 'dir' ? ((batOn() && batSelC(it.id)) || chatSelC(it.id)) : ((batOn() && batSel(it.id)) || chatSelB(it.id));
       return '<tr class="nb-drow nb-' + it.kind + (on ? ' nb-on' : '') + '" ' + attr + ' draggable="true">'
         + '<td class="nb-dname"><span class="nb-dic">' + (it.kind === 'dir' ? ICON_FOLDER : ICON_BANK) + '</span>'
         + '<span class="nb-dtext">' + E(it.name) + (it.crumb ? '<span class="small muted">　在 ' + E(it.crumb) + '</span>' : '') + '</span></td>'
@@ -932,6 +942,8 @@
     }
     bind(holder);
     if (typeof BF !== 'undefined' && BF.boot) BF.boot();
+    /* AI 对话（chat.js）：主页每次重画后把对话卡片挂回来（对话记录 / 附件在 chat.js 里自己记着） */
+    try { if (window.CHAT && CHAT.mountHome) CHAT.mountHome(holder); } catch (e) {}
   }
 
   /* ---------- 事件绑定（都在 holder 内，重渲染后重新绑一次） ---------- */
@@ -955,7 +967,7 @@
         if (DRAG && !inTree) { dropInto(row.dataset.trow); return; }
         /* 批量模式：列表里的目录行也是「单击选中」（目录树 #nbTree 里的行除外，那是导航） */
         if (BATCH && row.dataset.trow && !inTree) { batToggleC(row.dataset.trow); repaint(); return; }
-        openDir(row.dataset.trow);
+        openDir(row.dataset.trow, inTree ? 'tree' : undefined);
       };
     });
     /* 7.1 目录树点不动：`#nbTree` 初始是空的，树节点是点「展开 / 收起目录树」
@@ -966,9 +978,12 @@
       tree.__trowBound = true;
       tree.addEventListener('click', function (e) {
         var row = e.target.closest ? e.target.closest('[data-trow]') : null;
-        if (row && tree.contains(row)) { openDir(row.dataset.trow); return; }
+        if (row && tree.contains(row)) {
+          if (!row.onclick) openDir(row.dataset.trow, 'tree');   /* 已经绑过 onclick 的行会自己带 tree 参数，别重复跳 */
+          return;
+        }
         var act = e.target.closest ? e.target.closest('[data-act="open"]') : null;
-        if (act && tree.contains(act) && act.dataset.id !== undefined) { openDir(act.dataset.id); }
+        if (act && tree.contains(act) && act.dataset.id !== undefined) { openDir(act.dataset.id, 'tree'); }
       });
     }
     /* 兜底：万一还有别处（例如 app.js 自己那版首页）渲染出 data-start / data-delpaper 的按钮，
@@ -1073,7 +1088,7 @@
     if (typeof makePaper === 'function') makePaper(b.title + ' · 模拟考试', keys, { exam: true, duration: keys.length * 60 });
   }
 
-  function openDir(id) {
+  function openDir(id, from) {
     ensure();
     if (id && !byId(id)) id = null;
     CUR = id || null;
@@ -1081,6 +1096,13 @@
     QUERY = '';
     try { localStorage.setItem(CUR_KEY, JSON.stringify({ id: CUR, ts: Date.now() })); } catch (e) {}
     repaint();
+    if (from === 'tree') {
+      /* 从目录树里点进来：树保持展开，滚回树/列表这一块，不要弹回页面最上面 */
+      TREE_OPEN = true;
+      var t = document.getElementById('nbTree');
+      if (t) { try { t.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { try { t.scrollIntoView(true); } catch (e2) {} } }
+      return;
+    }
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
   }
 
@@ -1092,7 +1114,16 @@
   /* ---------- 菜单与动作 ---------- */
   function doAct(act, id, el, host) {
     switch (act) {
-      case 'open': openDir(id || null); break;
+      case 'open': openDir(id || null, (el && el.closest && el.closest('#nbTree')) ? 'tree' : undefined); break;
+      case 'chatAll': {
+        var chatIds = CUR ? [CUR].concat(descIds(CUR)) : null;
+        var chatList = bankList().filter(function (b) { return !b.paper && (!chatIds || chatIds.indexOf(b.cat) >= 0); });
+        var chatN = (window.CHAT && CHAT.addRef) ? CHAT.addRef({ banks: chatList.map(function (b) { return b.id; }), cats: [] }) : 0;
+        if (chatN) T('已加进 AI 对话：' + chatN + ' 个题库');
+        else if (!window.CHAT) T('对话模块没加载');
+        else T('这些题库已经在对话里了');
+        break;
+      }
       /* 7.2 视图切换：卡片 ▦ / 列表 ☰（存 qbank.view.v1，刷新记住） */
       case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'icon'); repaint(); break;
       case 'isize': setIconSize(el && el.dataset ? el.dataset.v : 'md'); repaint(); break;
@@ -1107,7 +1138,7 @@
       case 'rand': if (typeof randomPaper === 'function') randomPaper([bankOf(id)], 30); break;
       case 'move': askMoveBank(id); break;
       /* 批量管理 */
-      case 'batch': BATCH = { sel: {}, cat: {} }; DRAG = null; LOCK = false; T('批量管理：单击题库 / 目录选中，双击目录进去接着选'); repaint(); break;
+      case 'batch': BATCH = { sel: {}, cat: {} }; DRAG = null; LOCK = false; hideChatSlot(); CHAT_SEL = null; hideChatSelBar(); T('批量管理：单击题库 / 目录选中，双击目录进去接着选'); repaint(); break;
       case 'batchExit': BATCH = null; repaint(); break;
       case 'batchDir': batPickDir(id); break;
       case 'bAll': if (!BATCH) break; visibleBanks().forEach(function (b) { BATCH.sel[b.id] = 1; }); visibleCats().forEach(function (c) { BATCH.cat[c.id] = 1; }); repaint(); break;
@@ -1118,7 +1149,7 @@
       case 'more': bankMenu(id); break;
       case 'menu': catMenu(id); break;
       case 'dropshow': askMoveByPick(); break;
-      case 'dropcancel': DRAG = null; LOCK = false; repaint(); break;
+      case 'dropcancel': DRAG = null; LOCK = false; hideChatSlot(); repaint(); break;
       /* 首页那排按钮：走这里跳转，不靠 app.js 在 renderHome 里的 id 绑定
          （它绑的是被我们替换掉的那一排，绑完那些节点就被撤了，所以以前点不动） */
       case 'go': if (typeof go === 'function' && el && el.dataset.hash) go(el.dataset.hash); break;
@@ -1128,7 +1159,15 @@
       case 'help': if (typeof showHelp === 'function') showHelp(); break;
       case 'expandAll':
         var t = host.querySelector('#nbTree');
-        if (t) { var open = t.style.display === 'none'; t.style.display = open ? 'block' : 'none'; if (open) t.innerHTML = treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>'; }
+        if (t) {
+          var open = t.style.display === 'none';
+          TREE_OPEN = open;
+          t.style.display = open ? 'block' : 'none';
+          if (open) {
+            if (!t.innerHTML) t.innerHTML = treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>';
+            try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { try { t.scrollIntoView(false); } catch (e2) {} }
+          }
+        }
         break;
       default: break;
     }
@@ -1266,6 +1305,7 @@
       if (typeof LOCAL !== 'undefined' && Array.isArray(LOCAL)) {
         LOCAL = LOCAL.filter(function (x) { return x.id !== b.id; });
       }
+      try { if (window.TAGS && TAGS.dropBank) TAGS.dropBank(b.id); } catch (e) {}
       try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}
     });
     if (qn) {
@@ -1277,6 +1317,16 @@
       notifyFile();
     }
     return qn;
+  }
+
+  /* 给 AI 对话用的删题库入口：只删自建题库，返回删了什么（撤销由 chat.js 快照负责） */
+  function deleteBanksPublic(ids) {
+    var list = (ids || []).map(function (id) { return bankOf(id); })
+      .filter(function (b) { return b && b.source === 'local' && !b.paper; });
+    if (!list.length) return { n: 0, q: 0, titles: [] };
+    var qn = purgeBanks(list);
+    try { if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
+    return { n: list.length, q: qn, titles: list.map(function (b) { return b.title; }) };
   }
 
   /* 删除目录（连内容一起删）：自己 + 所有子孙目录 + 子树里所有题库，一次清干净 */
@@ -1606,7 +1656,12 @@
   function dragSet(ref) {
     var banks = [], cats = [];
     if (ref.kind === 'bank') banks = [ref.id]; else cats = [ref.id];
-    var batch = false;
+    var batch = false, chat = false;
+    if (!BATCH && CHAT_SEL && ((ref.kind === 'bank' && CHAT_SEL.banks[ref.id]) || (ref.kind === 'cat' && CHAT_SEL.cats[ref.id]))) {
+      banks = Object.keys(CHAT_SEL.banks);
+      cats = Object.keys(CHAT_SEL.cats);
+      chat = true;
+    }
     if (BATCH) {
       var isSel = (ref.kind === 'bank' && batSel(ref.id)) || (ref.kind === 'cat' && batSelC(ref.id));
       if (isSel) {
@@ -1615,14 +1670,15 @@
         batch = true;
       }
     }
-    return { type: ref.kind, id: ref.id, banks: banks, cats: cats, batch: batch };
+    return { type: ref.kind, id: ref.id, banks: banks, cats: cats, batch: batch, chat: chat };
   }
   function dragCount() { return DRAG ? ((DRAG.banks || []).length + (DRAG.cats || []).length) : 0; }
   /* 点空白处就取消选中，避免一直卡在移动模式（弹窗里点目标不算「点空白」，否则「放到这里」选完就失效） */
   document.addEventListener('click', function (e) {
     if (!DRAG) return;
-    if (e.target.closest && (e.target.closest('.nb-card') || e.target.closest('[data-act]') || e.target.closest('.mask'))) return;
+    if (e.target.closest && (e.target.closest('.nb-card') || e.target.closest('[data-act]') || e.target.closest('.mask') || e.target.closest('#chatDropSlot'))) return;
     DRAG = null;
+    hideChatSlot();
     repaint();
   });
   /* ---------- 7.4 框选（拉方框批量选）：批量模式下，在空白处拖着拉出一个方框，
@@ -1631,8 +1687,54 @@
      · 点在题/目录/按钮上不拉框，交给原来的点击选中
      · 默认【替换】当前选择；按住 Ctrl / ⌘ / Shift 是【追加】
      · 拉框过程中框到的先高亮预览（.nb-hit），松手才真的写进 BATCH.sel */
+  /* 普通模式的框选：拉一个方框选中多个题库 / 目录，然后拖任意一个到 AI 对话，
+     或点下方「加进 AI 对话」。和批量管理的选中互不影响。 */
+  function chatSelBar() {
+    var b = document.getElementById('chatSelBar');
+    if (b) return b;
+    b = document.createElement('div');
+    b.id = 'chatSelBar';
+    b.className = 'chat-sel-bar';
+    b.innerHTML = '<span class="csb-t">已选 <b id="csbN">0</b> 项</span>'
+      + '<button class="btn tiny primary" data-sel="add">💬 加进 AI 对话</button>'
+      + '<button class="btn tiny" data-sel="clear">取消</button>';
+    b.querySelector('[data-sel="add"]').onclick = function () {
+      if (!CHAT_SEL) return;
+      var ref = { banks: Object.keys(CHAT_SEL.banks), cats: Object.keys(CHAT_SEL.cats) };
+      var n = (window.CHAT && CHAT.addRef) ? CHAT.addRef(ref) : 0;
+      if (n) T('已加进 AI 对话：' + n + ' 项');
+      else if (!window.CHAT) T('对话模块没加载');
+      else T('这些内容已经在对话里了');
+      chatSelClear();
+    };
+    b.querySelector('[data-sel="clear"]').onclick = chatSelClear;
+    document.body.appendChild(b);
+    return b;
+  }
+  function showChatSelBar() {
+    var b = chatSelBar();
+    b.querySelector('#csbN').textContent = chatSelCount();
+    b.classList.toggle('show', chatSelCount() > 0);
+  }
+  function hideChatSelBar() {
+    var b = document.getElementById('chatSelBar');
+    if (b) b.classList.remove('show');
+  }
+  function chatSelPaint(box) {
+    (box || document).querySelectorAll('.nb-bank, .nb-dir, .nb-lbank, .nb-ldir, .nb-drow').forEach(function (el) {
+      var ref = cardRefOf(el);
+      if (!ref) return;
+      var on = ref.kind === 'bank' ? chatSelB(ref.id) : chatSelC(ref.id);
+      el.classList.toggle('nb-on', !!on);
+    });
+  }
+  function chatSelClear() {
+    CHAT_SEL = null;
+    document.querySelectorAll('.nb-on').forEach(function (el) { el.classList.remove('nb-on'); });
+    hideChatSelBar();
+  }
+
   function attachMarquee(host) {
-    if (!BATCH) return;
     var box = host.querySelector('.nb-icons, .nb-list, .nb-details');
     if (!box || box.dataset.marq) return;
     box.dataset.marq = '1';
@@ -1667,7 +1769,18 @@
         if (!ref) return;
         if (ref.kind === 'bank') hb.push(ref.id); else hc.push(ref.id);
       });
-      if (!BATCH) return;
+      if (!BATCH) {
+        /* 普通模式：框选结果放在 CHAT_SEL，用来拖 / 加进 AI 对话；不重画页面，保留滚动位置 */
+        if (!CHAT_SEL) CHAT_SEL = { banks: {}, cats: {} };
+        if (!additive) { CHAT_SEL.banks = {}; CHAT_SEL.cats = {}; }
+        hb.forEach(function (id) { CHAT_SEL.banks[id] = 1; });
+        hc.forEach(function (id) { CHAT_SEL.cats[id] = 1; });
+        if (!chatSelCount()) { CHAT_SEL = null; hideChatSelBar(); T('没框到东西'); return; }
+        chatSelPaint(box);
+        showChatSelBar();
+        T('已框选 ' + hb.length + ' 个题库' + (hc.length ? ' · ' + hc.length + ' 个目录' : '') + '：拖其中一个到上方 AI 对话，或点下方「加进 AI 对话」');
+        return;
+      }
       if (!BATCH.cat) BATCH.cat = {};
       if (!additive) {
         Object.keys(BATCH.sel).forEach(function (k) { delete BATCH.sel[k]; });
@@ -1697,6 +1810,47 @@
     box.addEventListener('pointercancel', finish);
   }
 
+  /* 拖题库 / 目录时，固定在页面顶部出现「加进 AI 对话」的投放条。
+     这样不管列表滚到多下面、对话框在不在视野里，都能直接松手放进去。 */
+  function chatSlotEl() {
+    var s = document.getElementById('chatDropSlot');
+    if (s) return s;
+    s = document.createElement('div');
+    s.id = 'chatDropSlot';
+    s.className = 'chat-drop-slot';
+    s.innerHTML = '<span>💬</span><span>松手 / 点一下：加进 AI 对话</span>';
+    function accept(e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      var ref = DRAG;
+      s.classList.remove('show', 'hot');
+      if (!ref) return;
+      var n = (window.CHAT && CHAT.addRef) ? CHAT.addRef(ref) : 0;
+      DRAG = null; LOCK = false;
+      if (chatSelCount()) chatSelClear();
+      document.querySelectorAll('.dragging').forEach(function (x) { x.classList.remove('dragging'); });
+      if (n) T('已加进 AI 对话：' + n + ' 项');
+      else if (!window.CHAT) T('对话模块没加载');
+      else T('这些内容已经在对话里了');
+    }
+    s.addEventListener('dragover', function (e) {
+      if (!DRAG) return;
+      e.preventDefault(); e.stopPropagation();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+      s.classList.add('hot');
+    });
+    s.addEventListener('dragleave', function () { s.classList.remove('hot'); });
+    s.addEventListener('drop', accept);
+    s.addEventListener('click', accept);
+    document.body.appendChild(s);
+    return s;
+  }
+  function showChatSlot() { try { chatSlotEl().classList.add('show'); } catch (e) {} }
+  function hideChatSlot() {
+    var s = document.getElementById('chatDropSlot');
+    if (s) s.classList.remove('show', 'hot');
+  }
+  document.addEventListener('drop', function () { setTimeout(hideChatSlot, 30); }, true);
+
   function attachDrag(host) {
     var cards = host.querySelectorAll('.nb-card[draggable="true"], .nb-icon[draggable="true"], .nb-lrow[draggable="true"], .nb-drow[draggable="true"]');
     cards.forEach(function (card) {
@@ -1707,8 +1861,9 @@
         setDrag(dragSet(ref));
         try { e.dataTransfer.setData('text/plain', ref.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
         card.classList.add('dragging');
+        showChatSlot();
       });
-      card.addEventListener('dragend', function () { card.classList.remove('dragging'); });
+      card.addEventListener('dragend', function () { card.classList.remove('dragging'); hideChatSlot(); });
       /* 触摸：长按 350ms 进入移动模式（批量模式下只有已选中的条目能长按，免得误触） */
       var lp = null, sx = 0, sy = 0;
       card.addEventListener('pointerdown', function (e) {
@@ -1721,8 +1876,9 @@
           setDrag(dragSet(ref));
           card.classList.add('dragging');
           if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
-          T('已选中 ' + dragCount() + ' 项，点「放到这里」选目标目录');
+          T('已选中 ' + dragCount() + ' 项，可以直接点上面的「💬 加进 AI 对话」，或点「放到这里」选目标目录');
           repaint();
+          showChatSlot();
         }, 350);
       });
       card.addEventListener('pointermove', function (e) {
@@ -1739,14 +1895,14 @@
       if (el.__nbDropBound) return;
       el.__nbDropBound = true;
       el.addEventListener('dragover', function (e) {
-        if (!DRAG || targetDirOf(el) === undefined) return;
+        if (!DRAG || DRAG.chat || targetDirOf(el) === undefined) return;
         e.preventDefault();
         el.classList.add('drop-tgt');
       });
       el.addEventListener('dragleave', function () { el.classList.remove('drop-tgt'); });
       el.addEventListener('drop', function (e) {
         el.classList.remove('drop-tgt');
-        if (!DRAG) return;
+        if (!DRAG || DRAG.chat) return;
         var dir = targetDirOf(el);
         if (dir === undefined) return;
         e.preventDefault();
@@ -1757,9 +1913,9 @@
     /* 空白处放下 = 移到当前目录 */
     if (!host._nbDropBound) {
       host._nbDropBound = true;
-      host.addEventListener('dragover', function (e) { if (DRAG) e.preventDefault(); });
+      host.addEventListener('dragover', function (e) { if (DRAG && !DRAG.chat) e.preventDefault(); });
       host.addEventListener('drop', function (e) {
-        if (!DRAG) return;
+        if (!DRAG || DRAG.chat) return;
         e.preventDefault();
         dropInto(CUR);
       });
@@ -2066,6 +2222,9 @@
     render: repaint,
     reload: function () { try { CAT = null; ensure(); hookHome(); } catch (e) {} },
     batch: function () { return BATCH ? { n: batCount(), ids: Object.keys(BATCH.sel) } : null; },
+    chatSel: function () { return CHAT_SEL ? { banks: Object.keys(CHAT_SEL.banks), cats: Object.keys(CHAT_SEL.cats) } : null; },
+    clearChatSel: function () { chatSelClear(); },
+    deleteBanks: deleteBanksPublic,
     visibleBanks: visibleBanks,
     openDir: openDir,
     menu: catMenu,              // 目录「⋯」菜单（测试/自动化用）
