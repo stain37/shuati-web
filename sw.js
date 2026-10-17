@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v68-web101';  // 2026-10-17：AI 操作层阶段 1 加固（票据真键+迁移、版本号 fencing、每步 kill、partial、中断横幅、问句豁免、意图层修补）+ 出题识别/题库格式兼容（web101）
+const VERSION = 'shuati-v68-web102';  // 2026-10-17：AI 操作层阶段 1 加固（票据真键+迁移、版本号 fencing、每步 kill、partial、中断横幅、问句豁免、意图层修补）+ 出题识别/题库格式兼容（web101）+ 暗色光弥散/动效（web102）
 const CORE = [
   './',
   './index.html',
@@ -29,6 +29,8 @@ const CORE = [
   './chat.js',
   './ai-ops.js',
   './chat.css',
+  './motion.css',
+  './motion.js',
   './bf.js',
   './bfui.js',
   './bfui.css',

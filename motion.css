@@ -1,0 +1,104 @@
+/* ============================================================
+   motion.css — 光弥散 / 悬停 / 入场（只做氛围，不改布局）
+   ------------------------------------------------------------
+   · 暗色：hero、卡片、主按钮周围有很淡的色光弥散
+   · hero：鼠标移动时有一团跟随的柔光（--mx/--my）
+   · 暗色 hero 标题强制白字，避免被主题色/渐变文字规则染蓝
+   · 全部动效尊重 prefers-reduced-motion
+   ============================================================ */
+
+:root{
+  --glow-1: color-mix(in srgb, var(--primary) 45%, transparent);
+  --glow-2: color-mix(in srgb, var(--a3, #38bdf8) 32%, transparent);
+}
+body.dark{
+  --glow-1: color-mix(in srgb, var(--primary) 58%, transparent);
+  --glow-2: color-mix(in srgb, var(--a3, #38bdf8) 42%, transparent);
+}
+
+/* ---------- hero：指针柔光 + 暗色外扩光晕 ---------- */
+.hero{
+  background-image:
+    radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,.16), transparent 46%),
+    var(--grad);
+  transition: box-shadow .3s ease, transform .25s ease;
+}
+body.dark .hero{
+  background-image:
+    radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, #fff 13%, transparent), transparent 46%),
+    var(--grad);
+  box-shadow:
+    var(--sh-3),
+    0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent),
+    0 26px 72px -30px var(--glow-1),
+    0 0 104px -38px var(--glow-2);
+}
+
+/* 暗色下「刷题站」大标题必须是白字；即使别的主题给它加了渐变/文字填充也压掉 */
+body.dark .hero h1{
+  color:#fff !important;
+  -webkit-text-fill-color:#fff !important;
+  background:none !important;
+  text-shadow:0 0 22px color-mix(in srgb, #fff 18%, transparent);
+}
+body.dark .top .title{color:var(--text)}
+
+/* ---------- 卡片：暗色常驻微光，hover 时轻微扩散 ---------- */
+body.dark .bank,
+body.dark .resume,
+body.dark .kbcard,
+body.dark .card{
+  box-shadow:
+    var(--sh-card),
+    0 0 0 1px color-mix(in srgb, var(--primary) 6%, transparent),
+    0 0 32px -26px var(--glow-1);
+}
+body.dark .bank:hover,
+body.dark .resume:hover,
+body.dark .kbcard:hover,
+body.dark .card:hover{
+  box-shadow:
+    var(--sh-2),
+    0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent),
+    0 0 58px -20px var(--glow-1);
+}
+
+/* ---------- 主按钮 / 发送键：轻微光晕 ---------- */
+body.dark .btn.primary,
+body.dark .ch-send,
+body.dark .chat-send{
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent),
+    0 8px 26px -14px var(--glow-1);
+}
+body.dark .hero .hstat>button.hs:hover{
+  box-shadow:0 0 0 1px rgba(255,255,255,.30), 0 12px 30px -14px rgba(0,0,0,.55);
+}
+
+/* ---------- 悬停上浮 / 按下反馈 ---------- */
+@media (hover:hover){
+  .bank{transition:transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s, border-color .2s}
+  .bank:hover{transform:translateY(-2px)}
+  .btn{transition:background .15s, border-color .15s, box-shadow .15s, transform .12s}
+  .btn:hover:not(:disabled){transform:translateY(-1px)}
+  .btn:active:not(:disabled){transform:translateY(0) scale(.985)}
+}
+
+/* ---------- 首屏轻量入场 ---------- */
+@keyframes motionRise{
+  from{opacity:0; transform:translateY(10px)}
+  to{opacity:1; transform:translateY(0)}
+}
+html.motion-ok .hero{animation:motionRise .5s cubic-bezier(.2,.8,.2,1) both}
+html.motion-ok .resume{animation:motionRise .5s .04s cubic-bezier(.2,.8,.2,1) both}
+
+/* ---------- 减少动态偏好：全部退回静态 ---------- */
+@media (prefers-reduced-motion: reduce){
+  html.motion-ok .hero,
+  html.motion-ok .resume{animation:none !important}
+  .hero{background-image:var(--grad) !important}
+  .bank,.btn,.hero{transition:none !important}
+  .bank:hover,.btn:hover:not(:disabled),.btn:active:not(:disabled){transform:none !important}
+}
+tn:hover:not(:disabled),.btn:active:not(:disabled){transform:none !important}
+}
