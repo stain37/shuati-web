@@ -778,6 +778,7 @@ function route() {
   if (parts[0] === 'stats') return { name: 'stats' };
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
+  if (parts[0] === 'chat') return { name: 'chat' };                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
   return { name: 'home' };
 }
 function go(hash) {
@@ -888,6 +889,7 @@ function renderInner() {
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else if (r.name === 'qlist') { if (window.CAT && CAT.qlistRender) CAT.qlistRender(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">题目管理模块没加载（cat.js）。</div></div>'; }
+  else if (r.name === 'chat') { if (window.CHAT && CHAT.render) CHAT.render(); else $('view').innerHTML = '<div class="card"><div class="empty">AI 对话模块没加载（chat.js）。</div></div>'; }
   else renderQuiz(r.bankId);
   markTop(r.name);
   try { uiPaintBadge(); } catch (e) {}

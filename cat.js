@@ -659,6 +659,12 @@
         : '<button class="btn" data-act="batch">批量管理题库</button>')
       + '</div>'
       + toolbarHtml()
+      + '<div class="card chat-entry" id="chatEntry">'
+      + '<div class="ce-t">💬 AI 对话 <span class="small muted">出题 / 问知识点 / 分析我的题库</span></div>'
+      + '<div class="ce-d small muted">选好知识库，输入知识点就能出题；也可以把题库卡片 / 目录拖到这个卡片上，或者点「选题库」——它会带上你的作答记录总结易错点。</div>'
+      + '<div class="ce-acts"><button class="btn primary" data-act="go" data-hash="#/chat">打开对话</button>'
+      + '<span class="small muted">能直接拖题库 / 目录 / 题库文件 / 整个文件夹上来</span></div>'
+      + '</div>'
       + body
       + (paperList ? '<h2 class="sec">临时套卷</h2>' + paperList : '')
       + '<div id="bfBoot"></div>'
@@ -1177,6 +1183,7 @@
         + (treeBanks.length > direct ? '　·　含子目录共 ' + treeBanks.length + ' 个题库' : ''),
       items: [
         { value: 'open', label: '打开这个目录' },
+        { value: 'aichat', label: '💬 让 AI 分析这个目录', note: '把这个目录（含子目录）里的题库一起分析' },
         { value: 'rename', label: '重命名' },
         { value: 'newsub', label: '在这里新建子目录' },
         { value: 'move', label: '移动到其它目录…' },
@@ -1185,6 +1192,7 @@
       ]
     }).then(function (v) {
       if (v === 'open') openDir(id);
+      else if (v === 'aichat') { if (window.CHAT) CHAT.openCat(id); else T('对话模块没加载'); }
       else if (v === 'rename') {
         BFUI.prompt({ title: '重命名分类', label: '新名称', value: c.title, test: function (x) { return x ? '' : '名称不能为空'; } })
           .then(function (nv) { if (nv == null) return; renameCat(id, nv); saveCats(); T('已改名为「' + nv + '」'); });
@@ -1392,6 +1400,7 @@
     var isLocal = b.source === 'local';
     var items = [
       { value: 'start', label: '开始 / 继续刷题' },
+      { value: 'aichat', label: '💬 让 AI 分析这个题库', note: '带上你的作答记录，总结易错点 / 知识点' },
       { value: 'qlist', label: '🗂 题目管理：看题 / 删题', note: isLocal ? '一张张读题，勾选后批量删掉不要的题' : '内置题库只能看，不能删' },
       { value: 'modeSpeed', label: '⚡ 速刷模式', note: '判完自动跳下一题' },
       { value: 'modeRecite', label: '📖 背题模式', note: '直接看答案 + 解析，不记作答' },
@@ -1407,6 +1416,7 @@
     BFUI.pick({ title: b.title, desc: pathOf(b.cat || null).map(TITLE).join(' › ') + '　·　' + b.questions.length + ' 题', items: items })
       .then(function (v) {
         if (v === 'start') startBankWrapped(id);
+        else if (v === 'aichat') { if (window.CHAT) CHAT.openBank(id); else T('对话模块没加载'); }
         else if (v === 'qlist') { if (typeof go === 'function') go('#/qlist/' + id); }
         else if (v === 'modeSpeed') { if (typeof setLook === 'function') setLook('quizMode', 'speed'); startBankWrapped(id); }
         else if (v === 'modeRecite') { if (typeof setLook === 'function') setLook('quizMode', 'recite'); startBankWrapped(id); }

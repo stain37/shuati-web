@@ -1,0 +1,97 @@
+/* ============================================================
+   AI 对话（chat.js）的样式 + 主页入口卡片
+   ============================================================ */
+
+/* ---------- 主页入口卡片（cat.js 渲染） ---------- */
+.chat-entry { margin: 0 0 14px; border-left: 3px solid var(--primary); }
+.chat-entry .ce-t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: calc(var(--fs) * 1.02); }
+.chat-entry .ce-d { margin-top: 6px; line-height: 1.65; }
+.chat-entry .ce-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.chat-entry.chat-entry-hot { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-weak), var(--sh-pop); }
+
+/* ---------- 对话页 ---------- */
+.chat-page {
+  display: flex; flex-direction: column; gap: 10px;
+  height: calc(100vh - 170px);
+  height: calc(100dvh - 170px);
+  min-height: 380px;
+  position: relative;
+}
+.chat-head { flex: none; padding: 12px 14px; }
+.chat-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chat-title b { font-size: calc(var(--fs) * 1.04); }
+.chat-kb-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 9px; }
+.chat-kb-row .tl { flex: none; padding-top: 3px; }
+.chat-kb { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.chat-sub { margin-top: 8px; }
+.chat-sub a { color: var(--primary); }
+
+.chat-log { flex: 1 1 auto; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { margin: auto; text-align: center; color: var(--sub); }
+.chat-empty .ce-t { font-weight: 700; margin-bottom: 10px; color: var(--text); }
+.chat-eg {
+  display: block; margin: 6px auto; padding: 8px 12px; max-width: 92%;
+  border: 1px dashed var(--line); border-radius: 99px; cursor: pointer;
+  font-size: calc(var(--fs) * .9);
+}
+.chat-eg:hover { border-color: var(--primary); color: var(--primary); }
+
+.chat-msg { display: flex; }
+.chat-msg.user { justify-content: flex-end; }
+.chat-bubble {
+  max-width: 86%;
+  padding: 10px 13px;
+  border-radius: 12px;
+  line-height: 1.75;
+  font-size: calc(var(--fs) * .95);
+  background: var(--card);
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.chat-msg.user .chat-bubble { background: var(--primary-weak); border-color: var(--primary-line); border-bottom-right-radius: 4px; }
+.chat-msg.ai .chat-bubble { border-bottom-left-radius: 4px; }
+.chat-text { white-space: pre-wrap; }
+.chat-msg.ai .chat-text { white-space: normal; }
+.chat-text p { margin: 0 0 8px; }
+.chat-text p:last-child { margin-bottom: 0; }
+.chat-text pre { background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; overflow: auto; font-size: 12px; }
+.chat-text code { background: var(--bg2); border: 1px solid var(--line2); border-radius: 5px; padding: 0 4px; font-size: .92em; }
+.chat-tag { margin-bottom: 4px; font-size: calc(var(--fs) * .78); }
+.chat-refs { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line2); line-height: 1.6; }
+.chat-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+.chat-compose { flex: none; padding: 10px 12px 8px; }
+.chat-pend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chat-att {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg2); border: 1px solid var(--line2); border-radius: 99px;
+  padding: 4px 10px; font-size: calc(var(--fs) * .84);
+  max-width: 100%;
+}
+.chat-att b { cursor: pointer; color: var(--sub); font-weight: 700; padding: 0 2px; }
+.chat-att b:hover { color: var(--bad); }
+#chatTa {
+  width: 100%; box-sizing: border-box;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--r-m);
+  background: var(--card); color: var(--text); font-size: var(--fs); font-family: inherit;
+  resize: vertical; min-height: 48px; max-height: 160px; line-height: 1.6;
+}
+#chatTa:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-weak); }
+.chat-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.chat-mode { padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--r-s); background: var(--card); color: var(--text); font-family: inherit; }
+.chat-hint { margin-top: 6px; }
+
+.chat-page.chat-drag::after {
+  content: "松手就加进对话（题库文件 / 整个文件夹 / 图片都行）";
+  position: absolute; inset: 0; z-index: 5; border-radius: var(--r-m);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-weak);
+  border: 2px dashed var(--primary);
+  color: var(--primary); font-weight: 700;
+  pointer-events: none;
+}
+@media (max-width: 560px) {
+  .chat-bubble { max-width: 94%; }
+  .chat-kb-row { flex-direction: column; gap: 4px; }
+  .chat-kb-row .tl { padding-top: 0; }
+}
