@@ -1306,6 +1306,7 @@
       + '• **考点词表**：导入考点词表：糖酵解、无氧氧化；让 AI 起一份考点词表\n'
       + '• **设置**：切换深色 / 浅色 / 跟随系统；字号大一点；主题色换成紫色；答对也显示解析；自动下一题开/关\n'
       + '• **导出文件**：导出知识库（可说「知识库里有关心衰的内容」）/ 导出题库《X》/ 导出错题 / 导出收藏 / 导出全部数据 —— 都会生成文件下载\n'
+      + '• **出题后**：回复下面直接有「存入题库（N 题）」；想边存边做就点「存成新题库并开始做」\n'
       + '• **存题库**：把上面的题存成题库并收藏/打标签（从上一轮 AI 出的题里存）\n'
       + '• **撤销**：直接说「撤销」，或点上一条回复下面的「↶ 撤销」\n\n'
       + '多步可以连着说：\n「把这章错题打上糖酵解标签，然后导出错题」\n「把刚才的题存成题库、收藏，再打糖酵解标签」\n\n'
@@ -1851,6 +1852,7 @@
       if (!ai.text && !ai.reason) ai.text = '（没有内容：模型没返回东西）';
       if (!ai.text && ai.reason) ai.text = '（模型只给了思考过程，没有正文）';
       RUN = null;
+      maybeAttachQuizSave(ai);
       saveChat();
       if ($id('chatStop')) $id('chatStop').style.display = 'none';
       if ($id('chatSend')) $id('chatSend').disabled = false;
@@ -1976,6 +1978,47 @@
       return streamInto(n, msgs, {});
     });
   }
+  /* 任何一条 AI 回复只要能被解析成题库，就在下面挂「存入题库」按钮 */
+  function maybeAttachQuizSave(n) {
+    if (!n || n.role !== 'ai' || !n.text) return;
+    var acts = n.acts || [];
+    for (var i = 0; i < acts.length; i++) {
+      if (acts[i] && (acts[i].id === 'quiz-save' || acts[i].id === 'quiz-save-start')) return;
+    }
+    var parsed = parseBankText(String(n.text), n.quizTitle || 'AI 出题');
+    if (!parsed || !parsed.questions || !parsed.questions.length) return;
+    var nQ = parsed.questions.length;
+    n.acts = acts.concat([
+      { id: 'quiz-save', label: '存入题库（' + nQ + ' 题）' },
+      { id: 'quiz-save-start', label: '存成新题库并开始做（' + nQ + ' 题）' }
+    ]);
+  }
+  /* 点击「存入题库」：走 AI_OPS save.quiz，写入有 WAL，消息下面可撤销 */
+  async function saveQuizFromNode(n, start) {
+    if (!n || n.quizSaving) return;
+    if (!window.AI_OPS) { T('操作执行核没加载', 2400, 'bad'); return; }
+    n.quizSaving = true;
+    var pv;
+    try { pv = await AI_OPS.preview([{ action: 'save.quiz', params: { sourceNode: n.id, favorite: false } }]); }
+    catch (e) { n.quizSaving = false; T('解析失败：' + ((e && e.message) || e), 2600, 'bad'); return; }
+    if (!pv.ok) { n.quizSaving = false; T('没解析成题库：' + (pv.error || ''), 2800, 'bad'); return; }
+    var r;
+    try { r = await AI_OPS.execute({ steps: pv.plan.steps }, pv.hash); }
+    catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+    n.quizSaving = false;
+    if (!r.ok) { T('存入失败：' + (r.error || ''), 2800, 'bad'); return; }
+    var done = r.done && r.done[0];
+    var bid = done && done.result && done.result.bankId;
+    n.text = (n.text || '') + '\n\n---\n✅ ' + (done && done.text ? done.text : '已存入题库');
+    n.ops = { planId: r.planId, reversible: true, undone: false };
+    n.acts = [{ id: 'ops-undo', label: '↶ 撤销存入' }];
+    saveChat(); paintLog();
+    T('已存入题库', 1800, 'ok');
+    if (start && bid && typeof startBank === 'function') {
+      setTimeout(function () { try { startBank(bid); } catch (e) {} }, 250);
+    }
+  }
+
   function runQuiz(text, atts, n) {
     var bad = ensureAI(); if (bad) { n.text = bad; return Promise.resolve(); }
     phase(n, 'retrieval');
@@ -2018,8 +2061,8 @@
       if (parsed && parsed.questions.length) {
         n.quizTitle = parsed.title;
         n.acts = [
-          { id: 'quiz-save-start', label: '存成新题库并开始做（' + parsed.questions.length + ' 题）' },
-          { id: 'quiz-save', label: '只存题库' }
+          { id: 'quiz-save', label: '存入题库（' + parsed.questions.length + ' 题）' },
+          { id: 'quiz-save-start', label: '存成新题库并开始做（' + parsed.questions.length + ' 题）' }
         ];
         n.text = raw;
         T('出好了 ' + parsed.questions.length + ' 道题', 1800);
@@ -2092,13 +2135,7 @@
       return;
     }
     if (act === 'quiz-save' || act === 'quiz-save-start') {
-      var parsed = parseBankText(String(n.text || ''), n.quizTitle || 'AI 出题');
-      if (!parsed || !parsed.questions.length) { T('这次的内容没解析成题目', 2400, 'bad'); return; }
-      if (!window.VARIANT || !VARIANT.saveBankFromQuestions) { T('存题库模块没加载（variant.js）', 2400, 'bad'); return; }
-      var id = VARIANT.saveBankFromQuestions(parsed.title || 'AI 出题', parsed.questions, { subtitle: '自建题库 · AI 对话出题 · ' + parsed.questions.length + ' 题' });
-      if (!id) return;
-      T('已存成新题库：' + (parsed.title || 'AI 出题'), 2000, 'ok');
-      if (act === 'quiz-save-start') { try { if (typeof startBank === 'function') startBank(id); } catch (e) {} }
+      saveQuizFromNode(n, act === 'quiz-save-start');
       return;
     }
     if (act === 'import-files') {
@@ -2305,6 +2342,12 @@
     planQuiz: function (userNodeId) {
       var u = node(userNodeId);
       if (!u) return null;
+      if (u.role === 'ai' && u.text) {
+        var self = parseBankText(u.text, u.quizTitle || 'AI 出题');
+        if (self && self.questions && self.questions.length) {
+          return { title: self.title || u.quizTitle || 'AI 出题', questions: self.questions, node: u.id };
+        }
+      }
       var chain = pathBefore(u).slice().reverse();
       for (var i = 0; i < chain.length; i++) {
         var cand = chain[i];
