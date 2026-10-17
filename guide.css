@@ -1,0 +1,68 @@
+/* ============================================================
+   新手引导 guide.js 的样式
+   遮罩用 .gd-hole 的巨大 box-shadow 挖出一个洞：目标元素保持原样亮着，
+   其余地方压暗；卡片跟着目标走（目标没了就居中）。
+   ============================================================ */
+.gd-wrap { position: fixed; inset: 0; z-index: 9500; }
+.gd-hole {
+  position: fixed; left: -9999px; top: -9999px; width: 0; height: 0;
+  border: 2px dashed var(--primary);
+  border-radius: 10px;
+  box-shadow: 0 0 0 100vmax rgba(8, 12, 22, .52);
+  pointer-events: none;
+  transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease;
+}
+.gd-card {
+  position: fixed; left: 50%; top: 50%;
+  width: 440px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l, 14px);
+  box-shadow: var(--sh-pop);
+  padding: 14px 16px 12px;
+  z-index: 9501;
+}
+.gd-card.gd-center { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.gd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gd-step {
+  flex: none; font-size: 12px; color: var(--sub);
+  background: var(--bg2); border: 1px solid var(--line);
+  padding: 1px 8px; border-radius: 99px; font-variant-numeric: tabular-nums;
+}
+.gd-ch { font-size: 12px; color: var(--primary); }
+.gd-x {
+  flex: none; margin-left: auto; border: 0; background: transparent;
+  color: var(--sub); font-size: 15px; line-height: 1; cursor: pointer;
+  padding: 4px 7px; border-radius: 8px;
+}
+.gd-x:hover { color: var(--text); background: var(--bg2); }
+.gd-title { font-weight: 800; font-size: calc(var(--fs) * 1.06); line-height: 1.45; margin-bottom: 8px; }
+.gd-body { font-size: calc(var(--fs) * .93); line-height: 1.75; }
+.gd-body p { margin: 0 0 8px; }
+.gd-body p:last-child { margin-bottom: 0; }
+.gd-body ul, .gd-body ol { margin: 4px 0 8px; padding-left: 20px; }
+.gd-body li { margin: 3px 0; }
+.gd-body a { color: var(--primary); }
+.gd-body code {
+  background: var(--bg2); border: 1px solid var(--line2);
+  padding: 0 4px; border-radius: 5px; font-size: .92em;
+  word-break: break-all;
+}
+.gd-body pre {
+  background: var(--bg2); border: 1px solid var(--line2);
+  padding: 8px 10px; border-radius: 8px; overflow: auto;
+  font-size: 12px; line-height: 1.55; margin: 4px 0 8px;
+  white-space: pre-wrap;
+}
+.gd-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.gd-acts .spacer-grow { flex: 1 1 auto; }
+.gd-acts .btn.small { padding: 6px 11px; }
+@media (max-width: 480px) {
+  .gd-card { width: calc(100vw - 20px); padding: 12px 13px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gd-hole { transition: none; }
+}

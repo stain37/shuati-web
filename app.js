@@ -2599,6 +2599,12 @@ function showHelp() {
         · 顶栏「文件」＝把自建题库存成本机文件，或从文件读回来。
       </div>
 
+      <div class="help-card">
+        <div class="sec-t">第一次用 / 忘了怎么配</div>
+        <div class="small muted help-tips">导入题库、制作题库、配知识库、填 API Key、云同步 —— 都有一步一步的引导，点哪段看哪段。</div>
+        <div class="actions" style="margin-top:8px"><button class="btn primary" id="helpGuide">🎓 打开新手引导</button></div>
+      </div>
+
       <div class="actions"><button class="btn primary" id="helpClose">知道了</button></div>
     </div>`;
     document.body.appendChild(m);

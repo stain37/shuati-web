@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="style.css?v=20261020d">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261021a">
+<link rel="stylesheet" href="guide.css?v=20261022a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -163,6 +164,7 @@
   <div class="actions" style="margin-top:16px">
     <button class="btn" id="goKb2" title="配置 AI 与本地知识库">AI 解析 / 知识库</button>
     <button class="btn" id="goSync2" title="用 GitHub 私有仓库在电脑和手机之间同步记录">云同步（电脑 ↔ 手机）</button>
+    <button class="btn" id="goGuide2" title="新手引导：导入题库 / 制作题库 / 知识库 / API / 云同步，点哪段看哪段">🎓 新手引导 / 基础用法</button>
     <button class="btn" id="expAll2">导出全部数据（备份）</button>
     <button class="btn danger" id="resetAll">清空作答记录</button>
     <button class="btn" id="closeSet">关闭</button>
@@ -175,7 +177,7 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261021b"></script>
+<script src="app.js?v=20261022a"></script>
 <script src="collection.js?v=20261019n"></script>
 <script src="exam.js?v=20261018c"></script>
 <script src="kb.js?v=20261019w"></script>
@@ -211,6 +213,7 @@
 <!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
      让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->
 <script src="report.js?v=20261018h"></script>
+<script src="guide.js?v=20261022a"></script>
 
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。
