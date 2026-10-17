@@ -835,6 +835,18 @@
       var dt = e.dataTransfer;
       var internal = '';
       try { internal = String(dt.getData('text/plain') || ''); } catch (err) {}
+      /* 批量模式里拖一个已选中的：把选中的一批都带进去 */
+      try {
+        var batch = (typeof CAT !== 'undefined' && CAT && CAT.batch) ? CAT.batch() : null;
+        if (internal && batch && batch.n > 1 && batch.ids.indexOf(internal) >= 0) {
+          batch.ids.forEach(function (bid) {
+            var bb = (typeof bankById === 'function') ? bankById(bid) : null;
+            if (bb) PEND.push({ kind: 'bank', id: bb.id, title: bb.title });
+          });
+          goChat();
+          return;
+        }
+      } catch (err) {}
       if (internal && typeof bankById === 'function' && bankById(internal)) {
         var b = bankById(internal);
         PEND.push({ kind: 'bank', id: b.id, title: b.title });
