@@ -437,9 +437,33 @@
     });
   }
 
+  /* 模型常把题库写成 Markdown（**加粗**、- A.、**答案：A**）；先还原成站点认的纯文本 */
+  function normalizeBankText(text) {
+    var t = String(text || '');
+    t = t.replace(/```[a-zA-Z]*\s*\n?/g, '').replace(/```/g, '');
+    t = t.replace(/^\s*>\s?/gm, '');
+    /* 先去掉 Markdown 加粗，再识别「第1题 / （2）」和开场白 */
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/__([^_\n]+)__/g, '$1').replace(/`([^`\n]+)`/g, '$1');
+    t = t.replace(/\*\*/g, '');
+    var mHead = t.match(/^\s*#{1,2}\s+\S/m);
+    if (mHead) t = t.slice(mHead.index);
+    else {
+      var mFirst = t.match(/^\s*(?:\d+[.、．)）]|[（(]\d+[）)]|第\s*\d+\s*题)\s*\S/m);
+      if (mFirst) t = t.slice(mFirst.index);
+    }
+    t = t.replace(/^\s*第\s*(\d+)\s*题\s*/gm, '$1. ');
+    t = t.replace(/^\s*[（(]\s*(\d+)\s*[）)]\s*/gm, '$1. ');
+    t = t.replace(/^\s*[-*•]\s+(?=(?:\d+|[A-Ha-h])[.、．)）:：])/gm, '');
+    t = t.replace(/【答案】/g, '答案：').replace(/【解析】/g, '解析：').replace(/【考点】/g, '考点：');
+    t = t.replace(/(答案\s*[:：]\s*[A-Ha-h][A-Ha-h\s,，、\/|]*)[。.；;]\s*$/gm, '$1');
+    t = t.replace(/(答案\s*[:：]\s*[A-Ha-h][A-Ha-h\s,，、\/|]*)\s+(?:解析|解释|考点)\s*[:：]\s*(.*)$/gm, '$1\n解析：$2');
+    t = t.replace(/(答案\s*[:：]\s*[A-Ha-h]+)\s*[（(]([^）)]*)[）)]\s*$/gm, '$1\n解析：$2');
+    return t;
+  }
+  
   function parseBankText(text, name) {
     if (typeof parseInput !== 'function') return null;
-    var t = String(text || '').replace(/```[a-zA-Z]*\s*\n/g, '').replace(/```/g, '');
+    var t = normalizeBankText(text);
     try {
       var r = parseInput(t, name || '导入的题库');
       if (r && r.error) return null;
@@ -642,7 +666,7 @@
   function guessMode(text, atts) {
     var t = String(text || '');
     var hasBank = (atts || []).some(function (a) { return a.kind === 'bank' || a.kind === 'cat' || a.kind === 'file-bank'; });
-    var quiz = /出.{0,10}题|出题|生成.{0,10}题|来.{0,6}[0-9一二三四五六七八九十两]{1,3}\s*道|(出|给|来|弄).{0,8}[0-9一二三四五六七八九十两]{1,3}\s*道|考我|考考我|做题|组.{0,4}(套卷|卷子)|做.{0,3}(套卷|卷子)|做成.{0,6}题库|建.{0,6}题库/.test(t);
+    var quiz = /出.{0,10}题|出题|生成.{0,10}题|出几道|来几道|出几题|来几题|来.{0,6}[0-9一二三四五六七八九十两几]{1,3}\s*(道|题)|(出|给|来|弄).{0,10}[0-9一二三四五六七八九十两几]{1,3}\s*(道|题)|考我|考考我|做题|组.{0,4}(套卷|卷子)|做.{0,3}(套卷|卷子)|做成.{0,6}题库|建.{0,6}题库/.test(t);
     var analyze = /分析|总结|归纳|梳理|易错|薄弱|错题|知识点|考点|统计|复习计划|复习建议/.test(t);
     if (quiz && !analyze) return 'quiz';
     if (analyze) return 'analyze';
@@ -1339,6 +1363,9 @@
     /* 问句豁免：问「风险 / 后果 / 影响 / 安全」的疑问句交给 AI 回答，不当成操作指令执行 */
     if (/(风险|后果|影响|安全|会丢|会删|误删|丢数据|能不能撤销|可不可以撤销|能不能回滚)/.test(t)
       && /([?？]|吗|呢|会不会|该不该|要不要|能不能|可以吗|什么|啥)/.test(t)) return false;
+    /* 出题 + 存入题库：这是生成请求，不是操作指令；生成后由按钮保存 */
+    if (/(出题|出几道|出几题|来几道|来几题|考我|考考我|(出|给|来|弄).{0,10}[0-9一二三四五六七八九十两几]{1,3}\s*(道|题))/.test(t)
+      && /(存入?题库|存成题库|保存成题库|存题库)/.test(t)) return false;
     if (/(分析|总结|归纳|梳理|解释|为什么|怎么|如何|区别|鉴别)/.test(t)) return false;
     if (/清空.{0,6}(对话|聊天)/.test(t)) return false;
     if (/^(你能做什么|能做什么|你会什么|你会干啥|帮助|指令|命令|怎么用你)/.test(t)) return true;
@@ -1978,6 +2005,12 @@
       return streamInto(n, msgs, {});
     });
   }
+  function looksLikeQuizText(t) {
+    t = String(t || '');
+    return /(^|\n)\s*(?:\d+[.、．)）]|[A-H][.、．)）])/.test(t)
+      && /(答案|正确答案)\s*[:：]/.test(t)
+      && /(^|\n)\s*[A-H][.、．)）]/.test(t);
+  }
   /* 任何一条 AI 回复只要能被解析成题库，就在下面挂「存入题库」按钮 */
   function maybeAttachQuizSave(n) {
     if (!n || n.role !== 'ai' || !n.text) return;
@@ -1986,7 +2019,10 @@
       if (acts[i] && (acts[i].id === 'quiz-save' || acts[i].id === 'quiz-save-start')) return;
     }
     var parsed = parseBankText(String(n.text), n.quizTitle || 'AI 出题');
-    if (!parsed || !parsed.questions || !parsed.questions.length) return;
+    if (!parsed || !parsed.questions || !parsed.questions.length) {
+      if (looksLikeQuizText(n.text)) n.acts = acts.concat([{ id: 'quiz-import', label: '去导入页检查并存入' }]);
+      return;
+    }
     var nQ = parsed.questions.length;
     n.acts = acts.concat([
       { id: 'quiz-save', label: '存入题库（' + nQ + ' 题）' },
@@ -2029,7 +2065,7 @@
       n.refs = hitRefs(kb.hits);
       phase(n, 'waiting');
       var num = 6;
-      var mm = String(text).match(/([0-9一二三四五六七八九十两]{1,3})\s*道/);
+      var mm = String(text).match(/([0-9一二三四五六七八九十两几]{1,3})\s*(?:道|题)/);
       if (mm) {
         var x = mm[1];
         var zh = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
@@ -2041,7 +2077,8 @@
         + '\n要求：1) 题目要贴合考试（题干情景化、四个选项都要有干扰性）；2) 每题给正确答案和简短解析（解析里点出考点）；'
         + '\n3) 严格按站内的纯文本题库格式输出，不要写表格、不要代码块、不要额外解释：'
         + '\n# 题库名（自己起一个）\n\n1. 题干…\nA. …\nB. …\nC. …\nD. …\n答案：X\n解析：…'
-        + '\n4) 多选答案连写（如 ABD）；题与题之间空一行。' + cmdSysNote();
+        + '\n4) 多选答案连写（如 ABD）；题与题之间空一行。'
+        + '\n5) 不要用 ** 加粗、不要写表格 / 代码块 / 额外交代；答案必须单独一行写「答案：X」。生成后站点会自动出现「存入题库」按钮，不需要你在回答里做保存操作。';
       var msgs = [{ role: 'system', content: sys }];
       histMsgs(userOf(n), 2).forEach(function (m) { msgs.push(m); });
       var body = [];
@@ -2136,6 +2173,14 @@
     }
     if (act === 'quiz-save' || act === 'quiz-save-start') {
       saveQuizFromNode(n, act === 'quiz-save-start');
+      return;
+    }
+    if (act === 'quiz-import') {
+      try {
+        if (window.SS && SS.set) { SS.set('importText', normalizeBankText(n.text || '')); SS.set('editing', ''); }
+        if (typeof go === 'function') go('#/import');
+        else T('导入页没打开', 2200, 'bad');
+      } catch (e) { T('导入页没打开', 2200, 'bad'); }
       return;
     }
     if (act === 'import-files') {
