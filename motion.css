@@ -16,22 +16,30 @@ body.dark{
   --glow-2: color-mix(in srgb, var(--a3, #38bdf8) 42%, transparent);
 }
 
-/* ---------- hero：指针柔光 + 暗色外扩光晕 ---------- */
+/* ---------- hero：指针柔光 + 暗色外扩光晕 ----------
+   web142：渐变 + 指针柔光都放在 ::after（style.css 里那层），
+   这样「面板不透明度」只淡渐变，不会把柔光盖掉，字也不会跟着变淡。 */
 .hero{
+  background-image:none;
+  transition: box-shadow .3s ease, transform .25s ease;
+}
+.hero::after{
   background-image:
     radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,.16), transparent 46%),
     var(--grad);
-  transition: box-shadow .3s ease, transform .25s ease;
 }
 body.dark .hero{
-  background-image:
-    radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, #fff 13%, transparent), transparent 46%),
-    var(--grad);
+  background-image:none;
   box-shadow:
     var(--sh-3),
     0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent),
     0 26px 72px -30px var(--glow-1),
     0 0 104px -38px var(--glow-2);
+}
+body.dark .hero::after{
+  background-image:
+    radial-gradient(520px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, #fff 13%, transparent), transparent 46%),
+    var(--grad);
 }
 
 /* 暗色下「刷题站」大标题必须是白字；即使别的主题给它加了渐变/文字填充也压掉 */
@@ -84,6 +92,19 @@ body.dark .hero .hstat>button.hs:hover{
   .btn:active:not(:disabled){transform:translateY(0) scale(.985)}
 }
 
+/* ---------- 所有面板：指针经过时有柔光 + 外扩 ---------- */
+.card:hover,.vb-card:hover,.nb-card:hover,.bank:hover,.kbcard:hover{
+  background-image:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--primary) 16%,transparent),transparent 70%);
+  background-repeat:no-repeat;
+  box-shadow:var(--sh-2),0 0 0 1px color-mix(in srgb,var(--primary) 26%,transparent),0 0 48px -16px var(--glow-1);
+}
+/* 「继续刷题」自己带渐变，柔光叠在最上面，不要把渐变盖没 */
+.resume:hover{
+  background-image:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--primary) 16%,transparent),transparent 70%),linear-gradient(135deg,var(--primary-weak),var(--card) 70%);
+  background-repeat:no-repeat;
+  box-shadow:var(--sh-2),0 0 0 1px color-mix(in srgb,var(--primary) 26%,transparent),0 0 48px -16px var(--glow-1);
+}
+
 /* ---------- 首屏轻量入场 ---------- */
 @keyframes motionRise{
   from{opacity:0; transform:translateY(10px)}
@@ -96,7 +117,8 @@ html.motion-ok .resume{animation:motionRise .5s .04s cubic-bezier(.2,.8,.2,1) bo
 @media (prefers-reduced-motion: reduce){
   html.motion-ok .hero,
   html.motion-ok .resume{animation:none !important}
-  .hero{background-image:var(--grad) !important}
+  .hero{background-image:none !important; background:transparent !important}
+  .hero::after{background-image:var(--grad) !important}
   .bank,.btn,.hero{transition:none !important}
   .bank:hover,.btn:hover:not(:disabled),.btn:active:not(:disabled){transform:none !important}
 }

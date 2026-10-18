@@ -177,7 +177,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -233,8 +233,8 @@ const THEME_META = { teal: ['#0d9488', '#080c14'], indigo: ['#4f46e5', '#080c14'
   graphite: ['#334155', '#0b1220'], candy: ['#c026d3', '#080c14'] };
 const THEME_NAME = { teal: '冷静青', indigo: '靛蓝', warm: '蓝 + 暖橙', violet: '紫', rose: '玫瑰', amber: '琥珀', emerald: '森林', ocean: '海洋', graphite: '石墨金', candy: '糖果' };
 /* 背景氛围：只换 body 的底图（style.css 末尾 html[data-bg=…]），不碰布局 */
-const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'paper', 'plain', 'custom'];
-const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片' };
+const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'paper', 'plain', 'custom', 'video'];
+const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片', video: '视频背景' };
 
 /* ---------- 自定义背景图（本机） ----------
    选图 → canvas 压到最长边 1800px → 存 IndexedDB（不占题库的 localStorage 配额，
@@ -251,18 +251,34 @@ function bgDB() {
     } catch (e) { res(null); }
   });
 }
-function bgPut(data) {
+function bgPut(data, key) {
+  key = key || 'page';
   return bgDB().then(db => {
-    if (!db) { try { localStorage.setItem('qbank.bgimg.v1', data); return true; } catch (e) { return false; } }
+    if (!db) {
+      if (key !== 'page') return false;
+      try { localStorage.setItem('qbank.bgimg.v1', data); return true; } catch (e) { return false; }
+    }
     return new Promise(res => {
       try {
         const tx = db.transaction('img', 'readwrite');
-        tx.objectStore('img').put(data, 'page');
+        tx.objectStore('img').put(data, key);
         tx.oncomplete = () => res(true);
         tx.onerror = () => res(false);
       } catch (e) { res(false); }
     });
   });
+}
+function bgGetKey(key) {
+  return bgDB().then(db => {
+    if (!db) return '';
+    return new Promise(res => {
+      try {
+        const rq = db.transaction('img', 'readonly').objectStore('img').get(key);
+        rq.onsuccess = () => res(rq.result || '');
+        rq.onerror = () => res('');
+      } catch (e) { res(''); }
+    });
+  }).catch(() => '');
 }
 function bgGet() {
   return bgDB().then(db => {
@@ -280,17 +296,92 @@ function bgDel() {
   try { localStorage.removeItem('qbank.bgimg.v1'); } catch (e) {}
   return bgDB().then(db => {
     if (!db) return;
-    try { db.transaction('img', 'readwrite').objectStore('img').delete('page'); } catch (e) {}
+    try {
+      const tx = db.transaction('img', 'readwrite');
+      tx.objectStore('img').delete('page');
+      tx.objectStore('img').delete('video');
+    } catch (e) {}
   });
 }
-function applyBgImage() {
+function applyBgMedia() {
   const root = document.documentElement;
+  if (SET.bg === 'video') {
+    root.style.removeProperty('--bg-img');
+    BG_URL = '';
+    bgVideoApply();
+    return;
+  }
+  bgVideoStop();
   if (SET.bg !== 'custom') { root.style.removeProperty('--bg-img'); BG_URL = ''; return; }
   if (BG_URL) { root.style.setProperty('--bg-img', 'url("' + BG_URL + '")'); return; }
   bgGet().then(d => {
     if (!d) return;
     BG_URL = d;
     if (SET.bg === 'custom') root.style.setProperty('--bg-img', 'url("' + d + '")');
+  });
+}
+/* 磨砂强度：默认 14px，只作用在开了「面板磨砂」的卡片 / 弹层上 */
+function frostPx() {
+  var n = +SET.frostPx;
+  if (!isFinite(n) || n <= 0 || SET.frost === false) return 0;
+  return Math.max(0, Math.min(40, n));
+}
+/* ---------- 视频背景：一个固定的 <video> 垫在最底层，object-fit:cover 自适应 ---------- */
+var BG_VIDEO_URL = '';
+function ensureBgVideo() {
+  var v = document.getElementById('bgVideo');
+  if (v) return v;
+  v = document.createElement('video');
+  v.id = 'bgVideo';
+  v.className = 'bg-video';
+  v.muted = true; v.loop = true; v.autoplay = true; v.preload = 'auto';
+  v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+  v.setAttribute('webkit-playsinline', ''); v.setAttribute('disablepictureinpicture', '');
+  v.setAttribute('aria-hidden', 'true');
+  if (document.body) document.body.insertBefore(v, document.body.firstChild);
+  return v;
+}
+function bgVideoPlay(v) {
+  if (!v) return;
+  var noMotion = SET.reduceMotion || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (noMotion) { try { v.pause(); } catch (e) {} return; }
+  try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+}
+function bgVideoStop() {
+  var v = document.getElementById('bgVideo');
+  if (v) { try { v.pause(); } catch (e) {} }
+}
+function bgVideoApply() {
+  var v = ensureBgVideo();
+  if (BG_VIDEO_URL) { if (v.src !== BG_VIDEO_URL) v.src = BG_VIDEO_URL; bgVideoPlay(v); return; }
+  bgGetKey('video').then(function (blob) {
+    if (!blob || SET.bg !== 'video') return;
+    try { BG_VIDEO_URL = URL.createObjectURL(blob); } catch (e) { return; }
+    v.src = BG_VIDEO_URL;
+    bgVideoPlay(v);
+  });
+}
+async function bgSetFromVideo(file) {
+  if (!file) return;
+  if (!/^video\//.test(file.type || '')) { toast('请选视频文件（mp4 / webm）'); return; }
+  if (file.size > 80 * 1024 * 1024) { toast('视频太大了（超过 80MB），先剪短 / 压一下'); return; }
+  const ok = await bgPut(file, 'video');
+  if (!ok) { toast('这段视频存不下（浏览器空间不够）'); return; }
+  if (BG_VIDEO_URL) { try { URL.revokeObjectURL(BG_VIDEO_URL); } catch (e) {} }
+  BG_VIDEO_URL = URL.createObjectURL(file);
+  setLook('bg', 'video');
+  const sel = $('setBg'); if (sel) sel.value = 'video';
+  const v = ensureBgVideo();
+  v.src = BG_VIDEO_URL;
+  bgVideoPlay(v);
+  toast('视频背景已启用（静音循环 / cover 自适应）', 1800, 'ok');
+}
+function bgFileDataURL(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
   });
 }
 /* 图片读进来 → 缩放 → 出 dataURL（优先 webp，不支持就 jpeg） */
@@ -328,7 +419,9 @@ async function bgSetFromFile(file) {
   if (!file) return;
   if (!/^image\//.test(file.type || '')) { toast('请选图片文件（jpg / png / webp）'); return; }
   try {
-    const data = await bgScale(file);
+    /* gif / 动图 webp：直接存原文件，别过 canvas（过了就只剩第一帧） */
+    const animated = /image\/(gif|webp|apng)/i.test(file.type || '') && file.size < 6 * 1024 * 1024;
+    const data = animated ? await bgFileDataURL(file) : await bgScale(file);
     const ok = await bgPut(data);
     if (!ok) { toast('这张图存不下（浏览器存储已满），换张小点的'); return; }
     BG_URL = data;
@@ -340,7 +433,11 @@ async function bgSetFromFile(file) {
 }
 function bgClearImage() {
   BG_URL = '';
+  if (BG_VIDEO_URL) { try { URL.revokeObjectURL(BG_VIDEO_URL); } catch (e) {} BG_VIDEO_URL = ''; }
   bgDel();
+  bgVideoStop();
+  var v = document.getElementById('bgVideo');
+  if (v) { try { v.removeAttribute('src'); v.load(); } catch (e) {} }
   document.documentElement.style.removeProperty('--bg-img');
   setLook('bg', 'default');
   const sel = $('setBg'); if (sel) sel.value = 'default';
@@ -357,7 +454,15 @@ function applyLook() {
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const bg = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-bg', bg);
-  applyBgImage();
+  /* 面板不透明度：卡片 / 底部弹层 / 首页目录卡片都读 --ui-pct */
+  const ua = Math.max(0.3, Math.min(1, isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1));
+  if (document.documentElement) {
+    document.documentElement.style.setProperty('--ui-pct', Math.round(ua * 100) + '%');
+    document.documentElement.style.setProperty('--ui-a', String(ua));
+  }
+  applyBgMedia();
+  /* 磨砂强度：CSS 里 body.frost 的 backdrop-filter 读这个变量 */
+  if (document.documentElement) document.documentElement.style.setProperty('--frost-blur', frostPx() + 'px');
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.teal)[dark ? 1 : 0]);
   /* §3.6-P0① 专注模式：只加一个 body 类，隐藏顶栏/底栏交给 CSS（退出按钮 .focus-exit 只在这时露出来） */
@@ -365,6 +470,8 @@ function applyLook() {
   /* 「减少动态效果」（设置里的开关）：加个 body 类，style.css 里那条规则把全站动画/过渡关掉；
      系统级的 prefers-reduced-motion 仍然独立生效（两条并存）。 */
   document.body.classList.toggle('reduce-motion', !!SET.reduceMotion);
+  /* 面板磨砂（背景模糊）：默认开；关掉就是纯半透明，不看背景纹理 */
+  document.body.classList.toggle('frost', SET.frost !== false);
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -3292,10 +3399,14 @@ function openSettings() {
   if ($('setFocus')) $('setFocus').checked = !!SET.focus;
   if ($('setSpeedSec')) $('setSpeedSec').value = SET.speedSec || 0;
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
-  if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
+  if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if ($('setBg')) $('setBg').value = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
+  const uiA = Math.round((isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1) * 100);
+  if ($('setUiAlpha')) { $('setUiAlpha').value = uiA; if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = uiA + '%'; }
+  const fpx = isFinite(+SET.frostPx) && SET.frostPx != null ? +SET.frostPx : 14;
+  if ($('setFrostPx')) { $('setFrostPx').value = fpx; if ($('setFrostPxVal')) $('setFrostPxVal').textContent = fpx + 'px'; }
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
   srsPaintEls();
   $('setMask').classList.add('show');
@@ -3307,6 +3418,21 @@ on('setFs', e => setLook('fs', e.target.value), 'change');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
 on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
 on('setBgPick', bgPick);
+on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
+on('setBgVideo', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromVideo(f); }, 'change');
+on('setFrostPx', e => {
+  SET.frostPx = +e.target.value;
+  writeLS(LS.set, SET);
+  applyLook();
+  if ($('setFrostPxVal')) $('setFrostPxVal').textContent = e.target.value + 'px';
+}, 'input');
+on('setUiAlpha', e => {
+  SET.uiAlpha = (+e.target.value) / 100;
+  writeLS(LS.set, SET);
+  applyLook();
+  if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = e.target.value + '%';
+}, 'input');
+on('setFrost', e => { SET.frost = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
 on('setBgClear', bgClearImage);
 on('setBgFile', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromFile(f); }, 'change');
 on('closeSet', closeAll);

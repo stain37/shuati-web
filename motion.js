@@ -9,8 +9,13 @@
   if (reduce) return;
   try { document.documentElement.classList.add('motion-ok'); } catch (e) {}
   var active = null, raf = 0, mx = 50, my = 0;
+  /* 除了 hero，所有面板（卡片 / bento 卡 / 目录卡 / 继续刷题）也要有指针柔光 */
+  var PANEL = '.card,.vb-card,.nb-card,.resume,.bank,.kbcard,.sheet';
   function heroOf(t) {
     try { return t && t.closest ? t.closest('.hero') : null; } catch (e) { return null; }
+  }
+  function panelOf(t) {
+    try { return t && t.closest ? t.closest(PANEL) : null; } catch (e) { return null; }
   }
   function paint() {
     raf = 0;
@@ -26,7 +31,7 @@
   }
   document.addEventListener('pointermove', function (e) {
     if (e.pointerType === 'touch') return;
-    var h = heroOf(e.target);
+    var h = heroOf(e.target) || panelOf(e.target);
     if (!h) { clear(); return; }
     active = h;
     var r = h.getBoundingClientRect();

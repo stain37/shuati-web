@@ -84,7 +84,8 @@ body.nbm { user-select: none; -webkit-user-select: none; }
 
 .nb-card {
   display: flex; align-items: flex-start; gap: 12px;
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-m);
+  background: var(--card);
+  background: color-mix(in srgb, var(--card) var(--ui-pct,100%), transparent); border: 1px solid var(--line); border-radius: var(--r-m);
   padding: 12px 14px; box-shadow: var(--sh-1);
   transition: box-shadow .15s, border-color .15s, transform .15s;
 }
