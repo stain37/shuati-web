@@ -1657,7 +1657,7 @@ body.dark .vb-card{ box-shadow:var(--sh-card); }
 
 /* §8 视觉 v2 铺开（二）：答题页「⋯ 更多」抽屉 —— 管理动作不再摊在题目下面 */
 .actions.qz-more{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
-.qsheet{ position:fixed; inset:0; z-index:900; display:flex; align-items:flex-end; justify-content:center; }
+.qsheet{ position:fixed; inset:0; z-index:35; display:flex; align-items:flex-end; justify-content:center; }
 .qsheet[hidden]{ display:none; }
 .qsheet-scrim{ position:absolute; inset:0; background:rgba(8,12,20,.42);
   animation:v2fade .18s ease both; }

@@ -2199,13 +2199,24 @@ function renderQuiz(bankId) {
     </div>`;
 
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
+  /* 「⋯ 更多」抽屉必须挂在 body 下：面板磨砂（backdrop-filter）会给卡片生成包含块，
+     .qsheet 的 position:fixed 会被困在卡片里 → 被底栏盖住 / 答题后整块看不见。
+     旧的那份（上一次渲染挂在 body 上的）先删，避免 id 重复。 */
+  (function relocateQSheet() {
+    const cur = $('view').querySelector('#qSheet');
+    document.querySelectorAll('body > #qSheet').forEach(el => el.remove());
+    if (cur) document.body.appendChild(cur);
+    /* 重画后抽屉默认是收起的，顺手把滚动锁解开（不然「再答一次」后页面上下滑不动） */
+    if (!cur || cur.hasAttribute('hidden')) document.body.classList.remove('sheet-open');
+  })();
   /* §8：管理动作抽屉的开关（「⋯ 更多」按钮 / 遮罩 / 取消 三处都关） */
   on('doMore', () => qSheetToggle(true));
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
+  document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
   else $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
-  on('doRedo', () => redo(bank, q));
+  on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
      不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
   /* 点抽屉里的动作先把抽屉收掉：不然遮罩（.qsheet 固定全屏）还盖着，
@@ -2218,6 +2229,7 @@ function renderQuiz(bankId) {
   on('doFix', () => { qSheetToggle(false); openAnsEditor($('fixHost'), fk, q, render); });
   /* 「删除本题」：只删自建题库里的题（套卷里的题记在它原来的题库上）。删完自动跳到下一题 */
   if (delT) on('doDelQ', () => {
+    qSheetToggle(false);   /* 先收抽屉：确认框是 .mask（z 40），抽屉 z 35，不收就会盖在上面 */
     const i2 = pool.findIndex(x => String(x.id) === String(q.id));
     const nxt = pool[i2 + 1] || pool[i2 - 1] || null;
     const ask = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : (o => Promise.resolve(confirm(o.title)));
