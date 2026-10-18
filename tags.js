@@ -213,6 +213,8 @@
   var BJOB = { running: false, ctl: null, done: 0, total: 0, note: '' };
   var VIEW = { bulk: false };      /* 词表「批量导入」粘贴框是否展开 */
   var TAG_VIEW = { sub: '', tag: '', q: '', page: 1 };   /* 「按考点」两排筛选 + 搜索 + 翻页 */
+  var HIDE_KEY = 'qbank.hidetags.v1', HIDE_TAGS = false;  /* 答题页：标签隐藏开关（本机偏好） */
+  try { HIDE_TAGS = localStorage.getItem(HIDE_KEY) === '1'; } catch (e) {}
   var TAG_Q_T = null, TAG_COMPOSING = false;            /* 考点搜索的防抖 / 拼音候选保护 */
 
   function withBasics(list) {
@@ -260,6 +262,10 @@
   function restoreDefaultVocab() {
     if (typeof confirm === 'function' && !confirm('把考点词表恢复成内置默认的 ' + DEFAULT_VOCAB.length + ' 个？\n你后来加的自定义考点会从词表移除；题上已经贴的标签不会摘掉。')) return;
     TAGV = withBasics(DEFAULT_VOCAB.slice());
+    /* 恢复默认 = 显式重新加回来，撤掉这些词的删除墓碑 */
+    if (typeof tombDel === 'function') {
+      DEFAULT_VOCAB.concat(BASIC_TAGS).forEach(function (t) { try { tombDel('vocab', t); } catch (e) {} });
+    }
     saveVocab();
     TAGS_STATS_CACHE = null;
     if (typeof toast === 'function') toast('已恢复默认词表：' + DEFAULT_VOCAB.length + ' 个考点');
@@ -300,7 +306,11 @@
   }
   function rememberVocab(list) {
     var added = 0;
-    norm(list).forEach(function (t) { if (TAGV.indexOf(t) < 0) { TAGV.push(t); added++; } });
+    norm(list).forEach(function (t) {
+      if (TAGV.indexOf(t) < 0) { TAGV.push(t); added++; }
+      /* 重新加回来 = 撤销「删词」墓碑，不然同步时会被自己挡掉 */
+      if (typeof tombDel === 'function') { try { tombDel('vocab', t); } catch (e) {} }
+    });
     if (added) saveVocab();
     return added;
   }
@@ -314,6 +324,8 @@
       if (tagsOf(k).indexOf(t) >= 0) { setTags(k, tagsOf(k).filter(function (x) { return x !== t; }), true); n++; }
     });
     TAGV = TAGV.filter(function (x) { return x !== t; });
+    /* 词表删词也要立墓碑：同步时词表取并集，不然另一台设备会把它加回来 */
+    if (typeof tombAdd === 'function') { try { tombAdd('vocab', t); } catch (e) {} }
     saveVocab();
     return n;
   }
@@ -328,17 +340,22 @@
      所以先用 tombWipe('tag') 立一道「整表已清」的墓碑，再写空。 */
   function clearAllTags() {
     var n = TAGV.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; }).length, used = 0;
-    var keep = {};
+    var keep = {}, cleared = [];
     Object.keys(TAGD).forEach(function (k) {
       var ts = tagsOf(k);
       if (!ts.length) return;
       var bs = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
       if (bs.length) keep[k] = bs;
-      if (bs.length !== ts.length) used++;
+      if (bs.length !== ts.length) {
+        used++;
+        if (!bs.length) cleared.push(k);   /* 只给「清完就没标签」的题立墓碑；留了基本科的题靠本机优先挡住云端 */
+      }
     });
     /* 整表 wipe 仍然要立：否则云同步 / 另一个页签会把用户标签合并回来。
-       先把题上的基本标签记下来，wipe 后再写回。 */
+       同时给每题立墓碑 —— 只靠 wipe 的话，旧版同步合并不看 wipe，仍会复活。 */
     if (typeof tombWipe === 'function') { try { tombWipe('tag'); } catch (e) {} }
+    if (typeof tombWipe === 'function') { try { tombWipe('vocab'); } catch (e) {} }
+    if (typeof tombAdd === 'function') cleared.forEach(function (k) { try { tombAdd('tag', k); } catch (e) {} });
     Object.keys(TAGD).forEach(function (k) { delete TAGD[k]; });
     Object.keys(keep).forEach(function (k) { TAGD[k] = keep[k]; });
     save();
@@ -368,16 +385,20 @@
   /* 只摘掉题上已打的用户考点标签：词表和六科基本标签都保留。
      和 clearAllTags 一样走整表 wipe，防止 mergeWrite 把旧标签合回来。 */
   function clearAppliedTags() {
-    var used = 0, keep = {};
+    var used = 0, keep = {}, cleared = [];
     Object.keys(TAGD).forEach(function (k) {
       var ts = tagsOf(k);
       if (!ts.length) return;
       var bs = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
       var us = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
       if (bs.length) keep[k] = bs;      /* 只有基本标签的题也要保留基本标签 */
-      if (us.length) used++;
+      if (us.length) {
+        used++;
+        if (!bs.length) cleared.push(k);   /* 只给清完就没标签的题立墓碑 */
+      }
     });
     if (typeof tombWipe === 'function') { try { tombWipe('tag'); } catch (e) {} }
+    if (typeof tombAdd === 'function') cleared.forEach(function (k) { try { tombAdd('tag', k); } catch (e) {} });
     Object.keys(TAGD).forEach(function (k) { delete TAGD[k]; });
     Object.keys(keep).forEach(function (k) { TAGD[k] = keep[k]; });
     save();
@@ -490,7 +511,18 @@
   }
 
   /* ---------- 答题页那一行标签 ---------- */
+  function toggleHideTags() {
+    HIDE_TAGS = !HIDE_TAGS;
+    try { localStorage.setItem(HIDE_KEY, HIDE_TAGS ? '1' : '0'); } catch (e) {}
+    return HIDE_TAGS;
+  }
   function rowHtml(k, q) {
+    if (HIDE_TAGS) {
+      return '<div class="tagrow tagrow-hidden" data-tagk="' + esc(k) + '">'
+        + '<span class="taghide-note"><span class="taghide-ic">🙈</span>标签已隐藏 · 先做题</span>'
+        + '<button type="button" class="taghide-btn show" data-taghide="1" title="显示基本标签和考点标签">显示标签</button>'
+        + '</div>';
+    }
     var ts = tagsOf(k);
     var bs = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
     var us = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
@@ -506,6 +538,7 @@
       + '<span class="tag-lab">考点</span>' + chips + none
       + '<button class="tagadd" data-tagedit="1" title="加考点标签（基本标签在上面单独选，自定义标签在这里加）">＋ 标签</button>'
       + '<button class="tagadd tagai" data-tagai="1" title="让 AI 从词表里给这道题挑 1–3 个考点">AI 标签</button>'
+      + '<button type="button" class="taghide-btn hide" data-taghide="1" title="隐藏标签，防止提前看到考什么"><span class="taghide-ic">👁</span>隐藏</button>'
       + '</div>';
   }
   function editorHtml(k) {
@@ -542,7 +575,9 @@
     if (!row) return;
     var k = row.getAttribute('data-tagk');
     var box = row.querySelector('.tagedit');
-    row.innerHTML = rowHtml(k).replace(/^<div class="tagrow"[^>]*>/, '').replace(/<\/div>$/, '');
+    /* rowHtml 在隐藏时返回的是另一套外层结构；只换 innerHTML 会漏掉 tagrow-hidden 类 */
+    row.classList.toggle('tagrow-hidden', HIDE_TAGS);
+    row.innerHTML = rowHtml(k).replace(/^<div class="tagrow[^"]*"[^>]*>/, '').replace(/<\/div>$/, '');
     if (box) openEdit(k, true);
   }
   function openEdit(k, keep) {
@@ -570,6 +605,12 @@
     var row = host.querySelector('.tagrow[data-tagk="' + cssq(k) + '"]');
     if (!row) return;
     row.addEventListener('click', function (e) {
+      if (e.target.closest('[data-taghide]')) {
+        e.preventDefault(); e.stopPropagation();
+        toggleHideTags();
+        drawTags();
+        return;
+      }
       var del = e.target.closest('[data-tagdel]');
       if (del) { delTag(k, del.getAttribute('data-tagdel')); return; }
       var bs = e.target.closest('[data-basictag]');
@@ -1429,6 +1470,7 @@
     vocab: function () { return TAGV.slice(); }, rememberVocab: rememberVocab,
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
     rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, aiOne: aiTagOne, stop: stop,
+    toggleHideTags: toggleHideTags, hideTags: function () { return HIDE_TAGS; },
     save: function () { save(); saveVocab(); }, reload: function () { rd(); },
     parseVocabList: parseVocabList, addVocabBulk: addVocabBulk,
     defaultVocab: function () { return DEFAULT_VOCAB.slice(); }, restoreDefaultVocab: restoreDefaultVocab,
@@ -1436,19 +1478,32 @@
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,
     /* 云同步用：云端那份标签并进来。同一道题以本机为准（本机更可能是刚改过的），
        本机没有的题补上；云端词表也合进词表里。墓碑里的题不复活。 */
-    mergeIn: function (cloudTags, cloudVocab) {
+    mergeIn: function (cloudTags, cloudVocab, cloudTs) {
       var n = 0;
       try {
-        var tomb = (typeof TOMB === 'object' && TOMB && TOMB.tag) || {};
+        var T = (typeof TOMB === 'object' && TOMB) ? TOMB : {};
+        var tomb = T.tag || {};
+        var wipeTag = (T.wipe || {}).tag || 0;
+        /* 本机整表清空比云端这份新：不从云端补标签（标签没有逐条时间戳） */
+        if (wipeTag && (!cloudTs || cloudTs <= wipeTag)) return 0;
         Object.keys(cloudTags || {}).forEach(function (k) {
-          var v = norm(cloudTags[k]).slice(0, MAX_PER_Q);
+          var v = norm(cloudTags[k]);
+          var bs = v.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
+          var us = v.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
+          v = bs.slice(0, 1).concat(us).slice(0, MAX_PER_Q);   /* 六科最多一科 */
           if (!v.length || tomb[k]) return;
           if (TAGD[k] && TAGD[k].length) return;          /* 本机有：留着本机的 */
           TAGD[k] = v; n++;
         });
-        if (cloudVocab && cloudVocab.length) rememberVocab(cloudVocab);
-        if (n) { save(); saveVocab(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }
-        else if (cloudVocab && cloudVocab.length) saveVocab();
+        /* 词表：删除墓碑优先；整表清空（clearAllTags）比云端新时先不并 */
+        var vwipe = (T.wipe || {}).vocab || 0;
+        var vTomb = T.vocab || {};
+        var usableVocab = [];
+        if (cloudVocab && cloudVocab.length && !(vwipe && (!cloudTs || cloudTs <= vwipe))) {
+          usableVocab = cloudVocab.filter(function (t) { return !vTomb[t]; });
+        }
+        if (usableVocab.length) rememberVocab(usableVocab);
+        if (n) { save(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }
       } catch (e) {}
       return n;
     }

@@ -1180,6 +1180,21 @@ body.dark .vcmp mark { background: #8a6a12; color: #f8fafc; }
 .tagadd { border: 1px dashed var(--line2); background: transparent; color: var(--sub); border-radius: 999px;
   font-size: 12.5px; padding: 3px 10px; cursor: pointer; }
 .tagadd:hover { color: var(--primary); border-color: var(--primary-line, var(--primary)); }
+/* 答题页：标签隐藏 / 显示 */
+.taghide-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px 9px;
+  border: 1px solid var(--line); background: var(--card); color: var(--sub); border-radius: 999px;
+  font: inherit; font-size: 11.5px; line-height: 1.2; cursor: pointer; white-space: nowrap;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease; }
+.taghide-btn:hover { background: var(--primary-soft); border-color: var(--primary-line, var(--primary)); color: var(--primary); transform: translateY(-1px); }
+.taghide-btn:active { transform: scale(.95); }
+.taghide-ic { font-size: 12px; line-height: 1; }
+.tagrow-hidden { justify-content: space-between; gap: 10px; padding: 7px 9px; border: 1px dashed var(--line); border-radius: 10px;
+  background: linear-gradient(135deg, var(--bg2), var(--card)); animation: tagRowIn .18s ease; }
+.taghide-note { display: inline-flex; align-items: center; gap: 6px; color: var(--sub); font-size: 12px; letter-spacing: .2px; }
+.tagrow-hidden .taghide-btn.show { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+.tagrow-hidden .taghide-btn.show:hover { color: #fff; filter: brightness(1.06); }
+@keyframes tagRowIn { from { transform: translateY(-2px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tagrow-hidden { animation: none; } .taghide-btn { transition: none; } }
 .tagedit { flex: 1 1 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--line2); border-radius: var(--r-m, 12px);
   background: var(--card); animation: fadeUp var(--t-base, .18s) var(--ease, ease); }
 .tedit-top { font-size: 12.5px; color: var(--sub); margin-bottom: 6px; }

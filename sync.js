@@ -38,7 +38,7 @@ const SYNC_SCOPES = [
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
-  { k: 'tag', label: '考点标签', tip: '你导入 / AI 生成的那份考点词表，以及 AI 给每道题贴的标签（统计页「按考点」用的就是它）' },
+  { k: 'tag', label: '考点标签', tip: '你导入 / AI 生成的那份考点词表，以及 AI 给每道题贴的标签（统计页「按考点」用的就是它）；删词 / 批量清除也会跟着走' },
   { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
 ];
@@ -253,7 +253,7 @@ async function syncPayload() {
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
   if (s.qtn) tomb.qtn = TOMB.qtn || {};              /* 便签的「清空即删除」也靠墓碑传播，不然会在另一台设备上复活 */
   if (s.note) tomb.aisrc = TOMB.aisrc || {};         /* 解析删了，它带的那份参考资料也一起走 */
-  if (s.tag) tomb.tag = TOMB.tag || {};
+  if (s.tag) { tomb.tag = TOMB.tag || {}; tomb.vocab = TOMB.vocab || {}; }
   tomb.wipe = TOMB.wipe || {};
   const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
   if (s.kb) out.kbDrop = syncKbDrops();
@@ -266,7 +266,7 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
-  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'qtn', 'aisrc'].forEach(k => {
+  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'vocab', 'qtn', 'aisrc'].forEach(k => {
     const mine = TOMB[k] = TOMB[k] || {}, theirs = ct[k] || {};
     Object.keys(theirs).forEach(x => { if (!mine[x] || theirs[x] > mine[x]) mine[x] = theirs[x]; });
   });
@@ -303,7 +303,7 @@ function syncMergeCloud(cloud) {
   if (s.kb) added += syncKbMerge(d.kb, cloud.kbDrop);
 
   /* 6) 考点标签：同一道题以本机为准，本机没有的补进来；词表取并集 */
-  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab) || 0); } catch (e) {} }
+  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0) || 0); } catch (e) {} }
 
   migrate(); invalidateBanks();
   return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };

@@ -80,7 +80,7 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   TOMB.wipe[kind] = Date.now();
   writeLS(TOMB_KEY, TOMB);
 }
-function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, qtn: {}, aisrc: {}, fix: {}, paper: {}, tag: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, qtn: {}, aisrc: {}, fix: {}, paper: {}, tag: {}, vocab: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
