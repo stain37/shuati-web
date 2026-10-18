@@ -212,6 +212,13 @@ function paintExamResult(bank) {
             return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${esc(o)}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
           }).join('')}</div>
           <div class="exp">${renderRich(fk, explainOf(fk, q))}</div>
+          <div class="wi-acts">
+            <button class="btn tiny" data-exact="note" data-i="${i}" title="改这道题的解析（写到原题上，下次刷题 / 再考都用新的）">改解析</button>
+            <button class="btn tiny" data-exact="fix" data-i="${i}" title="修正这道题的正确选项，只改本机判分">改答案</button>
+            <button class="btn tiny" data-exact="ai" data-i="${i}" title="让 AI 写一份解析 / 讲解">AI 解析</button>
+            <button class="btn tiny" data-exact="variant" data-i="${i}" title="让 AI 照这道题出同考点变式题">AI 变式题</button>
+          </div>
+          <div class="wi-host" id="exHost${i}"></div>
         </div>
       </div>`;
   }).join('');
@@ -234,6 +241,40 @@ function paintExamResult(bank) {
     ${rows}`;
 
   on('exHome', () => go('#/'));
+  /* 结果页逐题管理：改解析 / 改答案 / AI 解析 / AI 变式题。
+     套卷里的题按原题键（_srcKey）改，改完和其他页共用同一份 NOTES / FIX。 */
+  $('view').querySelectorAll('[data-exact]').forEach(btn => {
+    btn.onclick = () => {
+      const i = +btn.dataset.i, q = qs[i], host = document.getElementById('exHost' + i);
+      if (!q || !host) return;
+      const fk = q._srcKey || kOf(bank, q), act = btn.dataset.exact;
+      /* 只留一个操作面板：再点同一颗就收起 */
+      $('view').querySelectorAll('.wi-host').forEach(h => { if (h !== host) h.innerHTML = ''; });
+      if (btn.classList.contains('on') && host.innerHTML) {
+        host.innerHTML = '';
+        $('view').querySelectorAll('[data-exact]').forEach(b => b.classList.remove('on'));
+        return;
+      }
+      $('view').querySelectorAll('[data-exact]').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      host.innerHTML = '';
+      if (act === 'note') {
+        if (typeof richFlush === 'function') richFlush();
+        if (typeof openNoteEditor === 'function') openNoteEditor(fk, host, q, null);
+        else toast('解析编辑器没加载（collection.js）');
+      } else if (act === 'fix') {
+        if (typeof openAnsEditor === 'function') openAnsEditor(host, fk, q, () => { try { paintExamResult(bank); } catch (e) { render(); } });
+        else toast('改答案编辑器没加载');
+      } else if (act === 'ai') {
+        if (typeof aiOpenPanel === 'function') aiOpenPanel(host, fk, q);
+        else toast('AI 模块没加载（ai.js）');
+      } else if (act === 'variant') {
+        if (typeof openVariant === 'function') openVariant(host, fk, q);
+        else toast('变式题模块没加载（variant.js）');
+      }
+      try { host.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { host.scrollIntoView(); }
+    };
+  });
   on('exAgain', () => {
     const conf = PAPERS.find(p => p.id === bank.id) || {};
     const keys = conf.keys || [];

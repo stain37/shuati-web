@@ -52,8 +52,45 @@ function mdTidy(s) {
     .replace(/={4,}/g, '==')
     .replace(/`{4,}/g, '`');
 }
+/* 代码块：先把围栏整块抽出来（换成占位符），再走 Markdown 流程。
+   不先抽的话，围栏里的 * _ == ` 会被后面的格式规则改掉。
+   图类（diagram / mermaid / mindmap）交给 diagram.js 渲染成 SVG；
+   其它语言、或解析失败，原样收进 <pre>，内容一个字不丢。 */
+const MD_FENCE = '\u0004';
+function mdEscCode(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function mdFenceHtml(lang, body) {
+  const l = String(lang || '').toLowerCase();
+  if (window.DIAGRAM && (l === 'diagram' || l === 'mermaid' || l === 'mindmap' || l === 'mind')) {
+    try {
+      const r = window.DIAGRAM.render(l === 'mind' ? 'mindmap' : l, body);
+      if (r && r.html) return r.html;
+    } catch (e) {}
+  }
+  return '<pre class="md-pre"><code>' + mdEscCode(body) + '</code></pre>';
+}
+function mdFences(md) {
+  const fences = [];
+  const txt = String(md).replace(/^[ \t]*`{3,}([A-Za-z0-9_-]*)[^\n]*\n([\s\S]*?)^[ \t]*`{3,}[ \t]*$/gm,
+    (m, lang, body) => {
+      fences.push({ lang: lang, body: body.replace(/\s+$/, '') });
+      return MD_FENCE + 'F' + (fences.length - 1) + MD_FENCE;
+    });
+  return { txt: txt, fences: fences };
+}
+function mdFencesBack(html, fences) {
+  if (!fences || !fences.length) return html;
+  const put = (i) => mdFenceHtml(fences[i].lang, fences[i].body);
+  return String(html)
+    .replace(new RegExp('<p>\\s*' + MD_FENCE + 'F(\\d+)' + MD_FENCE + '\\s*</p>', 'g'), (m, i) => put(+i))
+    .replace(new RegExp(MD_FENCE + 'F(\\d+)' + MD_FENCE, 'g'), (m, i) => put(+i));
+}
 function mdToHtml(md) {
   if (!md) return '';
+  const F = mdFences(md);
+  md = F.txt;
   md = mdTidy(md);
   let s = esc(mdColorize(mdEscOpen(md)));
   s = s.replace(/!\[([^\]]*)\]\((data:image\/[^)\s]+|[^)\s]+)\)/g, (m, a, u) => `<img alt="${a}" src="${u}">`);
@@ -105,7 +142,7 @@ function mdToHtml(md) {
     closeList(); out.push(`<p>${t}</p>`);
   }
   closeList();
-  return mdEscEnd(mdColorEnd(out.join('\n')));
+  return mdFencesBack(mdEscEnd(mdColorEnd(out.join('\n'))), F.fences);
 }
 
 /* 表格辅助 */
@@ -541,6 +578,44 @@ function richBind(el, fk) {
   el.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') { ev.stopPropagation(); el.blur(); }
   });
+  /* 拖图片到解析块：存进这道题的图片区（和「改解析 → 插入图片」同一份数据） */
+  const filesIn = e => !!(e.dataTransfer && Array.prototype.some.call(e.dataTransfer.types || [], t => t === 'Files'));
+  el.addEventListener('dragover', e => {
+    if (!filesIn(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+    el.classList.add('drop-hot');
+  });
+  el.addEventListener('dragleave', e => {
+    if (e.target === el || !el.contains(e.relatedTarget)) el.classList.remove('drop-hot');
+  });
+  el.addEventListener('drop', async e => {
+    if (!filesIn(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    el.classList.remove('drop-hot');
+    const files = Array.from(e.dataTransfer.files || []).filter(f => /^image\//.test(f.type || '') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''));
+    if (!files.length) { toast('这里只接图片：png / jpg / webp / gif'); return; }
+    toast('正在处理图片…', 900);
+    const added = [];
+    for (const f of files) {
+      try { added.push({ name: f.name || '', src: await compressImage(f) }); }
+      catch (err) { toast('图片读取失败：' + f.name); }
+    }
+    if (!added.length) return;
+    let md = '';
+    try { md = mdFromHtml(el.cloneNode(true)); } catch (err) { md = (NOTES[fk] || {}).text || ''; }
+    const cur = NOTES[fk] || {};
+    NOTES[fk] = { text: md || cur.text || '', imgs: (cur.imgs || []).concat(added), ts: Date.now(), ai: cur.ai || false };
+    if (typeof saveNotes === 'function' && saveNotes() === false) { toast('保存失败：浏览器存储满了', 3000, 'bad'); return; }
+    const wrap = el.closest('.exp-wrap');
+    let box = wrap && wrap.querySelector('.rich-imgs');
+    if (!box && wrap) { box = document.createElement('div'); box.className = 'rich-imgs'; wrap.appendChild(box); }
+    if (box) added.forEach(im => {
+      const x = document.createElement('img'); x.src = im.src; x.alt = im.name || ''; x.loading = 'lazy'; box.appendChild(x);
+    });
+    richState(el, '已保存');
+    toast('已插入 ' + added.length + ' 张图片');
+  });
   fmtBarInit(el);
   return RICH;
 }
@@ -610,6 +685,35 @@ function paintEditor() {
   ta.oninput = () => { ED.text = ta.value; host.querySelector('.ed-preview').innerHTML = mdToHtml(ED.text) + ED.imgs.map(im => `<img src="${im.src}" alt="">`).join(''); };
   /* §9：选中文字弹浮条（加粗 / 斜体 / 代码 / 高亮 / 颜色） */
   fmtBarInit(ta);
+  /* 拖图片进「改解析」：直接加到下面的图片区。stopPropagation 是必须的 ——
+     chat.js 在 document 捕获阶段有个「拖文件 = 加进 AI 对话」的兜底，会把这里的 drop 抢走。 */
+  const edRoot = host.querySelector('.ed');
+  if (edRoot) {
+    const filesIn = e => !!(e.dataTransfer && Array.prototype.some.call(e.dataTransfer.types || [], t => t === 'Files'));
+    edRoot.addEventListener('dragover', e => {
+      if (!filesIn(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+      edRoot.classList.add('drag-on');
+    });
+    edRoot.addEventListener('dragleave', e => {
+      if (e.target === edRoot || !edRoot.contains(e.relatedTarget)) edRoot.classList.remove('drag-on');
+    });
+    edRoot.addEventListener('drop', async e => {
+      if (!filesIn(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      edRoot.classList.remove('drag-on');
+      const files = Array.from(e.dataTransfer.files || []).filter(f => /^image\//.test(f.type || '') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''));
+      if (!files.length) { toast('这里只接图片：png / jpg / webp / gif'); return; }
+      ED.text = ta.value || ED.text;
+      toast('正在处理图片…', 900);
+      for (const f of files) {
+        try { ED.imgs.push({ name: f.name || '', src: await compressImage(f) }); }
+        catch (err) { toast('图片读取失败：' + f.name); }
+      }
+      paintEditor();
+    });
+  }
   on('edImg', () => $('edFile').click());
   on('edAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel(host.querySelector('.ai-host'), k, ED.q, txt => { ED.text = txt; paintEditor(); }); else toast('AI 模块没加载（ai.js）'); });
   on('edFile', async e => {
@@ -656,19 +760,35 @@ const SORTS = {
   id: { label: '题号', def: 1, cmp: (a, b) => String(a.bank.title).localeCompare(String(b.bank.title)) || String(a.q.id).localeCompare(String(b.q.id), 'zh', { numeric: true }) }
 };
 const ARROW = d => (d > 0 ? '↑' : '↓');
-const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '' });
+const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '', base: '' });
 const LP = { wrong: mkState(), fav: mkState(), search: mkState() };
 let LP_KW_T = null;                                  /* 「找词」输入的防抖计时器 */
+let LP_COMPOSING = false;                             /* 拼音候选阶段：不重画，否则选字会退回拼音 */
+const QAI_KEY = 'qbank.qsearch.ai.v1';
+const QAI_SCOPES = [['all', '全部'], ['stem', '题干'], ['options', '选项'], ['explain', '解析']];
+const QAI = { on: false, scope: 'all', cache: new Map(), timer: 0, abort: null, runQ: '', seq: 0 };
+try {
+  const qaiSt = (typeof readLS === 'function') ? readLS(QAI_KEY, {}) : null;
+  QAI.on = !!(qaiSt && qaiSt.on);
+  QAI.scope = (qaiSt && QAI_SCOPES.some(x => x[0] === qaiSt.scope)) ? qaiSt.scope : 'all';
+} catch (e) { QAI.on = false; QAI.scope = 'all'; }
+let QAI_LIST_MODE = 'wrong';
+let QAI_FOCUS = null;
 
 /* 这道题贴了哪些考点标签（tags.js 可能还没加载，兜住） */
 function tagListOf(k) {
   try { return (typeof tagsOf === 'function' && tagsOf(k)) || []; } catch (e) { return []; }
 }
+function basicTags() {
+  try { if (window.TAGS && typeof window.TAGS.basic === 'function') return window.TAGS.basic(); } catch (e) {}
+  return ['生理', '生化', '病理', '内科', '外科', '人文'];
+}
 
 /* 考点词表 → 「批量加标签」输入框的候选（tags.js 没加载就空着） */
-function tagVocabOptions() {
+function tagVocabOptions(excludeBasic) {
   try {
-    const all = (window.TAGS && typeof window.TAGS.all === 'function') ? window.TAGS.all() : [];
+    let all = (window.TAGS && typeof window.TAGS.all === 'function') ? window.TAGS.all() : [];
+    if (excludeBasic) { const bs = basicTags(); all = (all || []).filter(t => bs.indexOf(t) < 0); }
     return (all || []).map(t => `<option value="${esc(t)}"></option>`).join('');
   } catch (e) { return ''; }
 }
@@ -731,7 +851,7 @@ function hayListOf(b) {
   HAY_CACHE.set(b.id, { ver: HAY_VER, n: b.questions.length, arr: arr });
   return arr;
 }
-function collect(mode, kw) {
+function collect(mode, kw, scope) {
   const out = [];
   const terms = splitKw(kw);
   allBanks().forEach(b => {
@@ -743,7 +863,7 @@ function collect(mode, kw) {
       else if (mode === 'fav') { if (!FAV[k]) continue; }
       else if (mode === 'due') { if (!isDue(k)) continue; }
       if (terms.length) {
-        const hay = it.hay;
+        const hay = scope ? qaiHay(it, scope) : it.hay;
         let miss = false;
         for (let i = 0; i < terms.length; i++) if (hay.indexOf(terms[i]) < 0) { miss = true; break; }
         if (miss) continue;
@@ -754,12 +874,246 @@ function collect(mode, kw) {
   return out;
 }
 
+/* ---------- 错题 / 收藏 / 搜索页的 AI 模糊（默认关） ----------
+   不把整库题目发给模型：只让 AI 把用户描述扩成同义词 / 相关考点词，
+   再在本地题目里做包含匹配。省 token，也不传题目内容。 */
+function qaiSave() {
+  try { if (typeof writeLS === 'function') writeLS(QAI_KEY, { on: !!QAI.on, scope: QAI.scope }); } catch (e) {}
+}
+function qaiAbort() {
+  QAI.seq++;
+  if (QAI.abort) { try { QAI.abort.abort(); } catch (e) {} QAI.abort = null; }
+  QAI.runQ = '';
+}
+function qaiCached(q) { return QAI.cache.get(q) || null; }
+function qaiCurrentQ() {
+  if (document.getElementById('lkw')) return String((LP[QAI_LIST_MODE] && LP[QAI_LIST_MODE].kw) || '');
+  if (document.getElementById('sq')) return String(LP.search.kw || '');
+  return '';
+}
+function qaiSchedule(q, delay) {
+  clearTimeout(QAI.timer); QAI.timer = 0;
+  q = String(q || '').trim();
+  if (!QAI.on || q.length < 2) { qaiAbort(); return; }
+  if (QAI.runQ && QAI.runQ !== q) qaiAbort();
+  QAI.timer = setTimeout(function () { QAI.timer = 0; qaiExpand(q); }, delay == null ? 900 : delay);
+}
+function qaiParse(text, q) {
+  var s = String(text || '').trim();
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  var a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a >= 0 && b > a) s = s.slice(a, b + 1);
+  var j = null;
+  try { j = JSON.parse(s); } catch (e) { j = null; }
+  var arr = j ? (Array.isArray(j) ? j : (Array.isArray(j.terms) ? j.terms : [])) : [];
+  var out = [], seen = {};
+  function add(t) {
+    t = String(t == null ? '' : t).trim().replace(/^[“”"']+|[“”"']+$/g, '');
+    if (t.length < 2 || t.length > 24) return;
+    var k = t.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push(t);
+  }
+  /* 只展示 AI 真正扩展出来的词；原始关键词由本地筛选单独处理，不混进「AI 扩展」胶囊 */
+  arr.forEach(function (x) { add(typeof x === 'string' ? x : ((x && (x.term || x.text || x.word)) || '')); });
+  return out.slice(0, 12);
+}
+function qaiMatch(items, terms, limit) {
+  var low = [], seen = {};
+  (terms || []).forEach(function (t) {
+    t = String(t || '').toLowerCase();
+    if (t.length < 2 || seen[t]) return;
+    seen[t] = 1; low.push(t);
+  });
+  if (!low.length) return [];
+  var hits = [];
+  (items || []).forEach(function (it) {
+    var hay = qaiHay(it, QAI.scope), n = 0;
+    for (var i = 0; i < low.length; i++) if (hay.indexOf(low[i]) >= 0) n++;
+    if (n) hits.push({ it: it, n: n });
+  });
+  hits.sort(function (a, b) { return b.n - a.n || String(a.it.bank.title).localeCompare(String(b.it.bank.title), 'zh'); });
+  return hits.slice(0, limit || 120).map(function (x) { return x.it; });
+}
+function qaiHay(it, scope) {
+  const q = it.q, k = it.k;
+  if (scope === 'stem') return (q.stem + ' ' + (q.group || '')).toLowerCase();
+  if (scope === 'options') return (q.options || []).join(' ').toLowerCase();
+  if (scope === 'explain') return explainOf(k, q).toLowerCase();
+  return (q.stem + ' ' + (q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + explainOf(k, q)).toLowerCase();
+}
+function qaiScopeHtml() {
+  return '<div class="tools qai-scope-row"' + (QAI.on ? '' : ' style="display:none"') + '>'
+    + '<span class="tl">AI 命中范围</span>'
+    + QAI_SCOPES.map(function (x) {
+        return '<button type="button" class="chip' + (QAI.scope === x[0] ? ' on' : '') + '" data-qscope="' + x[0] + '">' + x[1] + '</button>';
+      }).join('')
+    + '<span class="small muted">只影响 AI 模糊；开启时本地筛选也按这个范围</span>'
+    + '</div>';
+}
+function qaiPaintScope() {
+  document.querySelectorAll('[data-qscope]').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-qscope') === QAI.scope);
+  });
+  document.querySelectorAll('.qai-scope-row').forEach(function (r) {
+    r.style.display = QAI.on ? '' : 'none';
+  });
+}
+function qaiPickTerm(term) {
+  term = String(term || '').trim();
+  if (!term) return;
+  if (document.getElementById('lkw')) {
+    const st = LP[QAI_LIST_MODE] || LP.wrong;
+    st.kw = term;
+    const el = $('lkw'); if (el) el.value = term;
+    QAI_FOCUS = { pos: term.length, t: Date.now() };
+    render();
+    const el2 = $('lkw'); if (el2) { try { el2.focus(); el2.setSelectionRange(term.length, term.length); } catch (e) {} }
+  } else if (document.getElementById('sq')) {
+    LP.search.kw = term;
+    const el = $('sq'); if (el) el.value = term;
+    const c = $('sqClear'); if (c) c.style.display = term ? '' : 'none';
+    paintSearch();
+    try { const el2 = $('sq'); if (el2) { el2.focus(); el2.setSelectionRange(term.length, term.length); } } catch (e) {}
+  }
+}
+function qaiNoteHtml(q, hitCount) {
+  q = String(q || '').trim();
+  if (!QAI.on || q.length < 2) return '';
+  var c = qaiCached(q), inner;
+  if (c && c.error) {
+    var msg = String(c.error.msg || '出错').slice(0, 80);
+    inner = '<span class="ai-qico">✨</span><b>AI 模糊</b>'
+      + '<span class="ai-qerr">没成功：' + esc(msg) + '</span>'
+      + '<button type="button" class="btn tiny" id="aiQRetry">重试</button>';
+  } else if (c && c.terms && c.terms.length) {
+    inner = '<span class="ai-qico">✨</span><b>AI 扩展</b>'
+      + '<span class="ai-qterms">' + c.terms.map(function (t) { return '<button type="button" class="ai-term" data-qterm="' + esc(t) + '" title="用这个词搜">' + esc(t) + '</button>'; }).join('') + '</span>'
+      + '<span class="ai-qhint">' + (hitCount ? '命中 ' + hitCount + ' 题' : '没命中') + '</span>';
+  } else if (c && c.terms) {
+    inner = '<span class="ai-qico">✨</span><b>AI 模糊</b><span class="ai-qhint">没扩展出词；换个说法再按回车</span>';
+  } else if (QAI.runQ === q) {
+    inner = '<span class="ai-qico">✨</span><b>AI 模糊</b><span class="ai-qhint">正在扩展检索词…</span>';
+  } else {
+    inner = '<span class="ai-qico">✨</span><b>AI 模糊</b><span class="ai-qhint">输入后按回车，AI 再扩展检索词（只发关键词，不传题目）</span>';
+  }
+  return '<div class="ai-qnote">' + inner + '</div>';
+}
+function qaiEmptyText(q) {
+  var c = qaiCached(q);
+  if (c && c.error) return 'AI 没成功，本地也没找到。可以点上面的「重试」。';
+  if (c && c.terms && c.terms.length) return 'AI 扩展后也没找到，试试写科目 / 症状 / 检查 / 药名。';
+  if (c && c.terms && !c.terms.length) return 'AI 没扩展出词；换个说法再按回车。';
+  if (QAI.runQ === q) return '本地没找到，AI 正在扩展检索词…';
+  return '本地没找到。按回车，让 AI 按描述再找一遍。';
+}
+function qaiBindNote(host, q) {
+  if (!host) return;
+  var r = host.querySelector('#aiQRetry');
+  if (r) r.onclick = function (e) { e.preventDefault(); QAI.cache.delete(q); qaiSchedule(q, 0); };
+  host.querySelectorAll('[data-qterm]').forEach(function (b) {
+    b.onclick = function (e) { e.preventDefault(); qaiPickTerm(b.getAttribute('data-qterm')); };
+  });
+}
+function qaiApply() {
+  if (document.getElementById('lkw')) {
+    var st = LP[QAI_LIST_MODE] || LP.wrong;
+    QAI_FOCUS = { pos: String(st.kw || '').length, t: Date.now() };
+    render();
+  } else if (document.getElementById('sq')) {
+    paintSearch();
+  }
+}
+async function qaiExpand(q) {
+  q = String(q || '').trim();
+  if (!QAI.on || q.length < 2) return;
+  var c = qaiCached(q);
+  if (c) { if (q === qaiCurrentQ().trim()) qaiApply(); return; }
+  if (QAI.runQ === q) return;
+  var seq = ++QAI.seq;
+  if (QAI.abort) { try { QAI.abort.abort(); } catch (e) {} }
+  var ctl = ('AbortController' in window) ? new AbortController() : null;
+  QAI.abort = ctl; QAI.runQ = q;
+  if (q === qaiCurrentQ().trim()) qaiApply();       /* 先把「正在扩展」画出来 */
+  var timedOut = false;
+  var timer = setTimeout(function () { timedOut = true; if (ctl) { try { ctl.abort(); } catch (e) {} } }, 15000);
+  var sys = '你是医学刷题站的检索助手。用户想在自己的题里找一道题，但不记得原题关键词。'
+    + '把用户描述扩展成最多 10 个检索词（同义词、缩写、相关考点 / 药物 / 检查），用于在本站题目文本里做包含匹配。'
+    + '每个词 1–12 个字；不要整句；不要解释；只输出一行 JSON：{"terms":["...","..."]}。';
+  var user = '用户描述：\n"""' + q.slice(0, 300) + '"""';
+  try {
+    if (typeof aiChat !== 'function') throw new Error('AI 模块没加载');
+    var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }],
+      null, ctl ? ctl.signal : null, { stream: false, temp: 0.2, maxTokens: 500 });
+    if (seq !== QAI.seq) return;
+    var terms = qaiParse(txt, q);
+    QAI.cache.set(q, { terms: terms, ts: Date.now() });
+    if (q === qaiCurrentQ().trim()) qaiApply();
+  } catch (e) {
+    if (seq !== QAI.seq) return;
+    if (e && e.name === 'AbortError' && !timedOut) return;
+    var info;
+    if (e && e.name === 'AbortError' && timedOut) info = { msg: 'AI 15 秒没返回', hint: '模型服务可能太慢；可以换个小模型，或稍后点重试。' };
+    else info = (typeof aiErrInfo === 'function') ? aiErrInfo(e) : { msg: (e && e.message) || '出错', hint: '' };
+    QAI.cache.set(q, { error: info, ts: Date.now() });
+    if (q === qaiCurrentQ().trim()) qaiApply();
+  } finally {
+    clearTimeout(timer);
+    if (QAI.runQ === q) QAI.runQ = '';
+    if (QAI.abort === ctl) QAI.abort = null;
+  }
+}
+function qaiBtnHtml(id) {
+  return '<button type="button" class="btn qai-btn' + (QAI.on ? ' primary on' : '') + '" id="' + id + '" aria-pressed="' + (QAI.on ? 'true' : 'false') + '" title="'
+    + (QAI.on ? 'AI 模糊已开 · 输入后按回车才发请求，再点关闭' : 'AI 模糊搜索：默认关；按回车才把关键词发给 AI 扩展，不传题目内容') + '">'
+    + '<span aria-hidden="true">✨</span> AI 模糊</button>';
+}
+function qaiPaintBtn() {
+  document.querySelectorAll('.qai-btn').forEach(function (b) {
+    b.classList.toggle('primary', QAI.on);
+    b.classList.toggle('on', QAI.on);
+    b.setAttribute('aria-pressed', QAI.on ? 'true' : 'false');
+    b.title = QAI.on ? 'AI 模糊已开 · 输入后按回车才发请求，再点关闭' : 'AI 模糊搜索：默认关；按回车才把关键词发给 AI 扩展，不传题目内容';
+  });
+}
+function qaiSetOn(on) {
+  QAI.on = !!on;
+  qaiSave();
+  if (!QAI.on) { clearTimeout(QAI.timer); QAI.timer = 0; qaiAbort(); }
+  qaiPaintBtn();
+  qaiPaintScope();
+}
+function qaiToggleList() {
+  var st = LP[QAI_LIST_MODE] || LP.wrong;
+  qaiSetOn(!QAI.on);
+  QAI_FOCUS = { pos: String(st.kw || '').length, t: Date.now() };
+  render();
+  if (QAI.on) toast('AI 模糊已开：输入后按回车，才把关键词发给 AI（不传题目）', 2400);
+  else toast('AI 模糊已关', 1400);
+  setTimeout(function () {
+    var el = $('lkw');
+    if (el && (!document.activeElement || document.activeElement === document.body)) {
+      try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+    }
+  }, 30);
+}
+function qaiToggleSearch() {
+  qaiSetOn(!QAI.on);
+  paintSearch();
+  var el = $('sq');
+  try { if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } } catch (e) {}
+  if (QAI.on) toast('AI 模糊已开：输入后按回车，才把关键词发给 AI（不传题目）', 2400);
+  else toast('AI 模糊已关', 1400);
+}
+
 function renderWrong() { renderList('wrong'); }
 function renderFav() { renderList('fav'); }
 
 function renderList(mode) {
   richFlush();                                   // 方案十：重画前先把就地编辑的改动落盘
   const st = LP[mode];
+  QAI_LIST_MODE = mode;
   const isWrong = (mode === 'wrong');
   $('appTitle').textContent = isWrong ? '错题本' : '我的收藏';
   $('stat').textContent = ''; $('bar').style.width = '0%';
@@ -773,18 +1127,36 @@ function renderList(mode) {
   const acc = totalTries ? Math.round((totalTries - totalWrong) / totalTries * 100) : 0;
   const openN = items.filter(it => !(it.rec.ok === true && !it.rec.redo)).length;
 
-  let shown = items.slice();
-  if (isWrong) shown = shown.filter(it => (it.rec.wrong || 0) >= (st.minWrong || 0));
-  if (st.onlyOpen) shown = shown.filter(it => !(it.rec.ok === true && !it.rec.redo));
-  if (isWrong && st.onlyDue) shown = shown.filter(it => isDue(it.k));
-  if (st.bank !== 'all') shown = shown.filter(it => it.bank.id === st.bank);
+  const basics = basicTags();
+  let baseShown = items.slice();
+  if (isWrong) baseShown = baseShown.filter(it => (it.rec.wrong || 0) >= (st.minWrong || 0));
+  if (st.onlyOpen) baseShown = baseShown.filter(it => !(it.rec.ok === true && !it.rec.redo));
+  if (isWrong && st.onlyDue) baseShown = baseShown.filter(it => isDue(it.k));
+  if (st.bank !== 'all') baseShown = baseShown.filter(it => it.bank.id === st.bank);
   /* 候补池 G：按考点标签筛 + 列表里直接找词（都只作用于当前这个列表） */
-  if (st.tag) shown = shown.filter(it => tagListOf(it.k).indexOf(st.tag) >= 0);
+  if (st.base) baseShown = baseShown.filter(it => tagListOf(it.k).indexOf(st.base) >= 0);
+  if (st.tag) baseShown = baseShown.filter(it => tagListOf(it.k).indexOf(st.tag) >= 0);
   const kwTerms = splitKw(st.kw);
-  if (kwTerms.length) shown = shown.filter(it => { const h = hayOf(it.k, it.q, it.bank); return kwTerms.every(w => h.indexOf(w) >= 0); });
+  let localShown = baseShown;
+  if (kwTerms.length) localShown = localShown.filter(it => {
+    const h = QAI.on ? qaiHay(it, QAI.scope) : hayOf(it.k, it.q, it.bank);
+    return kwTerms.every(w => h.indexOf(w) >= 0);
+  });
+  const kwQ = String(st.kw || '').trim();
+  const aiCache = (QAI.on && kwQ.length >= 2) ? qaiCached(kwQ) : null;
+  const aiTerms = (aiCache && aiCache.terms) || [];
+  const aiHits = aiTerms.length ? qaiMatch(baseShown, aiTerms, 120) : [];
+  const aiKeys = new Set(aiHits.map(it => it.k));
   HL_KW = st.kw || '';
   const S = SORTS[st.sort] || SORTS.wrong;
-  shown.sort((a, b) => S.cmp(a, b) * (st.dir > 0 ? 1 : -1));
+  const cmp = (a, b) => S.cmp(a, b) * (st.dir > 0 ? 1 : -1);
+  let shown;
+  if (aiHits.length) {
+    shown = aiHits.slice();                       /* AI 命中的按相关度排最前 */
+    shown = shown.concat(localShown.filter(it => !aiKeys.has(it.k)).sort(cmp));
+  } else {
+    shown = localShown.slice().sort(cmp);
+  }
   st.shown = shown;
 
   const dueItems = isWrong ? items.filter(it => isDue(it.k)) : [];
@@ -800,7 +1172,14 @@ function renderList(mode) {
   /* 候补池 G：考点标签筛选（只列当前列表里真有的标签，按题数排） */
   const tagCount = {};
   items.forEach(it => tagListOf(it.k).forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
-  const tagNames = Object.keys(tagCount).sort((a, b) => tagCount[b] - tagCount[a] || a.localeCompare(b, 'zh'));
+  const tagNames = Object.keys(tagCount).filter(t => basics.indexOf(t) < 0).sort((a, b) => tagCount[b] - tagCount[a] || a.localeCompare(b, 'zh'));
+  const basicChips = `<div class="basic-seg tag-basic-filter">
+        <span class="basic-seg-label">基本</span>
+        <div class="basic-seg-opts">
+          <button type="button" class="basic-opt${st.base ? '' : ' on'}" data-basic="">全部<i>${items.length}</i></button>
+          ${basics.map(t => `<button type="button" class="basic-opt${st.base === t ? ' on' : ''}" data-basic="${esc(t)}">${esc(t)}<i>${tagCount[t] || 0}</i></button>`).join('')}
+        </div>
+      </div>`;
   const tagChips = tagNames.length ? `
       <div class="chips-inline"><span class="tl" style="align-self:center">按考点</span>
         <button class="chip${st.tag ? '' : ' on'}" data-t="">全部 ${items.length}</button>
@@ -824,13 +1203,22 @@ function renderList(mode) {
         <button class="btn" id="wRevSel" ${selKeys.length ? '' : 'disabled'}>复习选中的 ${selKeys.length} 题</button>
       </div>` : ''}
       <div class="chips-inline">${bankChips}</div>
-      ${tagChips}
+      ${basicChips}
+      ${(tagNames.length || st.tag) ? `<div class="tools tag-search-row">
+        <span class="tl">标签</span>
+        <input type="text" id="tagFind" class="num" list="tagFindList" style="min-width:160px;flex:1 1 160px" placeholder="输入标签查找，回车选定" value="${esc(st.tag || '')}">
+        <datalist id="tagFindList">${tagNames.map(t => `<option value="${esc(t)}"></option>`).join('')}</datalist>
+        ${st.tag ? '<button class="btn tiny" id="tagFindClear">清除</button>' : ''}
+      </div>` : ''}
 
       <div class="tools">
         <span class="tl">找词</span>
         <input type="text" id="lkw" class="num" style="min-width:160px;flex:1 1 160px" placeholder="题干 / 选项 / 解析里的词，空格分多个" value="${esc(st.kw)}">
         ${st.kw ? '<button class="btn" id="lkwClear">清掉</button>' : ''}
+        ${qaiBtnHtml('lkwAi')}
       </div>
+      ${QAI.on ? qaiScopeHtml() : ''}
+      ${QAI.on && kwQ.length >= 2 ? `<div class="tools" id="lkwAiRow">${qaiNoteHtml(kwQ, aiHits.length)}</div>` : ''}
 
       <div class="tools">
         <span class="tl">排序（点第二次反向）</span>
@@ -899,27 +1287,95 @@ function renderList(mode) {
       </details>
     </div>
 
-    ${shown.length ? shown.map(it => itemHtml(it, mode)).join('')
-      : `<div class="card"><div class="empty">${items.length ? '当前筛选条件下没有题目，放宽一下条件试试。' : (isWrong ? '还没有错题。答错的题会自动进来。' : '还没有收藏。刷题时点右上角「☆ 收藏」。')}</div></div>`}
+    ${shown.length ? shown.map(it => itemHtml(it, mode, aiKeys.has(it.k))).join('')
+      : `<div class="card"><div class="empty">${
+        !items.length ? (isWrong ? '还没有错题。答错的题会自动进来。' : '还没有收藏。刷题时点右上角「☆ 收藏」。')
+        : (!baseShown.length ? '当前筛选条件下没有题目，放宽一下条件试试。'
+          : (QAI.on && kwQ.length >= 2 ? qaiEmptyText(kwQ) : '当前筛选条件下没有题目，放宽一下条件试试。'))
+      }</div></div>`}
   `;
 
   staggerList($('view'));
 
   /* 事件 */
   $('view').querySelectorAll('.chips-inline .chip[data-b]').forEach(c => c.onclick = () => { st.bank = c.dataset.b; render(); });
+  $('view').querySelectorAll('.tag-basic-filter [data-basic]').forEach(c => c.onclick = () => {
+    st.base = c.getAttribute('data-basic') || '';
+    render();
+  });
   /* 考点标签 chip（和题库 chip 分开绑：它们没有 data-b） */
   $('view').querySelectorAll('.chips-inline .chip[data-t]').forEach(c => c.onclick = () => { st.tag = c.dataset.t || ''; render(); });
-  /* 找词：边打边筛，但别每敲一个字就重画（会把输入焦点弄丢） */
-  on('lkw', () => {
-    clearTimeout(LP_KW_T);
-    LP_KW_T = setTimeout(() => {
-      const typing = document.activeElement && document.activeElement.id === 'lkw';
-      st.kw = $('lkw').value;
+  const tagFind = $('tagFind');
+  if (tagFind) {
+    const applyTag = () => {
+      const v = tagFind.value.trim();
+      if (v === st.tag) return;
+      st.tag = v;
       render();
-      if (typing) { const el = $('lkw'); if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} } }
-    }, 260);
+      setTimeout(() => {
+        const el = $('tagFind');
+        if (el && (!document.activeElement || document.activeElement === document.body)) {
+          try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+        }
+      }, 20);
+    };
+    tagFind.addEventListener('change', () => setTimeout(applyTag, 0));   /* 让点击别的按钮先落下去，别被重画吞掉 */
+    tagFind.addEventListener('keydown', e => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'Enter') { e.preventDefault(); applyTag(); }
+    });
+  }
+  on('tagFindClear', () => { st.tag = ''; render(); });
+  /* 找词：边打边筛，但拼音候选期间绝不重画（否则选字会退回拼音） */
+  const lkwEl = $('lkw');
+  const applyLkw = () => {
+    const el0 = $('lkw');
+    if (!el0) return;
+    const typing = document.activeElement && document.activeElement.id === 'lkw';
+    st.kw = el0.value;
+    render();
+    if (typing) {
+      const el = $('lkw');
+      if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
+    }
+  };
+  if (lkwEl) {
+    lkwEl.addEventListener('compositionstart', () => {
+      LP_COMPOSING = true;
+      clearTimeout(LP_KW_T);
+      clearTimeout(QAI.timer); QAI.timer = 0;
+      qaiAbort();
+    });
+    lkwEl.addEventListener('compositionend', () => {
+      LP_COMPOSING = false;
+      clearTimeout(LP_KW_T);
+      LP_KW_T = setTimeout(applyLkw, 60);
+    });
+    lkwEl.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      clearTimeout(LP_KW_T);
+      applyLkw();                              /* 先按当前词本地筛 */
+      if (QAI.on) qaiSchedule(st.kw, 0);       /* 回车才发 AI */
+    });
+  }
+  on('lkw', (e) => {
+    if (LP_COMPOSING || (e && (e.isComposing || e.keyCode === 229))) return;
+    clearTimeout(LP_KW_T);
+    clearTimeout(QAI.timer); QAI.timer = 0;
+    qaiAbort();                                  /* 改了词：取消还没回来的旧请求，省 token */
+    LP_KW_T = setTimeout(applyLkw, 260);
   }, 'input');
-  on('lkwClear', () => { clearTimeout(LP_KW_T); st.kw = ''; render(); });
+  on('lkwClear', () => { clearTimeout(LP_KW_T); clearTimeout(QAI.timer); QAI.timer = 0; qaiAbort(); st.kw = ''; render(); });
+  on('lkwAi', qaiToggleList);
+  $('view').querySelectorAll('[data-qscope]').forEach(c => c.onclick = () => {
+    QAI.scope = c.getAttribute('data-qscope') || 'all';
+    qaiSave();
+    qaiPaintScope();
+    render();
+  });
+  qaiBindNote($('view'), kwQ);
   $('view').querySelectorAll('[data-s]').forEach(c => c.onclick = () => {
     const id = c.dataset.s;
     if (st.sort === id) st.dir = -(st.dir || SORTS[id].def);
@@ -944,6 +1400,12 @@ function renderList(mode) {
     if (it) bindItem(node, mode, it);
   });
   richBindAll($('view'));                        // 方案十：展开着的解析块可以就地改
+  /* AI 结果回来会重画整页；把「找词」焦点和光标接回去（组合输入期间不会走到这里） */
+  if (QAI_FOCUS && Date.now() - QAI_FOCUS.t < 1600 && (!document.activeElement || document.activeElement === document.body)) {
+    const el = $('lkw');
+    if (el) { try { el.focus(); el.setSelectionRange(QAI_FOCUS.pos, QAI_FOCUS.pos); } catch (e) {} }
+  }
+  QAI_FOCUS = null;
 }
 
 /* 列表页通用交互：勾选 + 批量 + 套卷/试卷命名行（各列表页共用） */
@@ -1119,7 +1581,7 @@ function hitSnippet(it) {
 }
 
 /* ---------------- 单条 ---------------- */
-function itemHtml(it, mode) {
+function itemHtml(it, mode, aiHit) {
   const k = it.k, q = it.q, rec = it.rec, st = LP[mode];
   const open = st.open.has(k);
   const sel = st.sel.has(k);
@@ -1130,11 +1592,12 @@ function itemHtml(it, mode) {
   const where = (mode === 'search') ? hitWhere(it) : '';
   const snippet = (mode === 'search') ? hitSnippet(it) : null;
   return `
-  <div class="card wi" data-k="${esc(k)}">
+  <div class="card wi${aiHit ? ' ai-wi' : ''}" data-k="${esc(k)}">
     <div class="wi-head">
       <input type="checkbox" class="wsel" ${sel ? 'checked' : ''} title="勾选后可批量操作">
       <span class="wno">${qLabel(it)}</span>
       <span class="tag g">${esc(it.bank.title)}</span>
+      ${aiHit ? '<span class="mini-tag ai" title="AI 把描述扩展成同义词后命中的">AI 模糊</span>' : ''}
       ${where ? `<span class="mini-tag hit" title="关键词不在题干里，是在这里命中的">命中：${esc(where)}</span>` : ''}
       ${hasFix(k) ? '<span class="mini-tag" title="答案是你手动改过的，只在本机生效">答案已修正</span>' : ''}
       ${mode === 'wrong'
@@ -1226,7 +1689,11 @@ function bindItem(node, mode, it) {
       const b = allBanks().find(x => !x.paper && k.indexOf(x.id + '#') === 0);
       if (!b) return;
       const qid = k.slice(b.id.length + 1);
-      QZ.filter = 'all'; QZ.order = null; QZ.cur = isNaN(+qid) ? qid : +qid;
+      /* 搜索页筛的是「错题 / 收藏 / 待复习 / 没做过」时，进答题页继续按这个范围走 */
+      const sc = (typeof LP !== 'undefined' && LP && LP.search && LP.search.scope) || 'all';
+      QZ.filter = (sc === 'wrong' || sc === 'fav' || sc === 'due' || sc === 'undone') ? sc : 'all';
+      QZ.order = null; QZ.cur = isNaN(+qid) ? qid : +qid;
+      QZ.focusCur = true;
       go('#/bank/' + b.id);
     }
   });
@@ -1407,9 +1874,26 @@ function renderSearch() {
       <div class="card sbar-sticky" id="sbar" style="margin-bottom:14px">
         <div class="field" style="margin-top:0">
           <label>关键词（题干 / 选项 / 解析 / 题库名都能搜；空格分开＝每个词都要命中）　按 <b>/</b> 可直接聚焦这里</label>
-          <div class="sbox">
-            <input type="text" id="sq" value="${esc(st.kw || '')}" placeholder="例如：肾素　PaO2　树胶样肿" autocomplete="off" spellcheck="false">
-            <button class="btn tiny" id="sqClear" title="清空" style="display:${st.kw ? '' : 'none'}">×</button>
+          <div class="sbox-row">
+            <div class="sbox">
+              <input type="text" id="sq" value="${esc(st.kw || '')}" placeholder="例如：肾素　PaO2　树胶样肿" autocomplete="off" spellcheck="false">
+              <button class="btn tiny" id="sqClear" title="清空" style="display:${st.kw ? '' : 'none'}">×</button>
+            </div>
+            ${qaiBtnHtml('sqAi')}
+          </div>
+          ${qaiScopeHtml()}
+          <div class="basic-seg tag-basic-filter" id="sqBasicRow">
+            <span class="basic-seg-label">基本</span>
+            <div class="basic-seg-opts">
+              <button type="button" class="basic-opt${st.base ? '' : ' on'}" data-basic="">全部</button>
+              ${basicTags().map(t => `<button type="button" class="basic-opt${st.base === t ? ' on' : ''}" data-basic="${esc(t)}">${esc(t)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="tools tag-search-row">
+            <span class="tl">标签</span>
+            <input type="text" id="sqTag" class="num" list="sqTagList" style="min-width:160px;flex:1 1 160px" placeholder="输入标签查找，回车选定" value="${esc(st.tag || '')}">
+            <datalist id="sqTagList">${tagVocabOptions(true)}</datalist>
+            <button class="btn tiny" id="sqTagClear" style="display:${st.tag ? '' : 'none'}">清除</button>
           </div>
         </div>
         <div class="tools" id="shistRow" style="margin-top:8px"></div>
@@ -1418,7 +1902,11 @@ function renderSearch() {
 
     const el = $('sq');
     /* 中文输入法：组合期间绝不重画结果，等 compositionend 再搜 */
-    el.addEventListener('compositionstart', () => { sComposing = true; });
+    el.addEventListener('compositionstart', () => {
+      sComposing = true;
+      clearTimeout(QAI.timer); QAI.timer = 0;
+      qaiAbort();
+    });
     el.addEventListener('compositionend', () => {
       sComposing = false;
       st.kw = el.value;
@@ -1431,12 +1919,56 @@ function renderSearch() {
       const c = $('sqClear'); if (c) c.style.display = el.value ? '' : 'none';
       if (sComposing) return;                 // 拼音还在候选框里，先别搜
       scheduleSearch(false);
+      clearTimeout(QAI.timer); QAI.timer = 0; qaiAbort();   /* 打字不发 AI；回车才发 */
     });
     el.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(sTimer); st.kw = el.value; pushHist(st.kw); paintSearch(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); st.kw = ''; el.value = ''; const c = $('sqClear'); if (c) c.style.display = 'none'; paintSearch(); }
+      if (e.isComposing || e.keyCode === 229) return;   /* 回车选字不能当成「立刻搜」 */
+      if (e.key === 'Enter') {
+        e.preventDefault(); clearTimeout(sTimer); st.kw = el.value; pushHist(st.kw); paintSearch(true);
+        if (QAI.on) qaiSchedule(st.kw, 0);
+      }
+      else if (e.key === 'Escape') {
+        e.preventDefault(); st.kw = ''; el.value = '';
+        const c = $('sqClear'); if (c) c.style.display = 'none';
+        clearTimeout(QAI.timer); QAI.timer = 0; qaiAbort();
+        paintSearch();
+      }
     });
-    on('sqClear', () => { st.kw = ''; el.value = ''; const c = $('sqClear'); if (c) c.style.display = 'none'; el.focus(); paintSearch(); });
+    on('sqClear', () => { st.kw = ''; el.value = ''; const c = $('sqClear'); if (c) c.style.display = 'none'; clearTimeout(QAI.timer); QAI.timer = 0; qaiAbort(); el.focus(); paintSearch(); });
+    on('sqAi', qaiToggleSearch);
+    $('sbar').querySelectorAll('[data-qscope]').forEach(c => c.onclick = () => {
+      QAI.scope = c.getAttribute('data-qscope') || 'all';
+      qaiSave();
+      qaiPaintScope();
+      paintSearch();
+    });
+    $('sbar').querySelectorAll('[data-basic]').forEach(c => c.onclick = () => {
+      st.base = c.getAttribute('data-basic') || '';
+      $('sbar').querySelectorAll('[data-basic]').forEach(b => {
+        b.classList.toggle('on', (b.getAttribute('data-basic') || '') === st.base);
+      });
+      paintSearch();
+    });
+    const sqTag = $('sqTag');
+    if (sqTag) {
+      const applyTag = () => {
+        st.tag = sqTag.value.trim();
+        const c = $('sqTagClear'); if (c) c.style.display = st.tag ? '' : 'none';
+        paintSearch();
+      };
+      sqTag.addEventListener('change', applyTag);
+      sqTag.addEventListener('keydown', e => {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Enter') { e.preventDefault(); applyTag(); }
+      });
+    }
+    on('sqTagClear', () => {
+      st.tag = '';
+      const el = $('sqTag'); if (el) el.value = '';
+      const c = $('sqTagClear'); if (c) c.style.display = 'none';
+      const el2 = $('sqTag'); if (el2) el2.focus();
+      paintSearch();
+    });
     setTimeout(() => { try { el.focus(); } catch (e) {} }, 40);
   }
   paintSearch();
@@ -1447,13 +1979,32 @@ function paintSearch(anim) {
   if (!host) return;
   const kw = String(st.kw || '').trim();
   HL_KW = kw;
-  let items = kw ? collect('all', kw) : [];
   const scope = st.scope || 'all';
-  if (scope === 'wrong') items = items.filter(it => (it.rec.wrong || 0) > 0);
-  else if (scope === 'fav') items = items.filter(it => FAV[it.k]);
-  else if (scope === 'due') items = items.filter(it => isDue(it.k));
-  else if (scope === 'undone') items = items.filter(it => !ANS[it.k]);
+  const scopeOK = it => scope === 'all' ? true
+    : scope === 'wrong' ? (it.rec.wrong || 0) > 0
+    : scope === 'fav' ? !!FAV[it.k]
+    : scope === 'due' ? isDue(it.k)
+    : scope === 'undone' ? !ANS[it.k] : true;
+  const tagOK = it => !st.tag || tagListOf(it.k).indexOf(st.tag) >= 0;
+  const baseOK = it => !st.base || tagListOf(it.k).indexOf(st.base) >= 0;
+  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(tagOK).filter(baseOK) : [];
+  const aiCache = (QAI.on && kw.length >= 2) ? qaiCached(kw) : null;
+  const aiTerms = (aiCache && aiCache.terms) || [];
+  const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(tagOK).filter(baseOK), aiTerms, 120) : [];
+  const aiKeys = new Set(aiHits.map(it => it.k));
+  let items = [];
+  if (kw) {
+    items = aiHits.slice();
+    items = items.concat(local.filter(it => !aiKeys.has(it.k)));
+  } else if (st.tag || st.base) {
+    /* 只有标签 / 基本标签、没有关键词：也把筛选下的题列出来 */
+    items = collect('all').filter(scopeOK).filter(tagOK).filter(baseOK);
+  }
   const total = items.length;
+  const filterBits = [];
+  if (st.tag) filterBits.push('标签「' + st.tag + '」');
+  if (st.base) filterBits.push('基本「' + st.base + '」');
+  const filterLabel = filterBits.join(' · ');
   const shown = items.slice(0, 300);
   st.shown = shown;
 
@@ -1464,16 +2015,19 @@ function paintSearch(anim) {
         <span class="tl">范围</span>
         ${scopes.map(([k, t]) => `<button class="chip${scope === k ? ' on' : ''}" data-scope="${k}">${t}</button>`).join('')}
         <span class="spacer-grow"></span>
-        <span class="tl">${kw ? '命中 ' + total + ' 题' + (total > shown.length ? '（只显示前 ' + shown.length + ' 条）' : '') : '输入关键词开始搜索'}</span>
+        <span class="tl">${kw ? '命中 ' + total + ' 题' + (total > shown.length ? '（只显示前 ' + shown.length + ' 条）' : '') : (filterLabel ? esc(filterLabel) + '：' + total + ' 题' : '输入关键词开始搜索')}</span>
+        ${QAI.on && kw.length >= 2 ? qaiNoteHtml(kw, aiHits.length) : ''}
         ${shown.length ? '<button class="btn" id="sExp">导出这 ' + shown.length + ' 题</button>' : ''}
         ${shown.length ? '<button class="btn primary" id="sPaper">组成套卷做一遍</button>' : ''}
       </div>
     </div>
-    ${shown.length ? shown.map(it => itemHtml(it, 'search')).join('')
-      : (kw ? '<div class="card"><div class="empty">没搜到。换个关键词，或者把范围放宽到「全部」。</div></div>' : '')}`;
+    ${shown.length ? shown.map(it => itemHtml(it, 'search', aiKeys.has(it.k))).join('')
+      : (kw ? '<div class="card"><div class="empty">' + (QAI.on ? qaiEmptyText(kw) : '没搜到。换个关键词，或者把范围放宽到「全部」。') + '</div></div>'
+        : (filterLabel ? '<div class="card"><div class="empty">' + esc(filterLabel) + ' 下还没有题目。换个标签 / 基本标签，或者输入关键词再搜。</div></div>' : ''))}`;
   HL_KW = '';
   paintHist();
   saveLast();
+  qaiBindNote(host, kw);
   /* 只在「点范围 / 按回车搜 / 清空」这种明确动作时播入场，
      敲字的时候不播（每敲一下重播会闪） */
   if (anim) staggerList($('sres'));

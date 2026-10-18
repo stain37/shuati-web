@@ -683,6 +683,7 @@
       + '<span class="spacer-grow"></span>'
       + (mode === 'home' ? '<button class="btn tiny" id="chatFull" title="进入全屏对话">⤢ 全屏</button>' : '')
       + (mode === 'full' ? '<button class="btn tiny" id="chatClear" title="清空这段对话（不影响题库和作答）">清空</button>' : '')
+      + '<button class="btn tiny" id="chatSkill" title="选择技能">🧩 技能</button>'
       + '</div>'
       + '<div class="chat-pickrow">'
       + '<span class="tl small muted">资料</span>'
@@ -765,6 +766,12 @@
         saveChat(); paintLog(); paintChatList(); T('已清空这段对话');
       });
     };
+    var skb = $id('chatSkill');
+    if (skb) skb.onclick = function () {
+      if (window.SKILLS) SKILLS.pick();
+      else T('技能模块没加载', 1800, 'bad');
+    };
+    if (window.SKILLS) { try { SKILLS.syncButton(); } catch (e) {} }
     var stop = $id('chatStop');
     if (stop) stop.onclick = function () { if (RUN && RUN.ctl) { try { RUN.ctl.abort(); } catch (e) {} } };
     var card = root.querySelector('.chat-card');
@@ -1626,20 +1633,44 @@
   }
   async function planByModel(text) {
     if (!window.AI_OPS || typeof aiChat !== 'function') return null;
-    var catalog = AI_OPS.catalog();
-    var prompt = '你是刷题站的本地操作规划器。只能使用下面这些动作，不要发明新动作：\n' + catalog
-      + '\n\n参数写法：{"bankTitle":"题库名"}、{"bankTitles":["A","B"]}、{"current":true}、{"currentQ":true}、'
-      + '{"nums":[3,5]}、{"qids":["q1"]}、{"wrong":true}、{"all":true}、{"tags":["标签"]}、{"on":true}、'
-      + '{"title":"新名字"}、{"catTitle":"目录名"}、{"parentTitle":"上级目录"}、{"theme":"dark|light|auto"}、'
-      + '{"fs":"s|m|l|xl"}、{"color":"blue|teal|indigo|violet|warm"}、{"text":"词表内容"}、'
-      + '{"name":"知识库名","keyword":"关键词"}、{"favorite":true}。'
-      + '\n输出严格 JSON：{"steps":[{"action":"动作id","params":{}}]}，不要解释、不要代码块。\n用户目标：' + text;
+    var sk = (window.SKILLS) ? SKILLS.active() : null;
+    var toolCat = (window.SKILLS && SKILLS.toolCatalog) ? SKILLS.toolCatalog() : '';
+    var skillTxt = sk ? ('\n\n【当前技能：' + sk.name + '】\n' + sk.system) : '';
+    var prompt;
+    if (toolCat) {
+      prompt = '你是刷题站的本地操作规划器。当前技能只允许使用下面这些工具，不要发明工具：\n' + toolCat
+        + '\n\n输出严格 JSON：{"steps":[{"tool":"工具名","args":{}}]}，不要解释、不要代码块。'
+        + '\nargs 用工具说明里的参数名；不需要参数就写 {}。'
+        + skillTxt + '\n用户目标：' + text;
+    } else {
+      prompt = '你是刷题站的本地操作规划器。只能使用下面这些动作，不要发明新动作：\n' + AI_OPS.catalog()
+        + '\n\n参数写法：{"bankTitle":"题库名"}、{"bankTitles":["A","B"]}、{"current":true}、{"currentQ":true}、'
+        + '{"nums":[3,5]}、{"qids":["q1"]}、{"wrong":true}、{"all":true}、{"tags":["标签"]}、{"on":true}、'
+        + '{"title":"新名字"}、{"catTitle":"目录名"}、{"parentTitle":"上级目录"}、{"theme":"dark|light|auto"}、'
+        + '{"fs":"s|m|l|xl"}、{"color":"blue|teal|indigo|violet|warm"}、{"text":"词表内容"}、'
+        + '{"name":"知识库名","keyword":"关键词"}、{"favorite":true}。'
+        + '\n输出严格 JSON：{"steps":[{"action":"动作id","params":{}}]}，不要解释、不要代码块。'
+        + skillTxt + '\n用户目标：' + text;
+    }
     try {
       var txt = await aiChat([{ role: 'system', content: '你只输出站内动作计划 JSON。' }, { role: 'user', content: prompt }], function () {});
       var m = String(txt || '').match(/\{[\s\S]*\}/);
       if (!m) return null;
       var obj = JSON.parse(m[0]);
-      var steps = (obj.steps || []).filter(function (s) { return s && AI_OPS.getAction(s.action); });
+      var steps = [];
+      (obj.steps || []).forEach(function (s) {
+        if (!s) return;
+        if (s.tool && window.SKILLS && SKILLS.toolToStep) {
+          var st = SKILLS.toolToStep(s.tool, s.args || {});
+          if (st && AI_OPS.getAction(st.action)) steps.push(st);
+          return;
+        }
+        if (s.action && AI_OPS.getAction(s.action)) {
+          steps.push({ action: s.action, params: s.params || {} });
+        }
+      });
+      var allow = (window.SKILLS) ? SKILLS.allowedActions() : null;
+      if (allow && allow.length) steps = steps.filter(function (s) { return allow.indexOf(s.action) >= 0; });
       return steps.length ? steps : null;
     } catch (e) { return null; }
   }
@@ -1885,9 +1916,11 @@
       if ($id('chatSend')) $id('chatSend').disabled = false;
       paintLog();
     }
-    var p = (guessMode(userNode.qtext || '', atts) === 'quiz') ? runQuiz(userNode.qtext || '', atts, ai)
-      : (guessMode(userNode.qtext || '', atts) === 'analyze') ? runAnalyze(userNode.qtext || '', atts, ai)
-        : runQA(userNode.qtext || '', atts, ai);
+    var mode = guessMode(userNode.qtext || '', atts);
+    var useAgent = (mode === 'qa' && window.SKILLS && SKILLS.hasTools && SKILLS.hasTools());
+    var p = (mode === 'quiz') ? runQuiz(userNode.qtext || '', atts, ai)
+      : (mode === 'analyze') ? runAnalyze(userNode.qtext || '', atts, ai)
+        : (useAgent ? runAgentChat(userNode.qtext || '', atts, ai) : runQA(userNode.qtext || '', atts, ai));
     p.then(function () { finish(null); }, function (e) {
       var aborted = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
       if (aborted) { finish('（已停止）'); return; }
@@ -1909,7 +1942,7 @@
     var el = document.querySelector('[data-status="' + n.id + '"] .ch-stx');
     if (!el) return;
     var sec = Math.max(0, Math.round((Date.now() - (RUN ? RUN.t0 : n.ts)) / 1000));
-    var base = n.phase === 'retrieval' ? '正在检索知识库' : (n.phase === 'thinking' ? '深度思考中' : '正在思考');
+    var base = n.phase === 'retrieval' ? '正在检索知识库' : (n.phase === 'tool' ? '正在调用工具' : (n.phase === 'thinking' ? '深度思考中' : '正在思考'));
     el.textContent = base + ' ' + sec + ' 秒…' + (sec >= 20 ? '（模型有点慢，还在等）' : '');
   }
   function phase(n, p) {
@@ -1975,6 +2008,133 @@
     return '';
   }
 
+  /* ---------- agent loop：只读工具自动执行，结果回填给模型 ---------- */
+  function agentTraceText(trace) {
+    return (trace || []).map(function (t, i) {
+      return '🛠 ' + (i + 1) + '. ' + t.name + ' → ' + clip(t.result || '', 500);
+    }).join('\n');
+  }
+  function agentParse(out) {
+    var raw = String(out || '');
+    var s = raw.trim().replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/```\s*$/, '').trim();
+    if (!/^\{[\s\S]*\}$/.test(s)) return { text: raw };
+    try {
+      var j = JSON.parse(s);
+      if (j && j.tool && typeof j.tool === 'string') return { tool: j.tool, args: j.args || {} };
+      if (j && j.tool_calls && j.tool_calls[0]) {
+        var c = j.tool_calls[0], fn = c.function || c;
+        var args = fn.arguments != null ? fn.arguments : (c.arguments != null ? c.arguments : {});
+        if (typeof args === 'string') { try { args = JSON.parse(args); } catch (e) { args = {}; } }
+        return { tool: fn.name || c.name, args: args || {} };
+      }
+    } catch (e) {}
+    return { text: raw };
+  }
+  async function runAgentChat(text, atts, n) {
+    var bad = ensureAI(); if (bad) { n.text = bad; return; }
+    var tools = (window.SKILLS && SKILLS.tools) ? SKILLS.tools() : [];
+    if (!tools.length) return runQA(text, atts, n);
+    phase(n, 'retrieval'); n.text = ''; paintLog();
+    var kb = await kbBlocks(text, (typeof aiCfg === 'function' ? (aiCfg().topK || 4) : 4));
+    n.refs = hitRefs(kb.hits);
+    var toolCat = SKILLS.toolCatalog();
+    var sys = ((typeof aiSysText === 'function') ? aiSysText() : '你是我的私人刷题助教。')
+      + '\n\n【本次任务】回答我的问题。你可以使用下面这些工具；需要数据时先调用工具，拿到结果再回答。'
+      + '\n\n【可用工具】\n' + toolCat
+      + '\n\n【工具调用格式】需要工具时，只输出一个 JSON 对象：{"tool":"工具名","args":{}}；'
+      + '不要输出解释或代码块。不需要工具时直接用中文回答。一次只调用一个工具。'
+      + (window.SKILLS ? SKILLS.sysNote() : '');
+    var msgs = [{ role: 'system', content: sys }];
+    histMsgs(userOf(n), 6).forEach(function (m) { msgs.push(m); });
+    var parts = [];
+    if (kb.text) parts.push('【参考资料】\n' + kb.text);
+    var extra = [];
+    atts.forEach(function (a) { if (a.kind === 'file-text') extra.push('【附件 ' + a.name + '】\n' + clip(a.text, 12000)); });
+    if (extra.length) parts.push(extra.join('\n\n'));
+    var brief = attsBrief(atts);
+    if (brief) parts.push(brief);
+    parts.push('【我的问题】' + (text || '（见附件）'));
+    msgs.push({ role: 'user', content: parts.join('\n\n') });
+    var trace = [], cache = {}, MAX = 4;
+    for (var step = 0; step < MAX; step++) {
+      if (RUN && RUN.ctl && RUN.ctl.signal && RUN.ctl.signal.aborted) {
+        var ae = new Error('aborted'); ae.name = 'AbortError'; throw ae;
+      }
+      phase(n, step === 0 ? 'waiting' : 'tool');
+      var out = await aiChat(msgs, function () {}, RUN && RUN.ctl ? RUN.ctl.signal : undefined, { stream: false });
+      var parsed = agentParse(out);
+      if (!parsed.tool) {
+        var answer = String(parsed.text || '').trim() || '（模型没有返回正文）';
+        n.text = (trace.length ? agentTraceText(trace) + '\n\n' : '') + answer;
+        return;
+      }
+      var tool = null;
+      for (var i = 0; i < tools.length; i++) if (tools[i].name === parsed.tool) { tool = tools[i]; break; }
+      if (!tool) {
+        trace.push({ name: parsed.tool, result: '工具不存在或不在当前技能里' });
+        msgs.push({ role: 'assistant', content: JSON.stringify({ tool: parsed.tool, args: parsed.args || {} }) });
+        msgs.push({ role: 'user', content: '【工具结果】\n工具不存在或不在当前技能里。请改用可用工具，或直接回答。' });
+        n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
+        paintLog();
+        continue;
+      }
+      var callArgs = parsed.args || {};
+      var key = tool.name + ':' + JSON.stringify(callArgs);
+      if (cache[key]) {
+        trace.push({ name: tool.name, result: cache[key] });
+        msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
+        msgs.push({ role: 'user', content: '【工具结果：' + tool.name + '】\n' + clip(cache[key], 4000) + '\n请继续。' });
+        n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
+        paintLog();
+        continue;
+      }
+      var stepObj = (SKILLS && SKILLS.toolToStep) ? SKILLS.toolToStep(tool.name, callArgs) : null;
+      var def = stepObj && AI_OPS.getAction(stepObj.action);
+      if (!stepObj || !def) {
+        trace.push({ name: tool.name, result: '工具映射失败' });
+        msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
+        msgs.push({ role: 'user', content: '【工具结果】\n工具映射失败，请直接回答。' });
+        n.text = agentTraceText(trace);
+        continue;
+      }
+      if (def.risk !== 'R0' || /^(open\.|quiz\.)/.test(def.id)) {
+        if (def.risk === 'R0') {
+          var navMsg = '这个工具会切换页面，不能在 agent loop 里自动执行。';
+          trace.push({ name: tool.name, result: navMsg });
+          msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
+          msgs.push({ role: 'user', content: '【工具结果】\n' + navMsg + '\n请直接回答，或让用户手动执行。' });
+          n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
+          paintLog();
+          continue;
+        }
+        var pv;
+        try { pv = await AI_OPS.preview([stepObj]); }
+        catch (e) { pv = { ok: false, error: (e && e.message) || String(e) }; }
+        if (!pv.ok) {
+          trace.push({ name: tool.name, result: '预览失败：' + (pv.error || '') });
+          n.text = agentTraceText(trace);
+          return;
+        }
+        n.text = (trace.length ? agentTraceText(trace) + '\n\n' : '')
+          + '🛠 已请求写操作「' + tool.name + '」，请在下方预览卡确认。';
+        opsShowPreview(pv, n, '技能工具：' + tool.name);
+        return;
+      }
+      var result;
+      try {
+        var r = await AI_OPS.runNow([stepObj]);
+        result = r.ok ? (r.done || []).map(function (d) { return d.text; }).join('\n') : ('工具失败：' + (r.error || ''));
+      } catch (e2) { result = '工具失败：' + ((e2 && e2.message) || e2); }
+      cache[key] = result;
+      trace.push({ name: tool.name, result: result });
+      n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
+      paintLog();
+      msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
+      msgs.push({ role: 'user', content: '【工具结果：' + tool.name + '】\n' + clip(result, 4000) + '\n请基于结果继续回答；还需要工具就继续输出工具调用 JSON，否则直接回答。' });
+    }
+    n.text = agentTraceText(trace) + '\n\n（工具调用达到上限，先把已有结果给你）';
+  }
+
   function runQA(text, atts, n) {
     var bad = ensureAI(); if (bad) { n.text = bad; return Promise.resolve(); }
     phase(n, 'retrieval');
@@ -1984,7 +2144,7 @@
       n.refs = hitRefs(kb.hits);
       phase(n, 'waiting');
       var sys = ((typeof aiSysText === 'function') ? aiSysText() : '你是我的私人刷题助教。')
-        + '\n\n【本次任务】回答我的问题（知识点 / 机制 / 对比 / 记忆法都行）。如果给了【参考资料】：优先用资料里的说法，并在句末标 [1] [2] 这样的编号；资料没覆盖的用自己的知识补充，但要注明「（模型补充）」。回答完给 2–4 条「记住这个」的要点。' + cmdSysNote();
+        + '\n\n【本次任务】回答我的问题（知识点 / 机制 / 对比 / 记忆法都行）。如果给了【参考资料】：优先用资料里的说法，并在句末标 [1] [2] 这样的编号；资料没覆盖的用自己的知识补充，但要注明「（模型补充）」。回答完给 2–4 条「记住这个」的要点。' + cmdSysNote() + (window.SKILLS ? SKILLS.sysNote() : '');
       var msgs = [{ role: 'system', content: sys }];
       histMsgs(userOf(n), 6).forEach(function (m) { msgs.push(m); });
       var parts = [];
@@ -2078,7 +2238,7 @@
         + '\n3) 严格按站内的纯文本题库格式输出，不要写表格、不要代码块、不要额外解释：'
         + '\n# 题库名（自己起一个）\n\n1. 题干…\nA. …\nB. …\nC. …\nD. …\n答案：X\n解析：…'
         + '\n4) 多选答案连写（如 ABD）；题与题之间空一行。'
-        + '\n5) 不要用 ** 加粗、不要写表格 / 代码块 / 额外交代；答案必须单独一行写「答案：X」。生成后站点会自动出现「存入题库」按钮，不需要你在回答里做保存操作。';
+        + '\n5) 不要用 ** 加粗、不要写表格 / 代码块 / 额外交代；答案必须单独一行写「答案：X」。生成后站点会自动出现「存入题库」按钮，不需要你在回答里做保存操作。' + (window.SKILLS ? SKILLS.sysNote() : '');
       var msgs = [{ role: 'system', content: sys }];
       histMsgs(userOf(n), 2).forEach(function (m) { msgs.push(m); });
       var body = [];
@@ -2126,7 +2286,7 @@
       + '\n1) 总结我最容易错的知识点 / 题型（引用题号或题干片段佐证）；'
       + '\n2) 逐个说清这些点为什么容易错、正确思路是什么（能对比就给对比表）；'
       + '\n3) 给一份可执行的复习清单（先补什么、再练什么，控制在 5 条内）。'
-      + '\n不要编造数据里没有的记录；数据不足就直说。' + cmdSysNote();
+      + '\n不要编造数据里没有的记录；数据不足就直说。' + cmdSysNote() + (window.SKILLS ? SKILLS.sysNote() : '');
     var msgs = [{ role: 'system', content: sys }];
     histMsgs(userOf(n), 4).forEach(function (m) { msgs.push(m); });
     if (imgs.length) {
@@ -2286,6 +2446,9 @@
        bf.js 在 window 上有个全局 drop，对 PDF / 图片之类只会弹「只认得 .json 题库文件」——那体验很迷惑。 */
     document.addEventListener('drop', function (e) {
       if (e.target && e.target.closest && e.target.closest('#chatHome')) return;   /* 上面那个处理了 */
+      /* 只在聊天页兜底：做题页的「改解析 / 解析块」自己收图片，别抢过来加进 AI 对话 */
+      if (!document.getElementById('chatHome') && !document.getElementById('chatLog')) return;
+      if (e.target && e.target.closest && e.target.closest('[contenteditable="true"], .ed, .rich-edit, textarea, input')) return;
       var dt = e.dataTransfer;
       if (!dt || !dt.files || !dt.files.length) return;
       var names = Array.prototype.slice.call(dt.files).map(function (f) { return String(f.name || '').toLowerCase(); });
@@ -2384,6 +2547,7 @@
     openWith: function (v) { if (v) addInternal(v); goHomeAndChat(); },
     openBank: function (id) { if (id) addInternal('b:' + id); goHomeAndChat(); },
     parseBankText: function (text, name) { return parseBankText(text, name); },
+    normalizeBankText: function (text) { return normalizeBankText(text); },
     planQuiz: function (userNodeId) {
       var u = node(userNodeId);
       if (!u) return null;

@@ -1169,7 +1169,7 @@
         (t.qids || []).forEach(function (qid) { if (!have[qid]) throw new Error('《' + b.title + '》里有题被删了，请重新预览'); });
         return { bank: b, qids: t.qids || [] };
       });
-      ctx.capture(['qbank.tags.v1', 'qbank.tagvocab.v1']);
+      ctx.capture(['qbank.tags.v1', 'qbank.tagvocab.v1', 'qbank.tomb.v1']);
       var count = 0;
       real.forEach(function (t) {
         t.qids.forEach(function (qid) { try { addTags(t.bank.id + '#' + qid, p.tags); count++; } catch (e) {} });
@@ -1177,6 +1177,100 @@
       try { if (window.TAGS && TAGS.rememberVocab) TAGS.rememberVocab(p.tags); } catch (e) {}
       if (!count) return { ok: false, text: '没有写成任何标签' };
       return { ok: true, changed: true, text: '给 ' + count + ' 道题打上：' + p.tags.join('、'), result: { n: count } };
+    }
+  });
+
+  register({
+    id: 'tag.remove', title: '批量删除标签', risk: 'R1', reversible: true,
+    paramsHint: '{bankTitle:"题库名", nums:[1,2], tags:["心衰"]}；{bankTitle:"题库名", tags:["心衰"], all:true} 整库；{tags:["心衰"], everywhere:true} 全站；{bankTitle, nums, allTags:true} 清空这些题的标签',
+    resolve: function (ctx, p) {
+      p.tags = uniq((p.tags || []).map(function (t) { return String(t || '').trim(); }).filter(Boolean)).slice(0, 20);
+      if (p.allTags || p.tags.indexOf('*') >= 0) { p.allTags = true; p.tags = []; }
+      if (!p.allTags && !p.tags.length) throw new Error('没说删哪个标签（要清空所有标签写 allTags:true）');
+      if (p.everywhere) {
+        if (!p.tags.length) throw new Error('全站删标签必须指定 tags');
+        return p;
+      }
+      if (!p.qids && !p.nums && !p.wrong && !p.currentQ && !p.all) {
+        throw new Error('没说删哪些题：给 nums，或 all:true 表示整个题库');
+      }
+      materialize(ctx, p, {});
+      return p;
+    },
+    run: async function (ctx, p) {
+      var real = [];
+      if (!p.everywhere) {
+        (p.targets || []).forEach(function (t) {
+          var b = bankOf(t.bankId);
+          if (!b) throw new Error('题库《' + t.title + '》不在了，请重新预览');
+          var have = {};
+          (b.questions || []).forEach(function (q) { have[q.id] = 1; });
+          (t.qids || []).forEach(function (qid) { if (!have[qid]) throw new Error('《' + b.title + '》里有题被删了，请重新预览'); });
+          real.push({ bank: b, qids: t.qids || [] });
+        });
+      }
+
+      /* 先数一遍实际会被改到的题，0 题就不落 WAL */
+      var hits = 0;
+      if (p.everywhere) {
+        var data = (window.TAGS && TAGS.data) ? TAGS.data() : {};
+        Object.keys(data).forEach(function (k) {
+          var cur = Array.isArray(data[k]) ? data[k] : [];
+          if (cur.some(function (t) { return p.tags.indexOf(t) >= 0; })) hits++;
+        });
+      } else {
+        real.forEach(function (t) {
+          t.qids.forEach(function (qid) {
+            var cur = tagsOf(t.bank.id + '#' + qid);
+            var next = p.allTags ? [] : cur.filter(function (x) { return p.tags.indexOf(x) < 0; });
+            if (next.length !== cur.length) hits++;
+          });
+        });
+      }
+      var summary = p.everywhere
+        ? ('从全站删除标签：' + p.tags.join('、') + '（' + hits + ' 道题）')
+        : (p.allTags ? ('清空 ' + hits + ' 道题的标签') : ('从 ' + hits + ' 道题删除标签：' + p.tags.join('、')));
+
+      if (ctx.mode === 'dry') return { ok: true, impact: { questions: hits, tags: p.tags, summary: summary } };
+      if (!hits) return { ok: true, changed: false, text: '这些题没有这些标签，什么都没改' };
+
+      ctx.capture(['qbank.tags.v1', 'qbank.tagvocab.v1', 'qbank.tomb.v1']);
+      var n = 0;
+      if (p.everywhere) {
+        p.tags.forEach(function (t) {
+          if (typeof dropTagEverywhere === 'function') { n += dropTagEverywhere(t); return; }
+          /* 兜底：标签模块没暴露 dropTagEverywhere 时自己扫一遍 */
+          var all = (window.TAGS && TAGS.data) ? TAGS.data() : {};
+          Object.keys(all).forEach(function (k) {
+            var cur = Array.isArray(all[k]) ? all[k] : [];
+            var next = cur.filter(function (x) { return x !== t; });
+            if (next.length !== cur.length) { setTags(k, next, true); n++; }
+          });
+        });
+      } else {
+        real.forEach(function (t) {
+          t.qids.forEach(function (qid) {
+            var k = t.bank.id + '#' + qid;
+            var cur = tagsOf(k);
+            var next = p.allTags ? [] : cur.filter(function (x) { return p.tags.indexOf(x) < 0; });
+            if (next.length !== cur.length) { setTags(k, next, true); n++; }
+          });
+        });
+      }
+      if (p.everywhere) {
+        /* dropTagEverywhere 会顺手清词表；走兜底分支时这里补一刀 */
+        try {
+          var rawV = localStorage.getItem('qbank.tagvocab.v1');
+          if (rawV) {
+            var vv = JSON.parse(rawV);
+            var v2 = vv.filter(function (x) { return p.tags.indexOf(x) < 0; });
+            if (v2.length !== vv.length) localStorage.setItem('qbank.tagvocab.v1', JSON.stringify(v2));
+          }
+        } catch (e) {}
+      }
+      try { if (typeof window.tagReload === 'function') window.tagReload(); } catch (e) {}
+      try { if (typeof drawTags === 'function') drawTags(); } catch (e) {}
+      return { ok: true, changed: true, text: summary, result: { n: n, tags: p.tags } };
     }
   });
 

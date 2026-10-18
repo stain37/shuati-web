@@ -66,6 +66,14 @@ function tombAdd(kind, key) {
   Object.keys(t).forEach(x => { if (now - t[x] > TOMB_TTL) delete t[x]; });  // 顺手清理过期墓碑
   writeLS(TOMB_KEY, TOMB);
 }
+/* 反向操作：把某条记回来了（例如清空标签后又重新打上），墓碑必须撤掉，
+   否则 mergeWrite 会因为墓碑把这条当成「已删」再次丢掉。 */
+function tombDel(kind, key) {
+  const t = TOMB[kind];
+  if (!t || !(key in t)) return;
+  delete t[key];
+  writeLS(TOMB_KEY, TOMB);
+}
 function tombWipe(kind) {                    // 整表清空（例如「清空作答记录」），别让旧记录被合并回来
   TOMB[kind] = {};
   TOMB.wipe = TOMB.wipe || {};
@@ -178,6 +186,19 @@ SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
 const QUIZ_MODES = [['normal', '普通'], ['speed', '⚡ 速刷'], ['recite', '📖 背题']];
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
+/* 复习到期按本地自然日算：due = 目标日 0 点，而不是「答对时刻 + N×24h」。
+   用 setDate 而不是 +N×86400000，跨夏令时也落在本地 0 点。 */
+function dayStart(ts) {
+  const d = new Date(ts == null ? Date.now() : ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+function dayAdd(ts, n) {
+  const d = new Date(ts == null ? Date.now() : ts);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + (Math.round(+n) || 0));
+  return d.getTime();
+}
 function migrate() {
   let changed = false;
   Object.keys(ANS).forEach(k => {
@@ -191,6 +212,11 @@ function migrate() {
     if (a.ivl == null) { a.ivl = 0; changed = true; }
     if (a.ease == null) { a.ease = 2.5; changed = true; }
     if (a.due == null) { a.due = a.ts || 0; changed = true; }
+    /* 老数据的 due 精确到时分，统一落到当天 0 点（新规则：过了 0 点就是新的一天） */
+    if (a.due > 0) {
+      const d0 = dayStart(a.due);
+      if (d0 !== a.due) { a.due = d0; changed = true; }
+    }
   });
   if (changed) saveAns();
 }
@@ -487,7 +513,7 @@ function openAnsEditor(host, k, q, done) {
 }
 
 /* ---------- 运行时状态 ---------- */
-const QZ = { bankId: null, filter: 'all', cur: null, pending: {}, order: null, streak: 0 };
+const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, order: null, streak: 0, focusCur: false };
 const SS = {
   get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -557,25 +583,25 @@ function uiFeedbackPulse(bank, q, st, picked) {
   } catch (e) {}
   if (!st.ok) toast('已记入错题本', 1500, 'bad');
 }
-/* §3.6-P0② 判分仪式感：选项不瞬间变色，按 ~110ms 一个个「翻」出来，结果框等最后一起亮。
-   系统开了「减少动态效果」就整段跳过 —— 回到老样子（瞬间变色）。 */
+/* 判分揭示：选项按 ~55ms 淡入 + 微缩，结果框跟着轻轻亮一下。
+   不做 3D 翻牌 / 波浪 / 外扩光圈；系统开了「减少动态效果」就整段跳过。 */
 function uiReveal(bank, q, st) {
   if (!uiMotionOK()) return;
   const opts = [...document.querySelectorAll('#view .opts .opt')];
   const marks = opts.filter(el => el.classList.contains('right') || el.classList.contains('wrong'));
   if (!marks.length) return;
   const plan = marks.map(el => ({ el: el, cls: el.classList.contains('right') ? 'right' : 'wrong' }));
-  plan.forEach(m => m.el.classList.remove('right', 'wrong'));   /* 先退回去，再一个一个揭示 */
+  plan.forEach(m => m.el.classList.remove('right', 'wrong'));   /* 先退回去，再轻轻揭示 */
   const fb = $('fb');
   if (fb) fb.classList.add('fb-hold');
   plan.forEach((m, i) => {
     setTimeout(() => {
       m.el.classList.add(m.cls, 'flip-in');
-      setTimeout(() => m.el.classList.remove('flip-in'), 620);
+      setTimeout(() => m.el.classList.remove('flip-in'), 320);
       if (i === plan.length - 1 && fb) {
-        setTimeout(() => { fb.classList.remove('fb-hold'); fb.classList.add('fb-pop'); setTimeout(() => fb.classList.remove('fb-pop'), 640); }, 200);
+        setTimeout(() => { fb.classList.remove('fb-hold'); fb.classList.add('fb-pop'); setTimeout(() => fb.classList.remove('fb-pop'), 420); }, 160);
       }
-    }, 90 + i * 110);
+    }, 55 + i * 55);
   });
 }
 /* §3.6-P0② 连对 streak：答对累加、答错清零，只在 3 连对起、之后每 5 连对轻提示一次（不动 fx.js 那套彩带） */
@@ -667,6 +693,33 @@ function uiBindStemLongPress(bank, q, fk) {
   });
   ['pointerup', 'pointermove', 'pointercancel', 'pointerleave'].forEach(ev => stem.addEventListener(ev, clear));
 }
+/* 底栏滑动指示器：一个持续存在的胶囊，在 active 按钮下面滑过去。
+   nav 本身不重画，所以换页时是连续动画；按钮图标再做轻微回弹。 */
+function uiBottomNavInit() {
+  const nav = document.querySelector('.bnav');
+  if (!nav || nav.querySelector('.bnav-ind')) return;
+  const ind = document.createElement('span');
+  ind.className = 'bnav-ind';
+  ind.setAttribute('aria-hidden', 'true');
+  nav.insertBefore(ind, nav.firstChild);
+  const paint = () => {
+    const on = nav.querySelector('.btn.on');
+    if (!on || !on.offsetWidth) { ind.style.opacity = '0'; return; }
+    const nr = nav.getBoundingClientRect();
+    const br = on.getBoundingClientRect();
+    const bl = parseFloat(getComputedStyle(nav).borderLeftWidth) || 0;
+    ind.style.opacity = '1';
+    ind.style.width = br.width + 'px';
+    ind.style.transform = 'translateX(' + (br.left - nr.left - bl) + 'px)';
+  };
+  nav.__bnavPaint = paint;
+  paint();
+  window.addEventListener('resize', paint);
+  if ('MutationObserver' in window) {
+    new MutationObserver(paint).observe(nav, { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
+  }
+}
+
 /* 底栏高亮当前所在页（第二批之后，入口都在底部导航上） */
 function markTop(name) {
   const map = { home: 'bnHome', wrong: 'btnGoWrong', fav: 'btnGoFav', search: 'btnGoSearch', kb: 'btnGoKb', sync: 'btnGoSync' };
@@ -677,6 +730,8 @@ function markTop(name) {
     el.classList.toggle('on', on_);
     if (on_) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
   });
+  const nav = document.querySelector('.bnav');
+  if (nav && nav.__bnavPaint) nav.__bnavPaint();
 }
 /* §3.6-P0③ 待复习角标：数一遍「做错过且今天到期」的题，把数字挂到底部导航的「错题」上。
    纯读 ANS（`wrong > 0` + `due <= now`，和 isDue 同一套判据），不新增任何记录、不改数据层。 */
@@ -709,6 +764,294 @@ function uiPaintBadge() {
     b.setAttribute('data-due', String(n));
   });
 }
+/* 跨零点 / 切回前台 / 系统时间被改：角标和首页「待复习」数字跟着刷新。
+   只改这两个地方，不重画整页 —— 免得把正在输入的对话/搜索框冲掉。 */
+function uiDayKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+let _uiDueDay = uiDayKey();
+function uiRefreshDueNow() {
+  try { uiPaintBadge(); } catch (e) {}
+  const btn = document.querySelector('.hstat [data-act="review"]');
+  if (!btn) return;
+  const n = uiDueCount();
+  const b = btn.querySelector('b');
+  if (b) b.textContent = String(n);
+  btn.classList.toggle('off', !n);
+  btn.title = n ? '开始今日复习' : '今天没有该复习的题';
+  /* 首页那颗「今日复习 N 题」跟着改；变成 0 就收起来 */
+  const rv = document.getElementById('toReview');
+  if (rv) {
+    if (!n) rv.remove();
+    else {
+      const cap = +srsCfg().daily || 0;
+      rv.textContent = '今日复习 ' + (cap && n > cap ? cap + ' / ' + n : n) + ' 题';
+    }
+  }
+}
+function uiDueDayTick() {
+  const k = uiDayKey();
+  if (k === _uiDueDay) return;
+  _uiDueDay = k;
+  uiRefreshDueNow();
+}
+setInterval(uiDueDayTick, 30000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) uiRefreshDueNow(); });
+window.addEventListener('focus', uiRefreshDueNow);
+
+/* 一键到底 / 一键到顶：右下角一个浮动按钮，按当前滚动位置切方向。
+   长页面（题库、统计、解析）才有；内容不够一屏就自动隐藏。 */
+function uiScrollJumpInit() {
+  if (document.getElementById('scrollJump')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'scrollJump';
+  wrap.className = 'scroll-jump';
+  wrap.innerHTML = '<button type="button" class="sj-top" aria-label="回到顶部" title="回到顶部">↑</button>'
+    + '<button type="button" class="sj-bottom" aria-label="跳到页面底部" title="跳到页面底部">↓</button>';
+  document.body.appendChild(wrap);
+  const upBtn = wrap.querySelector('.sj-top');
+  const downBtn = wrap.querySelector('.sj-bottom');
+  const doc = document.documentElement;
+  const maxY = () => Math.max(0, ((doc && doc.scrollHeight) || document.body.scrollHeight || 0) - window.innerHeight);
+  /* 聊天页整页高度固定，真正滚的是 #chatLog；其它页面滚 window。 */
+  function target() {
+    const page = document.querySelector('.chat-page');
+    const log = page && document.getElementById('chatLog');
+    if (log) {
+      const max = (log.scrollHeight || 0) - (log.clientHeight || 0);
+      if (max > 80) return { y: log.scrollTop || 0, max: max, el: log, win: false };
+    }
+    return { y: window.scrollY || doc.scrollTop || 0, max: maxY(), el: null, win: true };
+  }
+  function goTo(t, top, smooth) {
+    const behavior = smooth ? 'smooth' : 'auto';
+    if (!t.win && t.el) {
+      try { t.el.scrollTo({ top: top, behavior: behavior }); }
+      catch (e) { t.el.scrollTop = top; }
+    } else {
+      try { window.scrollTo({ top: top, behavior: behavior }); }
+      catch (e) { window.scrollTo(0, top); }
+    }
+  }
+  let raf = 0;
+  function paint() {
+    raf = 0;
+    const t = target();
+    const show = t.max > 120;
+    wrap.classList.toggle('show', show);
+    if (!show) return;
+    wrap.classList.toggle('at-top', t.y <= 2);
+    wrap.classList.toggle('at-bottom', t.y >= t.max - 4);
+  }
+  const kick = () => { if (!raf) raf = requestAnimationFrame(paint); };
+  const jump = (toTop) => {
+    const t = target();
+    const smooth = !(typeof uiMotionOK === 'function' && !uiMotionOK());
+    goTo(t, toTop ? 0 : t.max, smooth);
+    paint();                         /* 即时滚动时立刻切换箭头；平滑滚动由 scroll 事件接着刷 */
+    setTimeout(kick, 120);
+  };
+  upBtn.onclick = () => jump(true);
+  downBtn.onclick = () => jump(false);
+  window.addEventListener('hashchange', function () { setTimeout(paint, 0); });
+  /* 键盘聚焦到浮钮时，Enter / 空格只触发按钮，别让答题页的全局 Enter 快捷键再走一题 */
+  wrap.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.stopPropagation();
+  });
+  window.addEventListener('scroll', kick, { passive: true });
+  document.addEventListener('scroll', kick, { capture: true, passive: true });  /* 接住 #chatLog 内部滚动 */
+  window.addEventListener('resize', kick);
+  const view = document.getElementById('view');
+  if (view && 'MutationObserver' in window) {
+    new MutationObserver(kick).observe(view, { childList: true, subtree: true, characterData: true });
+  }
+  paint();
+  setTimeout(paint, 60);     /* 首页内容由 cat.js 稍后挂进来：再刷一次，确认导航/浮钮状态 */
+  setInterval(paint, 600);   /* 聊天记录是内部滚动、高度会自己长；定时兜底，别等用户滚一下才出现 */
+}
+
+uiScrollJumpInit();
+
+/* ============================================================
+   主界面总导航：独立悬浮胶囊，可拖动，松手吸附左右边，位置记住。
+   只在首页显示；点开是「顶部 / 学习概览 / 全部题库 / 临时套卷 / 数据备份 / 底部」。
+   ============================================================ */
+function uiHomeNavInit() {
+  if (document.getElementById('homeNavFab')) return;
+  const fab = document.createElement('div');
+  fab.id = 'homeNavFab';
+  fab.className = 'home-nav-fab';
+  fab.setAttribute('role', 'button');
+  fab.setAttribute('tabindex', '0');
+  fab.setAttribute('aria-label', '主界面导航');
+  fab.setAttribute('aria-expanded', 'false');
+  fab.innerHTML = '<span class="hnf-ic">☰</span><span class="hnf-tx">导航</span>';
+  const menu = document.createElement('div');
+  menu.id = 'homeNavMenu';
+  menu.className = 'home-nav-menu';
+  menu.setAttribute('role', 'menu');
+  menu.hidden = true;
+  menu.innerHTML = '<div class="hn-head"><span class="hn-cap">主界面导航</span>'
+    + '<button class="hn-x" type="button" aria-label="关闭">×</button></div>'
+    + '<button type="button" class="hn-item" data-hn="top" role="menuitem"><span class="hn-i">⇡</span><span>顶部</span></button>'
+    + '<button type="button" class="hn-item" data-hn="secBento" role="menuitem"><span class="hn-i">◫</span><span>学习概览</span></button>'
+    + '<button type="button" class="hn-item" data-hn="nbHome" role="menuitem"><span class="hn-i">▤</span><span>全部题库</span></button>'
+    + '<button type="button" class="hn-item" data-hn="secPapers" role="menuitem"><span class="hn-i">▧</span><span>临时套卷</span></button>'
+    + '<button type="button" class="hn-item" data-hn="secBackup" role="menuitem"><span class="hn-i">⤓</span><span>数据备份</span></button>'
+    + '<button type="button" class="hn-item" data-hn="bottom" role="menuitem"><span class="hn-i">⇣</span><span>底部</span></button>';
+  document.body.appendChild(fab);
+  document.body.appendChild(menu);
+
+  const POS_KEY = 'qbank.homenav.pos.v1';
+  const M = 12;
+  let side = 'right', top = 0, dragging = false, moved = false, start = null, startRect = null, skipClick = false;
+  const vw = () => window.innerWidth || document.documentElement.clientWidth;
+  const vh = () => window.innerHeight || document.documentElement.clientHeight;
+  const fabW = () => fab.offsetWidth || 76;
+  const fabH = () => fab.offsetHeight || 44;
+  const clampTop = y => Math.max(72, Math.min(y, vh() - fabH() - 96));
+  const isHome = () => { try { return typeof route === 'function' && route().name === 'home'; } catch (e) { return false; } };
+
+  try {
+    const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+    if (p && (p.side === 'left' || p.side === 'right') && isFinite(p.top)) { side = p.side; top = +p.top; }
+  } catch (e) {}
+  if (!top) top = Math.round(vh() * 0.42);
+
+  function place() {
+    fab.style.left = ''; fab.style.right = '';
+    if (side === 'left') fab.style.left = M + 'px'; else fab.style.right = M + 'px';
+    top = clampTop(top);
+    fab.style.top = top + 'px';
+  }
+  function savePos() {
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ side: side, top: clampTop(top) })); } catch (e) {}
+  }
+  function closeMenu() {
+    menu.hidden = true;
+    fab.classList.remove('open');
+    fab.setAttribute('aria-expanded', 'false');
+  }
+  function openMenu() {
+    menu.querySelectorAll('[data-hn]').forEach(function (b) {
+      const id = b.dataset.hn;
+      b.style.display = (id === 'top' || id === 'bottom' || document.getElementById(id)) ? '' : 'none';
+    });
+    menu.style.left = ''; menu.style.right = ''; menu.style.top = '';
+    const r = fab.getBoundingClientRect();
+    if (side === 'right') menu.style.right = Math.max(M, vw() - r.left + 10) + 'px';
+    else menu.style.left = Math.max(M, r.right + 10) + 'px';
+    menu.hidden = false;
+    fab.classList.add('open');
+    fab.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(function () {
+      const mh = menu.offsetHeight || 300;
+      const y = Math.max(72, Math.min(r.top + r.height / 2 - mh / 2, vh() - mh - 88));
+      menu.style.top = y + 'px';
+    });
+  }
+  function toggleMenu() { if (menu.hidden) openMenu(); else closeMenu(); }
+  function sync() {
+    const home = isHome();
+    fab.classList.toggle('show', home);
+    if (!home) closeMenu();
+  }
+
+  place();
+  sync();
+
+  /* 拖动：按下记起点，移动超过 6px 才算拖；松手吸附到最近的左右边 */
+  fab.addEventListener('pointerdown', function (e) {
+    if (e.button != null && e.button !== 0) return;
+    dragging = true; moved = false;
+    start = { x: e.clientX, y: e.clientY };
+    startRect = fab.getBoundingClientRect();
+    try { fab.setPointerCapture(e.pointerId); } catch (err) {}
+    fab.classList.add('dragging');
+    document.body.classList.add('hn-dragging');
+  });
+  fab.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (!moved && Math.abs(dx) + Math.abs(dy) > 6) {
+      moved = true;
+      closeMenu();
+    }
+    if (!moved) return;
+    try { e.preventDefault(); } catch (err) {}
+    const nx = Math.max(M, Math.min(startRect.left + dx, vw() - M - fabW()));
+    const ny = Math.max(72, Math.min(startRect.top + dy, vh() - 96 - fabH()));
+    fab.style.left = nx + 'px'; fab.style.right = '';
+    fab.style.top = ny + 'px';
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    /* 先读位置再撤 dragging：撤了以后 left/top 的过渡会重新打开，
+       getBoundingClientRect 可能还停在旧位置，吸附方向就会判错。 */
+    const r = fab.getBoundingClientRect();
+    const wasMoved = moved;
+    dragging = false;
+    fab.classList.remove('dragging');
+    document.body.classList.remove('hn-dragging');
+    try { if (e && e.pointerId != null) fab.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (!wasMoved) return;                   /* 没拖动：交给 click 开菜单 */
+    side = (r.left + r.width / 2 < vw() / 2) ? 'left' : 'right';
+    top = clampTop(r.top);
+    fab.classList.add('snapping');
+    place(); savePos();
+    setTimeout(function () { fab.classList.remove('snapping'); }, 240);
+    skipClick = true;
+    setTimeout(function () { skipClick = false; }, 400);
+  }
+  fab.addEventListener('pointerup', endDrag);
+  fab.addEventListener('pointercancel', endDrag);
+  fab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (skipClick) { skipClick = false; return; }
+    toggleMenu();
+  });
+  fab.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault(); e.stopPropagation(); toggleMenu();
+    } else if (e.key === 'Escape') { closeMenu(); }
+  });
+  menu.querySelector('.hn-x').onclick = function () { closeMenu(); };
+  menu.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-hn]');
+    if (!b) return;
+    const id = b.dataset.hn;
+    const smooth = !(typeof uiMotionOK === 'function' && !uiMotionOK());
+    if (id === 'top') {
+      try { window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' }); } catch (err) { window.scrollTo(0, 0); }
+    } else if (id === 'bottom') {
+      const y = Math.max(0, (document.documentElement.scrollHeight || document.body.scrollHeight || 0) - window.innerHeight);
+      try { window.scrollTo({ top: y, behavior: smooth ? 'smooth' : 'auto' }); } catch (err) { window.scrollTo(0, y); }
+    } else {
+      const el = document.getElementById(id);
+      if (el) {
+        const y2 = Math.max(0, el.getBoundingClientRect().top + (window.scrollY || 0) - 64);
+        try { window.scrollTo({ top: y2, behavior: smooth ? 'smooth' : 'auto' }); } catch (err) { window.scrollTo(0, y2); }
+      }
+    }
+    closeMenu();
+  });
+  document.addEventListener('click', function (e) {
+    if (menu.hidden) return;
+    if (menu.contains(e.target) || fab.contains(e.target)) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !menu.hidden) closeMenu();
+  });
+  window.addEventListener('scroll', closeMenu, { passive: true });
+  window.addEventListener('resize', function () { top = clampTop(top); place(); closeMenu(); });
+  window.addEventListener('hashchange', function () { setTimeout(sync, 0); });
+  setTimeout(sync, 60);
+}
+
+uiHomeNavInit();
+uiBottomNavInit();
 /* §3.6-P0① 专注模式：`body.focus` 由 applyLook() 统一加（设置里也能开关），这里只管切状态 + 提示。
    答题页的「⛶ 专注」按钮、右下角浮出的「退出专注」、Esc 都走这里。 */
 function uiSetFocus(on, quiet) {
@@ -860,6 +1203,7 @@ function renderInner() {
   document.body.classList.toggle('quiz', full);
   $('nav').style.display = r.name === 'quiz' ? 'flex' : 'none';
   $('chips').style.display = r.name === 'quiz' ? 'flex' : 'none';
+  var sjc = $('subjchips'); if (sjc) sjc.style.display = r.name === 'quiz' ? 'flex' : 'none';
   /* 第二批：顶栏瘦身 —— 题号 / 设置 都挪到下面了（答题卡的「上一题 / 答题卡 / 下一题」里有 #jumpInfo，
      底部导航里有 #btnSetAll），所以这两个老按钮统一收起来，只留在 DOM 里给老代码兜底。 */
   $('btnGrid').style.display = 'none';
@@ -1258,6 +1602,7 @@ function randomPaper(banks, n) {
 function startBank(bankId) {
   const b = bankById(bankId); if (!b || !b.questions.length) return;
   QZ.order = null;
+  QZ.focusCur = false;
   if (b.exam) { rememberLast(b, null); go('#/exam/' + b.id); return; }
   const last = readLS('qbank.last.' + b.id, null);
   QZ.cur = (last && b.questions.some(q => String(q.id) === String(last))) ? last : b.questions[0].id;
@@ -1515,6 +1860,9 @@ function renderQuiz(bankId) {
   QZ.bankId = bankId;
   $('appTitle').textContent = bank.title;
 
+  /* 先收一下失效的六科筛选再算题池：标完最后一题「未选」/换筛法后，
+     否则 poolOf 会先按旧科目算出空池，页面卡在「这里暂时没有题目」而 chips 已经回全选。 */
+  if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
   const pool = poolOf(bank);
   if (!pool.length) {
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。</div></div>`;
@@ -1557,11 +1905,11 @@ function renderQuiz(bankId) {
       <div class="qmode" role="tablist" aria-label="刷题模式">
         ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
           mk === 'normal' ? '普通模式：点选项判分，看解析' :
-          mk === 'speed' ? '速刷模式：判完约 1.2 秒自动跳下一题（可点浮层上的「停下看解析」）' :
+          mk === 'speed' ? '速刷模式：答对约 1.2 秒自动跳下一题，答错停下看解析' :
           '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
         <span class="spacer-grow"></span>
-        <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：判完自动跳' : ''}</span>
+        <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：答对自动跳，答错停下' : ''}</span>
       </div>
       <div class="qhead">
         <span class="qno">第 ${qNo(q, pool)} 题</span>
@@ -1633,11 +1981,14 @@ function renderQuiz(bankId) {
   on('doRedo', () => redo(bank, q));
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
      不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
+  /* 点抽屉里的动作先把抽屉收掉：不然遮罩（.qsheet 固定全屏）还盖着，
+     编辑器 / AI 面板开在下面，手机上看起来就是「点了没反应」。 */
   on('doNote', () => {
+    qSheetToggle(false);
     if (typeof richFlush === 'function') richFlush();
     openNoteEditor(fk, $('noteHost'), q, render);
   });
-  on('doFix', () => openAnsEditor($('fixHost'), fk, q, render));
+  on('doFix', () => { qSheetToggle(false); openAnsEditor($('fixHost'), fk, q, render); });
   /* 「删除本题」：只删自建题库里的题（套卷里的题记在它原来的题库上）。删完自动跳到下一题 */
   if (delT) on('doDelQ', () => {
     const i2 = pool.findIndex(x => String(x.id) === String(q.id));
@@ -1658,8 +2009,8 @@ function renderQuiz(bankId) {
       render();
     });
   });
-  on('doAI', () => { if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
-  on('doVariant', () => { if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
+  on('doAI', () => { qSheetToggle(false); if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
+  on('doVariant', () => { qSheetToggle(false); if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
   /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
   if (typeof varqBind === 'function') varqBind($('vStrip'), fk);
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
@@ -1767,33 +2118,92 @@ function toggleFav(k, btn) {
   render();
 }
 
+function qzTags(k) { try { return (window.TAGS && TAGS.of) ? TAGS.of(k) : []; } catch (e) { return []; } }
+/* 套卷 / 每日复习里的题是复制品（键是 paper#p1…），标签挂在原题上：查标签一律走 _srcKey，
+   否则六科计数全是 0，整行灰死点不动（web126 用户报）。 */
+function qzKey(bank, q) { return (bank && bank.paper && q && q._srcKey) ? q._srcKey : kOf(bank, q); }
+function qzBasics() {
+  try { if (window.TAGS && typeof TAGS.basic === 'function') { const b = TAGS.basic(); if (b && b.length) return b; } } catch (e) {}
+  return ['生理', '生化', '病理', '内科', '外科', '人文'];
+}
+function qzBasicOf(bank, q, basic) {
+  basic = basic || qzBasics();
+  return qzTags(qzKey(bank, q)).filter(t => basic.indexOf(t) >= 0);
+}
+function qzHasSubject(bank, q) {
+  if (!QZ.subject) return true;
+  const bs = qzBasicOf(bank, q);
+  if (QZ.subject === '__none') return bs.length === 0;     /* 未选：六科里一科都还没分 */
+  return bs.indexOf(QZ.subject) >= 0;
+}
+function chipFilter(arr, f, bank) {
+  if (f === 'single') return arr.filter(q => ansOf(favKey(bank, q), q).length === 1);
+  if (f === 'multi') return arr.filter(q => ansOf(favKey(bank, q), q).length > 1);
+  if (f === 'wrong') return arr.filter(q => { const a = ANS[kOf(bank, q)]; return a && (a.wrong || 0) > 0; });
+  if (f === 'fav') return arr.filter(q => FAV[favKey(bank, q)]);
+  if (f === 'due') return arr.filter(q => isDue(kOf(bank, q)));
+  if (f === 'undone') return arr.filter(q => !answered(kOf(bank, q)));
+  return arr;
+}
 function poolOf(bank) {
   let arr = bank.questions.slice();
   if (SET.shuffle) {
     if (!QZ.order || QZ.order.bankId !== bank.id) {
       const a = arr.slice();
       for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      /* 从答题卡 / 搜索 / 统计里点某道题进来：把它转到队首。
+         否则随机可能把它排在最后，一进来「下一题」就是灰的。 */
+      const ci = QZ.focusCur ? a.findIndex(q => String(q.id) === String(QZ.cur)) : -1;
+      if (ci > 0) a.push.apply(a, a.splice(0, ci));
       QZ.order = { bankId: bank.id, ids: a.map(q => q.id) };
+      QZ.focusCur = false;
+    } else if (QZ.focusCur) {
+      /* 题库里已有随机顺序：把点的题转到队首，其余顺序不动 */
+      const ids = QZ.order.ids || [];
+      const ci = ids.findIndex(id => String(id) === String(QZ.cur));
+      if (ci > 0) QZ.order.ids = ids.slice(ci).concat(ids.slice(0, ci));
+      QZ.focusCur = false;
     }
     const map = {}; bank.questions.forEach(q => map[q.id] = q);
     arr = QZ.order.ids.map(id => map[id]);
+  } else {
+    QZ.focusCur = false;
   }
-  if (QZ.filter === 'single') arr = arr.filter(q => ansOf(favKey(bank, q), q).length === 1);
-  else if (QZ.filter === 'multi') arr = arr.filter(q => ansOf(favKey(bank, q), q).length > 1);
-  else if (QZ.filter === 'wrong') arr = arr.filter(q => { const a = ANS[kOf(bank, q)]; return a && (a.wrong || 0) > 0; });
-  else if (QZ.filter === 'fav') arr = arr.filter(q => FAV[favKey(bank, q)]);
-  else if (QZ.filter === 'due') arr = arr.filter(q => isDue(kOf(bank, q)));
+  arr = chipFilter(arr, QZ.filter, bank);
+  if (QZ.subject) arr = arr.filter(q => qzHasSubject(bank, q));
   return arr;
 }
 
 function renderChips(bank) {
+  /* 六科行：跟下面「全部 / 没做 / 单选…」同时生效；该筛法下没有这个科目的题就灰掉 */
+  if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
+  const sj = $('subjchips');
+  if (sj) {
+    const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['__none', '未选']];
+    const allN = chipFilter(bank.questions, QZ.filter, bank).length;
+    sj.innerHTML = '<span class="slabel">六科</span>' + subs.map(([v, label]) => {
+      const cnt = v ? subjectCount(bank, v) : allN;
+      const dis = v && !cnt;
+      const ttl = v === '__none' ? '还没分到六科里任何一科的题' : (v ? '只看这个科目' : '不限定科目');
+      return `<button type="button" class="subjchip${QZ.subject === v ? ' on' : ''}${v === '__none' ? ' none' : ''}" data-subj="${v}" ${dis ? 'disabled ' : ''}title="${ttl}">${label}<i>${cnt}</i></button>`;
+    }).join('');
+    sj.querySelectorAll('.subjchip').forEach(c => c.onclick = () => {
+      if (c.disabled) return;
+      QZ.subject = c.dataset.subj || '';
+      const p = poolOf(bank);
+      if (p.length && !p.some(q => String(q.id) === String(QZ.cur))) QZ.cur = p[0].id;
+      render();
+    });
+  }
   const n = f => poolCount(bank, f);
-  const defs = [['all', '全部 ' + bank.questions.length], ['single', '单选 ' + n('single')], ['multi', '多选 ' + n('multi')],
+  const defs = [['all', '全部 ' + n('all')], ['undone', '没做 ' + n('undone')],
+                ['single', '单选 ' + n('single')], ['multi', '多选 ' + n('multi')],
                 ['wrong', '错题 ' + n('wrong')], ['fav', '收藏 ' + n('fav')], ['due', '待复习 ' + n('due')]];
   $('chips').innerHTML = defs.map(([k, t]) => `<button class="chip${QZ.filter === k ? ' on' : ''}" data-f="${k}">${t}</button>`).join('')
     + `<button class="chip tog${SET.shuffle ? ' on' : ''}" id="chipShuffle" title="随机顺序出题（和「设置」里那个开关是同一个）">随机 ${SET.shuffle ? '开' : '关'}</button>`;
   $('chips').querySelectorAll('.chip[data-f]').forEach(c => c.onclick = () => {
     QZ.filter = c.dataset.f;
+    if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
     const p = poolOf(bank);
     if (p.length && !p.some(q => String(q.id) === String(QZ.cur))) QZ.cur = p[0].id;
     render();
@@ -1807,14 +2217,25 @@ function renderChips(bank) {
     toast(SET.shuffle ? '随机顺序：开' : '随机顺序：关', 1200);
   });
 }
+/* 题上改完基本标签：只重画六科/筛选行，不整页重画（免得把解析、AI 输出冲掉）。
+   正在刷题页时，未选计数会当场减少；标完最后一题会自动回「全选」。 */
+function refreshQuizChips() {
+  try {
+    if (typeof route !== 'function' || route().name !== 'quiz') return;
+    const b = QZ.bankId ? bankById(QZ.bankId) : null;
+    if (b) renderChips(b);
+  } catch (e) {}
+}
 function poolCount(bank, f) {
-  if (f === 'all') return bank.questions.length;
-  if (f === 'single') return bank.questions.filter(q => ansOf(favKey(bank, q), q).length === 1).length;
-  if (f === 'multi') return bank.questions.filter(q => ansOf(favKey(bank, q), q).length > 1).length;
-  if (f === 'wrong') return bank.questions.filter(q => { const a = ANS[kOf(bank, q)]; return a && (a.wrong || 0) > 0; }).length;
-  if (f === 'fav') return bank.questions.filter(q => FAV[favKey(bank, q)]).length;
-  if (f === 'due') return bank.questions.filter(q => isDue(kOf(bank, q))).length;
-  return 0;
+  let arr = chipFilter(bank.questions, f, bank);
+  if (QZ.subject) arr = arr.filter(q => qzHasSubject(bank, q));
+  return arr.length;
+}
+function subjectCount(bank, sub) {
+  let arr = chipFilter(bank.questions, QZ.filter, bank);
+  if (sub === '__none') { const basic = qzBasics(); arr = arr.filter(q => qzBasicOf(bank, q, basic).length === 0); }
+  else if (sub) { const basic = qzBasics(); arr = arr.filter(q => qzBasicOf(bank, q, basic).indexOf(sub) >= 0); }
+  return arr.length;
 }
 
 function onPick(bank, q, K) {
@@ -1840,7 +2261,7 @@ function srsUpdate(rec, ok, now) {
   const r = srsNext((rec.ivl == null ? 0 : rec.ivl), (rec.ease == null ? (+c.ease0 || 2.5) : rec.ease), ok, c);
   rec.ease = r.ease;
   rec.ivl = r.ivl;
-  rec.due = ok ? (now + r.ivl * DAY) : (c.wrongToday ? now : now + r.ivl * DAY);
+  rec.due = ok ? dayAdd(now, r.ivl) : (c.wrongToday ? now : dayAdd(now, r.ivl));
 }
 
 /* 写一条作答记录（含 SRS），返回是否答对 */
@@ -1903,7 +2324,7 @@ function uiQuizMode(m) {
   SET.quizMode = m; writeLS(LS.set, SET);
   uiSpeedStop();
   render();
-  toast(m === 'speed' ? '⚡ 速刷模式：判完自动跳下一题' :
+  toast(m === 'speed' ? '⚡ 速刷模式：答对自动跳，答错停下看解析' :
     m === 'recite' ? '📖 背题模式：直接看答案和解析，不记作答' : '普通模式：点选项判分', 1900, 'ok');
 }
 
@@ -1914,7 +2335,7 @@ function uiSpeedStop() {
   if (SP_TICK) { clearInterval(SP_TICK); SP_TICK = null; }
   const fx = document.getElementById('spFx'); if (fx) fx.remove();
 }
-/* 判完分：叠一个极简反馈（✓ 对 / ✗ 答案 B），约 1.2 秒后自动跳下一题 */
+/* 判完分：答对叠一个极简反馈，约 1.2 秒后自动跳下一题；答错就停下，把解析留在眼前 */
 function uiSpeedFx(bank, q, ok) {
   if (SET.quizMode !== 'speed') return;
   uiSpeedStop();
@@ -1924,9 +2345,13 @@ function uiSpeedFx(bank, q, ok) {
   const el = document.createElement('div');
   el.id = 'spFx';
   el.className = 'sp-fx ' + (ok ? 'ok' : 'bad');
-  el.innerHTML = `<b class="sp-t">${ok ? '✓ 对' : '✗ 答案 ' + esc(ans)}</b>
-    <button class="btn tiny" id="spStop" title="这一次不自动跳，停下来看解析">停下看解析</button>`;
+  el.innerHTML = ok
+    ? `<b class="sp-t">✓ 对</b>
+    <button class="btn tiny" id="spStop" title="这一次不自动跳，停下来看解析">停下看解析</button>`
+    : `<b class="sp-t">✗ 答案 ${esc(ans)}</b>
+    <span class="sp-note">答错已停下，看完解析点「下一题 ›」</span>`;
   host.appendChild(el);
+  if (!ok) return;                      /* 打错不自动跳：先把解析看完 */
   on('spStop', () => { uiSpeedStop(); toast('已停下 —— 看完点「下一题 ›」', 1700); });
   const qid = String(q.id);
   SP_JUMP = setTimeout(() => {
@@ -2107,6 +2532,9 @@ function renderGrid() {
     }).join('') + `</div>` : '<div class="empty">这个筛选下没有题目。</div>');
 
   body.querySelectorAll('.gnum').forEach(b => b.onclick = () => {
+    /* 答题卡筛的「没做 / 做错」也带进答题页：从没做的题进去，下一题就继续走没做的 */
+    QZ.filter = GRIDF === 'undone' ? 'undone' : (GRIDF === 'wrong' ? 'wrong' : 'all');
+    QZ.focusCur = true;
     QZ.cur = (isNaN(+b.dataset.j) ? b.dataset.j : +b.dataset.j);
     writeLS('qbank.last.' + bank.id, QZ.cur);
     if (typeof rememberLast === 'function') rememberLast(bank, QZ.cur);
@@ -2154,6 +2582,7 @@ function renderImport() {
       <div class="actions">
         <button class="btn" id="pickFile">从文件读取</button>
         <input type="file" id="fileInput" accept=".txt,.json,.md" style="display:none">
+        <button class="btn" id="aiFormat" title="用设置里的 AI 把原始题目整理成站点格式；只改格式，不改答案">✨ AI 一键标准化</button>
         <button class="btn" id="doPreview">解析预览</button>
         <button class="btn primary" id="doSave">保存题库</button>
         <button class="btn ghost" id="doFormat">填入示例格式</button>
@@ -2199,6 +2628,7 @@ D. …
     r.readAsText(f, 'utf-8');
   }, 'change');
   on('doFormat', () => { $('ta').value = SAMPLE; });
+  on('aiFormat', doAiFormat);
   on('doPreview', doPreview);
   on('doSave', doSave);
 }
@@ -2287,6 +2717,71 @@ function parseText(text, nameHint) {
   finish();
   if (!out.length) return { error: '没解析出题目，检查一下选项是不是用 A. B. C. D. 开头、答案是不是写成了「答案：D」' };
   return { bank: { title: bankTitle || nameHint || '未命名题库', subtitle: '', questions: out }, warns: warns };
+}
+
+/* 一键 AI 标准化：只整理格式，不改答案；失败保留原文 */
+async function doAiFormat() {
+  const ta = $('ta'), btn = $('aiFormat'), host = $('preview');
+  if (!ta || !btn) return;
+  const raw = String(ta.value || '').trim();
+  if (!raw) { toast('先把要整理的题目粘进来', 2200, 'warn'); return; }
+  const cfg = (typeof aiCfg === 'function') ? aiCfg() : null;
+  if (typeof aiChat !== 'function' || !cfg || !cfg.base || !cfg.model) {
+    toast('还没配置 AI。先去「AI 与知识库」填接口和模型，再回来点这个按钮', 3600, 'warn');
+    return;
+  }
+  if (raw.length > 16000) {
+    toast('内容太长（' + raw.length + ' 字），先分两段整理，避免模型漏题', 3600, 'warn');
+    return;
+  }
+  const titleHint = $('bankTitle') ? $('bankTitle').value.trim() : '';
+  const sys = [
+    '你是题库格式整理器。把用户给的原始题目整理成刷题站能直接解析的纯文本题库。',
+    '只输出整理后的题库文本；不要解释、不要 Markdown 代码块、不要 JSON、不要表格。',
+    '标准格式：',
+    '# 题库名（原文有就沿用，没有就根据内容起一个）',
+    '',
+    '1. 题干（保留完整题意）',
+    'A. 选项',
+    'B. 选项',
+    'C. 选项',
+    'D. 选项',
+    '答案：D',
+    '解析：……',
+    '',
+    '2. ……',
+    '要求：',
+    '- 保留原文所有题目，不增不减；题干、选项、答案、解析都不要改写医学含义。',
+    '- 多选题答案连写，如 ABD。',
+    '- 答案和解析必须各自单独一行，分别以「答案：」「解析：」开头。',
+    '- 原文没有解析就留空，不要编造；原文没有选项不要硬造选项。',
+    '- 去掉「例题」「答案在下方」「来源」等与题目无关的排版文字。',
+    '- 如果原文是表格/多栏，按题号拆成上面的线性格式。'
+  ].join('\n');
+  const user = (titleHint ? '题库名提示：' + titleHint + '\n\n' : '') + '【原始内容】\n' + raw;
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'AI 整理中…';
+  host.innerHTML = '<div class="note">正在调用 AI 整理格式；只改排版，不改答案。</div>';
+  try {
+    const out = await aiChat(
+      [{ role: 'system', content: sys }, { role: 'user', content: user }],
+      null, null, { stream: false, temp: 0.1 }
+    );
+    let text = String(out || '').trim();
+    if (window.CHAT && typeof CHAT.normalizeBankText === 'function') text = CHAT.normalizeBankText(text);
+    text = text.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/```\s*$/, '').trim();
+    if (!text) throw new Error('AI 返回空内容');
+    ta.value = text;
+    doPreview();
+    const r = parseInput(text, titleHint);
+    if (r.error) toast('AI 整理完成，但还没解析成题库：' + r.error, 4200, 'warn');
+    else toast('AI 整理完成：' + r.bank.questions.length + ' 题，检查后保存', 2600, 'ok');
+  } catch (e) {
+    host.innerHTML = '<div class="note err">AI 整理失败：' + esc((e && e.message) || String(e)) + '</div>';
+    toast('AI 整理失败，原文已保留', 3000, 'bad');
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
 }
 
 function doPreview() {
@@ -2504,7 +2999,7 @@ function renderStats() {
   if (rvBtn) rvBtn.onclick = () => startReview(60);
   document.querySelectorAll('#view [data-openbank]').forEach(el => el.onclick = () => {
     const b = bankById(el.dataset.openbank); if (!b) return;
-    if (el.dataset.goto) { QZ.filter = 'all'; QZ.order = null; QZ.cur = el.dataset.goto; }
+    if (el.dataset.goto) { QZ.filter = 'wrong'; QZ.order = null; QZ.cur = el.dataset.goto; QZ.focusCur = true; }
     go('#/bank/' + b.id);
   });
   const bars = document.querySelectorAll('#view .cbar');

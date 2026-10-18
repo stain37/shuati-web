@@ -681,7 +681,9 @@ function syncTopBtn() {
     });
     btn.addEventListener('contextmenu', ev => { ev.preventDefault(); go('#/sync'); });
   }
-  btn.textContent = SYNC_BUSY ? '同步中' : (SYC.lastErr ? '同步!' : '同步');
+  /* 底栏其它入口都是「图标 + 文字」；同步也保持同样的结构（busy / 失败时换个字） */
+  const syncLabel = SYNC_BUSY ? '同步中' : (SYC.lastErr ? '同步!' : '同步');
+  btn.innerHTML = '<i class="bn-ic">⟳</i><span>' + syncLabel + '</span>';
   btn.title = (syncReady() ? ('云同步：' + syncSlug() + '（点一下 = 立即同步；Shift+点 或 右键 = 打开设置）　' + syncAgo(SYC.lastAt)) : '云同步：还没配置（点一下去填）')
     + (SYC.lastErr ? ('　上次失败：' + (SYC.lastErr.message || SYC.lastErr.status || '')) : '');
   btn.style.color = SYC.lastErr ? 'var(--bad)' : '';

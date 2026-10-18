@@ -33,7 +33,19 @@
   var DRAG = null;                       // { type:'cat'|'bank', id, banks:[], cats:[], batch } —— 批量模式下带的是一批
   var LOCK = false;                      // 正在写数据，避免重复触发
   var BATCH = null;                      // 批量管理：null = 关闭；开启时 { sel: { 题库id: 1 } }
+  var TOOLS_OPEN = true;                 // 「全部题库」下面的工具折叠面板：默认打开
+  var HOME_PER = 10, HOME_PAGE = 1;      // 主界面「全部题库」：10 项一页
+  var PAPER_PAGE = 1, PAPER_Q = '';      // 「临时套卷」：10 条一页 + 简单搜索
   var CHAT_SEL = null;                   // 普通模式框选用：{ banks:{id:1}, cats:{id:1} }，用来拖 / 一键加进 AI 对话
+  var SEARCH_FOCUS = null;               // 输入后整页重画时把搜索框焦点 / 光标接回去
+  var BANK_AI_KEY = 'qbank.banksearch.ai.v1';
+  var AI_STATE = { on: false };          // 默认关；用户自己开
+  var AI_TIMER = 0, AI_ABORT = null, AI_RUN_Q = '', AI_SEQ = 0;
+  var AI_CACHE = {}, AI_SIG = '';
+  try {
+    var aiSt = (typeof readLS === 'function') ? readLS(BANK_AI_KEY, {}) : null;
+    AI_STATE.on = !!(aiSt && aiSt.on);
+  } catch (e) { AI_STATE.on = false; }
 
   /* ---------- 小工具（都在 app.js 里，但这里做一次安全取值） ---------- */
   function T(msg, ms) {
@@ -484,9 +496,235 @@
       + '</div></div>';
   }
 
+  /* ---------- AI 模糊找题库（默认关） ----------
+     只把题库名称 / 副标题 / 目录 / 题数发给当前 AI 服务，不发题干。
+     返回最多 6 个 id，校验 id 必须真的存在，防止模型编造。 */
+  function aiActive() { return AI_STATE.on && String(QUERY || '').trim().length >= 2; }
+  function aiBoxHtml() { return aiActive() ? '<div id="aiFuzzyBox" class="ai-fuzzy"></div>' : ''; }
+  function aiSaveState() {
+    try { if (typeof writeLS === 'function') writeLS(BANK_AI_KEY, { on: !!AI_STATE.on }); } catch (e) {}
+  }
+  function aiAbort() {
+    AI_SEQ++;
+    if (AI_ABORT) { try { AI_ABORT.abort(); } catch (e) {} AI_ABORT = null; }
+    AI_RUN_Q = '';
+  }
+  function aiSignature() {
+    return bankList().map(function (b) { return (b.id || '') + '\u0001' + (b.title || '') + '\u0001' + (b.cat || ''); }).join('\u0002');
+  }
+  function aiSchedule(q, delay) {
+    clearTimeout(AI_TIMER); AI_TIMER = 0;
+    q = String(q || '').trim();
+    if (!aiActive() || q.length < 2) { aiAbort(); return; }
+    if (AI_RUN_Q && AI_RUN_Q !== q) aiAbort();
+    AI_TIMER = setTimeout(function () { AI_TIMER = 0; aiRun(q); }, delay == null ? 900 : delay);
+  }
+  function aiCatalog() {
+    var all = bankList().filter(function (b) { return b && b.id && !b.paper; });
+    var byId = {}, lines = [], chars = 0, truncated = false;
+    all.forEach(function (b) { byId[String(b.id)] = b; });
+    for (var i = 0; i < all.length; i++) {
+      var b = all[i];
+      var path = pathOf(b.cat || null).map(TITLE).join(' / ');
+      var line = (i + 1) + '. id=' + b.id + ' | ' + b.title
+        + (b.subtitle ? '（' + b.subtitle + '）' : '')
+        + ' | ' + (path || '根目录') + ' | ' + ((b.questions && b.questions.length) || 0) + ' 题';
+      if (chars + line.length > 14000) { truncated = true; break; }
+      lines.push(line); chars += line.length + 1;
+    }
+    return { total: all.length, text: lines.join('\n'), truncated: truncated, byId: byId };
+  }
+  function aiParse(text) {
+    var s = String(text || '').trim();
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    var a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if (a >= 0 && b > a) s = s.slice(a, b + 1);
+    var j = null;
+    try { j = JSON.parse(s); } catch (e) { return []; }
+    var arr = (j && Array.isArray(j.matches)) ? j.matches : (Array.isArray(j) ? j : []);
+    var out = [], seen = {};
+    arr.forEach(function (x) {
+      var id = (typeof x === 'string') ? x : (x && (x.id != null ? x.id : (x.bankId != null ? x.bankId : '')));
+      id = String(id || '').trim();
+      if (!id || seen[id]) return;
+      seen[id] = 1;
+      out.push({ id: id, reason: String((x && (x.reason || x.why)) || '').slice(0, 80) });
+    });
+    return out;
+  }
+  function aiPaintLoading(q) {
+    var box = document.getElementById('aiFuzzyBox');
+    if (!box) return;
+    box.classList.remove('idle');
+    box.innerHTML = '<div class="ai-fuzzy-head"><span class="ai-fuzzy-title">✨ AI 模糊匹配</span>'
+      + '<span class="small muted">正在按「' + E(q) + '」找题库…</span></div>'
+      + '<div class="card ai-fuzzy-card"><span class="ai-spin" aria-hidden="true">✦</span> 问 AI 中，通常几秒；不想等可以继续改关键词。</div>';
+  }
+  function aiBindRows(box) {
+    box.querySelectorAll('[data-ai-bank]').forEach(function (row) {
+      var go = function (e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        var id = row.getAttribute('data-ai-bank');
+        if (!id) return;
+        QUERY = '';
+        startBankWrapped(id);
+      };
+      row.onclick = go;
+      row.onkeydown = function (e) { if (e.target !== row) return; if (e.key === 'Enter' || e.key === ' ') go(e); };
+      row.querySelectorAll('button').forEach(function (btn) {
+        btn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); go(); };
+      });
+    });
+  }
+  function aiPaintMatches(q, data) {
+    var box = document.getElementById('aiFuzzyBox');
+    if (!box) return;
+    box.classList.remove('idle');
+    var ms = (data && data.matches) || [];
+    var head = '<div class="ai-fuzzy-head"><span class="ai-fuzzy-title">✨ AI 模糊匹配</span>'
+      + '<span class="small muted">' + (ms.length ? ms.length + ' 个可能 · 点一下开始' : '没找到相近的题库') + '</span></div>';
+    if (!ms.length) {
+      box.innerHTML = head
+        + '<div class="card ai-fuzzy-card small muted">AI 觉得这些都不太像。试试写科目 / 考点 / 题库特征，比如「呼吸系统 想刷题的那个」。</div>';
+      return;
+    }
+    var rows = ms.map(function (m) {
+      var b = m.bank;
+      if (!b) return '';
+      var path = pathOf(b.cat || null).map(TITLE).join(' › ');
+      var st = bankStat(b);
+      return '<div class="ai-hit" data-ai-bank="' + E(b.id) + '" role="button" tabindex="0">'
+        + '<span class="nb-lic">' + ICON_BANK + '</span>'
+        + '<div class="ai-hit-main">'
+        + '<div class="ai-hit-name">' + E(b.title)
+        + ' <span class="pill ' + (b.source === 'local' ? 'local' : '') + '">' + (b.source === 'local' ? '自建' : '内置') + '</span></div>'
+        + '<div class="ai-hit-meta">' + (path ? E(path) + ' · ' : '') + b.questions.length + ' 题 · 已答 ' + st.done + ' · 正确率 ' + st.acc + '%</div>'
+        + (m.reason ? '<div class="ai-hit-why">AI：' + E(m.reason) + '</div>' : '')
+        + '</div>'
+        + '<button type="button" class="btn tiny primary ai-hit-go">开始</button>'
+        + '</div>';
+    }).join('');
+    box.innerHTML = head + '<div class="ai-fuzzy-list">' + rows + '</div>';
+    aiBindRows(box);
+  }
+  function aiPaintError(q, info) {
+    var box = document.getElementById('aiFuzzyBox');
+    if (!box) return;
+    box.classList.remove('idle');
+    if (typeof info === 'string') info = { msg: info, hint: '' };
+    info = info || { msg: '出错', hint: '' };
+    var msg = String(info.msg || '出错').slice(0, 180);
+    var hint = String(info.hint || '').slice(0, 300);
+    box.innerHTML = '<div class="ai-fuzzy-head"><span class="ai-fuzzy-title">✨ AI 模糊匹配</span>'
+      + '<span class="small muted">没成功</span></div>'
+      + '<div class="card ai-fuzzy-card"><div><b>AI 查找失败：</b>' + E(msg) + '</div>'
+      + (hint ? '<div class="small muted" style="margin-top:4px">' + E(hint) + '</div>' : '')
+      + '<div class="tools" style="margin-top:8px"><button type="button" class="btn tiny" id="aiRetry">重试</button>'
+      + '<a class="btn tiny" href="#/kb">去 AI 设置</a></div></div>';
+    var retry = box.querySelector('#aiRetry');
+    if (retry) retry.onclick = function () { delete AI_CACHE[q]; aiSchedule(q, 0); };
+  }
+  async function aiRun(q) {
+    q = String(q || '').trim();
+    if (!aiActive() || q.length < 2) return;
+    if (AI_RUN_Q === q) return;
+    var sig = aiSignature();
+    if (sig !== AI_SIG) { AI_SIG = sig; AI_CACHE = {}; }
+    if (AI_CACHE[q]) {
+      if (AI_CACHE[q].error) aiPaintError(q, AI_CACHE[q].error); else aiPaintMatches(q, AI_CACHE[q]);
+      return;
+    }
+    var cat = aiCatalog();
+    if (!cat.total) { aiPaintError(q, { msg: '还没有题库', hint: '先新建 / 导入一个题库，再来找。' }); return; }
+    var box = document.getElementById('aiFuzzyBox');
+    if (!box) return;
+    var seq = ++AI_SEQ;
+    if (AI_ABORT) { try { AI_ABORT.abort(); } catch (e) {} }
+    var ctl = ('AbortController' in window) ? new AbortController() : null;
+    AI_ABORT = ctl; AI_RUN_Q = q;
+    aiPaintLoading(q);
+    var timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; if (ctl) { try { ctl.abort(); } catch (e) {} } }, 20000);
+    var sys = '你是题库检索助手。用户会描述自己想找的题库（可能记不清名字）。根据题库清单，找出最多 6 个最可能的题库。'
+      + '只能使用清单里出现的 id，不要编造；没有相关结果就返回空数组。只输出一行 JSON，不要 markdown，不要解释。';
+    var user = '用户描述：\n"""' + q.slice(0, 300) + '"""\n\n题库清单（id | 名称 | 目录 | 题数）：\n'
+      + cat.text
+      + (cat.truncated ? '\n（清单太长，只列了前 ' + cat.text.split('\n').length + ' 个）' : '')
+      + '\n\n输出格式：{"matches":[{"id":"清单里的id","reason":"不超过20字"}]}';
+    try {
+      if (typeof aiChat !== 'function') throw new Error('AI 模块没加载');
+      var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }],
+        null, ctl ? ctl.signal : null, { stream: false, temp: 0, maxTokens: 700 });
+      if (seq !== AI_SEQ || q !== String(QUERY || '').trim()) return;
+      if (aiSignature() !== sig) return;
+      var matches = [], seen = {};
+      aiParse(txt).forEach(function (m) {
+        var b = cat.byId[String(m.id)];
+        if (!b || seen[b.id]) return;
+        seen[b.id] = 1;
+        matches.push({ bank: b, reason: m.reason });
+      });
+      matches = matches.slice(0, 6);
+      AI_CACHE[q] = { matches: matches, ts: Date.now() };
+      aiPaintMatches(q, AI_CACHE[q]);
+    } catch (e) {
+      if (seq !== AI_SEQ) return;
+      if (e && e.name === 'AbortError' && !timedOut) return;
+      if (e && e.name === 'AbortError' && timedOut) {
+        var to = { msg: 'AI 20 秒没返回', hint: '模型服务可能太慢；可以换个小模型，或稍后再点重试。' };
+        AI_CACHE[q] = { error: to, ts: Date.now() };
+        aiPaintError(q, to);
+        return;
+      }
+      var info = (typeof aiErrInfo === 'function') ? aiErrInfo(e) : { msg: (e && e.message) || '出错', hint: '' };
+      AI_CACHE[q] = { error: info, ts: Date.now() };
+      aiPaintError(q, info);
+    } finally {
+      clearTimeout(timer);
+      if (AI_RUN_Q === q) AI_RUN_Q = '';
+      if (AI_ABORT === ctl) AI_ABORT = null;
+    }
+  }
+  function aiAfterRender() {
+    if (!aiActive()) return;
+    var box = document.getElementById('aiFuzzyBox');
+    if (!box) return;
+    var q = String(QUERY || '').trim();
+    var sig = aiSignature();
+    if (sig !== AI_SIG) { AI_SIG = sig; AI_CACHE = {}; }
+    var c = AI_CACHE[q];
+    if (c) { if (c.error) aiPaintError(q, c.error); else aiPaintMatches(q, c); return; }
+    if (AI_RUN_Q === q) { aiPaintLoading(q); return; }
+    /* 不自动发请求：省 token。只在用户按回车 / 点重试时才真的问 AI。 */
+    box.classList.add('idle');
+    box.innerHTML = '<div class="ai-fuzzy-head"><span class="ai-fuzzy-title">✨ AI 模糊</span>'
+      + '<span class="small muted">按回车让 AI 找题库（只发名称 / 目录，不传题目）</span></div>';
+  }
+  function aiToggle() {
+    AI_STATE.on = !AI_STATE.on;
+    aiSaveState();
+    clearTimeout(AI_TIMER); AI_TIMER = 0;
+    aiAbort();
+    if (!AI_STATE.on) AI_CACHE = {};
+    var q = String(QUERY || '').trim();
+    repaint();
+    if (AI_STATE.on) {
+      T('AI 模糊已开：输入后按回车，才会把题库名称 / 目录发给 AI（不传题目内容）', 2400);
+      setTimeout(function () {
+        var s = document.getElementById('nbSearch');
+        if (s) { try { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } catch (e) {} }
+      }, 30);
+    } else {
+      T('AI 模糊已关', 1600);
+    }
+  }
+
   function toolbarHtml() {
     return '<div class="nb-bar">'
       + '<input id="nbSearch" class="nb-search" type="search" placeholder="搜索目录 / 题库名（也可以用「目录名 题库名」）" value="' + E(QUERY) + '">'
+      + '<button type="button" class="btn nb-ai-btn' + (AI_STATE.on ? ' primary on' : '') + '" id="nbAi" aria-pressed="' + (AI_STATE.on ? 'true' : 'false') + '" title="'
+      + (AI_STATE.on ? 'AI 模糊已开 · 输入后按回车才发请求，再点关闭' : 'AI 模糊找题库：默认关；按回车才发送题库名称 / 目录，不发送题目内容') + '">'
+      + '<span aria-hidden="true">✨</span> AI 模糊</button>'
       + '</div>';
   }
 
@@ -496,6 +734,19 @@
       + '或点「＋ 新建 / 导入题库」把题目放进来。<br>'
       + '<span class="small muted">也可以把题库 JSON 文件直接拖到网页上导入。</span>'
       + '</div></div>';
+  }
+
+  function toolsFoldHtml() {
+    return '<details class="nb-toolsfold" id="nbToolsFold"' + (TOOLS_OPEN ? ' open' : '') + '>'
+      + '<summary>题库工具<span class="small muted">搜索目录 / 题库名 · 新建分类 · 批量管理</span></summary>'
+      + '<div class="nb-tools-body">'
+      + toolbarHtml()
+      + '<div class="nb-tools-actions">'
+      + '<button class="btn" data-act="newcat">＋ 新建分类</button>'
+      + (BATCH
+        ? '<button class="btn primary" data-act="batchExit">退出批量（已选 ' + batCount() + '）</button>'
+        : '<button class="btn" data-act="batch">批量管理题库</button>')
+      + '</div></div></details>';
   }
 
   function homeHtml() {
@@ -544,7 +795,7 @@
       var res = resumeHtml || ('<div class="resume"><div class="rinfo"><div class="rtitle">还没有题库</div>'
         + '<div class="rmeta">建一个自建题库，或者从文件 / 文件夹导入现有的</div></div>'
         + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button></div>');
-      bentoHtml = '<div class="vbento">'
+      bentoHtml = '<div class="vbento" id="secBento">'
         + '<div class="vb-card span2 vb-resume">' + res + '</div>'
         + '<div class="vb-card vb-ring">'
         + '<div class="ring-wrap">'
@@ -579,7 +830,13 @@
         + '</div>';
     })();
 
-    var paperList = papers.map(function (b) {
+    /* 临时套卷：简单搜索 + 10 条一页 */
+    var pq = PAPER_Q.trim().toLowerCase();
+    var paperShown = pq ? papers.filter(function (b) { return String(b.title || '').toLowerCase().indexOf(pq) >= 0; }) : papers;
+    var paperPages = Math.max(1, Math.ceil(paperShown.length / HOME_PER));
+    var paperPage = Math.min(Math.max(1, PAPER_PAGE), paperPages);
+    PAPER_PAGE = paperPage;
+    var paperList = paperShown.slice((paperPage - 1) * HOME_PER, paperPage * HOME_PER).map(function (b) {
       var done = 0, ok = 0;
       b.questions.forEach(function (q) { var a = ANS[kOf(b, q)]; if (a && !a.redo) { done++; if (a.ok) ok++; } });
       return '<div class="card bank paper-card"><div class="info">'
@@ -591,6 +848,14 @@
         + '<button class="btn danger" data-act="delpaper" data-id="' + E(b.id) + '">删除' + (b.exam ? '试卷' : '套卷') + '</button>'
         + '</div></div>';
     }).join('');
+    var paperSec = (papers.length || pq)
+      ? '<div id="secPapers">'
+        + '<div class="nb-paperhead"><h2 class="sec">临时套卷</h2>'
+        + '<span class="nb-papersearch"><input id="nbPaperSearch" class="inp" type="search" placeholder="🔍 搜套卷 / 试卷名" value="' + E(PAPER_Q) + '"></span></div>'
+        + (paperList || '<div class="card"><div class="empty">没有匹配的套卷 / 试卷。</div></div>')
+        + pagerHtml('ppage', paperPage, paperPages, paperShown.length, '个套卷')
+        + '</div>'
+      : '';
 
     var body;
     if (QUERY.trim()) {
@@ -601,17 +866,29 @@
       var scr = r.cats.map(function (c) { return catRowHtml(c, true); }).join('');
       var sbr = r.banks.map(function (b) { return bankRowHtml(b, true); }).join('');
       var sdet = detailsHtml(r.cats, r.banks, true);
-      body = sechead('搜索「' + E(QUERY) + '」的结果')
-        + ((sic || sdet) ? viewWrap(sic, scr + sbr, sdet) : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>');
+      var hasLocal = !!(sic || sdet);
+      var aiOn = aiActive();
+      body = toolsFoldHtml()
+        + (aiOn ? aiBoxHtml() : '')
+        + (hasLocal ? sechead('搜索「' + E(QUERY) + '」的结果') + viewWrap(sic, scr + sbr, sdet)
+          : (aiOn ? '' : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>'));
     } else {
       var dirs = kids(CUR), bs = dirBanks(CUR);
       var curTitle = CUR ? TITLE(byId(CUR)) : '全部题库';
       var bsorted = bs.slice().sort(sortBank);
-      var icons = dirs.map(function (c) { return catIconHtml(c); }).join('')
-        + bsorted.map(function (b) { return bankIconHtml(b); }).join('');
-      var rows = dirs.map(function (c) { return catRowHtml(c, false); }).join('')
-        + bsorted.map(function (b) { return bankRowHtml(b, false); }).join('');
-      var det = detailsHtml(dirs, bsorted, false);
+      var per = homePer();
+      var entries = dirs.map(function (c) { return { cat: c }; }).concat(bsorted.map(function (b) { return { bank: b }; }));
+      var pages = Math.max(1, Math.ceil(entries.length / per));
+      var page = Math.min(Math.max(1, HOME_PAGE), pages);
+      HOME_PAGE = page;
+      var pageEntries = entries.slice((page - 1) * per, page * per);
+      var pdirs = [], pbanks = [];
+      pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else pbanks.push(e.bank); });
+      var icons = pdirs.map(function (c) { return catIconHtml(c); }).join('')
+        + pbanks.map(function (b) { return bankIconHtml(b); }).join('');
+      var rows = pdirs.map(function (c) { return catRowHtml(c, false); }).join('')
+        + pbanks.map(function (b) { return bankRowHtml(b, false); }).join('');
+      var det = detailsHtml(pdirs, pbanks, false);
       var agg = CUR ? subStat(CUR) : null;
       body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
@@ -620,7 +897,8 @@
         + '</div>'
         + sechead(E(curTitle), true)
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
-        + ((icons || det) ? viewWrap(icons, rows, det) : emptyHint());
+        + toolsFoldHtml()
+        + ((icons || det) ? viewWrap(icons, rows, det) + pagerHtml('page', page, pages, entries.length, '项') : emptyHint());
     }
 
     return ''
@@ -664,17 +942,12 @@
       + '<button class="btn" id="toSearch" data-act="go" data-hash="#/search">搜索全部<span class="kbd">/</span></button>'
       + '<button class="btn" id="toStats" data-act="go" data-hash="#/stats">学习统计</button>'
       + '<button class="btn" id="toHelp" data-act="help">快捷键<span class="kbd">?</span></button>'
-      + '<button class="btn" data-act="newcat">＋ 新建分类</button>'
-      + (BATCH
-        ? '<button class="btn primary" data-act="batchExit">退出批量（已选 ' + batCount() + '）</button>'
-        : '<button class="btn" data-act="batch">批量管理题库</button>')
       + '</div>'
-      + toolbarHtml()
       + '<div id="chatHome"></div>'   /* AI 对话（chat.js 往这里画）：下面就是题库列表，拖上来就能分析 */
       + body
-      + (paperList ? '<h2 class="sec">临时套卷</h2>' + paperList : '')
+      + paperSec
       + '<div id="bfBoot"></div>'
-      + '<div class="card" style="margin-top:16px">'
+      + '<div class="card" id="secBackup" style="margin-top:16px">'
       + '<div class="name" style="font-weight:700;margin-bottom:6px">数据备份</div>'
       + '<div class="small muted" style="margin-bottom:10px">作答记录、错题、收藏、自定义解析存在本机浏览器里；题库和分类可以另存成本机文件（见上面的「本机题库文件」）。</div>'
       + (typeof backupHint === 'function' ? backupHint() : '')
@@ -685,6 +958,20 @@
       + '</div></div>'
       + '<div id="storeUse" class="small muted" style="margin:10px 2px 0">正在统计占用…</div>'
       + batchBarHtml();
+  }
+
+  /* 主界面分页条：上一页 / 第 X / Y 页 / 跳到 __ 页 / 下一页 */
+  function pagerHtml(kind, page, pages, total, unit) {
+    if (!(pages > 1)) return '';
+    var isPaper = kind === 'ppage';
+    var inputId = isPaper ? 'nbPaperPageGo' : 'nbPageGo';
+    return '<div class="nb-pager">'
+      + '<button class="btn tiny" data-act="' + kind + '" data-n="prev"' + (page <= 1 ? ' disabled' : '') + '>‹ 上一页</button>'
+      + '<span>第 ' + page + ' / ' + pages + ' 页 · 共 ' + total + ' ' + unit + '</span>'
+      + '<span class="nb-pagego">跳到 <input class="inp nb-pageinp" id="' + inputId + '" type="number" min="1" max="' + pages + '" value="' + page + '"> 页 '
+      + '<button class="btn tiny" data-act="' + (isPaper ? 'ppagego' : 'pagego') + '">跳</button></span>'
+      + '<button class="btn tiny" data-act="' + kind + '" data-n="next"' + (page >= pages ? ' disabled' : '') + '>下一页 ›</button>'
+      + '</div>';
   }
 
   function sortBank(a, b) {
@@ -716,6 +1003,12 @@
   }
   function setIconSize(m) {
     try { localStorage.setItem(SIZE_KEY, ICON_SIZES.indexOf(m) >= 0 ? m : 'md'); } catch (e) {}
+  }
+  /* 图标越大，一页放的越少（列表 / 详细信息维持 10 行） */
+  function homePer() {
+    if (viewMode() !== 'icon') return 10;
+    var s = iconSize();
+    return s === 'xl' ? 6 : s === 'lg' ? 8 : s === 'sm' ? 16 : 10;
   }
   /* 详细信息表格的排序：点表头切列 / 升降序 */
   var DETAIL_SORT = { key: 'name', dir: 1 };
@@ -791,6 +1084,7 @@
       + '<span class="nb-iname">' + E(TITLE(c)) + '</span>'
       + '<span class="nb-imeta">' + s.banks + ' 个库 · ' + s.q + ' 题</span>'
       + '<span class="nb-ibar"><i style="width:' + (s.q ? (s.done / s.q * 100).toFixed(1) : 0) + '%"></i></span>'
+      + (batOn() ? '' : '<button class="nb-more" data-act="menu" data-id="' + E(c.id) + '" title="更多：打开 / 重命名 / 移动 / AI 分析 / 删除…">⋯</button>')
       + '</div>';
   }
   function bankIconHtml(b) {
@@ -941,6 +1235,15 @@
       holder.appendChild(su);
     }
     bind(holder);
+    if (SEARCH_FOCUS) {
+      var sf = holder.querySelector('#nbSearch');
+      var ae = document.activeElement;
+      if (sf && Date.now() - (SEARCH_FOCUS.t || 0) < 1500 && (!ae || ae === document.body)) {
+        try { sf.focus(); sf.setSelectionRange(SEARCH_FOCUS.s, SEARCH_FOCUS.e); } catch (e) {}
+      }
+      SEARCH_FOCUS = null;
+    }
+    aiAfterRender();
     if (typeof BF !== 'undefined' && BF.boot) BF.boot();
     /* AI 对话（chat.js）：主页每次重画后把对话卡片挂回来（对话记录 / 附件在 chat.js 里自己记着） */
     try { if (window.CHAT && CHAT.mountHome) CHAT.mountHome(holder); } catch (e) {}
@@ -950,13 +1253,88 @@
   function bind(host) {
     var search = host.querySelector('#nbSearch');
     if (search) {
-      search.addEventListener('input', function () {
-        QUERY = search.value;
+      var nbComposing = false;
+      search.addEventListener('compositionstart', function () {
+        nbComposing = true;
+        clearTimeout(bind._t);                  /* 拼音候选阶段绝不能重画，否则选字会退回拼音 */
+        clearTimeout(AI_TIMER); AI_TIMER = 0;
+        aiAbort();
+      });
+      search.addEventListener('compositionend', function () {
+        nbComposing = false;
+        QUERY = search.value; HOME_PAGE = 1;
+        if (document.activeElement === search) SEARCH_FOCUS = { s: search.selectionStart, e: search.selectionEnd, t: Date.now() };
         clearTimeout(bind._t);
         bind._t = setTimeout(function () { repaint(); }, 220);
       });
-      search.addEventListener('keydown', function (e) { if (e.key === 'Enter') { QUERY = search.value; repaint(); } });
+      search.addEventListener('input', function (e) {
+        if (nbComposing || e.isComposing || e.keyCode === 229) return;
+        QUERY = search.value; HOME_PAGE = 1;
+        if (document.activeElement === search) SEARCH_FOCUS = { s: search.selectionStart, e: search.selectionEnd, t: Date.now() };
+        clearTimeout(bind._t);
+        bind._t = setTimeout(function () { repaint(); }, 220);
+        clearTimeout(AI_TIMER); AI_TIMER = 0; aiAbort();   /* 打字不发 AI；回车才发 */
+      });
+      search.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          QUERY = search.value; HOME_PAGE = 1;
+          if (document.activeElement === search) SEARCH_FOCUS = { s: search.selectionStart, e: search.selectionEnd, t: Date.now() };
+          repaint();
+          if (AI_STATE.on) aiSchedule(QUERY, 0);
+        }
+      });
     }
+    /* 临时套卷的简单搜索：输入防抖，重画后把焦点和滚动位置接回来 */
+    var pSearch = host.querySelector('#nbPaperSearch');
+    if (pSearch) {
+      var pComposing = false;
+      var applyPaper = function () {
+        PAPER_Q = pSearch.value;
+        PAPER_PAGE = 1;
+        var y = window.scrollY || 0;
+        repaint();
+        setTimeout(function () {
+          var el = document.getElementById('nbPaperSearch');
+          if (el) {
+            try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+            try { el.setSelectionRange(el.value.length, el.value.length); } catch (e3) {}
+          }
+          try { window.scrollTo(0, y); } catch (e4) {}
+        }, 40);
+      };
+      pSearch.addEventListener('compositionstart', function () { pComposing = true; clearTimeout(bind._pt); });
+      pSearch.addEventListener('compositionend', function () {
+        pComposing = false; clearTimeout(bind._pt);
+        bind._pt = setTimeout(applyPaper, 60);
+      });
+      pSearch.addEventListener('input', function (e) {
+        if (pComposing || (e && (e.isComposing || e.keyCode === 229))) return;
+        clearTimeout(bind._pt);
+        bind._pt = setTimeout(applyPaper, 300);
+      });
+      pSearch.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(bind._pt); applyPaper(); }
+      });
+    }
+    /* 翻页输入框按回车 = 点「跳」 */
+    [['nbPageGo', '[data-act="pagego"]'], ['nbPaperPageGo', '[data-act="ppagego"]']].forEach(function (pair) {
+      var inp = host.querySelector('#' + pair[0]);
+      if (!inp) return;
+      inp.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var b = host.querySelector(pair[1]);
+        if (b) b.click();
+      });
+    });
+    var aiBtn = host.querySelector('#nbAi');
+    if (aiBtn) aiBtn.onclick = function (e) { e.preventDefault(); e.stopPropagation(); aiToggle(); };
+    var toolsFold = host.querySelector('#nbToolsFold');
+    if (toolsFold) toolsFold.addEventListener('toggle', function () { TOOLS_OPEN = toolsFold.open; });
     host.querySelectorAll('[data-crumb]').forEach(function (a) {
       a.onclick = function (e) { e.preventDefault(); openDir(a.dataset.crumb || null); };
     });
@@ -1094,6 +1472,7 @@
     CUR = id || null;
     CUR_SET = true;
     QUERY = '';
+    HOME_PAGE = 1;
     try { localStorage.setItem(CUR_KEY, JSON.stringify({ id: CUR, ts: Date.now() })); } catch (e) {}
     repaint();
     if (from === 'tree') {
@@ -1103,7 +1482,13 @@
       if (t) { try { t.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { try { t.scrollIntoView(true); } catch (e2) {} } }
       return;
     }
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    /* 进入目录 / 新建目录：滚到「全部题库」标题，不要甩回 hero 最上面。
+       从目录树进来时保留原来的「滚到树」逻辑。 */
+    var sc = document.querySelector('.sechead');
+    if (sc) {
+      var top = Math.max(0, sc.getBoundingClientRect().top + (window.scrollY || 0) - 64);
+      try { window.scrollTo({ top: top }); } catch (e3) { window.scrollTo(0, top); }
+    }
   }
 
   /* 内部重画：调 app.js 的全局 render 重画首页（不能叫 render，否则同名自我递归） */
@@ -1112,9 +1497,36 @@
   }
 
   /* ---------- 菜单与动作 ---------- */
+  /* 主界面翻页：重画后把滚动位置放回去，别翻一页就被甩到顶部 */
+  function repaintKeepY() {
+    var y = window.scrollY || 0;
+    repaint();
+    setTimeout(function () { try { window.scrollTo(0, y); } catch (e) {} }, 30);
+  }
+
   function doAct(act, id, el, host) {
     switch (act) {
       case 'open': openDir(id || null, (el && el.closest && el.closest('#nbTree')) ? 'tree' : undefined); break;
+      case 'page':
+        HOME_PAGE = Math.max(1, (HOME_PAGE || 1) + ((el && el.dataset && el.dataset.n === 'next') ? 1 : -1));
+        repaintKeepY();
+        break;
+      case 'pagego': {
+        var pi = document.getElementById('nbPageGo');
+        HOME_PAGE = Math.max(1, parseInt(pi && pi.value, 10) || 1);
+        repaintKeepY();
+        break;
+      }
+      case 'ppage':
+        PAPER_PAGE = Math.max(1, (PAPER_PAGE || 1) + ((el && el.dataset && el.dataset.n === 'next') ? 1 : -1));
+        repaintKeepY();
+        break;
+      case 'ppagego': {
+        var pp = document.getElementById('nbPaperPageGo');
+        PAPER_PAGE = Math.max(1, parseInt(pp && pp.value, 10) || 1);
+        repaintKeepY();
+        break;
+      }
       case 'chatAll': {
         var chatIds = CUR ? [CUR].concat(descIds(CUR)) : null;
         var chatList = bankList().filter(function (b) { return !b.paper && (!chatIds || chatIds.indexOf(b.cat) >= 0); });
@@ -1125,8 +1537,8 @@
         break;
       }
       /* 7.2 视图切换：卡片 ▦ / 列表 ☰（存 qbank.view.v1，刷新记住） */
-      case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'icon'); repaint(); break;
-      case 'isize': setIconSize(el && el.dataset ? el.dataset.v : 'md'); repaint(); break;
+      case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'icon'); HOME_PAGE = 1; repaint(); break;
+      case 'isize': setIconSize(el && el.dataset ? el.dataset.v : 'md'); HOME_PAGE = 1; repaint(); break;
       case 'sort': sortDetail(el && el.dataset ? el.dataset.v : 'name'); repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
       case 'newcat': askNewCat(); break;
@@ -1189,7 +1601,8 @@
       var nid = createCat(parent, v);
       saveCats({ quiet: false });
       T('已新建分类「' + v + '」');
-      if (nid) openDir(nid);
+      /* 新建后进到新目录，但不要弹回页面最上面；滚到「全部题库」这一块 */
+      if (nid) openDir(nid, 'newcat');
     });
   }
   function askNewCatRoot() {
@@ -1642,6 +2055,10 @@
   /* 长按选中的那一刻会立刻重画，紧接着手指抬起产生的 click 会落在新节点上：
      用这个时间戳把「刚选中」的 600ms 内的点击忽略掉，免得一长按就跳进题库。 */
   var DRAG_AT = 0;
+  var LP_MENU_AT = 0;               /* 长按弹菜单后，抑制手指抬起产生的 click */
+  document.addEventListener('click', function (e) {
+    if (Date.now() < LP_MENU_AT) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   function dragSticky() { return !!DRAG && (Date.now() - DRAG_AT) < 600; }
   function setDrag(d) { DRAG = d; DRAG_AT = Date.now(); }
   /* 卡片 → { kind:'bank'|'cat', id }。图标 / 列表 / 详细信息三种视图的字段名不一样，这里统一 */
@@ -1864,29 +2281,57 @@
         showChatSlot();
       });
       card.addEventListener('dragend', function () { card.classList.remove('dragging'); hideChatSlot(); });
-      /* 触摸：长按 350ms 进入移动模式（批量模式下只有已选中的条目能长按，免得误触） */
-      var lp = null, sx = 0, sy = 0;
+      /* 触摸手势时间窗：
+         0–300ms 内移动 = 滚动，取消长按；
+         300–650ms 内移动 = 长按拖拽 / 进入移动模式；
+         650ms 不动 = 打开「⋯」菜单（跟点右上角角标一样）。
+         菜单优先，一旦弹出就不再开始拖拽，两者不会撞。 */
+      var lpMenu = 0, lpArm = 0, sx = 0, sy = 0, armed = false, started = false;
+      function lpClear() { clearTimeout(lpMenu); clearTimeout(lpArm); lpMenu = 0; lpArm = 0; }
+      function lpDrag() {
+        if (started) return;
+        started = true;
+        lpClear();
+        setDrag(dragSet(ref));
+        card.classList.add('dragging');
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
+        T('已选中 ' + dragCount() + ' 项，可以直接点上面的「💬 加进 AI 对话」，或点「放到这里」选目标目录');
+        repaint();
+        showChatSlot();
+      }
+      function lpMenuOpen() {
+        lpMenu = 0;
+        clearTimeout(lpArm); lpArm = 0; armed = false;
+        if (started) return;
+        LP_MENU_AT = Date.now() + 700;
+        if (navigator.vibrate) { try { navigator.vibrate(20); } catch (err) {} }
+        if (ref.kind === 'bank') bankMenu(ref.id); else catMenu(ref.id);
+      }
       card.addEventListener('pointerdown', function (e) {
         if (e.target.closest('[data-act]') || e.target.closest('input')) return;
         if (e.pointerType === 'mouse') return;
-        if (BATCH && !((ref.kind === 'bank' && batSel(ref.id)) || (ref.kind === 'cat' && batSelC(ref.id)))) return;
         sx = e.clientX; sy = e.clientY;
-        lp = setTimeout(function () {
-          lp = null;
-          setDrag(dragSet(ref));
-          card.classList.add('dragging');
-          if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
-          T('已选中 ' + dragCount() + ' 项，可以直接点上面的「💬 加进 AI 对话」，或点「放到这里」选目标目录');
-          repaint();
-          showChatSlot();
-        }, 350);
+        armed = false; started = false;
+        if (BATCH) {
+          /* 批量模式保留原来的长按移动；移动超过阈值就取消，交给滚动 */
+          if (!((ref.kind === 'bank' && batSel(ref.id)) || (ref.kind === 'cat' && batSelC(ref.id)))) return;
+          lpMenu = setTimeout(lpDrag, 350);
+          return;
+        }
+        lpArm = setTimeout(function () { lpArm = 0; armed = true; }, 300);
+        lpMenu = setTimeout(lpMenuOpen, 650);
       });
       card.addEventListener('pointermove', function (e) {
-        if (!lp) return;
-        if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) { clearTimeout(lp); lp = null; }
+        if (!lpMenu && !lpArm && !armed && !started) return;
+        var dx = Math.abs(e.clientX - sx), dy = Math.abs(e.clientY - sy);
+        if (Math.max(dx, dy) <= 8) return;
+        if (started) return;
+        if (BATCH) { lpClear(); return; }       /* 批量模式：移动 = 滚动 */
+        if (!armed) { lpClear(); return; }      /* 300ms 内移动 = 滚动 */
+        lpDrag();                               /* 300–650ms 内移动 = 长按拖拽 */
       });
       ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
-        card.addEventListener(ev, function () { if (lp) { clearTimeout(lp); lp = null; } });
+        card.addEventListener(ev, function () { lpClear(); });
       });
     });
     /* 拖动时的高亮与放下：题库 / 目录 / 面包屑都算「目标」——

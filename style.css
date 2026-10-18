@@ -195,6 +195,26 @@ body.dark .prog{background:#1e2739}
 
 /* ===== 分类 chips ===== */
 .chips{display:flex;gap:8px;padding:9px 14px 11px;overflow-x:auto;scrollbar-width:none;max-width:940px;margin:0 auto}
+/* 刷题页顶栏第一排：六科单选，跟下面全部/没做/单选…同时筛选 */
+.subjchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;max-width:940px;margin:8px auto 0;padding:6px 8px;
+  border:1px solid var(--primary-line);border-radius:12px;
+  background:linear-gradient(90deg,var(--primary-soft),var(--card) 58%);
+  box-shadow:0 2px 8px color-mix(in srgb,var(--primary) 8%,transparent)}
+.subjchips .slabel{flex:0 0 auto;font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--primary);
+  padding:2px 7px;border-radius:6px;background:var(--card);border:1px solid var(--primary-line)}
+.subjchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;font-weight:600;
+  padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s,opacity .15s}
+.subjchip i{font-style:normal;font-size:10.5px;font-weight:500;color:var(--sub)}
+.subjchip:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
+.subjchip.on{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 3px 10px color-mix(in srgb,var(--primary) 24%,transparent)}
+.subjchip.on i{color:rgba(255,255,255,.8)}
+.subjchip.none{border-style:dashed;color:var(--sub)}
+.subjchip.none.on{background:var(--primary);border-style:solid;color:#fff}
+.subjchip:disabled{opacity:.35;filter:grayscale(1);cursor:not-allowed;background:var(--bg2);border-style:dashed}
+.subjchip:disabled i{opacity:.55}
+@media(max-width:560px){.subjchips{margin:6px 8px 0;padding:5px 6px;gap:5px}.subjchip{padding:3px 8px;font-size:11.5px}}
+@media print{.subjchips{display:none!important}}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;font-size:13px;padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--sub);cursor:pointer;transition:background .15s,border-color .15s,color .15s;min-height:32px}
 .chip:hover{border-color:var(--primary-line);color:var(--text)}
@@ -272,6 +292,8 @@ body.dark .fb.bad{border-color:var(--bad-line)}
 .exp.rich-edit{border-top:none;padding:4px 6px 7px;margin-top:2px;border-radius:var(--r-s);outline:none;cursor:text;
   transition:background .18s,box-shadow .18s}
 .exp.rich-edit:hover{background:var(--bg2)}
+.exp.rich-edit.drop-hot{background:var(--primary-weak);box-shadow:0 0 0 2px var(--primary-line)}
+.ed.drag-on{outline:2px dashed var(--primary);outline-offset:6px;background:var(--primary-weak)}
 .exp.rich-edit:focus,.exp.rich-edit:focus-visible{background:var(--card);box-shadow:0 0 0 2px var(--primary-weak),0 0 0 1px var(--primary) inset}
 .exp.rich-edit:empty::before{content:'点这里写解析…';color:var(--sub)}
 body.dark .exp.rich-edit:focus,body.dark .exp.rich-edit:focus-visible{background:#131a27}
@@ -293,21 +315,38 @@ body.dark .nav{background:rgba(15,20,32,.96)}
    答题页里它是第二行，叠在 .nav（上一题 / 答题卡 / 下一题）上面；其它页面只有这一行。
    七个入口要能在 320px 宽的屏上排开：min-width:0 + 省略号，宁可把字截短也不横向溢出。
    「同步」是 sync.js 自己插进来的（它找 #btnGoKb，插在它后面），所以顺序是 首页…AI / 同步 / 设置。 */
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;gap:2px;max-width:940px;margin:0 auto;
-  padding:6px 4px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
-  background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(10px);
-  border-top:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:var(--r-l) var(--r-l) 0 0}
-.bnav .btn{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-  padding:6px 1px;min-height:44px;font-size:11px;line-height:1.2;color:var(--sub);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bnav .btn span{font-size:10.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.bnav .btn.on{color:var(--primary);border-color:var(--primary-line);background:var(--primary-soft,rgba(37,99,235,.10))}
+.bnav{position:fixed;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:20;
+  display:flex;gap:2px;max-width:940px;margin:0 auto;padding:5px;
+  background:color-mix(in srgb,var(--card) 88%,transparent);
+  backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25);
+  border:1px solid color-mix(in srgb,var(--line) 80%,transparent);
+  box-shadow:0 12px 34px rgba(15,23,42,.16),0 2px 6px rgba(15,23,42,.06);
+  border-radius:20px;overflow:hidden}
+.bnav .btn{position:relative;z-index:1;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:5px 1px;min-height:46px;font-size:11px;line-height:1.15;color:var(--sub);border:0;background:transparent;
+  border-radius:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s ease}
+.bnav .bn-ic{font-style:normal;font-size:17px;line-height:1;display:block;
+  transition:transform .38s cubic-bezier(.34,.96,.6,.99),color .2s ease}
+.bnav .btn span{font-size:10.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  transition:transform .38s cubic-bezier(.34,.96,.6,.99),font-weight .2s ease,color .2s ease}
+.bnav .btn:hover .bn-ic{transform:translateY(-1px) scale(1.06)}
+.bnav .btn:active .bn-ic{transform:scale(.92)}
+.bnav .btn.on{color:var(--primary);border-color:transparent;background:transparent}
+.bnav .btn.on .bn-ic{transform:translateY(-1px) scale(1.12)}
+.bnav .btn.on span{font-weight:700;transform:translateY(-.3px)}
 .bnav .btn.tg{font-size:11px}
-body.dark .bnav{background:rgba(15,20,32,.96)}
-/* 非答题页：正文别被这条挡住（~62px）；答题页：#nav 顶到它上面，两条一共 ~158px */
-body{padding-bottom:calc(62px + env(safe-area-inset-bottom))}
-body.quiz{padding-bottom:calc(158px + env(safe-area-inset-bottom))}
-body.quiz .bnav{bottom:calc(74px + env(safe-area-inset-bottom))}
+/* 持续存在的滑动指示器：换页 / 切换入口时在按钮下面滑过去 */
+.bnav-ind{position:absolute;left:0;top:4px;bottom:4px;width:0;z-index:0;pointer-events:none;opacity:0;border-radius:15px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 14%,transparent),color-mix(in srgb,var(--primary) 8%,transparent));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 22%,transparent),0 2px 8px color-mix(in srgb,var(--primary) 10%,transparent);
+  transition:transform .42s cubic-bezier(.34,.96,.6,.99),width .42s cubic-bezier(.34,.96,.6,.99),opacity .2s ease}
+body.dark .bnav{background:color-mix(in srgb,var(--card) 86%,transparent)}
+@media(prefers-reduced-motion:reduce){.bnav-ind,.bnav .bn-ic,.bnav .btn span{transition:none!important}}
+/* 非答题页：正文别被这条挡住（~74px）；答题页：#nav 顶到它上面，两条一共 ~170px */
+body{padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+body.quiz{padding-bottom:calc(170px + env(safe-area-inset-bottom))}
+body.quiz .bnav{bottom:calc(82px + env(safe-area-inset-bottom))}
+@media(max-width:420px){.bnav{left:6px;right:6px;border-radius:18px;padding:4px}.bnav .btn{min-height:44px;padding:4px 0}.bnav .bn-ic{font-size:16px}}
 
 /* ===== 答题卡（题号面板） ===== */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(50px,1fr));gap:8px}
@@ -383,6 +422,63 @@ body.dark .revbar{background:linear-gradient(135deg,#16233c,var(--card));border-
 .sbox{position:relative;display:flex;align-items:center}
 .sbox input{padding-right:44px}
 .sbox .btn.tiny{position:absolute;right:6px;width:28px;height:28px;min-height:0;padding:0;border-radius:50%;line-height:1;font-size:15px;color:var(--sub);background:var(--card)}
+/* AI 模糊搜索按钮（题库 / 错题 / 收藏 / 搜索共用） */
+.nb-bar .nb-search{flex:1 1 180px;width:auto;min-width:0}
+.nb-ai-btn,.qai-btn{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto}
+.nb-ai-btn{height:40px;padding:0 12px}
+.nb-ai-btn.on,.qai-btn.on{box-shadow:0 0 0 2px var(--primary-weak)}
+.sbox-row{display:flex;align-items:center;gap:8px}
+.sbox-row .sbox{flex:1 1 auto;min-width:0}
+.mini-tag.ai{color:var(--primary);border-color:var(--primary-line);background:var(--primary-soft)}
+.card.wi.ai-wi{border-color:var(--primary-line);box-shadow:0 0 0 1px var(--primary-soft),var(--sh-1)}
+.card.wi.ai-wi .wno{color:var(--primary)}
+/* AI 模糊匹配结果：题库候选卡片 */
+.ai-fuzzy{margin:4px 0 16px;padding:12px;border:1px solid var(--primary-line);border-radius:var(--r-l);
+  background:radial-gradient(120% 100% at 0 0,color-mix(in srgb,var(--primary) 9%,transparent),transparent 55%),var(--card);
+  box-shadow:var(--sh-1)}
+.ai-fuzzy.idle{padding:0;margin:2px 0 8px;border:0;background:none;box-shadow:none}
+.ai-fuzzy-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 2px 9px}
+.ai-fuzzy-title{font-weight:800;font-size:13px;color:var(--primary);display:inline-flex;align-items:center;gap:4px}
+.ai-fuzzy-list{display:flex;flex-direction:column;gap:7px}
+.ai-hit{display:flex;align-items:center;gap:10px;padding:10px 11px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-m);cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .06s}
+.ai-hit:hover{border-color:var(--primary-line);box-shadow:var(--sh-2);transform:translateY(-1px)}
+.ai-hit:active{transform:none}
+.ai-hit:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.ai-hit .nb-lic{width:36px;height:36px;flex:0 0 36px;border-radius:10px;background:var(--primary-weak);border-color:var(--primary-line)}
+.ai-hit .nb-lic svg{width:20px;height:20px}
+.ai-hit-main{flex:1 1 auto;min-width:0}
+.ai-hit-name{font-weight:700;font-size:14px;line-height:1.4;word-break:break-word}
+.ai-hit-name .pill{margin-left:4px;vertical-align:1px}
+.ai-hit-meta{font-size:11.5px;color:var(--sub);margin-top:2px;line-height:1.5}
+.ai-hit-why{margin-top:5px;display:inline-block;max-width:100%;padding:2px 7px;border-radius:6px;
+  background:var(--primary-soft);border:1px solid var(--primary-line);color:var(--primary);font-size:11.5px;line-height:1.5}
+.ai-hit-go{flex:0 0 auto;border-radius:999px;padding:6px 11px}
+.ai-fuzzy-card{padding:12px 13px;border-radius:var(--r-m)}
+.ai-spin{display:inline-block;margin-right:4px;color:var(--primary);animation:aiSpin 1s linear infinite}
+@keyframes aiSpin{to{transform:rotate(360deg)}}
+/* AI 扩展词提示（错题 / 收藏 / 搜索） */
+.ai-qnote{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1 1 100%;padding:7px 10px;
+  border:1px solid var(--primary-line);border-radius:10px;background:color-mix(in srgb,var(--primary) 6%,var(--card));
+  font-size:12px;color:var(--sub)}
+.ai-qnote b{color:var(--primary);font-size:12px}
+.ai-qico{color:var(--primary)}
+.ai-qterms{display:flex;gap:5px;flex-wrap:wrap}
+.ai-term{display:inline-flex;padding:2px 7px;border-radius:999px;background:var(--card);border:1px solid var(--primary-line);
+  color:var(--primary);font-size:11.5px;line-height:1.5;font-family:inherit;cursor:pointer}
+.ai-term:hover{background:var(--primary-soft);border-color:var(--primary)}
+.ai-qhint{font-size:11.5px;color:var(--sub)}
+.ai-qerr{color:var(--bad);font-size:11.5px}
+@media(prefers-reduced-motion:reduce){.ai-spin{animation:none}.ai-hit{transition:none}}
+@media(max-width:560px){
+  .nb-ai-btn,.qai-btn{padding:0 9px;font-size:12.5px;height:36px}
+  .ai-fuzzy{padding:10px;border-radius:var(--r-m)}
+  .ai-hit{padding:9px;gap:8px}
+  .ai-hit .nb-lic{width:32px;height:32px;flex-basis:32px;border-radius:9px}
+  .ai-hit .nb-lic svg{width:18px;height:18px}
+  .ai-hit-name{font-size:13.5px}
+  .ai-hit-go{padding:5px 9px;font-size:12px}
+}
 mark{background:#fde68a;color:#111827;border-radius:3px;padding:0 2px}
 body.dark mark{background:#8a6a12;color:#fff}
 .sbar-sticky{position:sticky;top:52px;z-index:5;backdrop-filter:blur(6px)}
@@ -394,6 +490,10 @@ body.dark mark{background:#8a6a12;color:#fff}
 .stats span{font-size:12px;color:var(--sub)}
 .wi{margin-bottom:10px;padding:13px 15px}
 .wi-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wi-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+.wi-acts .btn.on{background:var(--primary-soft);border-color:var(--primary-line);color:var(--primary)}
+.wi-host:empty{display:none}
+body.dark .wi-acts{border-top-color:#26304a}
 .wsel{width:16px;height:16px}
 .wno{font-weight:700}
 .wmeta{font-size:12.5px;color:var(--sub)}
@@ -984,11 +1084,11 @@ body.dark .help-card{background:rgba(255,255,255,.03)}
 /* 选项：选中弹一下、答对轻弹、答错抖一下（都只动 transform） */
 .opt { transition: border-color .15s, background .15s, box-shadow .15s, transform var(--t-fast) var(--ease-spring); }
 .opt:active:not(:disabled) { transform: scale(.985); }
-@keyframes optPop { 0% { transform: scale(1); } 45% { transform: scale(1.018); } 100% { transform: scale(1); } }
-@keyframes optShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+@keyframes optPop { 0% { transform: scale(1); } 40% { transform: scale(.976); } 76% { transform: scale(1.008); } 100% { transform: scale(1); } }
+@keyframes optShake { 0% { transform: scale(1); } 45% { transform: scale(.982); } 76% { transform: scale(1.006); } 100% { transform: scale(1); } }
 .opt.sel { animation: optPop var(--t-base) var(--ease-spring); }
 .opt.right { animation: optPop var(--t-base) var(--ease-spring); }
-.opt.wrong { animation: optShake .3s var(--ease); }
+.opt.wrong { animation: optShake .34s var(--ease-spring); }
 
 /* 列表入场：错题本 / 收藏 / 搜索这些卡片淡入上浮，只给前 12 个排延迟（长列表不一次性动）。
    app.js 的 staggerList() 给卡片加 .stagger-i 并写 --i，动画播完自己摘掉。 */
@@ -1100,6 +1200,69 @@ body.dark .vcmp mark { background: #8a6a12; color: #f8fafc; }
 .tag-aivocab:not(:empty) { margin-top: 6px; }
 #tagVocabCard, #tagAiCard { margin-top: 12px; }
 body.dark .tagchip { background: #16233b; }
+/* ---------- 六大基本标签（固定名称，独立一行） ---------- */
+.tag-basic-filter{margin-top:8px;padding:6px 8px;border:1px dashed var(--line);border-radius:10px;background:var(--bg2)}
+/* 统计页「按考点」：六科 + 考点两排筛选（同一个框里） */
+.tag-filters{margin-top:8px;padding:6px 8px;border:1px dashed var(--line);border-radius:10px;background:var(--bg2)}
+.tag-stats-sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tag-stats-sub .basic-opt{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 9px}
+.tag-stats-sub .basic-opt.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.tag-stats-sub .basic-opt i{font-style:normal;font-size:11px;opacity:.65;margin-left:4px}
+.tag-stats-sub .basic-opt:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(1)}
+.tagpick-row{display:flex;align-items:flex-start;gap:6px;margin:6px 0 0;min-width:0}
+.tagpick-row .tag-meta{flex:0 0 auto;padding-top:5px}
+.tagpick-scroll{flex:1 1 auto;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px 0 3px;min-width:0}
+.tagpick-scroll::-webkit-scrollbar{display:none}
+.tagpick-scroll .chip{min-height:28px;font-size:12px;padding:3px 10px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.tagpick-scroll .chip i{font-style:normal;font-size:11px;opacity:.65}
+.tagpick-scroll .chip.on i{opacity:.85}
+.tag-rowsearch{display:inline-flex;align-items:center;flex:1 1 170px;min-width:140px;max-width:260px}
+.tag-rowsearch .inp{width:100%}
+.tag-pager{display:flex;align-items:center;justify-content:center;gap:10px;margin:10px 0 2px;font-size:12px;color:var(--sub)}
+.tag-pager .btn[disabled]{opacity:.4}
+.chip.basic{font-weight:600;background:var(--bg2);border-color:var(--line);color:var(--text)}
+.chip.basic.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.tagchip.basic{background:var(--bg2);border-color:var(--line);color:var(--sub);cursor:pointer}
+.tag-basic-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;padding:7px 8px;border:1px dashed var(--line);border-radius:10px;background:var(--bg2)}
+.tagbasic{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;
+  font-size:12px;padding:3px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.tagbasic:hover{border-color:var(--primary-line)}
+.tagbasic.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary);font-weight:700}
+.tagbasic i{font-style:normal;font-size:11px;opacity:.65}
+.vocab-basic{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;padding:7px 8px;
+  border:1px dashed var(--line);border-radius:10px;background:var(--bg2)}
+.vocab-chip.basic{cursor:default;background:var(--bg2);border-color:var(--line);color:var(--sub)}
+.vocab-chip.basic i{font-style:normal;opacity:.6}
+/* 分段单选：六大基本标签 */
+.basic-seg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;padding:6px 8px;
+  border:1px solid var(--line);border-radius:12px;background:var(--bg2)}
+.basic-seg-label{font-size:12px;color:var(--sub);flex:0 0 auto}
+.basic-seg-opts{display:flex;gap:3px;flex-wrap:wrap;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
+.basic-opt{border:0;background:transparent;color:var(--sub);font:inherit;font-size:12px;line-height:1.4;
+  padding:4px 10px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.basic-opt:hover{background:var(--primary-soft);color:var(--primary)}
+.basic-opt.on{background:var(--primary);color:#fff;font-weight:700}
+.basic-opt i{font-style:normal;font-size:10.5px;opacity:.65}
+.basic-opt.on i{opacity:.8}
+.tag-search-row{gap:6px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.tag-search-row .tl{color:var(--sub)}
+.tag-search-row .num{border-color:transparent;background:var(--bg2)}
+/* 「全部题库」下的题库工具折叠面板 */
+.nb-toolsfold{margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.nb-toolsfold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+  padding:10px 12px;font-size:13px;font-weight:700;color:var(--text);user-select:none}
+.nb-toolsfold>summary::-webkit-details-marker{display:none}
+.nb-toolsfold>summary::before{content:'▸';color:var(--sub);font-size:12px;transition:transform .15s}
+.nb-toolsfold[open]>summary::before{transform:rotate(90deg)}
+.nb-toolsfold>summary .small{margin-left:auto;font-weight:400}
+.nb-tools-body{padding:0 12px 12px}
+.nb-toolsfold .nb-bar{margin:0 0 8px}
+.nb-tools-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:560px){.nb-toolsfold>summary .small{display:none}}
+@media(max-width:560px){
+  .basic-opt{padding:4px 8px;font-size:11.5px}
+  .basic-seg{gap:6px}
+}
 body.dark .vocab-chip.on { background: #16233b; }
 
 /* ---------- 考纲覆盖自查页 ---------- */
@@ -1192,12 +1355,11 @@ details.fold.secfold > .fold-body > .srow:first-child { margin-top: 0; }
 /* 3.1：解析下面那个「下一题 →」 */
 .fbnext { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .fbnext .btn { min-height: 38px; }
-/* §3.6-P0② 判分仪式感：选项「翻」出来 + 结果框跟着弹一下（reduced-motion 由上面那条全局规则兜住） */
-.opt.flip-in { animation: optFlip .42s cubic-bezier(.2,.9,.3,1.3) both; }
-@keyframes optFlip {
-  0% { transform: perspective(600px) rotateX(-72deg) scale(.96); opacity: .35; }
-  60% { transform: perspective(600px) rotateX(9deg) scale(1.02); opacity: 1; }
-  100% { transform: none; }
+/* 判分揭示：只做很轻的淡入 + 微缩，不再 3D 翻牌 */
+.opt.flip-in { animation: optSoftIn .2s ease both; }
+@keyframes optSoftIn {
+  0% { transform: scale(.992); opacity: .55; }
+  100% { transform: none; opacity: 1; }
 }
 .fb.fb-hold { opacity: 0; }
 .fb.fb-pop { animation: fbPop .4s cubic-bezier(.2,.9,.3,1.3) both; }
@@ -1259,6 +1421,8 @@ body.dark .fmt-bar .fmt-dot i{box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}
    别的页面只收顶栏 —— 底栏要是也藏着，人就走出不去了（浮标虽然在，但没必要逼他按）。
    浮标得抬到那条导航**上面**：右下角那个位置是「下一题」，压住就没法翻页了。 */
 body.focus .top { display: none !important; }
+/* 「返回」是 fixed 定位、被 JS 挪到 body 下的，不归 .top 管；专注模式一起收掉，只留右下角「退出专注」 */
+body.focus #backFix { display: none !important; }
 body.quiz.focus .bnav { display: none !important; }
 body.quiz.focus { padding-bottom: 120px; }
 body.focus:not(.quiz) { padding-bottom: 118px; }
@@ -1268,6 +1432,56 @@ body.focus .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
   background: var(--card); border: 1px solid var(--line); color: var(--sub); box-shadow: var(--sh-pop); font-size: 12.5px; }
 body.focus .focus-exit { display: flex; }
 .focus-exit:hover { color: var(--primary); border-color: var(--primary-line); }
+/* 一键到底 / 一键到顶：右下角横向双箭头小胶囊；答题页和专注模式抬高，避开两条底栏 / 退出键 */
+.scroll-jump { position: fixed; right: 12px; bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 26;
+  display: none; flex-direction: row; overflow: hidden; height: 38px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 19px; box-shadow: var(--sh-pop); }
+.scroll-jump.show { display: flex; }
+/* ===== 主界面总导航：可拖动吸附的悬浮胶囊 ===== */
+.home-nav-fab{position:fixed;z-index:29;display:inline-flex;align-items:center;gap:7px;
+  padding:9px 14px 9px 12px;border-radius:999px;cursor:grab;user-select:none;touch-action:none;
+  background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;
+  border:1px solid rgba(255,255,255,.28);
+  box-shadow:0 10px 26px rgba(37,99,235,.32),inset 0 1px 0 rgba(255,255,255,.18);
+  font-size:13px;font-weight:700;letter-spacing:.2px;
+  opacity:0;pointer-events:none;transform:translateY(8px) scale(.96);
+  transition:opacity .18s ease,transform .18s ease,box-shadow .18s ease,left .22s cubic-bezier(.2,.8,.2,1),top .22s cubic-bezier(.2,.8,.2,1),right .22s cubic-bezier(.2,.8,.2,1);}
+.home-nav-fab.show{opacity:1;pointer-events:auto;transform:none}
+.home-nav-fab:hover{box-shadow:0 14px 32px rgba(37,99,235,.4),inset 0 1px 0 rgba(255,255,255,.2);transform:translateY(-1px)}
+.home-nav-fab.dragging{cursor:grabbing;transition:box-shadow .18s ease;transform:scale(1.04);box-shadow:0 18px 40px rgba(37,99,235,.42)}
+.home-nav-fab .hnf-ic{font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.16)}
+.home-nav-fab .hnf-tx{line-height:1}
+.home-nav-fab.open{box-shadow:0 6px 18px rgba(37,99,235,.3)}
+body.hn-dragging{cursor:grabbing;user-select:none}
+/* 菜单：从按钮旁边浮出 */
+.home-nav-menu{position:fixed;z-index:30;width:216px;padding:8px;border:1px solid var(--line);border-radius:16px;
+  background:var(--card);box-shadow:0 18px 46px rgba(15,23,42,.2);display:flex;flex-direction:column;gap:2px;
+  transform-origin:top right;animation:hnIn .16s ease;}
+.home-nav-menu[hidden]{display:none}
+@keyframes hnIn{from{opacity:0;transform:translateY(4px) scale(.97)}to{opacity:1;transform:none}}
+.home-nav-menu .hn-head{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 6px 9px}
+.home-nav-menu .hn-cap{font-size:11.5px;font-weight:800;letter-spacing:.4px;color:var(--sub)}
+.home-nav-menu .hn-x{width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:var(--sub);font-size:16px;line-height:1;cursor:pointer}
+.home-nav-menu .hn-x:hover{background:var(--bg2);color:var(--text)}
+.home-nav-menu .hn-item{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;color:var(--text);
+  font:inherit;font-size:13.5px;text-align:left;padding:8px 9px;border-radius:10px;cursor:pointer}
+.home-nav-menu .hn-item:hover{background:var(--primary-soft);color:var(--primary)}
+.home-nav-menu .hn-item .hn-i{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;
+  background:var(--bg2);color:var(--primary);font-size:13px;flex:0 0 auto}
+.home-nav-menu .hn-item:hover .hn-i{background:var(--card)}
+@media(max-width:420px){.home-nav-fab{padding:8px 11px}.home-nav-fab .hnf-tx{display:none}.home-nav-menu{width:198px}}
+.scroll-jump button { width: 38px; height: 38px; border: 0; background: transparent; color: var(--sub);
+  font-size: 17px; line-height: 1; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color .15s, background .15s, transform .08s; }
+.scroll-jump button + button { border-left: 1px solid var(--line); }
+.scroll-jump button:hover { color: var(--primary); background: var(--primary-soft); }
+.scroll-jump button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.scroll-jump button:active { transform: scale(.92); }
+.scroll-jump.at-top .sj-top, .scroll-jump.at-bottom .sj-bottom { display: none; }
+.scroll-jump.at-top .sj-bottom { border-left: 0; }
+body.quiz .scroll-jump { bottom: calc(152px + env(safe-area-inset-bottom)); }
+body.focus .scroll-jump { bottom: calc(152px + env(safe-area-inset-bottom)); }
+@media(max-width:420px){ .scroll-jump { right: 10px; height: 36px; border-radius: 18px; } .scroll-jump button { width: 36px; height: 36px; font-size: 16px; } }
 .focus-btn { flex: 0 0 auto; }
 .focus-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 /* §3.6-P0③ 待复习角标：挂在底部导航「错题」上，0 条时根本不渲染 */
@@ -1298,6 +1512,8 @@ body.focus .focus-exit { display: flex; }
 .sp-fx.bad { border-color: var(--bad-line); background: var(--badbg); }
 .sp-fx.bad .sp-t { color: var(--bad); }
 .sp-fx .btn.tiny { flex: 0 0 auto; }
+.sp-fx { max-width: calc(100vw - 24px); }
+.sp-fx .sp-note { font-size: calc(var(--fs) * .8); color: var(--sub); white-space: nowrap; }
 @keyframes spIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 /* 背题模式：选项只读（能看不能点，点了只给提示），正确答案那项直接高亮 */
 .opt.ro { cursor: default; }
@@ -1484,4 +1700,6 @@ body.sheet-open{ overflow:hidden; }
       不会再出现「按钮是青的、光晕是蓝的」；
    ③ 第二轮补的四处：统计页柱状图 .cbar i / .cbar.on i 的蓝色渐变、::selection 选中高亮、
       口诀便签 .qnbox 与错题本「找词」输入框的 10px 圆角、.hero 那句兜底渐变（真正生效的
+      仍是后面 §8 的 background-image:var(--grad)）。 */
+词」输入框的 10px 圆角、.hero 那句兜底渐变（真正生效的
       仍是后面 §8 的 background-image:var(--grad)）。 */

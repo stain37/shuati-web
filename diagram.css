@@ -1,0 +1,109 @@
+/* ============================================================
+   diagram.css — AI 回复里的图表卡片（配合 diagram.js）
+   颜色全部走 :root / body.dark 的变量，暗色不用另写一套。
+   注意：SVG 的 presentation attribute 里写 var() 不生效，
+   所以节点/连线颜色必须落在 class 上（style.css 里踩过这个坑）。
+   ============================================================ */
+
+.dgm-card {
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.dgm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line2);
+  background: var(--card2);
+}
+
+.dgm-kind {
+  font-size: calc(var(--fs) * .78);
+  color: var(--sub);
+  letter-spacing: .2px;
+}
+
+.dgm-copy {
+  margin-left: auto;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--sub);
+  font-size: calc(var(--fs) * .74);
+  line-height: 1.7;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.dgm-copy:hover { color: var(--primary); border-color: var(--primary-line); }
+
+/* 图比气泡宽就横向滑，不缩小字 */
+.dgm-body {
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dgm-svg { display: inline-block; max-width: none; height: auto; vertical-align: top; }
+
+/* 节点 */
+.dgm-n {
+  fill: var(--card2);
+  stroke: rgba(13, 23, 42, .18);
+  stroke-width: 1.2;
+}
+.dgm-n.d0 { fill: var(--primary-weak); stroke: var(--primary-line); stroke-width: 1.6; }
+.dgm-n.d1 { fill: var(--card2); }
+.dgm-n.d2 { fill: var(--card3); }
+.dgm-n.d3 { fill: var(--card); }
+
+/* 暗色：浅色主题那组描边在深底上几乎看不见，单独提亮 */
+body.dark .dgm-n { stroke: rgba(255, 255, 255, .2); }
+body.dark .dgm-n.d0 { stroke: var(--primary); stroke-opacity: .55; }
+body.dark .dgm-n.d1 { fill: var(--card3); }
+body.dark .dgm-arrow { fill: var(--primary); }
+
+.dgm-t {
+  font-size: 13px;
+  fill: var(--text);
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* 连线 */
+.dgm-link { stroke: var(--primary-line); stroke-width: 1.6; fill: none; }
+.dgm-link.dotted { stroke-dasharray: 4 3; }
+.dgm-link.thick { stroke-width: 2.6; }
+.dgm-link.open { stroke-dasharray: none; }
+
+.dgm-arrow { fill: var(--primary-line); }
+
+/* 边上的条件标签 */
+.dgm-elabel { font-size: 11px; fill: var(--sub); }
+.dgm-elabelbg { fill: var(--card); }
+
+/* 兜底：不是 diagram/mermaid 的代码块 */
+.md-pre {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.md-pre code { white-space: pre; }
+
+/* 小屏：卡片贴满气泡，别被内边距挤窄 */
+@media (max-width: 480px) {
+  .dgm-body { padding: 6px; }
+  .dgm-head { padding: 5px 8px; }
+}
