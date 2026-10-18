@@ -903,9 +903,7 @@
 
     return ''
       + '<div class="hero">'
-      + '<h1>刷题站</h1>'
-      + '<p>选择题即时判分，选错立刻出解析。题库可以按「大目录 / 子目录」分类摆放，拖一下就能移动；自建题库能存成本机文件，换电脑、清缓存都不怕。</p>'
-      + '<div class="hstat">'
+      + '<div class="hstat" style="margin-top:0">'
       + '<button class="hs" data-act="expandAll" title="展开 / 收起目录树"><b>' + bk.length + '</b>个题库</button>'
       + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计"><b>' + totalQ + '</b>道题</button>'
       + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计"><b>' + totalDone + '</b>已答</button>'

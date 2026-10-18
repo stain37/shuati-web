@@ -177,7 +177,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -227,8 +227,125 @@ migrate();
    只改 <html data-theme> 和几个变量，style.css 里 html[data-theme=…] 覆盖
    --primary / --a1~--a3 / --grad / --a-top，全站的按钮、链接、进度条、高亮、
    底部导航、热力图都跟着变。老用户存的 'blue' 会落到默认的 teal 上。 */
-const THEME_COLORS = ['teal', 'indigo', 'warm', 'violet'];
-const THEME_META = { teal: ['#0d9488', '#080c14'], indigo: ['#4f46e5', '#080c14'], warm: ['#2563eb', '#080c14'], violet: ['#7c3aed', '#080c14'] };
+const THEME_COLORS = ['teal', 'indigo', 'warm', 'violet', 'rose', 'amber', 'emerald', 'ocean', 'graphite', 'candy'];
+const THEME_META = { teal: ['#0d9488', '#080c14'], indigo: ['#4f46e5', '#080c14'], warm: ['#2563eb', '#080c14'], violet: ['#7c3aed', '#080c14'],
+  rose: ['#e11d48', '#080c14'], amber: ['#b45309', '#080c14'], emerald: ['#047857', '#080c14'], ocean: ['#0369a1', '#080c14'],
+  graphite: ['#334155', '#0b1220'], candy: ['#c026d3', '#080c14'] };
+const THEME_NAME = { teal: '冷静青', indigo: '靛蓝', warm: '蓝 + 暖橙', violet: '紫', rose: '玫瑰', amber: '琥珀', emerald: '森林', ocean: '海洋', graphite: '石墨金', candy: '糖果' };
+/* 背景氛围：只换 body 的底图（style.css 末尾 html[data-bg=…]），不碰布局 */
+const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'paper', 'plain', 'custom'];
+const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片' };
+
+/* ---------- 自定义背景图（本机） ----------
+   选图 → canvas 压到最长边 1800px → 存 IndexedDB（不占题库的 localStorage 配额，
+   实在不行才退 localStorage）→ 写成 --bg-img，CSS 里用 cover 自适应。 */
+var BG_URL = '';
+function bgDB() {
+  return new Promise(res => {
+    try {
+      const rq = indexedDB.open('shuati-bg', 1);
+      rq.onupgradeneeded = () => { try { rq.result.createObjectStore('img'); } catch (e) {} };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => res(null);
+      rq.onblocked = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+function bgPut(data) {
+  return bgDB().then(db => {
+    if (!db) { try { localStorage.setItem('qbank.bgimg.v1', data); return true; } catch (e) { return false; } }
+    return new Promise(res => {
+      try {
+        const tx = db.transaction('img', 'readwrite');
+        tx.objectStore('img').put(data, 'page');
+        tx.oncomplete = () => res(true);
+        tx.onerror = () => res(false);
+      } catch (e) { res(false); }
+    });
+  });
+}
+function bgGet() {
+  return bgDB().then(db => {
+    if (!db) return localStorage.getItem('qbank.bgimg.v1') || '';
+    return new Promise(res => {
+      try {
+        const rq = db.transaction('img', 'readonly').objectStore('img').get('page');
+        rq.onsuccess = () => res(rq.result || '');
+        rq.onerror = () => res('');
+      } catch (e) { res(''); }
+    });
+  }).catch(() => '');
+}
+function bgDel() {
+  try { localStorage.removeItem('qbank.bgimg.v1'); } catch (e) {}
+  return bgDB().then(db => {
+    if (!db) return;
+    try { db.transaction('img', 'readwrite').objectStore('img').delete('page'); } catch (e) {}
+  });
+}
+function applyBgImage() {
+  const root = document.documentElement;
+  if (SET.bg !== 'custom') { root.style.removeProperty('--bg-img'); BG_URL = ''; return; }
+  if (BG_URL) { root.style.setProperty('--bg-img', 'url("' + BG_URL + '")'); return; }
+  bgGet().then(d => {
+    if (!d) return;
+    BG_URL = d;
+    if (SET.bg === 'custom') root.style.setProperty('--bg-img', 'url("' + d + '")');
+  });
+}
+/* 图片读进来 → 缩放 → 出 dataURL（优先 webp，不支持就 jpeg） */
+function bgScale(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const MAX = 1800;
+        const s = Math.min(1, MAX / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+        const w = Math.max(1, Math.round((img.naturalWidth || 1) * s));
+        const h = Math.max(1, Math.round((img.naturalHeight || 1) * s));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        let out = '';
+        try { out = cv.toDataURL('image/webp', 0.85); } catch (e) { out = ''; }
+        if (!out || out.indexOf('data:image/webp') !== 0) out = cv.toDataURL('image/jpeg', 0.85);
+        URL.revokeObjectURL(url);
+        res(out);
+      } catch (e) { URL.revokeObjectURL(url); rej(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('img')); };
+    img.src = url;
+  });
+}
+function bgPick() {
+  const f = $('setBgFile');
+  if (!f) return;
+  f.value = '';
+  f.click();
+}
+async function bgSetFromFile(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type || '')) { toast('请选图片文件（jpg / png / webp）'); return; }
+  try {
+    const data = await bgScale(file);
+    const ok = await bgPut(data);
+    if (!ok) { toast('这张图存不下（浏览器存储已满），换张小点的'); return; }
+    BG_URL = data;
+    document.documentElement.style.setProperty('--bg-img', 'url("' + data + '")');
+    setLook('bg', 'custom');
+    const sel = $('setBg'); if (sel) sel.value = 'custom';
+    toast('背景已换成本机图片（自适应裁切）', 1600, 'ok');
+  } catch (e) { toast('这张图读不出来，换一张试试'); }
+}
+function bgClearImage() {
+  BG_URL = '';
+  bgDel();
+  document.documentElement.style.removeProperty('--bg-img');
+  setLook('bg', 'default');
+  const sel = $('setBg'); if (sel) sel.value = 'default';
+  toast('已清除自定义背景', 1400, 'ok');
+}
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -238,6 +355,9 @@ function applyLook() {
   document.body.classList.toggle('fs-xl', SET.fs === 'xl');
   const color = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
+  const bg = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
+  if (document.documentElement) document.documentElement.setAttribute('data-bg', bg);
+  applyBgImage();
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', (THEME_META[color] || THEME_META.teal)[dark ? 1 : 0]);
   /* §3.6-P0① 专注模式：只加一个 body 类，隐藏顶栏/底栏交给 CSS（退出按钮 .focus-exit 只在这时露出来） */
@@ -3175,6 +3295,7 @@ function openSettings() {
   if ($('setTheme')) $('setTheme').value = SET.theme || 'auto';
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
+  if ($('setBg')) $('setBg').value = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
   srsPaintEls();
   $('setMask').classList.add('show');
@@ -3183,7 +3304,11 @@ on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');
 on('setFs', e => setLook('fs', e.target.value), 'change');
-on('setColor', e => { setLook('color', e.target.value); toast('主题色换成' + ({ blue: '蓝色', indigo: '靛蓝', teal: '青色', violet: '紫色' }[e.target.value] || '蓝色'), 1400, 'ok'); }, 'change');
+on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
+on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
+on('setBgPick', bgPick);
+on('setBgClear', bgClearImage);
+on('setBgFile', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromFile(f); }, 'change');
 on('closeSet', closeAll);
 on('setExpOnOk', e => { SET.expOnOk = e.target.checked; writeLS(LS.set, SET); render(); }, 'change');
 on('setAutoNext', e => { SET.autoNext = e.target.checked; writeLS(LS.set, SET); }, 'change');

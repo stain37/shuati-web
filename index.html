@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261031v">
+<link rel="stylesheet" href="style.css?v=20261031w">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261029b">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -104,12 +104,33 @@
       <option value="xl">特大</option>
     </select>
     <span class="tl">主题色</span>
-    <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图都会跟着变">
-      <option value="teal">① 冷静青（默认）</option>
-      <option value="indigo">① 靛蓝</option>
-      <option value="warm">② 蓝 + 暖橙</option>
+    <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
+      <option value="teal">冷静青（默认）</option>
+      <option value="indigo">靛蓝</option>
+      <option value="warm">蓝 + 暖橙</option>
       <option value="violet">紫</option>
+      <option value="rose">玫瑰</option>
+      <option value="amber">琥珀</option>
+      <option value="emerald">森林</option>
+      <option value="ocean">海洋</option>
+      <option value="graphite">石墨金</option>
+      <option value="candy">糖果</option>
     </select>
+    <span class="tl">背景</span>
+    <select class="num" id="setBg" title="整页底纹：只换背景，不影响内容和按钮大小">
+      <option value="default">默认微光</option>
+      <option value="aurora">极光</option>
+      <option value="grid">细网格</option>
+      <option value="dots">圆点</option>
+      <option value="lines">斜纹</option>
+      <option value="rings">涟漪</option>
+      <option value="paper">纸感</option>
+      <option value="plain">纯色</option>
+      <option value="custom">自定义图片…</option>
+    </select>
+    <button class="btn small" id="setBgPick" title="选一张本机图片当整页背景">选图</button>
+    <button class="btn small" id="setBgClear" title="删掉本机存的背景图">清除图</button>
+    <input type="file" id="setBgFile" accept="image/*" style="display:none">
   </div>
   <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
   <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
@@ -182,7 +203,7 @@
      也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
-<script src="app.js?v=20261031o"></script>
+<script src="app.js?v=20261031p"></script>
 <script src="collection.js?v=20261031l"></script>
 <script src="diagram.js?v=20261031a"></script>
 <script src="exam.js?v=20261018d"></script>
@@ -193,7 +214,7 @@
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261031m"></script>
+<script src="cat.js?v=20261031n"></script>
 <script src="bf.js?v=20261017e"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261025a"></script>
@@ -214,7 +235,7 @@
 <!-- 考点标签（tags.js，方案五）：考点词表可以由你批量导入（一行一个）或让 AI 起一份，
      然后让 AI 读每道题、从词表里挑标签贴上去；统计页的「按考点」只汇总这些贴好的标签。
      标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
-<script src="tags.js?v=20261031r"></script>
+<script src="tags.js?v=20261031s"></script>
 
 <!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
      让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->

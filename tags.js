@@ -889,27 +889,43 @@
       + '【分类特征库】\n' + BASIC_GUIDE
       + '\n\n【本功能输出要求】给每道题六选一（生理/生化/病理/内科/外科/人文）；只输出 JSON 对象，键是题号，值是科目，例如 {"1":"病理","2":"内科"}。不要按特征库末尾的标签输出模板，不要解释、不要代码块。';
     var okQ = 0, fail = 0;
+    /* 问一批：返回 { 题号: 科目 }，解析不了返回 null */
+    async function askBasic(arr) {
+      var prompt = '给下面每道题从【生理 / 生化 / 病理 / 内科 / 外科 / 人文】里选**唯一一科**，必须六选一，不要多选，不要自创。\n'
+        + '只输出 JSON，不要解释、不要代码块：\n{ "1": "内科", "2": "生理" }\n\n'
+        + '【题目】\n' + arr.map(function (x, i) {
+            return (i + 1) + '. ' + (x.b.title ? '题库《' + x.b.title + '》｜' : '') + qLine(x.q, 0).replace(/^\d+\.\s*/, '');
+          }).join('\n');
+      var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: prompt }],
+        function () {}, BJOB.ctl ? BJOB.ctl.signal : undefined);
+      return parseJSONMap(txt);
+    }
     for (var bi = 0; bi < batches.length; bi++) {
       if (!BJOB.running) break;
       BJOB.done = bi;
       paintBasic();
       var list = batches[bi];
-      var prompt = '给下面每道题从【生理 / 生化 / 病理 / 内科 / 外科 / 人文】里选**唯一一科**，必须六选一，不要多选，不要自创。\n'
-        + '只输出 JSON，不要解释、不要代码块：\n{ "1": "内科", "2": "生理" }\n\n'
-        + '【题目】\n' + list.map(function (x, i) {
-            return (i + 1) + '. ' + (x.b.title ? '题库《' + x.b.title + '》｜' : '') + qLine(x.q, 0).replace(/^\d+\.\s*/, '');
-          }).join('\n');
       try {
-        var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: prompt }],
-          function () {}, BJOB.ctl ? BJOB.ctl.signal : undefined);
-        var map = parseJSONMap(txt);
+        var map = await askBasic(list);
+        if (!map) map = await askBasic(list);   /* 输出被截断时再问一次，别把整批丢掉 */
         if (!map) { fail++; continue; }
+        var miss = [];
         list.forEach(function (x, i) {
-          var sub = String(map[String(i + 1)] == null ? '' : map[String(i + 1)]).trim();
-          if (BASIC_TAGS.indexOf(sub) < 0) return;
+          var sub = normBasic(map[String(i + 1)]);
+          if (!sub) { miss.push(x); return; }
           setBasic(x.k, sub);
           okQ++;
         });
+        /* 漏答 / 写了不合法科目的题，单独再问一次，别静默留在「未分科」 */
+        if (miss.length) {
+          var map2 = await askBasic(miss);
+          if (map2) miss.forEach(function (x, j) {
+            var sub2 = normBasic(map2[String(j + 1)]);
+            if (!sub2) return;
+            setBasic(x.k, sub2);
+            okQ++;
+          });
+        }
       } catch (e) {
         var stopped = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
         if (stopped) { BJOB.note = '已停止：这一批之前的都保住了'; break; }
@@ -987,6 +1003,20 @@
   function basicSubjectOf(k) {
     var bs = tagsOf(k).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
     return bs[0] || '';
+  }
+  /* 模型有时写「内科学 / 生物化学 / 病理（镜下）」，不归一就会被当成不合法结果静默丢掉 */
+  function normBasic(s) {
+    s = String(s == null ? '' : s).replace(/[\s　]+/g, '').replace(/[（(【\[].*$/, '');
+    if (!s) return '';
+    if (BASIC_TAGS.indexOf(s) >= 0) return s;
+    var alias = { '内科学': '内科', '外科学': '外科', '生理学': '生理', '病理学': '病理',
+      '生物化学': '生化', '生物化学与分子生物学': '生化', '医学人文': '人文', '人文医学': '人文',
+      '医学伦理学': '人文', '伦理学': '人文', '医学心理学': '人文', '卫生法规': '人文', '卫生法': '人文' };
+    if (alias[s]) return alias[s];
+    /* 兜底看包含：病理要排在生理前面，否则「病理生理」会被判成生理 */
+    var order = ['人文', '内科', '外科', '生化', '病理', '生理'];
+    for (var i = 0; i < order.length; i++) if (s.indexOf(order[i]) >= 0) return order[i];
+    return '';
   }
   function tagGuideFor(sub) {
     return (sub && TAG_GUIDE_BY_SUB[sub]) ? TAG_GUIDE_BY_SUB[sub] : TAG_GUIDE;
@@ -1100,6 +1130,8 @@
   async function tagAll() {
     if (JOB.running) return;
     if (!cfgOK()) return;
+    /* 开跑前从存储再读一次：别拿另一个页签 / 刚才分科前的旧内存去覆盖刚分好的六科 */
+    try { rd(); } catch (e) {}
     var userVocab = TAGV.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
     if (!userVocab.length) { JOB.note = '先有自定义词表再分类（点「1) 生成考点词表」）'; paintAI(); return; }
     if (BJOB.running) { JOB.note = '正在分六科标签，等它跑完'; paintAI(); return; }
@@ -1108,7 +1140,10 @@
       (typeof baseBanks === 'function' ? baseBanks() : []).forEach(function (b) {
         (b.questions || []).forEach(function (q) {
           var k = keyOf(b, q);
-          if (!userTagsOf(k).length) todo.push({ b: b, q: q, k: k });
+          if (!userTagsOf(k).length) {
+            /* 记下开跑前的基本科：万一中途被别的写入覆盖，跑完还能补回来 */
+            todo.push({ b: b, q: q, k: k, basic: tagsOf(k).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; })[0] || '' });
+          }
         });
       });
     } catch (e) {}
@@ -1158,6 +1193,7 @@
             return;
           }
           var keepB = tagsOf(x.k).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; }).slice(0, 1);
+          if (!keepB.length && x.basic) keepB = [x.basic];   /* 内存里被临时盖掉也不丢开跑前的基本科 */
           setTags(x.k, keepB.concat(pick), true);
           okQ++;
         });
@@ -1168,8 +1204,14 @@
       }
     }
     JOB.running = false; JOB.ctl = null; JOB.done = JOB.total;
+    /* 打完回头核对：有没有「有考点标签、但六科没了」的题（这次的 bug 就是这种） */
+    var noBasic = 0;
+    todo.forEach(function (x) {
+      if (!tagsOf(x.k).some(function (t) { return BASIC_TAGS.indexOf(t) >= 0; })) noBasic++;
+    });
     JOB.note = '打完：' + okQ + ' 道' + (fail ? '，' + fail + ' 批失败（模型没按 JSON 输出）' : '')
-      + (todo.length > okQ ? '，还有 ' + (todo.length - okQ) + ' 道没标签' : '');
+      + (todo.length > okQ ? '，还有 ' + (todo.length - okQ) + ' 道没标签' : '')
+      + (noBasic ? '，其中 ' + noBasic + ' 道没有六科（点「一键分六科」补）' : '');
     TAGS_STATS_CACHE = null;
     paintAI();
     if (typeof render === 'function') { try { render(); } catch (e) {} }

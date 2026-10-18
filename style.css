@@ -74,6 +74,46 @@ html[data-theme="violet"] body.dark{--primary:#b794ff;--primary-weak:#2a1d47;--p
 html[data-theme="warm"]   body.dark{--primary:#7ea6ff;--primary-weak:#16203a;--primary-line:#33456e;--primary-soft:rgba(126,166,255,.14);
   --a1:#7ea6ff;--a2:#93b4ff;--a3:#38bdf8;--a-top:#fb923c;--grad:linear-gradient(135deg,#1d4ed8,#3b82f6 58%,#60a5fa)}
 
+/* ---------- 第二批配色（web140）：玫瑰 / 琥珀 / 森林 / 海洋 / 石墨金 / 糖果 ----------
+   和上面四套一样只覆盖主色变量；每套再带一层同色的 --bg-wash，整页氛围跟着变。
+   深色单独覆盖一层，保证正文对比度。 */
+html[data-theme="rose"]{--primary:#e11d48;--primary-weak:#fff1f4;--primary-line:#fecdd8;--primary-soft:rgba(225,29,72,.10);
+  --a1:#be123c;--a2:#fb7185;--a3:#fda4af;--a-top:#e11d48;--grad:linear-gradient(135deg,#be123c,#fb7185 58%,#f59e0b);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(225,29,72,.10),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(245,158,11,.08),transparent 60%)}
+html[data-theme="amber"]{--primary:#b45309;--primary-weak:#fff7ed;--primary-line:#fed7aa;--primary-soft:rgba(180,83,9,.10);
+  --a1:#b45309;--a2:#f59e0b;--a3:#fbbf24;--a-top:#b45309;--grad:linear-gradient(135deg,#92400e,#f59e0b 58%,#fbbf24);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(245,158,11,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(251,191,36,.09),transparent 60%)}
+html[data-theme="emerald"]{--primary:#047857;--primary-weak:#ecfdf5;--primary-line:#a7f3d0;--primary-soft:rgba(4,120,87,.10);
+  --a1:#047857;--a2:#10b981;--a3:#34d399;--a-top:#047857;--grad:linear-gradient(135deg,#065f46,#10b981 58%,#34d399);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(16,185,129,.11),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(52,211,153,.09),transparent 60%)}
+html[data-theme="ocean"]{--primary:#0369a1;--primary-weak:#f0f9ff;--primary-line:#bae6fd;--primary-soft:rgba(3,105,161,.10);
+  --a1:#0369a1;--a2:#0ea5e9;--a3:#22d3ee;--a-top:#0369a1;--grad:linear-gradient(135deg,#075985,#0ea5e9 58%,#22d3ee);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(14,165,233,.11),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(34,211,238,.09),transparent 60%)}
+html[data-theme="graphite"]{--primary:#334155;--primary-weak:#f1f5f9;--primary-line:#cbd5e1;--primary-soft:rgba(51,65,85,.10);
+  --a1:#0f172a;--a2:#475569;--a3:#94a3b8;--a-top:#d97706;--grad:linear-gradient(135deg,#0f172a,#334155 58%,#d97706);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(51,65,85,.10),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(217,119,6,.08),transparent 60%)}
+html[data-theme="candy"]{--primary:#c026d3;--primary-weak:#fef4ff;--primary-line:#f5d0fe;--primary-soft:rgba(192,38,211,.10);
+  --a1:#a21caf;--a2:#e879f9;--a3:#fb7185;--a-top:#c026d3;--grad:linear-gradient(135deg,#86198f,#e879f9 58%,#fb7185);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(232,121,249,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(251,113,133,.09),transparent 60%)}
+html[data-theme="rose"] body.dark{--primary:#fb7185;--primary-weak:#3b1220;--primary-line:#7f2d43;--primary-soft:rgba(251,113,133,.16);
+  --a1:#fb7185;--a2:#fda4af;--a3:#f59e0b;--a-top:#fb7185;--grad:linear-gradient(135deg,#9f1239,#fb7185 58%,#f59e0b);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(251,113,133,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(245,158,11,.07),transparent 60%)}
+html[data-theme="amber"] body.dark{--primary:#fbbf24;--primary-weak:#3a2a10;--primary-line:#7c5a1c;--primary-soft:rgba(251,191,36,.16);
+  --a1:#fbbf24;--a2:#fcd34d;--a3:#fb923c;--a-top:#fbbf24;--grad:linear-gradient(135deg,#92400e,#f59e0b 58%,#fcd34d);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(251,191,36,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(251,146,60,.08),transparent 60%)}
+html[data-theme="emerald"] body.dark{--primary:#34d399;--primary-weak:#0c2f24;--primary-line:#2c6b53;--primary-soft:rgba(52,211,153,.16);
+  --a1:#34d399;--a2:#6ee7b7;--a3:#22d3ee;--a-top:#34d399;--grad:linear-gradient(135deg,#065f46,#10b981 58%,#34d399);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(52,211,153,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(34,211,238,.07),transparent 60%)}
+html[data-theme="ocean"] body.dark{--primary:#38bdf8;--primary-weak:#0b2536;--primary-line:#1e4f6d;--primary-soft:rgba(56,189,248,.16);
+  --a1:#38bdf8;--a2:#7dd3fc;--a3:#22d3ee;--a-top:#38bdf8;--grad:linear-gradient(135deg,#075985,#0ea5e9 58%,#38bdf8);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(56,189,248,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(34,211,238,.08),transparent 60%)}
+html[data-theme="graphite"] body.dark{--primary:#cbd5e1;--primary-weak:#1c2432;--primary-line:#3d4b62;--primary-soft:rgba(203,213,225,.14);
+  --a1:#e2e8f0;--a2:#94a3b8;--a3:#d97706;--a-top:#f59e0b;--grad:linear-gradient(135deg,#0b1220,#334155 58%,#d97706);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(203,213,225,.08),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(217,119,6,.07),transparent 60%)}
+html[data-theme="candy"] body.dark{--primary:#e879f9;--primary-weak:#341331;--primary-line:#6d2a66;--primary-soft:rgba(232,121,249,.16);
+  --a1:#e879f9;--a2:#f0abfc;--a3:#fb7185;--a-top:#e879f9;--grad:linear-gradient(135deg,#86198f,#e879f9 58%,#fb7185);
+  --bg-wash:radial-gradient(1200px 620px at 12% -8%,rgba(232,121,249,.12),transparent 62%),radial-gradient(900px 540px at 100% 0%,rgba(251,113,133,.08),transparent 60%)}
+
 /* ---------- 第四批：层次与微动效 ---------- */
 h2.sec{font-weight:800}
 h2.sec::before{background:linear-gradient(180deg,var(--primary),color-mix(in srgb,var(--primary) 60%,#22d3ee))}
@@ -1716,5 +1756,39 @@ body.sheet-open{ overflow:hidden; }
    ③ 第二轮补的四处：统计页柱状图 .cbar i / .cbar.on i 的蓝色渐变、::selection 选中高亮、
       口诀便签 .qnbox 与错题本「找词」输入框的 10px 圆角、.hero 那句兜底渐变（真正生效的
       仍是后面 §8 的 background-image:var(--grad)）。 */
-词」输入框的 10px 圆角、.hero 那句兜底渐变（真正生效的
-      仍是后面 §8 的 background-image:var(--grad)）。 */
+
+/* ---------- 背景氛围（web140，设置 → 背景） ----------
+   只换 body 的底图，不碰布局、不挡点击；全部用 CSS 渐变画，离线也有效，
+   不依赖任何外部图片。 */
+html[data-bg="plain"] body{background-image:none}
+html[data-bg="grid"] body{background-image:linear-gradient(rgba(13,23,42,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(13,23,42,.045) 1px,transparent 1px),var(--bg-wash);
+  background-size:28px 28px,28px 28px,auto;background-repeat:repeat,repeat,no-repeat;background-attachment:fixed,fixed,fixed}
+html[data-bg="grid"] body.dark{background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px),var(--bg-wash)}
+html[data-bg="dots"] body{background-image:radial-gradient(rgba(13,23,42,.10) 1px,transparent 1.4px),var(--bg-wash);
+  background-size:18px 18px,auto;background-repeat:repeat,no-repeat;background-attachment:fixed,fixed}
+html[data-bg="dots"] body.dark{background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1.4px),var(--bg-wash)}
+html[data-bg="aurora"] body{background-image:
+  radial-gradient(1200px 760px at 6% -14%,color-mix(in srgb,var(--a1) 58%,transparent),transparent 64%),
+  radial-gradient(1000px 640px at 98% 2%,color-mix(in srgb,var(--a2) 52%,transparent),transparent 62%),
+  radial-gradient(900px 600px at 50% 112%,color-mix(in srgb,var(--a3) 46%,transparent),transparent 64%),
+  radial-gradient(700px 460px at 78% 62%,color-mix(in srgb,var(--a1) 26%,transparent),transparent 68%);
+  background-repeat:no-repeat;background-attachment:fixed}
+html[data-bg="aurora"] body.dark{background-image:
+  radial-gradient(1200px 760px at 6% -14%,color-mix(in srgb,var(--a1) 42%,transparent),transparent 64%),
+  radial-gradient(1000px 640px at 98% 2%,color-mix(in srgb,var(--a2) 38%,transparent),transparent 62%),
+  radial-gradient(900px 600px at 50% 112%,color-mix(in srgb,var(--a3) 32%,transparent),transparent 64%),
+  radial-gradient(700px 460px at 78% 62%,color-mix(in srgb,var(--a1) 20%,transparent),transparent 68%)}
+html[data-bg="lines"] body{background-image:repeating-linear-gradient(45deg,rgba(13,23,42,.055) 0 2px,transparent 2px 11px),var(--bg-wash);
+  background-repeat:repeat,no-repeat;background-attachment:fixed,fixed}
+html[data-bg="lines"] body.dark{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.06) 0 2px,transparent 2px 11px),var(--bg-wash)}
+html[data-bg="rings"] body{background-image:repeating-radial-gradient(circle at 50% -10%,rgba(13,23,42,.07) 0 1px,transparent 1px 24px),var(--bg-wash);
+  background-repeat:repeat,no-repeat;background-attachment:fixed,fixed}
+html[data-bg="rings"] body.dark{background-image:repeating-radial-gradient(circle at 50% -10%,rgba(255,255,255,.07) 0 1px,transparent 1px 24px),var(--bg-wash)}
+html[data-bg="paper"] body{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.30'/></svg>"),var(--bg-wash);
+  background-repeat:repeat,no-repeat;background-attachment:fixed,fixed}
+html[data-bg="paper"] body.dark{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.18'/></svg>"),var(--bg-wash)}
+/* 自定义图片：cover 铺满、居中裁切；没图时退回默认微光；深色盖一层暗膜保证描边看得清 */
+html[data-bg="custom"] body{background-image:var(--bg-img,var(--bg-wash));background-size:cover;background-position:center center;background-repeat:no-repeat;background-attachment:fixed}
+html[data-bg="custom"] body.dark{background-image:linear-gradient(rgba(4,8,16,.55),rgba(4,8,16,.55)),var(--bg-img,var(--bg-wash));background-size:cover,cover;background-position:center center;background-repeat:no-repeat;background-attachment:fixed}
+@media (max-width:760px){ html[data-bg="custom"] body,html[data-bg="custom"] body.dark{background-attachment:scroll,scroll} }
+@media (prefers-reduced-motion: reduce){ html[data-bg="custom"] body{background-attachment:scroll} }
