@@ -117,6 +117,10 @@ body.nbm { user-select: none; -webkit-user-select: none; }
 .nb-view .vb:hover { color: var(--text); }
 .nb-view .vb.on { background: var(--card); color: var(--primary); box-shadow: var(--sh-1); font-weight: 700; }
 /* （图标大小那排按钮的样式在下面 .nb-isize 一段） */
+/* 主页「我的题库」标题右边的排序下拉（自定义顺序 / 按名称 / 最近添加） */
+.nb-bsortwrap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 10px; vertical-align: middle; }
+.nb-bsort { height: 30px; padding: 2px 6px; font-size: 13px; border-radius: var(--r-s); }
+@media (max-width: 520px) { .nb-bsortwrap { margin-left: 0; margin-top: 4px; } }
 
 .nb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 18px; }
 /* 主界面「全部题库 / 临时套卷」分页 */

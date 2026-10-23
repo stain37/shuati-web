@@ -1030,3 +1030,24 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 3. 公式覆盖到题干/选项（现在只覆盖 Markdown 渲染路径：解析、聊天、AI 输出）。
 
 
+
+## 21. 网页 AI Agent 与知识库 RAG 优化（依据 page-agent / ragflow 源码分析，web149 → web151）
+
+### 21.1 已落地
+
+| # | 改动 | 落点 | 版本 |
+|---|------|------|------|
+| 1 | 西综按题号计分：165 题 / 300 分，1–40 每题 1.5、41–115 每题 2、116–135 每题 1.5、136–165 每题 2，按科目段自动认（生理/生化/病理/内科/外科/人文），交卷显示「得分 / 满分」 | `app.js` `XZ_LEN/XZ_PT/XZ_SUB/` `xzSubOf/isXzPaper/qScore/ptAt/bankScore/bankScoreBreak/bankScoreText`；`exam.js` `examPoints()` + 交卷加权 | web149 |
+| 2 | 规划器 `planByModel`：三条 few-shot 示例（改名 / 多步 / 只读）、输出解析抽成 `parsePlanObj()`、失败重试一次（把「动作名不存在 / 不是 JSON」回给模型），仍不行才退回规则 | `chat.js` `opsFewShot/parsePlanObj/planByModel` | web149 |
+| 3 | 知识库切片带**标题路径**（`h.path`，如「第三章 › 肝硬化」），标题与正文不再混淆；检索打分给短标题轻微加权 | `kb.js` `kbChunk()`（`hp/ps/plen/KB_WP`）、`kbSearch` 打分 | web150 |
+| 4 | 参考资料改「按段编号」：上下文里每段前带 `[ID:n]` 与 `[Path:…]`，系统提示要求落笔时用 `[n]` 标注，便于对照原文 | `ai.js` `aiContext()` 装配 + `aiSysText()` | web150 |
+| 5 | 重排（rerank）喂料从「每段 170 字、无标题」改成「带【标题】〔路径〕、每段 300 字」，并加 **200 条 LRU 缓存**（同一题反复问不重复花钱，索引重建自动作废） | `kb.js` `kbRerank()` + `KB_RR_CACHE` | web151 |
+| 6 | 修 `kb-page-probe` 三处断言（存下来的参考资料自动展开是「开关语义」、阅读器 URL 要解两层编码、直链也算能看原页），现在 **0 fail** | `工作1\kb-page-probe.py` | web151 |
+
+### 21.2 下一步（按价值排序）
+
+1. **引用逐句落地**：把 `[ID:n]` 变成可点的角标，点开跳该段原文 / 原页（现在只是文本标记）。
+2. **邻居扩展**：命中段自动带上一段/下一段（RAGFlow 的 parent-child 思路），解决「跨段结论」。
+3. **本地同义词表**：高频医学词（DNA 损伤 ↔ 切除修复）不花模型调用就能互查。
+4. **trace 面板**：`ai-ops` 每步记录耗时/命中/失败原因，答错了能看出是哪一步（page-agent 的 trace）。
+5. **动作参数 schema**：`catalog()` 里给参数加「必需/可选」标记，规划器少自创参数。

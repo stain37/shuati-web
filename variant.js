@@ -486,7 +486,7 @@
     if (typeof LOCAL === 'undefined' || typeof writeLS !== 'function') { toast('存储模块没加载'); return false; }
     var id = (opts.idPrefix || 'local-var-') + Date.now().toString(36);
     while (LOCAL.some(function (b) { return b.id === id; })) id += 'x';
-    var bank = { id: id, title: String(title || 'AI 新题').slice(0, 40), subtitle: opts.subtitle || ('自建题库 · AI 变式 · ' + qs.length + ' 题'), questions: qs };
+    var bank = { id: id, title: String(title || 'AI 新题').slice(0, 40), subtitle: opts.subtitle || ('自建题库 · AI 变式 · ' + qs.length + ' 题'), createdAt: Date.now(), questions: qs };
     LOCAL.push(bank);
     if (typeof invalidateBanks === 'function') invalidateBanks();
     writeLS(typeof LS !== 'undefined' ? LS.banks : 'qbank.local.v2', LOCAL);

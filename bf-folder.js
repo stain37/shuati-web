@@ -553,6 +553,7 @@
           LOCAL.push({
             id: id, title: b.title,
             subtitle: b.subtitle || ('批量导入 · ' + b.n + ' 题'),
+            createdAt: Date.now(),
             cat: (typeof dirId === 'string' && dirId) ? dirId : null,
             questions: b.questions
           });

@@ -972,8 +972,46 @@
       + '</div>';
   }
 
+  /* ---------- 题库排序：自定义顺序 / 按名称 / 最近添加 ----------
+     记在 qbank.banksort.v1，刷新和换目录都保持。
+     「最近添加」优先用建库时间 createdAt；老题库没这字段就按它在 LOCAL 里越靠后越新兜底
+     （LOCAL 是入库顺序追加的，所以倒着数就是最近添加）。 */
+  var BSORT_KEY = 'qbank.banksort.v1';
+  function bankSortMode() {
+    try {
+      var v = localStorage.getItem(BSORT_KEY) || '';
+      return (v === 'name' || v === 'recent') ? v : 'custom';
+    } catch (e) { return 'custom'; }
+  }
+  function setBankSortMode(v) {
+    try { localStorage.setItem(BSORT_KEY, (v === 'name' || v === 'recent') ? v : 'custom'); } catch (e) {}
+  }
+  function bankPlainIndex(b) {
+    var i = -1;
+    try {
+      var arr = (typeof LOCAL !== 'undefined' && LOCAL) || [];
+      for (var j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === b.id) i = j;
+    } catch (e) {}
+    return i;
+  }
   function sortBank(a, b) {
+    var m = bankSortMode();
+    if (m === 'name') return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
+    if (m === 'recent') {
+      var ta = +a.createdAt || 0, tb = +b.createdAt || 0;
+      if (ta || tb) return (tb - ta) || (bankPlainIndex(b) - bankPlainIndex(a));
+      return bankPlainIndex(b) - bankPlainIndex(a);
+    }
     return (+a.ord || 0) - (+b.ord || 0) || String(a.title).localeCompare(String(b.title), 'zh');
+  }
+  function bankSortHtml() {
+    var m = bankSortMode();
+    return '<span class="nb-bsortwrap" title="题库排序方式">排序 '
+      + '<select class="inp nb-bsort" id="bankSortSel">'
+      + '<option value="custom"' + (m === 'custom' ? ' selected' : '') + '>自定义顺序</option>'
+      + '<option value="name"' + (m === 'name' ? ' selected' : '') + '>按名称</option>'
+      + '<option value="recent"' + (m === 'recent' ? ' selected' : '') + '>最近添加</option>'
+      + '</select></span>';
   }
 
   /* 目录树（侧边/顶部折叠）：整个分类结构一次看全 */
@@ -1035,7 +1073,7 @@
   function sechead(title, withChat) {
     return '<div class="sechead"><h2 class="sec">' + title + '</h2>'
       + (withChat ? '<button class="btn small" data-act="chatAll" title="把当前目录（含子目录）的题库都加进 AI 对话">💬 全部加进对话</button>' : '')
-      + viewToggleHtml() + '</div>';
+      + bankSortHtml() + viewToggleHtml() + '</div>';
   }
   function catRowHtml(c, inSearch) {
     var s = subStat(c.id);
@@ -1249,6 +1287,9 @@
 
   /* ---------- 事件绑定（都在 holder 内，重渲染后重新绑一次） ---------- */
   function bind(host) {
+    /* 「我的题库」右边的排序下拉：换一种排序就从头重画（页码回第 1 页） */
+    var bsortSel = host.querySelector('#bankSortSel');
+    if (bsortSel) bsortSel.onchange = function () { setBankSortMode(bsortSel.value); HOME_PAGE = 1; repaint(); };
     var search = host.querySelector('#nbSearch');
     if (search) {
       var nbComposing = false;

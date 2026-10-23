@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    刷题站 · 核心 app.js
    题库：banks/*.js（registerBank）+ 本地导入 + 临时套卷
    存储：全部在浏览器 localStorage
@@ -493,6 +493,9 @@ function allBanks() {
 }
 function baseBanks() { return allBanks().filter(b => !b.paper); }
 function bankById(id) { return allBanks().find(b => b.id === id); }
+
+/* 主页题库排序 UI 在 cat.js（真正渲染首页的是 cat.js 的 catRenderHook）。
+   这里只保留建库时间 createdAt，供「最近添加」排序用。 */
 function findQIn(base, k) {
   for (const b of base) {
     const pre = b.id + '#';
@@ -524,6 +527,7 @@ function paperBanks(base) {
 function normalizeBank(b, source) {
   const qs = (b.questions || []).map((q, i) => normalizeQ(q, i + 1));
   const o = { id: b.id || ('bank-' + i2s()), title: b.title || '未命名题库', subtitle: b.subtitle || '', source: source, paper: false, cat: (b.cat == null || b.cat === '' ? null : String(b.cat)), questions: qs };
+  if (b.createdAt) o.createdAt = +b.createdAt || 0;   /* 建库时间：「最近添加」排序用；老数据没有这字段，排序走兜底 */
   if (b.ord != null) o.ord = +b.ord || 0;      // 目录内的手排顺序
   return o;
 }
@@ -3235,7 +3239,7 @@ function doSave() {
   }
   let id = 'local-' + Date.now().toString(36);
   while (LOCAL.some(b => b.id === id)) id += '-' + i2s();    // 导入的题库里若带了重复 id 也不会串台
-  const bank = { id: id, title: title, subtitle: (r.bank.subtitle || '自建题库') + ' · ' + qs.length + ' 题', questions: qs };
+  const bank = { id: id, title: title, subtitle: (r.bank.subtitle || '自建题库') + ' · ' + qs.length + ' 题', createdAt: Date.now(), questions: qs };
   LOCAL.push(bank);
   invalidateBanks();
   writeLS(LS.banks, LOCAL);
