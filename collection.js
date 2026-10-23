@@ -177,13 +177,15 @@ function mdToHtml(md) {
   const MATH = mdMathExtract(md);
   if (MATH) md = MATH.txt;
   let s = esc(mdColorize(mdEscOpen(md)));
-  s = s.replace(/!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+|[^)\s]+?)\s*(?:=\s*(\d*)\s*x\s*(\d*)\s*)?\)/g, (m, a, u, w, h) => {
-    /* 图片尺寸语法：![图](url =200x120) / =200x / =x120（第 20 条：图片能拉大拉小） */
+  s = s.replace(/!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+|[^)\s]+?)\s*(?:=\s*(\d*)\s*x\s*(\d*)\s*)?(?:\s+(?:&quot;|")([^<>]*?)(?:&quot;|"))?\)/g, (m, a, u, w, h, cap) => {
+    /* 图片语法：![图](url =200x120 "图注")（尺寸与图注都可省；图注是 Notion 式 caption） */
     let extra = '';
     if (w) extra += ' width="' + w + '"';
     if (h) extra += ' height="' + h + '"';
     if (w || h) extra += ' style="' + (w ? 'width:' + w + 'px;' : '') + (h ? 'height:' + h + 'px;' : '') + 'max-width:100%"';
-    return `<img alt="${a}" src="${u}"${extra}>`;
+    const img = `<img alt="${a}" src="${u}"${extra}>`;
+    if (cap && cap.trim()) return `<figure class="md-fig">${img}<figcaption class="md-cap">${cap}</figcaption></figure>`;
+    return img;
   });
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
@@ -647,6 +649,10 @@ function mdFromHtml(root) {
     if (tag === 'code') return '`' + inlineOf(n, true) + '`';
     if (tag === 'del' || tag === 's' || tag === 'strike') return '~~' + inlineOf(n, inCode) + '~~';
     if (tag === 'a') { const h = n.getAttribute('href') || ''; return h ? '[' + inlineOf(n, inCode) + '](' + h + ')' : inlineOf(n, inCode); }
+    if (tag === 'figure') {
+      const im = n.querySelector('img');
+      return im ? inlineEl(im, inCode) : inlineOf(n, inCode);
+    }
     if (tag === 'img') {
       const w = n.getAttribute('width'), h = n.getAttribute('height');
       let size = '';
@@ -655,7 +661,11 @@ function mdFromHtml(root) {
         const sh = h || (n.style && /height:\s*(\d+)px/.exec(n.style.height || '') || [])[1] || '';
         size = ' =' + sw + 'x' + sh;
       }
-      return '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + size + ')';
+      /* 图注存在 figure>figcaption 或 img[data-cap]：写回 "图注" */
+      const fig = n.closest ? n.closest('figure') : null;
+      const fcap = fig ? (fig.querySelector('figcaption') || {}).textContent : '';
+      const cap = String(n.getAttribute('data-cap') || fcap || '').replace(/"/g, '”').trim();
+      return '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + size + (cap ? ' "' + cap + '"' : '') + ')';
     }
     const c = (n.style && n.style.color) ? mdColorHex(n.style.color) : (tag === 'font' ? mdColorHex(n.getAttribute('color')) : '');
     if (c) return '<font color="' + c + '">' + inlineOf(n, inCode) + '</font>';
@@ -1134,6 +1144,30 @@ function richImgsBind(wrap) {
       window.addEventListener('pointerup', up);
     });
   });
+  /* 双击图片写图注（Notion caption）：写成 figure>figcaption，mdFromHtml 会还原成 ![]( "图注") */
+  wrap.addEventListener('dblclick', function (ev) {
+    const img = ev.target.closest ? ev.target.closest('img') : null;
+    if (!img) return;
+    ev.preventDefault();
+    const fig0 = img.closest('figure');
+    const cur = (img.getAttribute('data-cap') || (fig0 && fig0.querySelector('figcaption') ? fig0.querySelector('figcaption').textContent : '') || '');
+    const v = window.prompt('图片说明（留空 = 不要说明）', cur);
+    if (v == null) return;
+    const txt = v.trim();
+    let fig = img.closest('figure');
+    if (txt) {
+      img.setAttribute('data-cap', txt);
+      if (!fig) { fig = document.createElement('figure'); fig.className = 'md-fig'; img.parentNode.insertBefore(fig, img); fig.appendChild(img); }
+      let cap = fig.querySelector('figcaption');
+      if (!cap) { cap = document.createElement('figcaption'); cap.className = 'md-cap'; fig.appendChild(cap); }
+      cap.textContent = txt; cap.contentEditable = 'true';
+    } else {
+      img.removeAttribute('data-cap');
+      if (fig) { const cap = fig.querySelector('figcaption'); if (cap) cap.remove(); if (!fig.querySelector('figcaption') && fig.parentNode) { fig.parentNode.insertBefore(img, fig); fig.remove(); } }
+    }
+    const host = img.closest('.rich-edit');
+    if (host) { host.dispatchEvent(new Event('input', { bubbles: true })); richState(host, '未保存…', true); }
+  });
   /* 第 19 条第三轮：图片区的图片也能整块换位置 —— 拖左上角 ⠿ 到另一张图的前/后，顺序存进 NOTES[fk].imgs */
   if (wrap.dataset.mvBound === '1') return;
   wrap.dataset.mvBound = '1';
@@ -1367,9 +1401,68 @@ function blkInitOnce() {
     else if (BLK.grip) BLK.grip.hidden = true;
   });
 }
-/* 一次把页面上还没绑过的就地编辑器都绑上（重画完调一次就行） */function richBindAll(root) {
+/* 一次把页面上还没绑过的就地编辑器都绑上（重画完调一次就行） */
+/* 解析目录（④）：标题多了给一个「☰ 目录」按钮，点开列标题、点条目跳过去。
+   只在 .exp-wrap 里做，跟着 richBindAll 重画，幂等（已存在就不重复建）。 */
+function mdTocInitOnce() {
+  if (window.__mdToc) return;
+  window.__mdToc = 1;
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest ? e.target.closest('.md-toc-btn') : null;
+    const panel = document.getElementById('mdTocPanel');
+    if (!b) { if (panel && !(e.target.closest && e.target.closest('#mdTocPanel'))) panel.remove(); return; }
+    e.preventDefault();
+    const wrap = b.closest('.exp-wrap');
+    if (!wrap) return;
+    if (panel && panel._for === wrap) { panel.remove(); return; }
+    if (panel) panel.remove();
+    const ed = wrap.querySelector('.rich-edit');
+    if (!ed) return;
+    const hs = Array.prototype.slice.call(ed.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+    if (!hs.length) { if (typeof toast === 'function') toast('这篇解析里还没有小标题'); return; }
+    const box = document.createElement('div');
+    box.id = 'mdTocPanel'; box._for = wrap; box.className = 'md-toc-panel';
+    box.innerHTML = '<div class="md-toc-h">目录</div>' + hs.map(function (h, i) {
+      return '<button class="md-toc-i" data-toc="' + i + '" style="padding-left:' + (8 + (+h.tagName[1] - 1) * 12) + 'px">'
+        + esc((h.textContent || '').trim() || '（空标题）') + '</button>';
+    }).join('');
+    box.querySelectorAll('[data-toc]').forEach(function (x) {
+      x.onclick = function () {
+        const t = hs[+x.dataset.toc];
+        if (t) {
+          t.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          t.classList.add('md-toc-flash');
+          setTimeout(function () { t.classList.remove('md-toc-flash'); }, 900);
+        }
+        box.remove();
+      };
+    });
+    document.body.appendChild(box);
+    const r = b.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.min((window.innerWidth || 1200) - 230, r.left)) + 'px';
+    box.style.top = Math.max(8, r.bottom + 6) + 'px';
+  });
+}
+function mdTocButtons(root) {
+  mdTocInitOnce();
+  const box = root || document;
+  if (!box.querySelectorAll) return;
+  Array.prototype.forEach.call(box.querySelectorAll('.exp-wrap'), function (wrap) {
+    const ed = wrap.querySelector('.rich-edit');
+    if (!ed) return;
+    const n = ed.querySelectorAll('h1,h2,h3,h4,h5,h6').length;
+    const old = wrap.querySelector(':scope > .md-toc-btn');
+    if (n >= 3 && !old) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'md-toc-btn'; b.textContent = '☰ 目录';
+      wrap.insertBefore(b, wrap.firstChild);
+    } else if (n < 3 && old) old.remove();
+  });
+}
+function richBindAll(root) {
   const scope = root || document;
   if (!scope.querySelectorAll) return;
+  mdTocButtons(scope);
   blkInitOnce();
   Array.prototype.slice.call(scope.querySelectorAll('.exp-wrap')).forEach(w => richImgsBind(w));
   Array.prototype.slice.call(scope.querySelectorAll('.rich-edit[contenteditable]')).forEach(el => {

@@ -1891,3 +1891,21 @@ body.frost .bnav{backdrop-filter:blur(calc(var(--frost-blur,14px) + 6px)) satura
 .callout-warning{background:#fffbeb;border-left-color:#f59e0b}
 .callout-important{background:#fef2f2;border-left-color:#f87171}
 .callout-caution{background:#fff1f2;border-left-color:#e11d48}
+
+/* 图片图注（Notion caption）：图 + 灰色小字说明 */
+.md-fig{margin:10px 0;text-align:center}
+.md-fig img{max-width:100%;border-radius:8px;display:block;margin:0 auto}
+.md-cap{margin-top:4px;color:var(--muted,#64748b);font-size:12.5px;line-height:1.5;outline:none}
+.md-cap:empty{display:none}
+.md-cap:focus{background:var(--bg2,#f3f4f6);border-radius:4px}
+/* 解析目录 */
+.md-toc-btn{position:sticky;top:4px;z-index:5;float:right;margin:0 0 4px 8px;padding:2px 8px;font-size:12px;
+  border:1px solid var(--line,#e5e7eb);border-radius:999px;background:var(--card,#fff);color:var(--muted,#475569);cursor:pointer}
+.md-toc-btn:hover{border-color:var(--primary,#4f46e5);color:var(--primary,#4f46e5)}
+.md-toc-panel{position:fixed;z-index:70;width:220px;max-height:52vh;overflow:auto;background:var(--card,#fff);
+  border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:6px}
+.md-toc-h{font-weight:700;font-size:12.5px;color:var(--muted,#64748b);padding:2px 6px 6px}
+.md-toc-i{display:block;width:100%;text-align:left;border:0;background:none;cursor:pointer;font-size:13px;
+  padding:5px 8px;border-radius:6px;color:var(--text,#111)}
+.md-toc-i:hover{background:var(--sel,#eef2ff)}
+.md-toc-flash{background:#fff6cc !important;transition:background .3s}
