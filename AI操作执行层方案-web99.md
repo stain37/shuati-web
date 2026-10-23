@@ -1025,7 +1025,9 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 
 ### 20.4 下一步
 
-1. 第 19 项：块级编辑（解析块拆块、拖拽排序、表格/图片作为块移动），按 3–4 轮做。**第一轮已上线（web148）**：解析块标题行加「⠿ 块排序」开关，打开后鼠标放到段落 / 表格 / 图片左边的小把手上拖动，整块换位置，拖动过程有落点高亮，松手后按新 DOM 顺序 `mdFromHtml` 重新序列化并标「未保存…」，点到别处自动存盘。**第二轮已上线（web153）**：悬停任意块时上方出现块操作条（`collection.js` `BLKBAR/blkBarEl/blkBarShow/blkAct`），五个按钮：⧉ 复制、↑ 上移、↓ 下移、＋ 下面插入空段落并落光标、🗑 删除（唯一一块时拒绝删）；操作完直接 `blkSaveNow()` 用 `mdFromHtml` 序列化落盘，不等 blur；样式 `style.css` `.blk-bar/.blk-bbtn` 固定定位 z-index 61。新建 `C:\Users\chen\Desktop\工作1\block2-probe.py` **15 通过 / 0 失败**。剩最后一轮：把 `.rich-imgs` 区的图片也当成块来移动（现在只能拖动改宽，不能整块换位置）。
+1. 第 19 项：块级编辑（解析块拆块、拖拽排序、表格/图片作为块移动），按 3–4 轮做。**第一轮已上线（web148）**：解析块标题行加「⠿ 块排序」开关，打开后鼠标放到段落 / 表格 / 图片左边的小把手上拖动，整块换位置，拖动过程有落点高亮，松手后按新 DOM 顺序 `mdFromHtml` 重新序列化并标「未保存…」，点到别处自动存盘。**第二轮已上线（web153）**：悬停任意块时上方出现块操作条（`collection.js` `BLKBAR/blkBarEl/blkBarShow/blkAct`），五个按钮：⧉ 复制、↑ 上移、↓ 下移、＋ 下面插入空段落并落光标、🗑 删除（唯一一块时拒绝删）；操作完直接 `blkSaveNow()` 用 `mdFromHtml` 序列化落盘，不等 blur；样式 `style.css` `.blk-bar/.blk-bbtn` 固定定位 z-index 61。新建 `C:\Users\chen\Desktop\工作1\block2-probe.py` **15 通过 / 0 失败**。**第三轮已上线（web154）**：图片区（`.rich-imgs`）里每张图左上角有 `⠿`（`.rich-mv`），拖动它到另一张图的左/右半边即插入到前/后，顺序直接写回 `NOTES[fk].imgs` 并 `saveNotes()`，`data-imgi` 重新编号；红虚线是落点提示。新建 `C:\Users\chen\Desktop\工作1\block3-probe.py` **12 通过 / 0 失败**（探针踩坑：1×1 的测试图 `getBoundingClientRect()` 只有 1px 宽，左/右半边判断失效，改给测试图 `w:120`；图片区在视口外时 `elementFromPoint` 返回 null，要先 `scrollIntoView`）。第 19 条到此三轮齐活：段落 / 表格 / 图片都能整块拖、能复制、能删、能插空段落。
+
+**第 11 条补（web155）**：题干、共用题干、选项以前走 `esc()` 不认公式，现在 `collection.js` 导出 `window.renderMathText(raw)`（只把 `$…$` / `$$…$$` 换 KaTeX、其余纯文本转义），`app.js` 加 `stemHtml()` 用在题干 / 共用题干 / 选项 / 结果页题目上。新建 `C:\Users\chen\Desktop\工作1\math-stem-probe.py` **7 通过 / 0 失败**；`quiz-subject` 17/17 回归。
 2. 阶段 2 机制项（路径级 WAL / 写后漂移 / 三态恢复 / 二次确认 / joblog / 去 reload）按 §19 排期。
 3. 公式覆盖到题干/选项（现在只覆盖 Markdown 渲染路径：解析、聊天、AI 输出）。
 

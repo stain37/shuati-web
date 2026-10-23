@@ -333,6 +333,22 @@ body.dark .fb.bad{border-color:var(--bad-line)}
 .exp th,.exp td,.ed-preview th,.ed-preview td{border:1px solid var(--line);padding:6px 9px;vertical-align:top;text-align:left}
 .exp th,.ed-preview th{background:var(--bg2);font-weight:700;white-space:nowrap}
 .exp tbody tr:nth-child(even),.ed-preview tbody tr:nth-child(even){background:var(--bg2)}
+/* 代码块（语言条 + 复制按钮）与任务列表：解析/聊天/块编辑里处处一致 */
+.md-code{margin:10px 0;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;background:var(--bg2)}
+.md-code-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 10px;background:var(--card);border-bottom:1px solid var(--line);font-size:12px;color:var(--sub)}
+.md-code-lang{font-weight:700;letter-spacing:.02em}
+.md-code-copy{border:1px solid var(--line);background:var(--bg2);color:var(--sub);border-radius:6px;padding:1px 8px;font-size:12px;cursor:pointer;line-height:1.7}
+.md-code-copy:hover{color:var(--text);border-color:var(--primary-line)}
+.md-code pre.md-pre{margin:0;padding:10px 12px;overflow-x:auto;background:transparent}
+.md-code pre.md-pre code{background:none;padding:0;font-size:13px;line-height:1.6;white-space:pre;font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
+.exp del,.aiout del{opacity:.62;text-decoration:line-through}
+ul.md-tasks{list-style:none;padding-left:4px}
+li.md-task{display:flex;align-items:flex-start;gap:7px}
+li.md-task .md-chk{flex:0 0 auto;width:15px;height:15px;margin-top:3px;border:1.5px solid var(--line);border-radius:4px;position:relative;background:var(--card)}
+li.md-task.done .md-chk{background:var(--primary);border-color:var(--primary)}
+li.md-task.done .md-chk::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+li.md-task.done{opacity:.66}
+body.dark li.md-task.done .md-chk::after{border-color:#0b1220}
 /* ---- 方案十：解析块就地编辑（显示态就是编辑态，不是文本框）---- */
 .exp-wrap{margin-top:8px}
 .exp.lb-row{border-top:1px dashed var(--line);padding-top:10px;display:flex;align-items:baseline;gap:6px}
@@ -1853,3 +1869,13 @@ html[data-bg="video"] body{background-color:transparent;background-image:none}
 /* 面板磨砂（可选）：卡片 / 弹层 / 首页目录卡 / 底部胶囊在背景图上做背景模糊 */
 body.frost .card,body.frost .sheet,body.frost .nb-card,body.frost .vb-card{backdrop-filter:blur(var(--frost-blur,14px)) saturate(1.25);-webkit-backdrop-filter:blur(var(--frost-blur,14px)) saturate(1.25)}
 body.frost .bnav{backdrop-filter:blur(calc(var(--frost-blur,14px) + 6px)) saturate(1.3);-webkit-backdrop-filter:blur(calc(var(--frost-blur,14px) + 6px)) saturate(1.3)}
+
+/* 斜杠菜单（Notion / AFFiNE 风格）：行首打 / 弹出块类型，选中直接改这一段 */
+.slash-menu{position:fixed;z-index:70;width:238px;max-height:330px;overflow:auto;padding:5px;border:1px solid var(--line,#e3e6ee);border-radius:10px;background:var(--card,#fff);box-shadow:0 10px 30px rgba(15,23,42,.18);font-size:13px}
+.slash-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 8px;border-radius:7px;cursor:pointer;line-height:1.3;color:inherit}
+.slash-item b{display:block;font-weight:600;font-size:13px}
+.slash-item span{display:block;font-size:11px;color:var(--mut,#6b7280)}
+.slash-item:hover,.slash-item.on{background:var(--sel,#eef2ff)}
+
+/* 浮条格式反显：整段选区都是同一种格式时，对应按钮亮起 */
+.fmt-bar [data-fmt].on,.fmt-bar .fmt-dot.on{background:#e0e7ff;box-shadow:inset 0 0 0 1px #6366f1}

@@ -61,6 +61,9 @@ function mdEscCode(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+/* 代码块：语言名 + 复制按钮 + language class。以前只出 <pre><code>，语言丢了、
+   复制要手动选、深浅色下也没样式（对照 AFFiNE 的 code block 手感）。 */
+const MD_LANG_NAME = { js:'JavaScript', javascript:'JavaScript', ts:'TypeScript', typescript:'TypeScript', jsx:'JSX', tsx:'TSX', py:'Python', python:'Python', java:'Java', c:'C', cpp:'C++', cs:'C#', go:'Go', rs:'Rust', html:'HTML', xml:'XML', css:'CSS', scss:'SCSS', less:'LESS', json:'JSON', yml:'YAML', yaml:'YAML', md:'Markdown', sql:'SQL', sh:'Shell', bash:'Shell', zsh:'Shell', ps:'PowerShell', txt:'文本', text:'文本' };
 function mdFenceHtml(lang, body) {
   const l = String(lang || '').toLowerCase();
   if (window.DIAGRAM && (l === 'diagram' || l === 'mermaid' || l === 'mindmap' || l === 'mind')) {
@@ -69,7 +72,37 @@ function mdFenceHtml(lang, body) {
       if (r && r.html) return r.html;
     } catch (e) {}
   }
-  return '<pre class="md-pre"><code>' + mdEscCode(body) + '</code></pre>';
+  mdCopyInitOnce();
+  const name = MD_LANG_NAME[l] || (l ? l : '代码');
+  return '<div class="md-code" data-lang="' + l + '">' +
+    '<div class="md-code-bar"><span class="md-code-lang">' + mdEscCode(name) + '</span>' +
+    '<button type="button" class="md-code-copy" data-md-copy>复制</button></div>' +
+    '<pre class="md-pre"><code class="language-' + (l || 'plain') + '">' + mdEscCode(body) + '</code></pre></div>';
+}
+/* 代码块「复制」：document 上委托一次（渲染次数再多也只绑一次） */
+function mdCopyInitOnce() {
+  if (window.__mdCopyInit || typeof document === 'undefined' || !document.addEventListener) return;
+  window.__mdCopyInit = 1;
+  document.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest ? e.target.closest('[data-md-copy]') : null;
+    if (!b) return;
+    const box = b.closest('.md-code');
+    const code = box && box.querySelector('pre');
+    if (!code) return;
+    e.preventDefault();
+    const txt = code.textContent || '';
+    const ok = () => { const old = b.textContent; b.textContent = '已复制'; setTimeout(function () { b.textContent = old; }, 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, function () { mdCopyFallback(txt, ok); });
+    else mdCopyFallback(txt, ok);
+  });
+}
+function mdCopyFallback(txt, ok) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta); ok();
+  } catch (e) { if (typeof toast === 'function') toast('复制失败，请手动选中'); }
 }
 function mdFences(md) {
   const fences = [];
@@ -114,6 +147,26 @@ window.renderMathText = function (raw) {
   if (!M) return esc(t);
   return mdMathBack(esc(M.txt), M);
 };
+/* 列表树：缩进（2/4 空格或 Tab）决定层级；任务项带勾选框；序号列表按同级重新编号 */
+function mdListHtml(items) {
+  if (!items || !items.length) return '';
+  const base = items[0].ind;
+  const type = items[0].ord ? 'ol' : 'ul';
+  const allTask = items.every(it => it.task);
+  let html = '<' + type + (allTask ? ' class="md-tasks"' : '') + '>';
+  let i = 0;
+  while (i < items.length) {
+    const it = items[i];
+    if (it.ind > base) { i++; continue; }            // 异常缩进：并进上一层，别把字吞了
+    let j = i + 1;
+    while (j < items.length && items[j].ind > base) j++;
+    html += '<li' + (it.task ? ' class="md-task' + (it.on ? ' done' : '') + '"' : '') + '>' +
+      (it.task ? '<span class="md-chk" data-md-chk="' + (it.on ? '1' : '0') + '"></span>' : '') +
+      it.text + (j > i + 1 ? mdListHtml(items.slice(i + 1, j)) : '') + '</li>';
+    i = j;
+  }
+  return html + '</' + type + '>';
+}
 function mdToHtml(md) {
   if (!md) return '';
   const F = mdFences(md);
@@ -133,6 +186,7 @@ function mdToHtml(md) {
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
   s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');                       /* 删除线（标准 Markdown 的 ~~x~~） */
   s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');   /* 三颗星 = 加粗+斜体（标准 Markdown） */
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
@@ -172,8 +226,29 @@ function mdToHtml(md) {
     if ((m = t.match(/^(#{1,4})\s+(.*)$/))) { closeList(); const n = m[1].length + 2; out.push(`<h${n}>${m[2]}</h${n}>`); continue; }
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { closeList(); out.push('<hr>'); continue; }
     if ((m = t.match(/^&gt;\s?(.*)$/))) { closeList(); out.push(`<blockquote>${m[1]}</blockquote>`); continue; }
-    if ((m = t.match(/^[-*+]\s+(.*)$/))) { if (list !== 'ul') { closeList(); out.push('<ul>'); list = 'ul'; } out.push(`<li>${m[1]}</li>`); continue; }
-    if ((m = t.match(/^\d+[.)]\s+(.*)$/))) { if (list !== 'ol') { closeList(); out.push('<ol>'); list = 'ol'; } out.push(`<li>${m[1]}</li>`); continue; }
+    /* 列表（支持缩进嵌套 + 任务列表）：连续列表行整块收成一棵树再渲染，
+       以前一律拍平，「鉴别诊断 1) 2) a) b)」会挤成一层。 */
+    if (lines[i].match(/^[ \t]*([-*+]|\d+[.)])\s+/)) {
+      closeList();
+      const items = [];
+      while (i < lines.length) {
+        const rl = lines[i].replace(/\t/g, '  ');
+        const mm = rl.match(/^([ ]*)([-*+]|\d+[.)])\s+(.*)$/);
+        if (!mm) break;
+        const tm = mm[3].trim().match(/^\[([ xX])\]\s+(.*)$/);
+        items.push({
+          ind: mm[1].length,
+          ord: /\d/.test(mm[2]) ? 1 : 0,
+          text: tm ? tm[2] : mm[3].trim(),
+          task: !!tm,
+          on: !!(tm && tm[1].toLowerCase() === 'x')
+        });
+        i++;
+      }
+      i--;
+      out.push(mdListHtml(items));
+      continue;
+    }
     if (/^<img\s/.test(t)) { closeList(); out.push(t); continue; }
     closeList(); out.push(`<p>${t}</p>`);
   }
@@ -383,14 +458,76 @@ function fmtBarInit(el) {
   };
   const refresh = () => refreshOf(el);
   const hasSel = () => (dom ? fmtDomHasSel(el) : fmtHasSel(el));
-  const showAt = (x, y) => {
+  /* 浮条位置按「选区矩形」算，不再用鼠标坐标 —— 拖动选中/键盘选中（Shift+方向键）时
+     鼠标可能在远处，浮条就会飞走（AFFiNE 的 popper-position 也是这么做的）。 */
+  const selRect = () => {
+    try {
+      const s = getSelection();
+      if (s && s.rangeCount) {
+        const r = s.getRangeAt(0).getBoundingClientRect();
+        if (r && (r.width > 0 || r.height > 0)) return r;
+      }
+    } catch (e) {}
+    const rr = el.getBoundingClientRect();
+    return { left: rr.left, top: rr.top + 24, width: rr.width, height: 22 };
+  };
+  /* 格式反显：整段选区都在同一种格式里才算 active（AFFiNE command/utils.ts 的思路） */
+  const fmtAncTag = n => {
+    let x = n;
+    while (x && x !== el) {
+      if (x.nodeType === 1) {
+        const t = x.tagName;
+        if (t === 'CODE') return 'c';
+        if (t === 'MARK') return 'h';
+        if (t === 'B' || t === 'STRONG') return 'b';
+        if (t === 'I' || t === 'EM') return 'i';
+        if (t === 'SPAN' && x.style && x.style.color) return 'color:' + x.style.color;
+      }
+      x = x.parentNode;
+    }
+    return '';
+  };
+  const markActive = () => {
+    Array.prototype.slice.call(bar.querySelectorAll('[data-fmt],[data-color]')).forEach(b => b.classList.remove('on'));
+    if (!dom) return;
+    const s = getSelection();
+    if (!s || !s.rangeCount) return;
+    const r = s.getRangeAt(0);
+    const set = sel => { const b = bar.querySelector(sel); if (b) b.classList.add('on'); };
+    const qs = c => { try { return document.queryCommandState(c); } catch (e) { return false; } };
+    /* 加粗/斜体先问浏览器：选整段（甚至选到块元素）时也能给出正确状态 */
+    if (qs('bold')) set('[data-fmt="b"]');
+    if (qs('italic')) set('[data-fmt="i"]');
+    /* 行内代码 / 高亮 / 颜色按祖先标签判断（先找一个选区内的文本节点当样本） */
+    let sample = r.startContainer;
+    if (sample && sample.nodeType === 1) sample = sample.firstChild || sample;
+    const hit = sample && sample.nodeType === 3 ? fmtAncTag(sample) : '';
+    const same = hit && r.endContainer !== r.startContainer ? fmtAncTag(r.endContainer.nodeType === 1 ? (r.endContainer.firstChild || r.endContainer) : r.endContainer) === hit : true;
+    if (hit === 'c' && same) set('[data-fmt="c"]');
+    else if (hit === 'h' && same) set('[data-fmt="h"]');
+    else if (hit === 'b') set('[data-fmt="b"]');
+    else if (hit === 'i') set('[data-fmt="i"]');
+    else if (String(hit).indexOf('color:') === 0) {
+      const c = String(hit).slice(6);
+      Array.prototype.slice.call(bar.querySelectorAll('[data-color]')).forEach(b => {
+        const el2 = b.querySelector('i');
+        if (el2 && el2.style.background) {
+          const t = document.createElement('span'); t.style.color = c; document.body.appendChild(t);
+          const norm = getComputedStyle(t).color; t.remove();
+          if (norm === el2.style.background || c === el2.style.background) b.classList.add('on');
+        }
+      });
+    }
+  };
+  const showAt = () => {
     if (!hasSel()) { fmtBarHide(); return; }
-    if (x == null) { const r = el.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + 46; }
-    fmtPlace(bar, x, y);
+    const r = selRect();
+    fmtPlace(bar, r.left + r.width / 2, r.top - 4);
+    markActive();
   };
   /* 点完按钮把浮条挪到编辑框正上方（选区变了，原先那个位置不一定还贴）。
      别拿浮条自己的 top 当参照 —— 第一次是 0，浮条就会飞到屏幕最上头。 */
-  const keep = () => { if (!hasSel()) { fmtBarHide(); return; } const r = el.getBoundingClientRect(); fmtPlace(bar, r.left + r.width / 2, r.top + 8); };
+  const keep = () => { if (!hasSel()) { fmtBarHide(); return; } showAt(); };
   bar.onmousedown = ev => ev.preventDefault();
   bar.onclick = ev => {
     const b = ev.target.closest ? ev.target.closest('button[data-fmt],button[data-color]') : null;
@@ -424,7 +561,7 @@ function fmtBarInit(el) {
   /* 元素上的监听只挂一次；bar 的 onclick 每次重指向当前目标（textarea 和 contenteditable 共用一条浮条） */
   if (el.dataset.fmtBound === '1') return;
   el.dataset.fmtBound = '1';
-  el.addEventListener('mouseup', ev => { FMT_TA = el; setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0); });
+  el.addEventListener('mouseup', ev => { FMT_TA = el; setTimeout(() => showAt(), 0); });
   el.addEventListener('touchend', () => { FMT_TA = el; setTimeout(() => showAt(), 80); });
   el.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') { FMT_TA = el; showAt(); } });
   el.addEventListener('scroll', fmtBarHide);
@@ -498,7 +635,7 @@ function mdFromHtml(root) {
     if (tag === 'em' || tag === 'i') return '*' + inlineOf(n, inCode) + '*';
     if (tag === 'mark') return '==' + inlineOf(n, inCode) + '==';
     if (tag === 'code') return '`' + inlineOf(n, true) + '`';
-    if (tag === 'del' || tag === 's' || tag === 'strike') return inlineOf(n, inCode);
+    if (tag === 'del' || tag === 's' || tag === 'strike') return '~~' + inlineOf(n, inCode) + '~~';
     if (tag === 'a') { const h = n.getAttribute('href') || ''; return h ? '[' + inlineOf(n, inCode) + '](' + h + ')' : inlineOf(n, inCode); }
     if (tag === 'img') {
       const w = n.getAttribute('width'), h = n.getAttribute('height');
@@ -524,17 +661,41 @@ function mdFromHtml(root) {
     if (/^h[1-6]$/.test(tag)) { pushRaw('#'.repeat(Math.min(4, Math.max(1, (+tag[1]) - 2))) + ' ' + inlineOf(n, false).trim()); return; }
     if (tag === 'hr') { pushRaw('---'); return; }
     if (tag === 'ul' || tag === 'ol') {
-      Array.prototype.forEach.call(n.children, (li, i) => {
-        if (li.tagName.toLowerCase() !== 'li') return;
-        pushRaw((tag === 'ol' ? (i + 1) + '. ' : '- ') + inlineOf(li, false).replace(/\n+/g, ' ').trim());
-      });
+      /* 嵌套列表：缩进 = 层级；任务项还原成 - [x]；嵌套的 ul/ol 从 li 的行内文字里剔掉再递归 */
+      const walkList = (el, depth, ord) => {
+        Array.prototype.forEach.call(el.children, (li, idx) => {
+          if (!li.tagName || li.tagName.toLowerCase() !== 'li') return;
+          let text = '';
+          const c = li.cloneNode ? li.cloneNode(true) : li;
+          if (c.querySelectorAll) Array.prototype.forEach.call(c.querySelectorAll('ul,ol'), x => x.remove());
+          const ck = c.querySelector ? c.querySelector('.md-chk') : null;
+          if (ck) ck.remove();
+          text = inlineOf(c, false).replace(/\n+/g, ' ').trim();
+          const task = !!(li.classList && li.classList.contains('md-task'));
+          const on = !!(li.classList && li.classList.contains('done'));
+          const lead = task ? ('- [' + (on ? 'x' : ' ') + '] ') : (ord ? (idx + 1) + '. ' : '- ');
+          pushRaw('  '.repeat(depth) + lead + text);
+          Array.prototype.forEach.call(li.children, ch => {
+            const tg = ch.tagName ? ch.tagName.toLowerCase() : '';
+            if (tg === 'ul' || tg === 'ol') walkList(ch, depth + 1, tg === 'ol');
+          });
+        });
+      };
+      walkList(n, 0, tag === 'ol');
       return;
     }
     if (tag === 'blockquote') {
       inlineOf(n, false).split('\n').forEach(t => pushRaw('> ' + t.trim()));
       return;
     }
-    if (tag === 'pre') { pushText(n.textContent.replace(/^\n+|\n+$/g, '')); return; }
+    if (tag === 'pre') {                             /* 代码块：还原成 ```lang 围栏（以前会退化成普通段落，再编辑时围栏和语言全丢） */
+      const host = n.parentElement && n.parentElement.classList && n.parentElement.classList.contains('md-code') ? n.parentElement : null;
+      const lang = host ? String(host.getAttribute('data-lang') || '') : '';
+      pushRaw('```' + lang);
+      n.textContent.replace(/^\n+|\n+$/g, '').split('\n').forEach(x => pushRaw(x));
+      pushRaw('```');
+      return;
+    }
     if (tag === 'table') {
       const rows = Array.prototype.slice.call(n.querySelectorAll('tr'));
       rows.forEach((tr, ri) => {
@@ -556,6 +717,7 @@ function mdFromHtml(root) {
         return;
       }
       if (n.nodeType !== 1) return;
+      if (n.classList && n.classList.contains('md-code-bar')) return;   /* 代码块的语言条只是 UI，不进 Markdown */
       if (MD_BLOCK_TAGS[n.tagName]) { flush(); blockOf(n); flush(); }
       else inlineEl(n, false).split('\n').forEach(t => pushText(t));
     });
@@ -569,6 +731,64 @@ function mdFromHtml(root) {
 
 /* ---- 就地编辑器：渲染 / 绑定 / 保存 / 收尾 ---- */
 let RICH = null;                                    // 当前活着的那个就地编辑器
+/* ---- 撤销 / 重做：innerHTML 快照 + 字符偏移光标（AFFiNE 的 undo 思路，不做 CRDT）。
+   Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y 生效；块拖动、块操作条、斜杠菜单都会先拍一张快照。 ---- */
+function caretOff(el) {
+  try {
+    const s = getSelection();
+    if (!s || !s.rangeCount) return 0;
+    const r = s.getRangeAt(0);
+    if (!el.contains(r.startContainer)) return 0;
+    const pre = document.createRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(r.startContainer, r.startOffset);
+    return pre.toString().length;
+  } catch (e) { return 0; }
+}
+function caretTo(el, off) {
+  try {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let acc = 0, n;
+    while ((n = w.nextNode())) {
+      const len = n.data.length;
+      if (acc + len >= off) {
+        const r = document.createRange();
+        r.setStart(n, Math.max(0, Math.min(len, off - acc)));
+        r.collapse(true);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        return;
+      }
+      acc += len;
+    }
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  } catch (e) {}
+}
+function undoState(el) { return el.__undo || (el.__undo = { s: [], i: -1, t: 0, c: [] }); }
+function undoSnap(el, force) {
+  if (!el || !el.isContentEditable) return;
+  const u = undoState(el), html = el.innerHTML;
+  if (u.s[u.i] === html) return;
+  /* 连续打字 700ms 内合成一步，撤销才是一次撤一串，不是一个字一个字往回退 */
+  if (!force && u.i >= 0 && u.i === u.s.length - 1 && Date.now() - u.t < 700) {
+    u.s[u.i] = html; u.c[u.i] = caretOff(el); u.t = Date.now(); return;
+  }
+  u.s.length = u.i + 1;
+  u.s.push(html); u.c[u.i + 1] = caretOff(el);
+  if (u.s.length > 80) { u.s.shift(); u.c.shift(); }
+  u.i = u.s.length - 1; u.t = Date.now();
+}
+function undoStep(el, dir) {
+  const u = undoState(el);
+  const j = u.i + dir;
+  if (j < 0 || j >= u.s.length) return false;
+  u.i = j;
+  el.innerHTML = u.s[j];
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  caretTo(el, u.c[j] == null ? 0 : u.c[j]);
+  return true;
+}
+
 function richState(el, txt, keep) {
   const w = el.closest ? el.closest('.exp-wrap') : null;
   const s = w && w.querySelector('.exp-state');
@@ -612,6 +832,105 @@ function richInsertImgAtRange(el, rng, src, alt) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
   return sp;
 }
+/* ---- 斜杠菜单：行首打 / 选块类型（对照 Notion / AFFiNE 的 slash menu）。
+   改的是 DOM 本身（不是插入文本），所以保存时 mdFromHtml 照常还原成 Markdown。 ---- */
+const SLASH_ITEMS = [
+  { k: 'h', t: '标题', d: '这一段变成小标题' },
+  { k: 'ul', t: '无序列表', d: '• 一条一条列' },
+  { k: 'ol', t: '有序列表', d: '1. 2. 3.' },
+  { k: 'task', t: '任务清单', d: '带勾选框的待办' },
+  { k: 'code', t: '代码块', d: '语言名 + 复制按钮' },
+  { k: 'quote', t: '引用', d: '缩进一条引用' },
+  { k: 'table', t: '表格', d: '2×2 表格' },
+  { k: 'hr', t: '分隔线', d: '一条横线' }
+];
+let SLASH = null;
+function slashClose() {
+  if (SLASH && SLASH.el && SLASH.el.parentNode) SLASH.el.parentNode.removeChild(SLASH.el);
+  SLASH = null;
+}
+function slashBlockOf(el) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return null;
+  let n = sel.anchorNode;
+  if (!n) return null;
+  while (n && n.parentNode && n.parentNode !== el) n = n.parentNode;
+  return n && (n.nodeType === 3 || n.nodeType === 1) ? n : null;
+}
+function slashMenu(el) {
+  slashClose();
+  const box = document.createElement('div');
+  box.className = 'slash-menu';
+  box.innerHTML = SLASH_ITEMS.map(it => `<button type="button" class="slash-item" data-slash="${it.k}"><b>${it.t}</b><span>${it.d}</span></button>`).join('');
+  document.body.appendChild(box);
+  const sel = window.getSelection();
+  const rr = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+  const er = el.getBoundingClientRect();
+  const x = Math.max(8, Math.min((rr && rr.left ? rr.left : er.left), innerWidth - 250));
+  const y = Math.max(8, Math.min((rr && rr.bottom ? rr.bottom : er.top) + 6, innerHeight - 330));
+  box.style.left = x + 'px'; box.style.top = y + 'px';
+  Array.prototype.forEach.call(box.querySelectorAll('[data-slash]'), (b, i) => {
+    b.addEventListener('mousedown', e2 => e2.preventDefault());
+    b.addEventListener('mouseenter', () => {
+      Array.prototype.forEach.call(box.querySelectorAll('[data-slash]'), x => x.classList.remove('on'));
+      b.classList.add('on');
+      if (SLASH) SLASH.idx = i;
+    });
+    b.addEventListener('click', () => { const k = b.getAttribute('data-slash'); slashClose(); slashApply(el, k); });
+  });
+  SLASH = { el: box, idx: 0 };
+  const first0 = box.querySelector('[data-slash]');
+  if (first0) first0.classList.add('on');
+}
+function slashApply(el, kind) {
+  let b = slashBlockOf(el);
+  if (!b) return;
+  undoSnap(el, true);                                // 换块类型也能 Ctrl+Z 撤回
+  if (b.nodeType === 3) {                            // 光秃秃的文字行：先包成 p 再换
+    const p = document.createElement('p');
+    b.parentNode.insertBefore(p, b); p.appendChild(b); b = p;
+  }
+  const txt = String(b.textContent || '').replace(/\s+/g, ' ').trim();
+  const mk = (tag, cls) => { const d = document.createElement(tag); if (cls) d.className = cls; return d; };
+  let node = null;
+  if (kind === 'h') { node = mk('h3'); node.textContent = txt || '小标题'; }
+  else if (kind === 'ul' || kind === 'ol') {
+    node = mk(kind); const li = mk('li'); li.textContent = txt || '列表项'; node.appendChild(li);
+  } else if (kind === 'task') {
+    node = mk('ul', 'md-tasks');
+    const li = mk('li', 'md-task');
+    const chk = mk('span', 'md-chk'); chk.setAttribute('data-md-chk', '0');
+    li.appendChild(chk); li.appendChild(document.createTextNode(txt || '待办'));
+    node.appendChild(li);
+  } else if (kind === 'quote') { node = mk('blockquote'); node.textContent = txt || '引用'; }
+  else if (kind === 'code') {
+    const holder = document.createElement('div');
+    holder.innerHTML = mdFenceHtml('', txt || '');
+    node = holder.firstElementChild;
+  } else if (kind === 'table') {
+    const holder = document.createElement('div');
+    holder.innerHTML = renderTable(['列1', '列2'], [['', ''], ['', '']], ['left', 'left']);
+    node = holder.firstElementChild;
+  } else if (kind === 'hr') {
+    const hr = mk('hr');
+    const p = mk('p'); p.appendChild(document.createElement('br'));
+    b.parentNode.replaceChild(hr, b);
+    hr.parentNode.insertBefore(p, hr.nextSibling);
+    node = p;
+  }
+  if (!node) return;
+  if (kind !== 'hr') b.parentNode.replaceChild(node, b);
+  let caret = node;
+  if (kind === 'ul' || kind === 'ol' || kind === 'task') caret = node.querySelector('li') || node;
+  else if (kind === 'code') caret = node.querySelector('code') || node;
+  else if (kind === 'table') caret = node.querySelector('td') || node;
+  const r2 = document.createRange();
+  r2.selectNodeContents(caret); r2.collapse(false);
+  const s2 = window.getSelection();
+  if (s2) { s2.removeAllRanges(); s2.addRange(r2); }
+  el.focus();
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
 function richBind(el, fk) {
   if (!el || !fk) return null;
   let before = el.innerHTML;
@@ -629,7 +948,7 @@ function richBind(el, fk) {
     richState(el, '已保存');
   };
   RICH = { el: el, fk: fk, save: save };
-  el.addEventListener('input', () => { richState(el, el.innerHTML === before ? '' : '未保存…', true); });
+  el.addEventListener('input', () => { undoSnap(el); richState(el, el.innerHTML === before ? '' : '未保存…', true); });
   el.addEventListener('blur', save, true);
   el.addEventListener('paste', ev => {              // 从网页 / Word 粘进来的一律只留纯文字
     const cb0 = ev.clipboardData || window.clipboardData;
@@ -666,8 +985,48 @@ function richBind(el, fk) {
     richState(el, '未保存…', true);
   });
   el.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape') { ev.stopPropagation(); el.blur(); }
+    if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === 'z') {
+      ev.preventDefault();
+      if (!undoStep(el, ev.shiftKey ? 1 : -1)) toast(ev.shiftKey ? '没有可重做的步骤了' : '没有可撤销的步骤了');
+      return;
+    }
+    if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === 'y') {
+      ev.preventDefault(); undoStep(el, 1); return;
+    }
+    if (ev.key === 'Escape') {
+      if (SLASH) { slashClose(); ev.stopPropagation(); return; }   // 先关菜单，别一按就直接收起编辑
+      ev.stopPropagation(); el.blur(); return;
+    }
+    if (SLASH && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter')) {
+      ev.preventDefault();
+      const btns = Array.prototype.slice.call(SLASH.el.querySelectorAll('[data-slash]'));
+      if (!btns.length) return;
+      if (ev.key === 'Enter') {
+        const k = btns[Math.min(SLASH.idx || 0, btns.length - 1)].getAttribute('data-slash');
+        slashClose(); slashApply(el, k); return;
+      }
+      SLASH.idx = Math.max(0, Math.min(btns.length - 1, (SLASH.idx || 0) + (ev.key === 'ArrowDown' ? 1 : -1)));
+      btns.forEach((b, i) => b.classList.toggle('on', i === SLASH.idx));
+      return;
+    }
+    if (SLASH) slashClose();
+    if ((ev.key === '/' || ev.key === '、') && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      const blk = slashBlockOf(el);
+      const sel0 = window.getSelection();
+      const r0 = sel0 && sel0.rangeCount ? sel0.getRangeAt(0) : null;
+      const pre = r0 && r0.startContainer && r0.startContainer.nodeType === 3
+        ? String(r0.startContainer.data || '').slice(0, r0.startOffset) : '';
+      const empty = blk && !String(blk.textContent || '').trim();
+      if (empty || !pre.trim()) { ev.preventDefault(); slashMenu(el); }
+    }
   });
+  el.addEventListener('blur', () => slashClose(), true);
+  if (!window.__slashCloseBound) {                    // 点空白处也把斜杠菜单收掉（整页只绑一次）
+    window.__slashCloseBound = 1;
+    document.addEventListener('click', ev => {
+      if (SLASH && !(ev.target && ev.target.closest && ev.target.closest('.slash-menu'))) slashClose();
+    }, true);
+  }
   /* 拖图片到解析块：存进这道题的图片区（和「改解析 → 插入图片」同一份数据） */
   const filesIn = e => !!(e.dataTransfer && Array.prototype.some.call(e.dataTransfer.types || [], t => t === 'Files'));
   el.addEventListener('dragover', e => {
@@ -704,6 +1063,7 @@ function richBind(el, fk) {
     toast('已插入 ' + added.length + ' 张图片');
   });
   fmtBarInit(el);
+  undoSnap(el, true);                                  // 打开编辑框先存一张原始快照，Ctrl+Z 有起点
   return RICH;
 }
 /* 解析里的图片：右下角手柄拖动改宽度，宽度存进 NOTES[fk].imgs[i].w（第 20 条） */
@@ -836,6 +1196,7 @@ function blkGripEl() {
       kids().forEach(k => { k.classList.remove('blk-over'); k.classList.remove('blk-over-after'); });
       BLK.dragging = false;
       if (tgt && tgt !== node) {
+        undoSnap(el, true);                          // 拖动前的位置也留一张快照
         if (after) tgt.after(node); else tgt.before(node);
         el.dispatchEvent(new Event('input', { bubbles: true }));
         richState(el, '未保存…', true);
@@ -918,6 +1279,7 @@ function blkAct(act) {
   const el = (BLKBAR && BLKBAR._el) || BLK.el;
   const node = (BLKBAR && BLKBAR._node) || BLK.node;
   if (!el || !node || !node.isConnected || !el.contains(node)) { blkBarHide(); return; }
+  undoSnap(el, true);                                  // 块操作前拍一张，Ctrl+Z 能整块搬回去
   const kids = Array.prototype.slice.call(el.children);
   if (act === 'copy') {
     const c = node.cloneNode(true);
