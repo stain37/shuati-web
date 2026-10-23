@@ -17,6 +17,9 @@ let KB_SEL = Array.isArray(KB_SEL_RAW) ? KB_SEL_RAW.slice() : [];
 let KB_SEL_SET = Array.isArray(KB_SEL_RAW);
 let KB_SKIP = readLS(KB_LS_SKIP, []);      /* 形如 ['chatbox-5']：删掉的文件库，刷新后不再自动挂载 */
 const KB_MEM = {}, KB_IDX = {}, KB_OPEN = {};
+/* 重排结果缓存：同一道题（同一批候选）反复问时不重复调模型。
+   只存「命中顺序」的 key 列表，不存正文，200 条 LRU —— 内存可忽略。 */
+const KB_RR_CACHE = new Map();
 let KB_DB = null;
 const kbBackend = () => (KB_DB ? 'IndexedDB' : 'localStorage');
 const kbName = id => { const k = KB_LIST.find(x => x.id === id); return k ? k.name : id; };
@@ -336,6 +339,7 @@ async function kbEnsure(id) {
   KB_BUILD[id] = (async () => {
     try {
       KB_IDX[id] = await kbIndexAsync(KB_MEM[id].docs || [], id);
+      KB_RR_CACHE.clear();          /* 索引重建了：老的排序结果可能指向不存在的段，作废 */
     } finally { delete KB_PROG[id]; delete KB_BUILD[id]; }
     return true;
   })();
@@ -426,7 +430,21 @@ async function kbExpandQueries(q, extra, signal) {
 }
 async function kbRerank(question, hits, k, signal) {
   if (typeof aiChat !== 'function' || hits.length < 2) return hits;
-  const list = hits.map((h, i) => '[' + (i + 1) + '] ' + String(h.text || '').replace(/\s+/g, ' ').slice(0, 170)).join('\n');
+  const kk = h => String((h && (h.key || (h.kb + '#' + (h.doc || '') + '#' + (h.head || '')) )) || '');
+  const ckey = kbHash(String(question || '').slice(0, 800) + '|' + hits.map(kk).join(','));
+  const cached = KB_RR_CACHE.get(ckey);
+  if (cached && cached.length) {
+    const by = Object.create(null);
+    hits.forEach(h => { by[kk(h)] = h; });
+    const out = [];
+    cached.forEach(x => { if (by[x] && out.indexOf(by[x]) < 0) out.push(by[x]); });
+    hits.forEach(h => { if (out.length < k && out.indexOf(h) < 0) out.push(h); });
+    if (out.length) return out.slice(0, Math.max(1, k));
+  }
+  /* 喂料：带标题（和标题路径）、每段 300 字。
+     原来只给 170 字，标题经常被截掉，模型判断依据不足 —— 这是「重排后反而更差」的主因。 */
+  const list = hits.map((h, i) => '[' + (i + 1) + '] ' + (h.head ? '【' + h.head + '】' : '')
+    + (h.path ? '〔' + h.path + '〕' : '') + String(h.text || '').replace(/\s+/g, ' ').slice(0, 300)).join('\n');
   const sys = '你是检索结果重排助手。用户给你一道题目和若干候选资料片段。'
     + '请只输出与题目最相关的片段编号，按相关度从高到低，用逗号分隔；最多 ' + k + ' 个；完全无关的不要输出。'
     + '只输出编号，不要任何解释。';
@@ -435,7 +453,12 @@ async function kbRerank(question, hits, k, signal) {
   const out = [], seen = Object.create(null);
   nums.forEach(n => { if (!seen[n]) { seen[n] = 1; out.push(hits[n - 1]); } });
   hits.forEach(h => { if (out.length < k && out.indexOf(h) < 0) out.push(h); });    /* 剩下的按原顺序补齐 */
-  return out.slice(0, Math.max(1, k));
+  const fin = out.slice(0, Math.max(1, k));
+  try {
+    KB_RR_CACHE.set(ckey, fin.map(kk));
+    while (KB_RR_CACHE.size > 200) KB_RR_CACHE.delete(KB_RR_CACHE.keys().next().value);
+  } catch (e) {}
+  return fin;
 }
 
 /* ---------- 文件知识库（make-kb.py 生成 知识库.js 时自动挂载） ---------- */
