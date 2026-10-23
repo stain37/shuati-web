@@ -842,6 +842,7 @@
       + '<button class="btn tiny primary" id="tagGo"' + (todo && userVocab.length ? '' : ' disabled') + '>给没标签的题贴标签</button>'
       + '<button class="btn tiny" id="tagGenVocab">词表空着？让 AI 起一份</button>'
       + '<button class="btn tiny" id="tagStop" style="display:none">停止</button>'
+      + (JOB.undo ? '<button class="btn tiny" id="tagUndo" title="把这次 AI 打的标签整体撤回到开跑前（六科不动）">撤销这次打标签</button>' : '')
       + '<span class="spacer-grow"></span><span class="tl" id="tagAiState"></span></div>'
       + '<div class="tag-aivocab" id="tagAiVocab"></div></div>';
   }
@@ -1208,9 +1209,11 @@
     });
     JOB.running = true; JOB.note = ''; JOB.err = null; JOB.total = batches.length; JOB.done = 0;
     JOB.ctl = ('AbortController' in window) ? new AbortController() : null;
+    JOB.snap = JSON.stringify(TAGD);          /* 开跑前留快照：打歪了能一键撤 */
+    JOB.undo = false;
     paintAI();
     var baseSys = (typeof aiSysText === 'function') ? aiSysText() : '你是一位医学考试的教研老师。';
-    var okQ = 0, fail = 0;
+    var okQ = 0, fail = 0, miss = 0;
     for (var bi = 0; bi < batches.length; bi++) {
       if (!JOB.running) break;
       JOB.done = bi;
@@ -1226,37 +1229,45 @@
         + '【词表】' + cand.join(' / ') + '\n\n'
         + '只输出 JSON，不要解释、不要代码块：\n{ "1": ["炎症"], "2": ["免疫应答","免疫调节"] }\n\n'
         + '【题目】\n' + list.map(function (x, i) { return qLine(x.q, i); }).join('\n');
-      try {
-        var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: prompt }],
-          function () {}, JOB.ctl ? JOB.ctl.signal : undefined);
-        var map = parseJSONMap(txt);
-        if (!map) { fail++; continue; }
-        list.forEach(function (x, i) {
-          var v = map[String(i + 1)];
-          if (!v) return;
-          var pick = norm([].concat(v)).filter(function (t) { return cand.indexOf(t) >= 0; });   /* 只认这一科的候选 */
-          if (!pick.length) {
-            return;
-          }
-          var keepB = tagsOf(x.k).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; }).slice(0, 1);
-          if (!keepB.length && x.basic) keepB = [x.basic];   /* 内存里被临时盖掉也不丢开跑前的基本科 */
-          setTags(x.k, keepB.concat(pick), true);
-          okQ++;
-        });
-      } catch (e) {
-        var stopped = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
-        if (stopped) { JOB.note = '已停止：这一批之前的都保住了'; break; }
-        fail++;
+      var map = null, aborted = false;
+      /* 模型偶尔吐出不是 JSON 的东西：同一批最多重试一次，别把 15 道题整批丢下 */
+      for (var att = 0; att < 2 && !map && !aborted; att++) {
+        try {
+          if (att) { JOB.note = '第 ' + (bi + 1) + '/' + batches.length + ' 批没按 JSON 输出，重试一次…'; paintAI(); }
+          var txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: prompt }],
+            function () {}, JOB.ctl ? JOB.ctl.signal : undefined);
+          map = parseJSONMap(txt);
+        } catch (e) {
+          aborted = !!(e && (e.name === 'AbortError' || /abort/i.test(e.message || '')));
+          if (aborted) { JOB.note = '已停止：这一批之前的都保住了'; break; }
+          if (att) fail++;
+        }
       }
+      if (aborted) break;
+      if (!map) { fail++; continue; }
+      list.forEach(function (x, i) {
+        var v = map[String(i + 1)];
+        if (!v) return;
+        var pick = norm([].concat(v)).filter(function (t) { return cand.indexOf(t) >= 0; });   /* 只认这一科的候选 */
+        if (!pick.length) return;
+        var keepB = tagsOf(x.k).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; }).slice(0, 1);
+        if (!keepB.length && x.basic) keepB = [x.basic];   /* 内存里被临时盖掉也不丢开跑前的基本科 */
+        setTags(x.k, keepB.concat(pick), true);
+        var now = tagsOf(x.k);
+        if (pick.some(function (t) { return now.indexOf(t) >= 0; })) okQ++;
+        else miss++;                                     /* 写不进去（存储满 / 被别的页签覆盖）就别算打上 */
+      });
     }
     JOB.running = false; JOB.ctl = null; JOB.done = JOB.total;
+    JOB.undo = okQ > 0;
     /* 打完回头核对：有没有「有考点标签、但六科没了」的题（这次的 bug 就是这种） */
     var noBasic = 0;
     todo.forEach(function (x) {
       if (!tagsOf(x.k).some(function (t) { return BASIC_TAGS.indexOf(t) >= 0; })) noBasic++;
     });
-    JOB.note = '打完：' + okQ + ' 道' + (fail ? '，' + fail + ' 批失败（模型没按 JSON 输出）' : '')
-      + (todo.length > okQ ? '，还有 ' + (todo.length - okQ) + ' 道没标签' : '')
+    JOB.note = '打完：' + okQ + ' 道' + (fail ? '，' + fail + ' 批失败（重试后仍没按 JSON 输出）' : '')
+      + (miss ? '，' + miss + ' 道没写进存储' : '')
+      + (todo.length > okQ + miss ? '，还有 ' + (todo.length - okQ - miss) + ' 道没标签' : '')
       + (noBasic ? '，其中 ' + noBasic + ' 道没有六科（点「一键分六科」补）' : '');
     TAGS_STATS_CACHE = null;
     paintAI();
@@ -1283,6 +1294,24 @@
       return;
     }
         if (e.target.closest('#tagStop')) { stop(); return; }
+        if (e.target.closest('#tagUndo')) {
+          if (!JOB.snap) return;
+          try {
+            var back = JSON.parse(JOB.snap);
+            if (back && typeof back === 'object') {
+              Object.keys(TAGD).forEach(function (k) { delete TAGD[k]; });
+              Object.keys(back).forEach(function (k) { TAGD[k] = back[k]; });
+              save();
+              TAGS_STATS_CACHE = null;
+              JOB.undo = false; JOB.snap = null;
+              JOB.note = '已撤回：标签回到这次开跑前的样子';
+              paintAI();
+              if (typeof render === 'function') { try { render(); } catch (err0) {} }
+              paintAI();
+            }
+          } catch (err) { toast('撤回失败：快照读不出来'); }
+          return;
+        }
         var d = e.target.closest('[data-newvocabdel]');
         if (d) {
           var t = d.getAttribute('data-newvocabdel');
