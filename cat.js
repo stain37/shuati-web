@@ -36,6 +36,7 @@
   var TOOLS_OPEN = true;                 // 「全部题库」下面的工具折叠面板：默认打开
   var HOME_PER = 10, HOME_PAGE = 1;      // 主界面「全部题库」：10 项一页
   var PAPER_PAGE = 1, PAPER_Q = '';      // 「临时套卷」：10 条一页 + 简单搜索
+  var PAPER_MANAGE = false, PAPER_SEL = {};   // 临时套卷批量管理：选中集合
   var CHAT_SEL = null;                   // 普通模式框选用：{ banks:{id:1}, cats:{id:1} }，用来拖 / 一键加进 AI 对话
   var SEARCH_FOCUS = null;               // 输入后整页重画时把搜索框焦点 / 光标接回去
   var BANK_AI_KEY = 'qbank.banksearch.ai.v1';
@@ -839,19 +840,34 @@
     var paperList = paperShown.slice((paperPage - 1) * HOME_PER, paperPage * HOME_PER).map(function (b) {
       var done = 0, ok = 0;
       b.questions.forEach(function (q) { var a = ANS[kOf(b, q)]; if (a && !a.redo) { done++; if (a.ok) ok++; } });
-      return '<div class="card bank paper-card"><div class="info">'
-        + '<div class="name">' + E(b.title) + '<span class="pill paper">' + (b.exam ? '模拟考试' : '临时套卷') + '</span></div>'
+      var pick = PAPER_MANAGE ? (PAPER_SEL[b.id] ? ' picked' : '') : '';
+      return '<div class="card bank paper-card' + pick + '"><div class="info">'
+        + '<div class="name">' + (PAPER_MANAGE ? '<button class="pm-chk' + (PAPER_SEL[b.id] ? ' on' : '') + '" data-act="psel" data-id="' + E(b.id) + '" title="选中 / 取消">' + (PAPER_SEL[b.id] ? '✓' : '') + '</button>' : '')
+        + E(b.title) + '<span class="pill paper">' + (b.exam ? '模拟考试' : '临时套卷') + '</span></div>'
         + '<div class="meta">' + b.questions.length + ' 题　已做 ' + done + '　正确率 ' + (done ? Math.round(ok / done * 100) : 0) + '%</div>'
         + '<div class="prog"><i style="width:' + (b.questions.length ? done / b.questions.length * 100 : 0) + '%"></i></div>'
         + '</div><div class="acts">'
-        + '<button class="btn primary" data-act="start" data-id="' + E(b.id) + '">' + (done ? '继续' : '开始') + (b.exam ? '考试' : '做题') + '</button>'
-        + '<button class="btn danger" data-act="delpaper" data-id="' + E(b.id) + '">删除' + (b.exam ? '试卷' : '套卷') + '</button>'
+        + (PAPER_MANAGE
+          ? '<button class="btn" data-act="prem" data-id="' + E(b.id) + '">改名</button>'
+          : '<button class="btn primary" data-act="start" data-id="' + E(b.id) + '">' + (done ? '继续' : '开始') + (b.exam ? '考试' : '做题') + '</button>'
+            + '<button class="btn" data-act="prem" data-id="' + E(b.id) + '">改名</button>'
+            + '<button class="btn danger" data-act="delpaper" data-id="' + E(b.id) + '">删除' + (b.exam ? '试卷' : '套卷') + '</button>')
         + '</div></div>';
     }).join('');
     var paperSec = (papers.length || pq)
       ? '<div id="secPapers">'
         + '<div class="nb-paperhead"><h2 class="sec">临时套卷</h2>'
-        + '<span class="nb-papersearch"><input id="nbPaperSearch" class="inp" type="search" placeholder="🔍 搜套卷 / 试卷名" value="' + E(PAPER_Q) + '"></span></div>'
+        + '<span class="nb-papersearch"><input id="nbPaperSearch" class="inp" type="search" placeholder="🔍 搜套卷 / 试卷名" value="' + E(PAPER_Q) + '"></span>'
+        + (PAPER_MANAGE
+          ? '<span class="pm-bar">'
+            + '<button class="btn tiny" data-act="pall">全选本页</button>'
+            + '<button class="btn tiny" data-act="pinv">反选</button>'
+            + '<button class="btn tiny danger" data-act="pdel">删除选中 ' + Object.keys(PAPER_SEL).length + '</button>'
+            + '<button class="btn tiny" data-act="pexp">导出选中</button>'
+            + '<button class="btn tiny" data-act="pexit">退出管理</button>'
+            + '</span>'
+          : '<button class="btn tiny" data-act="pman">批量管理</button>')
+        + '</div>'
         + (paperList || '<div class="card"><div class="empty">没有匹配的套卷 / 试卷。</div></div>')
         + pagerHtml('ppage', paperPage, paperPages, paperShown.length, '个套卷')
         + '</div>'
@@ -1537,6 +1553,13 @@
 
   /* ---------- 菜单与动作 ---------- */
   /* 主界面翻页：重画后把滚动位置放回去，别翻一页就被甩到顶部 */
+  function paperShownRefresh(page) {
+    var all = (typeof allBanks === 'function' ? allBanks() : []).filter(function (b) { return b.paper; });
+    var q = PAPER_Q.trim().toLowerCase();
+    var shown = q ? all.filter(function (b) { return String(b.title || '').toLowerCase().indexOf(q) >= 0; }) : all;
+    var per = HOME_PER || 10;
+    return shown.slice((page - 1) * per, page * per);
+  }
   function repaintKeepY() {
     var y = window.scrollY || 0;
     repaint();
@@ -1585,6 +1608,38 @@
       case 'start': startBankWrapped(id); break;
       /* 临时套卷 / 模拟试卷的删除（app.js 的 deletePaper，会清掉套卷作答并记墓碑） */
       case 'delpaper': if (typeof deletePaper === 'function') deletePaper(id); break;
+      /* 临时套卷批量管理 */
+      case 'pman': PAPER_MANAGE = true; PAPER_SEL = {}; repaint(); break;
+      case 'pexit': PAPER_MANAGE = false; PAPER_SEL = {}; repaint(); break;
+      case 'psel':
+        if (PAPER_SEL[id]) delete PAPER_SEL[id]; else PAPER_SEL[id] = 1;
+        repaint(); break;
+      case 'pall': {
+        var pg = parseInt(PAPER_PAGE, 10) || 1;
+        paperShownRefresh(pg).forEach(function (b) { PAPER_SEL[b.id] = 1; });
+        repaint(); break;
+      }
+      case 'pinv': {
+        var ipg = parseInt(PAPER_PAGE, 10) || 1;
+        paperShownRefresh(ipg).forEach(function (b) { if (PAPER_SEL[b.id]) delete PAPER_SEL[b.id]; else PAPER_SEL[b.id] = 1; });
+        repaint(); break;
+      }
+      case 'pdel':
+        if (typeof deletePapers === 'function' && deletePapers(Object.keys(PAPER_SEL))) { PAPER_SEL = {}; PAPER_MANAGE = false; repaint(); }
+        break;
+      case 'pexp':
+        if (typeof exportPapers === 'function') exportPapers(Object.keys(PAPER_SEL));
+        break;
+      case 'prem': {
+        var pb = null;
+        (typeof allBanks === 'function' ? allBanks() : []).forEach(function (x) { if (x.id === id) pb = x; });
+        var cur = pb ? pb.title : '';
+        var nt = prompt('给这个' + (pb && pb.exam ? '试卷' : '套卷') + '改个名字：', cur);
+        if (nt != null && String(nt).trim() && String(nt).trim() !== cur) {
+          if (typeof renamePaper === 'function' && renamePaper(id, nt)) { T('已改名'); repaint(); }
+        }
+        break;
+      }
       case 'wrong': if (typeof QZ !== 'undefined') QZ.filter = 'wrong'; startBankWrapped(id); break;
       case 'rand': if (typeof randomPaper === 'function') randomPaper([bankOf(id)], 30); break;
       case 'move': askMoveBank(id); break;
@@ -2746,3 +2801,123 @@
     cleanEmpty: askDelEmpty     // 带确认框的空目录清理
   };
 })();
+
+/* ===== 可搜索 + AI 模糊的题库选择器（第 2 条）=====
+   用法：
+     host.innerHTML 里放 bankPickerHtml('某个id', 当前值, {all:true, allLabel:'全部题库'})
+     渲染完调 bankPickerBind(host, '某个id', function (value, bank) { ... })
+   值：'all' 或题库 id；bank 为选中对象（'all' 时为 null）。
+   搜索：题库名 / 副标题 / 分类；打开「AI 模糊」后把关键词交给 AI 扩词（window.qaiExpandAny），命中任一扩展词也算。 */
+var BPICK = {};
+/* 这个文件末尾的选择器在 IIFE 之外，拿不到内部的 bE()，这里自带一个转义 */
+function bE(s) {
+  if (typeof esc === 'function') return esc(s);
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function bankPickerBanks(opt) {
+  opt = opt || {};
+  var list = (typeof allBanks === 'function' ? allBanks() : []).filter(function (b) { return opt.papers ? true : !b.paper; });
+  return list;
+}
+function bankPickerLabel(value, opt) {
+  opt = opt || {};
+  if (!value || value === 'all') return opt.allLabel || '全部题库';
+  var hit = bankPickerBanks(opt).filter(function (b) { return b.id === value; })[0];
+  return hit ? hit.title : (opt.allLabel || '全部题库');
+}
+function bankPickerHtml(id, value, opt) {
+  opt = opt || {};
+  var cur = value || (opt.all ? 'all' : '');
+  return '<div class="bpick" data-bpick="' + bE(id) + '"'
+    + ' data-bp-val="' + bE(cur) + '"'
+    + ' data-bp-all="' + (opt.all ? '1' : '0') + '"'
+    + ' data-bp-label="' + bE(opt.allLabel || '全部题库') + '"'
+    + ' data-bp-papers="' + (opt.papers ? '1' : '0') + '">'
+    + '<button type="button" class="bpick-btn" data-bp-toggle="1" title="点开可以搜题库名、也可以开 AI 模糊">'
+    + '<span class="bpick-cur">' + bE(bankPickerLabel(cur, opt)) + '</span><i class="bpick-ar">▾</i></button>'
+    + '<div class="bpick-pop" hidden>'
+    + '<div class="bpick-top"><input class="inp bpick-q" type="search" placeholder="输入题库名 / 分类搜…" autocomplete="off">'
+    + '<button type="button" class="chip bpick-ai" data-bp-ai="1" title="开了之后关键词会用 AI 扩词再匹配">✨ AI 模糊</button></div>'
+    + '<div class="bpick-list"></div>'
+    + '</div></div>';
+}
+function bankPickerBind(root, id, onChange) {
+  root = root || document;
+  var box = root.querySelector('.bpick[data-bpick="' + id + '"]');
+  if (!box || box.dataset.bound) return;
+  box.dataset.bound = '1';
+  var opt = { all: box.getAttribute('data-bp-all') === '1', allLabel: box.getAttribute('data-bp-label') || '全部题库', papers: box.getAttribute('data-bp-papers') === '1' };
+  var btn = box.querySelector('.bpick-btn');
+  var pop = box.querySelector('.bpick-pop');
+  var q = box.querySelector('.bpick-q');
+  var ai = box.querySelector('.bpick-ai');
+  var list = box.querySelector('.bpick-list');
+  var st = BPICK[id] = { value: box.getAttribute('data-bp-val') || (opt.all ? 'all' : ''), ai: false, kw: '' };
+
+  function paintList() {
+    var banks = bankPickerBanks(opt);
+    var kw = (st.kw || '').trim().toLowerCase();
+    var terms = kw ? [kw] : [];
+    if (kw && st.ai && typeof window.qaiExpandAny === 'function') {
+      try {
+        var ex = window.qaiExpandAny(kw) || [];
+        ex.forEach(function (t) { if (t && terms.indexOf(t) < 0) terms.push(String(t).toLowerCase()); });
+      } catch (e) {}
+    }
+    var rows = banks.filter(function (b) {
+      if (!terms.length) return true;
+      var hay = (b.title + ' ' + (b.subtitle || '') + ' ' + (b.cat || '')).toLowerCase();
+      return terms.some(function (t) { return hay.indexOf(t) >= 0; });
+    });
+    var html = '';
+    if (opt.all || !opt.none) html += '<div class="bpick-i' + (st.value === 'all' ? ' on' : '') + '" data-bp-v="all">' + bE(opt.allLabel || '全部题库') + '</div>';
+    rows.forEach(function (b) {
+      html += '<div class="bpick-i' + (st.value === b.id ? ' on' : '') + '" data-bp-v="' + bE(b.id) + '">'
+        + '<b>' + bE(b.title) + '</b><span>' + (b.questions ? b.questions.length + ' 题' : '') + (b.cat ? ' · ' + bE(b.cat) : '') + '</span></div>';
+    });
+    if (!rows.length) html += '<div class="bpick-none">没找到题库' + (st.ai ? '（试试关掉 AI 模糊）' : '') + '</div>';
+    list.innerHTML = html;
+  }
+  function open() {
+    pop.hidden = false;
+    box.classList.add('open');
+    paintList();
+    try { q.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function close() { pop.hidden = true; box.classList.remove('open'); }
+  function apply(v, b) {
+    st.value = v;
+    btn.querySelector('.bpick-cur').textContent = v === 'all' ? (opt.allLabel || '全部题库') : (b ? b.title : v);
+    close();
+    if (typeof onChange === 'function') onChange(v, b || null);
+  }
+  btn.addEventListener('click', function (ev) { ev.stopPropagation(); if (pop.hidden) open(); else close(); });
+  q.addEventListener('input', function () { st.kw = q.value; paintList(); });
+  q.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') { close(); return; }
+    if (ev.key === 'Enter') {
+      var first = list.querySelector('.bpick-i');
+      if (first) first.click();
+    }
+  });
+  ai.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    st.ai = !st.ai;
+    ai.classList.toggle('on', st.ai);
+    ai.textContent = st.ai ? '✨ AI 模糊（开）' : '✨ AI 模糊';
+    paintList();
+  });
+  list.addEventListener('click', function (ev) {
+    var it = ev.target.closest('.bpick-i');
+    if (!it) return;
+    var v = it.getAttribute('data-bp-v');
+    var b = bankPickerBanks(opt).filter(function (x) { return x.id === v; })[0] || null;
+    apply(v, b);
+  });
+  document.addEventListener('click', function (ev) { if (!box.contains(ev.target)) close(); });
+}
+window.bankPickerHtml = bankPickerHtml;
+window.bankPickerBind = bankPickerBind;
+window.bankPickerLabel = bankPickerLabel;

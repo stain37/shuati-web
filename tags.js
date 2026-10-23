@@ -816,6 +816,12 @@
   }
   /* 范围选择：只处理某一个题库（第 4 条需求：给单独题库一键分类） */
   function bankScopeHtml(id) {
+    /* 第 2 条：题库选择器改成「可输入搜索 + AI 模糊」的小组件（cat.js 的 bankPickerHtml）。
+       同时留一个隐藏 input（id 不变），原来读 .value 的代码一行都不用改。 */
+    if (typeof bankPickerHtml === 'function') {
+      return '<span class="bpick-slot">' + bankPickerHtml(id, '', { all: true, allLabel: '全部题库' })
+        + '<input type="hidden" id="' + id + '" value=""></span>';
+    }
     var banks = [];
     try { banks = (typeof baseBanks === 'function') ? baseBanks() : []; } catch (e) {}
     var h = '<select class="inp tiny" id="' + id + '" title="只处理选中的题库，默认全部">'
@@ -824,6 +830,16 @@
       h += '<option value="' + escAttr(b.id) + '">' + escAttr(b.title || b.id) + '</option>';
     });
     return h + '</select>';
+  }
+  /* 渲染完把两个题库选择器绑上：选中的 id 写进隐藏 input */
+  function bindScopePickers(host) {
+    if (typeof bankPickerBind !== 'function' || !host) return;
+    ['tagScope', 'basicScope'].forEach(function (id) {
+      bankPickerBind(host, id, function (v) {
+        var h = document.getElementById(id);
+        if (h) h.value = (v && v !== 'all') ? v : '';
+      });
+    });
   }
   function aiBoxHtml() {
     var banks = [];
@@ -1284,6 +1300,7 @@
 
   function bindStats(host) {
     if (!host) return;
+    bindScopePickers(host);
     var st = host.querySelector('#tagAiCard');
     if (st) {
       st.addEventListener('click', function (e) {

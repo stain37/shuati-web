@@ -1093,3 +1093,35 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 ode --check 全过。
 - 版本：web156（markdown 批次 + 斜杠菜单，提交含 bump-web156）、web157（撤销/重做 + 浮条，d8a897ab）、web158（agent/RAG，ea915cb4）；线上已核 sw.js = web158、ai.js 91181B、chat.js 122000B 与本地一致。
 
+## 23. 四项进阶（web161 → web162，2026-10-24）
+
+### 23.1 动作参数校验（paramsSchema 轻量版，web161）
+`ai-ops.js` 新增 `PARAM_RULES`：每个动作声明 `require`（必须出现）与 `anyOf` / `anyOf2`（各是一组「给其中一个就够了」的键），并给 `example` 格式示例。
+- `checkParams(actionId, params)` → `{ ok, missing, example, hint }`，已从 `window.AI_OPS` 导出。
+- 预览链路：`preview()` 在 `resolve` **之前**先校验 —— 缺参数直接返回「缺少参数：（bankTitles 或 bankIds）（照这个格式给：…）」，不再先抛「没找到要删除的题库」这种看不出原因的错误。
+- agent 链路（`chat.js` runAgentChat）：工具调用前先 `checkParams`，不全就把「还差哪几项 + 格式示例」直接问用户（trace 记一条 ⏳ 参数不全），不拿半截参数去预览。
+- 覆盖动作：bank.delete / bank.rename / bank.move / cat.create / cat.rename / cat.move / question.delete / question.mastered / question.favorite / tag.add / tag.remove。
+
+### 23.2 agent 工具轨迹独立面板（web161）
+- `chat.js` 每次更新轨迹文本时同时把结构化轨迹存到消息节点 `n.trace`（12 处写入点统一补 `n.trace = trace.slice()`）。
+- AI 气泡里渲染可折叠 `<details class="ch-trace">`：标题「工具调用 N 次」，每行 `图标 + 序号. 动作名 + 耗时ms + 结果摘要`（✅ 成功 / ⚠ 失败 / ⏳ 未执行 / ♻ 复用 / 🛠 其它）；正文里的轨迹文本保留，面板只是更好的可读入口。
+- `chat.css` 加 `.ch-trace/.ch-trow/.ch-tic/.ch-tres`。
+
+### 23.3 图片图注（Notion 式 caption，web162）
+- 语法：`![图](url =200x120 "图注")`（图注可单独出现、尺寸可省）。
+- `mdToHtml`：有图注时输出 `<figure class="md-fig"><img …><figcaption class="md-cap">图注</figcaption></figure>`；没有图注保持原来的裸 `<img>`（旧数据零影响）。
+- `mdFromHtml`：`figure` 分支取内部 `img`，图注从 `figcaption` 或 `img[data-cap]` 读回，写成 `![]("图注")`。
+- 编辑：编辑区里**双击图片** → prompt 写图注（空 = 去掉），DOM 立即变成 figure/figcaption 并落盘。
+- `style.css`：`.md-fig/.md-cap`（图居中、图注灰小字、聚焦淡底）。
+
+### 23.4 解析目录（web162）
+- 解析框里小标题（h1–h6）≥ 3 个时，`richBindAll` 在 `.exp-wrap` 顶部插入「☰ 目录」按钮（幂等，标题少于 3 个自动移除）。
+- 点按钮出浮动面板 `#mdTocPanel`，按层级缩进列出标题；点条目 `scrollIntoView` 并高亮目标小节（`.md-toc-flash`），面板关闭；点别处关闭。
+- `style.css`：`.md-toc-btn/.md-toc-panel/.md-toc-i/.md-toc-flash`。
+
+### 23.5 验证与上线
+- `params-trace-probe.py` 19 通过 / 0 失败（参数校验 10 项 + 预览拦截 + 轨迹面板 7 项）。
+- `caption-toc-probe.py` 14 通过 / 0 失败（目录按钮/面板/条目数/跳转、双击图注/落盘 `"图注"`/清空拆 figure）。
+- `md-caption-test.mjs` 6 项全过（图注 figure、尺寸共存、无图注不包 figure、纯图注、标题渲染）。
+- 回归：md-editor 19/19、block2 15/15、block3 12/12、color 10/10、math-stem 7/7、slash 18/18、undo 12/12、home-page 30/30。
+- 上线：web161（参数校验 + 轨迹面板，提交 34af240d/e03eb5cf）；web162（图注 + 目录，提交 337ebb5c）；线上核到 `sw.js = shuati-v68-web162`、`collection.js` 144010B 含 `md-toc-btn`/`md-fig`、`ai-ops.js` 含 `PARAM_RULES`。

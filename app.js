@@ -480,6 +480,7 @@ if (window.matchMedia) {
 applyLook();
 
 /* ---------- 题库 ---------- */
+let LIVE_PAPER = null;       // 每日复习这类「临时卷」：只在内存里，不进套卷列表、不写 localStorage
 let _bankCache = null;
 function invalidateBanks() { _bankCache = null; if (typeof bumpHay === 'function') bumpHay(); }
 
@@ -509,7 +510,7 @@ function findQIn(base, k) {
 }
 function paperBanks(base) {
   const out = [];
-  PAPERS.forEach(p => {
+  (LIVE_PAPER ? PAPERS.concat([LIVE_PAPER]) : PAPERS).forEach(p => {
     const qs = [];
     (p.keys || []).forEach(k => {
       const f = findQIn(base, k);
@@ -1903,8 +1904,12 @@ function makePaper(title, keys, opts) {
   const p = { id: id, title: title || ((opts.exam ? '模拟考试 · ' : '套卷 · ') + keys.length + ' 题'), createdAt: Date.now(), keys: keys, exam: !!opts.exam, duration: opts.duration || 0 };
   if (opts.kind) p.kind = opts.kind;          // 'review' = 每日复习卷，用来防同一天重复生成
   if (opts.day) p.day = opts.day;
-  PAPERS.push(p);
-  savePapers();
+  if (opts.transient) {
+    LIVE_PAPER = p;                           // 只进内存：每日复习不再往套卷列表里塞卷子
+  } else {
+    PAPERS.push(p);
+    savePapers();
+  }
   invalidateBanks();
   const mins = Math.round((opts.duration || 0) / 60);
   toast(opts.exam
@@ -1923,6 +1928,56 @@ function deletePaper(id) {
   savePapers(); saveAns();
   invalidateBanks();
   toast('已删除套卷'); render();
+}
+
+/* 批量删套卷（临时套卷的批量管理用）：一次 confirm，逐个清作答 + 记墓碑 */
+function deletePapers(ids) {
+  const list = (ids || []).filter(Boolean);
+  const hit = PAPERS.filter(p => list.indexOf(p.id) >= 0);
+  if (!hit.length) { toast('没选中套卷'); return 0; }
+  const examN = hit.filter(p => p.exam).length;
+  if (!confirm('删除选中的 ' + hit.length + ' 个' + (examN ? '（含 ' + examN + ' 份模拟试卷）' : '') + '？套卷本身的作答记录会清掉（原本题库的错题次数保留）。')) return 0;
+  hit.forEach(p => {
+    const b = allBanks().find(x => x.id === p.id);
+    if (b) b.questions.forEach(q => { const k = kOf(b, q); delete ANS[k]; tombAdd('ans', k); });
+    tombAdd('paper', p.id);
+  });
+  PAPERS = PAPERS.filter(p => list.indexOf(p.id) < 0);
+  savePapers(); saveAns();
+  invalidateBanks();
+  toast('已删除 ' + hit.length + ' 个套卷');
+  return hit.length;
+}
+/* 重命名套卷 / 试卷（临时套卷批量管理页与卡片都用它） */
+function renamePaper(id, title) {
+  const p = PAPERS.find(x => x.id === id);
+  if (!p) return false;
+  const t = String(title == null ? '' : title).trim();
+  if (!t) return false;
+  p.title = t;
+  savePapers();
+  invalidateBanks();
+  return true;
+}
+/* 导出选中的套卷为 JSON（题干 / 选项 / 答案 / 解析，带上原题库名） */
+function exportPapers(ids) {
+  const list = (ids || []).filter(Boolean);
+  const out = [];
+  list.forEach(pid => {
+    const b = allBanks().find(x => x.id === pid);
+    if (!b) return;
+    out.push({
+      title: b.title, exam: !!b.exam, createdAt: b.createdAt || 0,
+      questions: b.questions.map(q => ({
+        stem: q.stem, options: q.options, answer: q.answer,
+        explain: (typeof explainOf === 'function') ? explainOf(q._srcKey || kOf(b, q), q) : q.explain
+      }))
+    });
+  });
+  if (!out.length) { toast('没选中套卷'); return; }
+  download('套卷导出-' + new Date().toISOString().slice(0, 10) + '.json',
+    JSON.stringify({ app: 'shuati', version: 2, exported: new Date().toISOString(), papers: out }, null, 2));
+  toast('已导出 ' + out.length + ' 个套卷');
 }
 
 /* ---------- 删题：从【自建题库】里移除一道题 ----------
@@ -2275,6 +2330,7 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
+        <button class="btn qd-grip" id="qdGrip" title="按住拖动题目区块；松手会吸附到窗口边 / 居中，位置会记住">⠿</button>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
       </div>
@@ -2283,7 +2339,7 @@ function renderQuiz(bankId) {
       <div id="qBody">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
       <div class="stem">${stemHtml(q.stem)}</div>
-      ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
+      <div class="tag-slot" id="tagSlot"></div>
       <div class="opts">${opts}</div>
       </div>
       <aside class="qnbox" id="qnBox">
@@ -2341,6 +2397,8 @@ function renderQuiz(bankId) {
     /* 重画后抽屉默认是收起的，顺手把滚动锁解开（不然「再答一次」后页面上下滑不动） */
     if (!cur || cur.hasAttribute('hidden')) document.body.classList.remove('sheet-open');
   })();
+  uiQuizFloat();                 /* 题目区块可拖动吸附（第 4 条） */
+  uiTagDock(bank, q, fk);        /* 考点标签吸附在题目旁边、可拉大小、可隐藏（第 5 条） */
   /* §8：管理动作抽屉的开关（「⋯ 更多」按钮 / 遮罩 / 取消 三处都关） */
   on('doMore', () => qSheetToggle(true));
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
@@ -2513,6 +2571,226 @@ function toggleFav(k, btn) {
     return;
   }
   render();
+}
+
+/* ===== 题目区块拖动吸附（第 4 条） =====
+   「⠿」按住拖：整个答题卡变浮层跟着走；靠近窗口左 / 右 / 上 / 下边或中心线时吸附，
+   位置存在 qbank.quizfloat.v1，下次进来还在原处。再点一次「⠿」回到正常排版。 */
+const QF_KEY = 'qbank.quizfloat.v1';
+function qfState() { return readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0 }; }
+function qfSave(st) { writeLS(QF_KEY, st); }
+function uiQuizFloat() {
+  const card = document.querySelector('#view > .card');
+  const grip = document.getElementById('qdGrip');
+  if (!card || !grip) return;
+  const st = qfState();
+  const applyFloat = (on) => {
+    card.classList.toggle('qf-float', on);
+    st.float = on;
+    if (on) {
+      const w = st.w || Math.min(980, Math.max(360, card.getBoundingClientRect().width));
+      const x = (st.x == null || !st.x) ? Math.max(8, Math.round((window.innerWidth - w) / 2)) : st.x;
+      const y = (st.y == null || !st.y) ? 72 : st.y;
+      card.style.width = w + 'px';
+      card.style.left = Math.max(0, Math.min(window.innerWidth - 80, x)) + 'px';
+      card.style.top = Math.max(0, Math.min(window.innerHeight - 80, y)) + 'px';
+      st.w = w; st.x = +card.style.left.replace('px', ''); st.y = +card.style.top.replace('px', '');
+    } else {
+      card.style.width = ''; card.style.left = ''; card.style.top = '';
+    }
+    grip.classList.toggle('on', on);
+    grip.title = on ? '拖动题目区块；再点一下回到正常排版' : '按住拖动题目区块；松手会吸附到窗口边 / 居中';
+    qfSave(st);
+  };
+  applyFloat(!!st.float);
+  grip.onclick = () => applyFloat(!st.float);
+  const guideV = document.createElement('div'), guideH = document.createElement('div');
+  guideV.className = 'qd-guide v'; guideH.className = 'qd-guide h';
+  document.body.appendChild(guideV); document.body.appendChild(guideH);
+  const showGuides = (vx, hy) => {
+    guideV.style.display = vx == null ? 'none' : 'block';
+    guideH.style.display = hy == null ? 'none' : 'block';
+    if (vx != null) guideV.style.left = vx + 'px';
+    if (hy != null) guideH.style.top = hy + 'px';
+  };
+  let drag = null;
+  const onDown = (ev) => {
+    if (!card.classList.contains('qf-float')) { applyFloat(true); }
+    const r = card.getBoundingClientRect();
+    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: r.left, y: r.top };
+    card.classList.add('qf-dragging');
+    try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
+  };
+  const onMove = (ev) => {
+    if (!drag) return;
+    let x = ev.clientX - drag.dx, y = ev.clientY - drag.dy;
+    x = Math.max(0, Math.min(window.innerWidth - 80, x));
+    y = Math.max(0, Math.min(window.innerHeight - 60, y));
+    card.style.left = x + 'px'; card.style.top = y + 'px';
+    const w = card.getBoundingClientRect().width;
+    const cx = (window.innerWidth - w) / 2, cy = (window.innerHeight - card.getBoundingClientRect().height) / 2;
+    const near = (a, b) => Math.abs(a - b) <= 28;
+    const sx = near(x, 0) ? 0 : near(x, window.innerWidth - w) ? window.innerWidth - w : near(x, cx) ? cx : null;
+    const sy = near(y, 0) ? 0 : near(y, window.innerHeight - card.getBoundingClientRect().height) ? window.innerHeight - card.getBoundingClientRect().height : near(y, cy) ? cy : null;
+    card.dataset.snapx = sx == null ? '' : String(sx);
+    card.dataset.snapy = sy == null ? '' : String(sy);
+    showGuides(sx, sy);
+    drag.x = x; drag.y = y;
+  };
+  const onUp = () => {
+    if (!drag) return;
+    const sx = card.dataset.snapx, sy = card.dataset.snapy;
+    if (sx !== '') card.style.left = sx + 'px';
+    if (sy !== '') card.style.top = sy + 'px';
+    card.classList.remove('qf-dragging');
+    showGuides(null, null);
+    st.float = true;
+    st.x = +card.style.left.replace('px', '') || 0;
+    st.y = +card.style.top.replace('px', '') || 0;
+    st.w = card.getBoundingClientRect().width;
+    qfSave(st);
+    drag = null;
+  };
+  grip.addEventListener('pointerdown', onDown);
+  grip.addEventListener('pointermove', onMove);
+  grip.addEventListener('pointerup', onUp);
+  grip.addEventListener('pointercancel', onUp);
+  /* 窗口变小：浮层别跑到看不见的地方 */
+  window.addEventListener('resize', () => {
+    if (!card.classList.contains('qf-float')) return;
+    const w = card.getBoundingClientRect().width;
+    let x = +card.style.left.replace('px', '') || 0, y = +card.style.top.replace('px', '') || 0;
+    x = Math.max(0, Math.min(window.innerWidth - Math.min(w, window.innerWidth), x));
+    y = Math.max(0, Math.min(window.innerHeight - 60, y));
+    card.style.left = x + 'px'; card.style.top = y + 'px';
+    st.x = x; st.y = y; qfSave(st);
+  }, { passive: true });
+}
+
+/* ===== 标签面板吸附（第 5 条） =====
+   考点标签从正文里搬到题目旁边的浮动小面板：
+   拖标题栏移动（靠近答题卡边缘会吸过去）、右下角拉大小（任意长宽）、「—」收起成一颗小钮、「✕」隐藏。
+   位置 / 尺寸 / 是否隐藏都存在 qbank.tagdock.v1。 */
+const TD_KEY = 'qbank.tagdock.v1';
+function tdState() { return readLS(TD_KEY, null) || { x: null, y: null, w: 268, h: 236, hidden: false, mini: false }; }
+function tdSave(st) { writeLS(TD_KEY, st); }
+function uiTagDock(bank, q, fk) {
+  const st = tdState();
+  const card = document.querySelector('#view > .card');
+  const html = (typeof tagRowHtml === 'function') ? tagRowHtml(fk, q) : '';
+  document.querySelectorAll('body > .tagdock, body > .tagpill').forEach(el => el.remove());
+  if (!html) return;
+  const panel = document.createElement('div');
+  panel.className = 'tagdock';
+  panel.innerHTML = '<div class="td-head"><span class="td-title">🏷 考点标签</span><span class="td-btns">'
+    + '<button class="td-min" title="收起成小钮">—</button>'
+    + '<button class="td-x" title="隐藏面板（右边小钮可以再打开）">✕</button></span></div>'
+    + '<div class="td-body">' + html + '</div><i class="td-rz" title="拖动改大小"></i>';
+  document.body.appendChild(panel);
+  /* 默认贴在答题卡右边；放不下就贴左边 */
+  const cr = card ? card.getBoundingClientRect() : { right: window.innerWidth - 300, top: 90, left: 40 };
+  let x = st.x, y = st.y;
+  if (x == null || y == null) {
+    const rightX = cr.right + 14;
+    x = (rightX + st.w <= window.innerWidth - 8) ? rightX : Math.max(8, cr.left - st.w - 14);
+    y = Math.max(64, cr.top + 8);
+  }
+  panel.style.width = Math.max(180, st.w || 268) + 'px';
+  panel.style.height = Math.max(120, st.h || 236) + 'px';
+  panel.style.left = Math.max(0, Math.min(window.innerWidth - 80, x)) + 'px';
+  panel.style.top = Math.max(0, Math.min(window.innerHeight - 60, y)) + 'px';
+  if (st.hidden) panel.hidden = true;
+  if (st.mini) panel.classList.add('mini');
+  if (typeof TAGS === 'object' && TAGS.bindRow) { try { TAGS.bindRow(panel); } catch (e) {} }
+
+  const pill = document.createElement('button');
+  pill.className = 'tagpill';
+  pill.title = '打开考点标签面板';
+  pill.textContent = '🏷 标签';
+  document.body.appendChild(pill);
+  try {
+    const tags = (typeof TAGS === 'object' && TAGS.of) ? TAGS.of(fk) : [];
+    if (tags && tags.length) pill.textContent = '🏷 ' + tags.length;
+  } catch (e) {}
+  pill.hidden = !st.hidden;
+  if (st.hidden) pill.classList.add('on');
+
+  const show = (on) => {
+    st.hidden = !on;
+    panel.hidden = !on;
+    pill.hidden = on;
+    pill.classList.toggle('on', !on);
+    tdSave(st);
+  };
+  panel.querySelector('.td-x').onclick = () => show(false);
+  pill.onclick = () => show(true);
+  panel.querySelector('.td-min').onclick = () => {
+    st.mini = !panel.classList.contains('mini');
+    panel.classList.toggle('mini', st.mini);
+    if (st.mini) { panel.style.width = ''; panel.style.height = ''; }
+    else { panel.style.width = (st.w || 268) + 'px'; panel.style.height = (st.h || 236) + 'px'; }
+    tdSave(st);
+  };
+  /* 拖动标题栏 */
+  const head = panel.querySelector('.td-head');
+  let drag = null;
+  head.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('.td-btns')) return;
+    const r = panel.getBoundingClientRect();
+    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
+    panel.classList.add('moving');
+    try { head.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
+  });
+  head.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    let nx = ev.clientX - drag.dx, ny = ev.clientY - drag.dy;
+    nx = Math.max(0, Math.min(window.innerWidth - 90, nx));
+    ny = Math.max(0, Math.min(window.innerHeight - 60, ny));
+    panel.style.left = nx + 'px'; panel.style.top = ny + 'px';
+  });
+  head.addEventListener('pointerup', () => {
+    if (!drag) return;
+    drag = null;
+    panel.classList.remove('moving');
+    /* 吸附：靠近答题卡左右边缘就贴过去，靠近窗口边就贴窗口 */
+    const pr = panel.getBoundingClientRect();
+    const cr2 = card ? card.getBoundingClientRect() : null;
+    let nx = pr.left, ny = pr.top;
+    if (cr2) {
+      if (Math.abs(pr.left - (cr2.right + 14)) <= 26) nx = cr2.right + 14;
+      else if (Math.abs((pr.left + pr.width) - (cr2.left - 14)) <= 26) nx = cr2.left - 14 - pr.width;
+      if (Math.abs(pr.top - cr2.top) <= 26) ny = cr2.top;
+    }
+    if (Math.abs(nx) <= 20) nx = 6;
+    if (Math.abs((nx + pr.width) - window.innerWidth) <= 20) nx = window.innerWidth - pr.width - 6;
+    panel.style.left = Math.max(0, nx) + 'px';
+    panel.style.top = Math.max(0, ny) + 'px';
+    st.x = +panel.style.left.replace('px', ''); st.y = +panel.style.top.replace('px', '');
+    st.w = pr.width; st.h = pr.height;
+    tdSave(st);
+  });
+  /* 右下角拉大小（任意长宽） */
+  const rz = panel.querySelector('.td-rz');
+  let rs = null;
+  rz.addEventListener('pointerdown', (ev) => {
+    rs = { x: ev.clientX, y: ev.clientY, w: panel.getBoundingClientRect().width, h: panel.getBoundingClientRect().height };
+    try { rz.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  rz.addEventListener('pointermove', (ev) => {
+    if (!rs) return;
+    const w = Math.max(180, Math.min(window.innerWidth - 20, rs.w + (ev.clientX - rs.x)));
+    const h = Math.max(110, Math.min(window.innerHeight - 40, rs.h + (ev.clientY - rs.y)));
+    panel.style.width = w + 'px'; panel.style.height = h + 'px';
+  });
+  rz.addEventListener('pointerup', () => {
+    if (!rs) return;
+    rs = null;
+    st.w = panel.getBoundingClientRect().width; st.h = panel.getBoundingClientRect().height;
+    tdSave(st);
+  });
 }
 
 function qzTags(k) { try { return (window.TAGS && TAGS.of) ? TAGS.of(k) : []; } catch (e) { return []; } }
@@ -3305,24 +3583,17 @@ function startReview(limit) {
   const cap = +srsCfg().daily || 0;                  // 0 = 不限
   const max = Math.min(limit && limit > 0 ? limit : 9999, cap || 9999);
   const today = new Date().toISOString().slice(0, 10);
-  /* 同一天重复点「今日复习」：直接回到今天那份复习卷，别生成一堆同名套卷 */
-  const had = PAPERS.filter(p => p.kind === 'review' && p.day === today).pop();
-  if (had && allBanks().some(b => b.id === had.id)) { go('#/bank/' + had.id); return; }
+  /* 同一天重复点「今日复习」：直接回到今天那份临时复习卷（只在内存里，不进套卷列表） */
+  if (LIVE_PAPER && LIVE_PAPER.kind === 'review' && LIVE_PAPER.day === today) {
+    go('#/bank/' + LIVE_PAPER.id); return;
+  }
   const ks = dueKeys(max);
   if (!ks.length) {
-    /* 没有到期题也别什么都不发生（用户反馈「每日复习不生成套卷」）：
-       退一步用错题本里的题组一份卷，实在没有才提示 */
-    const wk = [];
-    baseBanks().forEach(b => b.questions.forEach(q => {
-      const k = kOf(b, q); const a = ANS[k];
-      if (a && (a.wrong || 0) > 0) wk.push(k);
-    }));
-    if (!wk.length) { toast('今天没有到期复习，错题本也是空的；先刷几题吧'); return; }
-    toast('今天没有到期复习，用错题本里的 ' + Math.min(wk.length, max) + ' 道题组卷', 2200, 'ok');
-    makePaper('错题复习 · ' + Math.min(wk.length, max) + ' 题', wk.slice(0, max), { kind: 'review', day: today });
+    /* 用户要求（m03094）：每日复习不要自动生成套卷 —— 没有到期题就只提示，不组卷 */
+    toast('今天没有到期的复习题，接着刷题就好');
     return;
   }
-  makePaper('今日复习 · ' + ks.length + ' 题', ks, { kind: 'review', day: today });
+  makePaper('今日复习 · ' + ks.length + ' 题', ks, { kind: 'review', day: today, transient: true });
 }
 
 function renderStats() {

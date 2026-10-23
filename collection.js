@@ -189,7 +189,12 @@ function mdToHtml(md) {
   });
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
-  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  /* 行内 code 先换成占位符：不然 `**x**` 会在 code 里再被加粗、`a*b` 的星号也会被清掉 */
+  const MD_CODES = [];
+  s = s.replace(/`([^`\n]+)`/g, (m0, c) => {
+    MD_CODES.push(c);
+    return '\u0004C' + (MD_CODES.length - 1) + '\u0004';
+  });
   s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');                       /* 删除线（标准 Markdown 的 ~~x~~） */
   s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');   /* 三颗星 = 加粗+斜体（标准 Markdown） */
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
@@ -204,6 +209,8 @@ function mdToHtml(md) {
   for (let i = 0; i < 3; i++) s = s.replace(/(\d)\*(\d)/g, '$1\uE000$2');
   s = s.replace(/\*/g, '');
   s = s.replace(/\uE000/g, '*');
+  /* 把行内 code 的占位符还原成 <code>（到这里星号残渣已经清完，code 里的内容不会被误伤） */
+  s = s.replace(/\u0004C(\d+)\u0004/g, (m0, i) => '<code>' + (MD_CODES[+i] == null ? '' : MD_CODES[+i]) + '</code>');
   const lines = s.split(/\r?\n/);
   const out = [];
   let list = null;
@@ -237,7 +244,19 @@ function mdToHtml(md) {
         + '</span><span class="callout-body"><b class="callout-t">' + (CALLOUT_LABEL[kind] || '提示') + '</b> ' + m[2] + '</span></div>');
       continue;
     }
-    if ((m = t.match(/^&gt;\s?(.*)$/))) { closeList(); out.push(`<blockquote>${m[1]}</blockquote>`); continue; }
+    if ((m = t.match(/^&gt;\s?(.*)$/))) {
+      closeList();
+      /* 连续的 > 行属于同一个引用块（以前每行一个 blockquote，引用里的换行全丢了） */
+      const parts = [m[1]];
+      while (i + 1 < lines.length) {
+        const nx = lines[i + 1].trim().match(/^&gt;\s?(.*)$/);
+        if (!nx) break;
+        parts.push(nx[1]);
+        i++;
+      }
+      out.push('<blockquote>' + parts.join('<br>') + '</blockquote>');
+      continue;
+    }
     /* 列表（支持缩进嵌套 + 任务列表）：连续列表行整块收成一棵树再渲染，
        以前一律拍平，「鉴别诊断 1) 2) a) b)」会挤成一层。 */
     if (lines[i].match(/^[ \t]*([-*+]|\d+[.)])\s+/)) {
@@ -287,9 +306,11 @@ function isTableSep(line) {
 }
 function renderTable(header, rows, aligns) {
   const st = i => (aligns[i] ? ` style="text-align:${aligns[i]}"` : '');
-  const n = header.length;
-  const head = '<tr>' + header.map((c, i) => `<th${st(i)}>${c || ''}</th>`).join('') + '</tr>';
-  const body = rows.map(r => '<tr>' + header.map((_, i) => `<td${st(i)}>${r[i] == null ? '' : r[i]}</td>`).join('') + '</tr>').join('');
+  /* 列数取表头与所有行的最大值：以前按 header.length 截断，中间多写一列后面的内容就丢了 */
+  const n = Math.max(header.length, 0, ...rows.map(r => r.length));
+  const cell = (list, i) => (list[i] == null ? '' : list[i]);
+  const head = '<tr>' + Array.from({ length: n }, (_, i) => `<th${st(i)}>${cell(header, i) || ''}</th>`).join('') + '</tr>';
+  const body = rows.map(r => '<tr>' + Array.from({ length: n }, (_, i) => `<td${st(i)}>${cell(r, i)}</td>`).join('') + '</tr>').join('');
   return `<div class="tbl-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
@@ -828,6 +849,17 @@ function richState(el, txt, keep) {
   if (txt && !keep) s._t = setTimeout(() => { s.textContent = ''; s._t = null; }, 1500);
 }
 /* 解析块（含图片）：显示态即编辑态。label 走上面那行，图片不参与 contenteditable */
+const EXPFOLD = readLS('qbank.expfold.v1', {}) || {};
+function expFoldToggle(fk) {
+  if (EXPFOLD[fk]) delete EXPFOLD[fk]; else EXPFOLD[fk] = 1;
+  writeLS('qbank.expfold.v1', EXPFOLD);
+  document.querySelectorAll('.exp-wrap[data-note-for="' + fk.replace(/"/g, '') + '"]').forEach(w => {
+    const on = !!EXPFOLD[fk];
+    w.classList.toggle('collapsed', on);
+    const b = w.querySelector('.exp-fold');
+    if (b) b.textContent = on ? '▸ 展开' : '▾ 收起';
+  });
+}
 function richBox(fk, text, custom, label) {
   const n = (typeof noteOf === 'function') ? noteOf(fk) : null;
   const imgs = (n && n.imgs) || [];
@@ -835,8 +867,8 @@ function richBox(fk, text, custom, label) {
     ? '<div class="rich-imgs">' + imgs.map((im, i) => `<span class="rich-img" data-imgi="${i}"${im.w ? ' style="width:' + im.w + 'px"' : ''}><img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy"><i class="rich-rz" title="拖动改图片宽度"></i><i class="rich-mv" title="拖动调整图片先后顺序">⠿</i></span>`).join('') + '</div>'
     : '';
   const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
-  return `<div class="exp-wrap" data-note-for="${esc(fk)}">
-      <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span><button class="btn tiny blk-toggle" data-blk="${esc(fk)}" title="块排序：打开后把鼠标放到某一块左边的小把手上拖动，段落 / 表格 / 图片整块换位置（第 19 条第一轮）">⠿ 块排序</button></div>
+  return `<div class="exp-wrap${EXPFOLD[fk] ? ' collapsed' : ''}" data-note-for="${esc(fk)}">
+      <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span><button class="btn tiny exp-fold" data-fold="${esc(fk)}" title="把解析收起来，只留标题行；再点一次展开">${EXPFOLD[fk] ? '▸ 展开' : '▾ 收起'}</button><button class="btn tiny blk-toggle" data-blk="${esc(fk)}" title="块排序：打开后把鼠标放到某一块左边的小把手上拖动，段落 / 表格 / 图片整块换位置（第 19 条第一轮）">⠿ 块排序</button></div>
       <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，改完点一下别处自动保存">${body}</div>
       ${imgsHtml}
       <div class="aisrc-saved" data-aisrc="${esc(fk)}"></div>
@@ -1388,6 +1420,8 @@ function blkInitOnce() {
   blkBarEl();                                   /* 先把操作条建好（默认 hidden），别等第一次悬停 */
   document.addEventListener('pointermove', blkHover, { passive: true });
   document.addEventListener('click', ev => {
+    const f = (ev.target && ev.target.closest) ? ev.target.closest('.exp-fold') : null;
+    if (f) { expFoldToggle(f.dataset.fold || ''); return; }
     const b = (ev.target && ev.target.closest) ? ev.target.closest('.blk-toggle') : null;
     if (!b) return;
     const wrap = b.closest('.exp-wrap');
@@ -2021,11 +2055,12 @@ function renderList(mode) {
   const selN = shown.filter(it => st.sel.has(it.k)).length;
   const selKeys = shown.filter(it => st.sel.has(it.k)).map(it => it.k);
 
-  const bankChips = [`<button class="chip${st.bank === 'all' ? ' on' : ''}" data-b="all">全部 ${items.length}</button>`]
-    .concat(Object.keys(banksWith).map(id => {
-      const b = allBanks().find(x => x.id === id) || { title: id };
-      return `<button class="chip${st.bank === id ? ' on' : ''}" data-b="${id}">${esc(b.title)} ${banksWith[id]}</button>`;
-    })).join('');
+  /* ⑧ 题库筛选：换成可搜索 + AI 模糊的选择器（题目多的站点 chip 装不下） */
+  const bankChips = `<div class="tools" style="margin-top:2px"><span class="tl">题库</span>`
+    + ((typeof bankPickerHtml === 'function')
+      ? bankPickerHtml('listBank', st.bank || 'all', { all: true, allLabel: '全部题库 ' + items.length })
+      : `<select id="listBank" class="inp tiny"><option value="all">全部题库 ${items.length}</option></select>`)
+    + `<span class="small muted">共 ${Object.keys(banksWith).length} 个题库有${isWrong ? '错题' : '收藏'}</span></div>`;
 
   /* 候补池 G：考点标签筛选（只列当前列表里真有的标签，按题数排） */
   const tagCount = {};
@@ -2060,7 +2095,7 @@ function renderList(mode) {
         <button class="btn primary" id="wRevAll" ${dueItems.length ? '' : 'disabled'}>开始复习（${dueItems.length} 题）</button>
         <button class="btn" id="wRevSel" ${selKeys.length ? '' : 'disabled'}>复习选中的 ${selKeys.length} 题</button>
       </div>` : ''}
-      <div class="chips-inline">${bankChips}</div>
+      ${bankChips}
       ${basicChips}
       ${(tagNames.length || st.tag) ? `<div class="tools tag-search-row">
         <span class="tl">标签</span>
@@ -2156,7 +2191,9 @@ function renderList(mode) {
   staggerList($('view'));
 
   /* 事件 */
-  $('view').querySelectorAll('.chips-inline .chip[data-b]').forEach(c => c.onclick = () => { st.bank = c.dataset.b; render(); });
+  if (typeof bankPickerBind === 'function') bankPickerBind($('view'), 'listBank', v => { st.bank = v || 'all'; render(); });
+  const lbSel = $('view').querySelector('#listBank');
+  if (lbSel && lbSel.tagName === 'SELECT') lbSel.onchange = () => { st.bank = lbSel.value || 'all'; render(); };
   $('view').querySelectorAll('.tag-basic-filter [data-basic]').forEach(c => c.onclick = () => {
     st.base = c.getAttribute('data-basic') || '';
     render();
@@ -2875,10 +2912,10 @@ function paintSearch(anim) {
         <span class="tl">范围</span>
         ${scopes.map(([k, t]) => `<button class="chip${scope === k ? ' on' : ''}" data-scope="${k}">${t}</button>`).join('')}
         <span class="tl" style="margin-left:10px">题库</span>
-        <select id="sBank" class="inp tiny" title="只在选中的题库里搜">
+        ${(typeof bankPickerHtml === 'function') ? bankPickerHtml('sBank', st.bank || 'all', { all: true }) : `<select id="sBank" class="inp tiny" title="只在选中的题库里搜">
           <option value="all">全部题库</option>
           ${allBanks().filter(b => !b.paper).map(b => `<option value="${esc(b.id)}"${st.bank === b.id ? ' selected' : ''}>${esc(b.title || b.id)}</option>`).join('')}
-        </select>
+        </select>`}
         <span class="spacer-grow"></span>
         <span class="tl">${kw ? '命中 ' + total + ' 题' + (total > shown.length ? '（只显示前 ' + shown.length + ' 条）' : '') : (filterLabel ? esc(filterLabel) + '：' + total + ' 题' : '输入关键词开始搜索')}</span>
         ${QAI.on && kw.length >= 2 ? qaiNoteHtml(kw, aiHits.length) : ''}
@@ -2900,6 +2937,7 @@ function paintSearch(anim) {
   host.querySelectorAll('[data-scope]').forEach(c => c.onclick = () => { st.scope = c.dataset.scope; paintSearch(true); });
   const sbk = host.querySelector('#sBank');
   if (sbk) sbk.onchange = () => { st.bank = sbk.value || 'all'; paintSearch(true); };
+  if (typeof bankPickerBind === 'function') bankPickerBind(host, 'sBank', v => { st.bank = v || 'all'; paintSearch(true); });
   host.querySelectorAll('.wi').forEach(node => {
     const it = shown.find(x => x.k === node.dataset.k);
     if (it) bindItem(node, 'search', it);
@@ -2926,3 +2964,224 @@ function paintHist() {
 
 /* 启动：改由 index.html 在所有模块都加载完之后统一调用 render()，
    否则直接打开 #/exam/... 或 #/kb 时，renderExam / renderKb 还没定义，页面会空白 */
+
+
+/* ===== 右键菜单 / 长按菜单（照 AppFlowy 的「按块类型给菜单」思路：动作表 + 扁平数组 + SEP） =====
+   桌面：contextmenu；触屏：长按 480ms。
+   解析块上给块操作 + 行内格式 + 转成；题目卡片上给收藏 / 错题 / 复制。 */
+var CTX_SEP = { sep: true };
+var CTX_MENU = null;
+var CTX_LP = { t: 0, x: 0, y: 0, el: null };
+
+function ctxEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function ctxEl() {
+  if (CTX_MENU) return CTX_MENU;
+  CTX_MENU = document.createElement('div');
+  CTX_MENU.className = 'ctx-menu';
+  CTX_MENU.hidden = true;
+  CTX_MENU.setAttribute('role', 'menu');
+  document.body.appendChild(CTX_MENU);
+  CTX_MENU.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+  document.addEventListener('pointerdown', function (ev) {
+    if (!CTX_MENU || CTX_MENU.hidden) return;
+    if (CTX_MENU.contains(ev.target)) return;
+    ctxClose();
+  }, true);
+  document.addEventListener('keydown', function (ev) {
+    if (!CTX_MENU || CTX_MENU.hidden) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); ctxClose(); }
+  }, true);
+  window.addEventListener('scroll', function () { ctxClose(); }, true);
+  return CTX_MENU;
+}
+function ctxClose() {
+  if (CTX_MENU) CTX_MENU.hidden = true;
+}
+/* items: [{t, d, icon, danger, run}] 或 CTX_SEP */
+function ctxOpen(items, x, y) {
+  var box = ctxEl();
+  var html = '';
+  items.forEach(function (it, i) {
+    if (it === CTX_SEP) { html += '<div class="ctx-sep"></div>'; return; }
+    html += '<button type="button" class="ctx-item' + (it.danger ? ' danger' : '') + '" data-ci="' + i + '">'
+      + '<i class="ctx-ico">' + ctxEsc(it.icon || '') + '</i>'
+      + '<span class="ctx-t">' + ctxEsc(it.t) + '</span>'
+      + (it.d ? '<span class="ctx-d">' + ctxEsc(it.d) + '</span>' : '')
+      + '</button>';
+  });
+  box.innerHTML = html;
+  box.hidden = false;
+  box.style.left = '0px'; box.style.top = '0px';
+  var r = box.getBoundingClientRect();
+  var left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8));
+  var top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8));
+  box.style.left = left + 'px';
+  box.style.top = top + 'px';
+  box.querySelectorAll('.ctx-item').forEach(function (b) {
+    b.onclick = function () {
+      var it = items[+b.getAttribute('data-ci')];
+      ctxClose();
+      try { if (it && it.run) it.run(); } catch (e) { if (typeof toast === 'function') toast('操作失败：' + e.message, 2200, 'err'); }
+    };
+  });
+}
+/* ---- 解析块：块操作 + 行内格式 + 转成 ---- */
+function ctxRichNode(el, target) {
+  var n = target && el.contains(target) ? target : el;
+  while (n && n.parentNode && n.parentNode !== el) n = n.parentNode;
+  if (!n || n.parentNode !== el) n = el.firstElementChild;
+  return n;
+}
+function ctxRichItems(el, node) {
+  var pick = function (act) {
+    return function () {
+      if (typeof BLKBAR === 'undefined') return;
+      BLKBAR._el = el; BLKBAR._node = node;
+      blkAct(act);
+      ctxClose();
+    };
+  };
+  var fmt = function (cmd, val) {
+    return function () {
+      el.focus();
+      try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
+      try { document.execCommand(cmd, false, val || null); } catch (e) {}
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+  };
+  var code = function () {
+    el.focus();
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed) { if (typeof toast === 'function') toast('先选中要变成行内代码的文字', 1600, 'warn'); return; }
+    var r = sel.getRangeAt(0);
+    var c = document.createElement('code');
+    try { r.surroundContents(c); } catch (e) { return; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  var conv = function (kind) { return function () { if (typeof slashApply === 'function') slashApply(el, kind); }; };
+  return [
+    { t: '复制这块', icon: '⧉', run: pick('copy') },
+    { t: '上移', icon: '↑', run: pick('up') },
+    { t: '下移', icon: '↓', run: pick('down') },
+    { t: '插入空段落', icon: '＋', run: pick('ins') },
+    { t: '删除这块', icon: '🗑', danger: true, run: pick('del') },
+    CTX_SEP,
+    { t: '加粗', icon: 'B', d: 'Ctrl+B', run: fmt('bold') },
+    { t: '斜体', icon: 'I', d: 'Ctrl+I', run: fmt('italic') },
+    { t: '删除线', icon: 'S', run: fmt('strikeThrough') },
+    { t: '行内代码', icon: '‹›', run: code },
+    CTX_SEP,
+    { t: '转成标题', icon: 'H', run: conv('h3') },
+    { t: '转成无序清单', icon: '•', run: conv('ul') },
+    { t: '转成有序清单', icon: '1.', run: conv('ol') },
+    { t: '转成引用', icon: '❝', run: conv('quote') }
+  ];
+}
+/* ---- 题目卡片：收藏 / 错题 / 复制 ---- */
+function ctxCopy(text) {
+  var done = function () { if (typeof toast === 'function') toast('已复制', 1200, 'ok'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      ta.remove();
+    });
+  }
+}
+function ctxQOf(k) {
+  var bankId = String(k).split('#')[0];
+  var b = (typeof bankById === 'function') ? bankById(bankId) : null;
+  if (!b) return { b: null, q: null };
+  var qid = String(k).split('#')[1];
+  return { b: b, q: (b.questions || []).filter(function (x) { return String(x.id) === String(qid); })[0] || null };
+}
+function ctxItemItems(k) {
+  var o = ctxQOf(k);
+  var q = o.q || {};
+  var isFav = (typeof FAV !== 'undefined') && FAV[k];
+  var a = (typeof ANS !== 'undefined') ? ANS[k] : null;
+  var inWrong = !!(a && a.wrong > 0);
+  var st = null;
+  try { st = (typeof LP !== 'undefined') ? (location.hash.indexOf('#/wrong') >= 0 ? LP.wrong : LP.fav) : null; } catch (e) {}
+  var selKeys = (st && st.sel) ? Array.from(st.sel) : [];
+  var multi = selKeys.length > 1 && selKeys.indexOf(k) >= 0;
+  var items = [
+    { t: '打开这道题', icon: '↗', run: function () { location.hash = '#/bank/' + String(k).split('#')[0]; } },
+    {
+      t: isFav ? '取消收藏' : '加入收藏', icon: isFav ? '☆' : '★', run: function () {
+        if (typeof toggleFav === 'function') toggleFav(k);
+        if (typeof render === 'function') render();
+      }
+    },
+    {
+      t: inWrong ? '移出错题本' : '加入错题本', icon: inWrong ? '↩' : '＋', run: function () {
+        var x = (typeof ANS !== 'undefined') ? (ANS[k] || (ANS[k] = { sel: [], ok: false, tries: 0, wrong: 0, ts: Date.now(), upd: Date.now() })) : null;
+        if (!x) return;
+        x.wrong = (x.wrong || 0) > 0 ? 0 : Math.max(1, x.wrong || 0);
+        x.ts = x.ts || Date.now(); x.upd = Date.now();
+        if (typeof saveAns === 'function') saveAns();
+        if (typeof toast === 'function') toast(x.wrong ? '已加入错题本' : '已移出错题本', 1400, 'ok');
+        if (typeof render === 'function') render();
+      }
+    },
+    CTX_SEP,
+    { t: '复制题干', icon: '⧉', run: function () { ctxCopy(String(q.stem || '')); } },
+    { t: '复制解析', icon: '⧉', run: function () { ctxCopy(String(q.explain || '')); } }
+  ];
+  if (multi) {
+    items = [{
+      t: '选中的 ' + selKeys.length + ' 道一起' + (inWrong ? '移出错题本' : '加入错题本'), icon: '⛭', run: function () {
+        selKeys.forEach(function (kk) {
+          var y = (typeof ANS !== 'undefined') ? (ANS[kk] || (ANS[kk] = { sel: [], ok: false, tries: 0, wrong: 0, ts: Date.now(), upd: Date.now() })) : null;
+          if (!y) return;
+          if (inWrong) y.wrong = 0; else y.wrong = Math.max(1, y.wrong || 0);
+          y.upd = Date.now();
+        });
+        if (typeof saveAns === 'function') saveAns();
+        if (typeof toast === 'function') toast('已处理 ' + selKeys.length + ' 道', 1600, 'ok');
+        if (typeof render === 'function') render();
+      }
+    }, CTX_SEP].concat(items);
+  }
+  return items;
+}
+(function () {
+  if (window.__ctxInit) return;
+  window.__ctxInit = 1;
+  document.addEventListener('contextmenu', function (ev) {
+    var rich = ev.target.closest ? ev.target.closest('.rich-edit') : null;
+    if (rich) {
+      ev.preventDefault();
+      ctxOpen(ctxRichItems(rich, ctxRichNode(rich, ev.target)), ev.clientX, ev.clientY);
+      return;
+    }
+    var wi = ev.target.closest ? ev.target.closest('.wi[data-k], [data-k].wi') : null;
+    if (wi && wi.getAttribute('data-k')) {
+      ev.preventDefault();
+      ctxOpen(ctxItemItems(wi.getAttribute('data-k')), ev.clientX, ev.clientY);
+    }
+  });
+  /* 触屏长按（480ms）：解析块 / 题目卡片；选项上的长按留给答题页的「排除选项」 */
+  document.addEventListener('pointerdown', function (ev) {
+    if (ev.pointerType === 'mouse') return;
+    var t = ev.target.closest ? ev.target.closest('.rich-edit, .wi[data-k], [data-k].wi') : null;
+    if (!t) return;
+    if (ev.target.closest && ev.target.closest('.opt')) return;
+    CTX_LP.el = t; CTX_LP.x = ev.clientX; CTX_LP.y = ev.clientY;
+    clearTimeout(CTX_LP.t);
+    CTX_LP.t = setTimeout(function () {
+      var rich = CTX_LP.el.closest('.rich-edit');
+      if (rich) ctxOpen(ctxRichItems(rich, ctxRichNode(rich, CTX_LP.el)), CTX_LP.x, CTX_LP.y);
+      else if (CTX_LP.el.getAttribute('data-k')) ctxOpen(ctxItemItems(CTX_LP.el.getAttribute('data-k')), CTX_LP.x, CTX_LP.y);
+    }, 480);
+  }, true);
+  var cancel = function () { clearTimeout(CTX_LP.t); };
+  document.addEventListener('pointermove', function (ev) { if (CTX_LP.el && (Math.abs(ev.clientX - CTX_LP.x) > 8 || Math.abs(ev.clientY - CTX_LP.y) > 8)) cancel(); }, true);
+  document.addEventListener('pointerup', cancel, true);
+  document.addEventListener('pointercancel', cancel, true);
+})();
