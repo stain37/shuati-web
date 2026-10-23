@@ -601,6 +601,12 @@ body.dark .gstem b{color:var(--text)}
 .blk-bbtn:hover{background:var(--bg2);color:var(--primary)}
 .blk-bbtn[data-bkact="del"]:hover{color:var(--bad, #d33)}
 .rich-imgs img,.ed-preview img,.exp img{max-width:100%;border-radius:var(--r-s);border:1px solid var(--line);display:block;margin:8px 0}
+/* 第 19 条第三轮：图片区整块换位置（拖左上角 ⠿） */
+.rich-mv{position:absolute;left:-7px;top:-2px;width:22px;height:22px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--sub);font-size:12px;font-style:normal;line-height:20px;text-align:center;cursor:grab;opacity:0;transition:opacity .15s;touch-action:none;user-select:none}
+.rich-img:hover .rich-mv,.blk-mode .rich-mv,.rich-mv:active{opacity:1}
+.rich-mv:hover{color:var(--primary);border-color:var(--primary)}
+.rich-img.mv-src{opacity:.45}
+.rich-img.mv-over{outline:2px dashed var(--primary);outline-offset:3px}
 body.dark .ed{background:#131a27}
 body.dark .thumb{background:#1b2334}
 body.dark .exp{border-top-color:#334155}

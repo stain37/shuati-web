@@ -574,7 +574,7 @@ function richBox(fk, text, custom, label) {
   const n = (typeof noteOf === 'function') ? noteOf(fk) : null;
   const imgs = (n && n.imgs) || [];
   const imgsHtml = imgs.length
-    ? '<div class="rich-imgs">' + imgs.map((im, i) => `<span class="rich-img" data-imgi="${i}"${im.w ? ' style="width:' + im.w + 'px"' : ''}><img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy"><i class="rich-rz" title="拖动改图片宽度"></i></span>`).join('') + '</div>'
+    ? '<div class="rich-imgs">' + imgs.map((im, i) => `<span class="rich-img" data-imgi="${i}"${im.w ? ' style="width:' + im.w + 'px"' : ''}><img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy"><i class="rich-rz" title="拖动改图片宽度"></i><i class="rich-mv" title="拖动调整图片先后顺序">⠿</i></span>`).join('') + '</div>'
     : '';
   const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
   return `<div class="exp-wrap" data-note-for="${esc(fk)}">
@@ -736,6 +736,53 @@ function richImgsBind(wrap) {
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
     });
+  });
+  /* 第 19 条第三轮：图片区的图片也能整块换位置 —— 拖左上角 ⠿ 到另一张图的前/后，顺序存进 NOTES[fk].imgs */
+  if (wrap.dataset.mvBound === '1') return;
+  wrap.dataset.mvBound = '1';
+  const box = wrap.querySelector('.rich-imgs');
+  if (!box) return;
+  box.addEventListener('pointerdown', ev => {
+    const h = ev.target && ev.target.closest ? ev.target.closest('.rich-mv') : null;
+    if (!h) return;
+    const sp = h.closest('.rich-img');
+    if (!sp || sp.parentElement !== box) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const fk2 = wrap.dataset.noteFor;
+    sp.classList.add('mv-src');
+    let over = null;
+    const move = e2 => {
+      const el = document.elementFromPoint(e2.clientX, e2.clientY);
+      const t = (el && el.closest) ? el.closest('.rich-img') : null;
+      if (t && t !== sp && t.parentElement === box) {
+        if (over && over !== t) over.classList.remove('mv-over');
+        over = t; t.classList.add('mv-over');
+      }
+    };
+    const up = e2 => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      sp.classList.remove('mv-src');
+      if (!over) return;
+      over.classList.remove('mv-over');
+      const r = over.getBoundingClientRect();
+      if (e2.clientX > r.left + r.width / 2) box.insertBefore(sp, over.nextSibling);
+      else box.insertBefore(sp, over);
+      const cur0 = NOTES[fk2] || {};
+      const old = cur0.imgs || [];
+      const spans = Array.prototype.slice.call(box.querySelectorAll('.rich-img'));
+      const imgs = spans.map(x => old[parseInt(x.dataset.imgi, 10)]).filter(Boolean);
+      if (imgs.length !== old.length) return;
+      spans.forEach((x, i) => { x.dataset.imgi = String(i); });
+      NOTES[fk2] = { text: cur0.text || '', imgs: imgs, ts: Date.now(), ai: cur0.ai || false };
+      if (typeof saveNotes === 'function') saveNotes();
+      richState(sp, '图片顺序已保存');
+      toast('图片顺序已保存');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   });
 }
 /* 第 19 条第一轮：解析块的拖拽排序。块的顺序就是 markdown 的行序，
