@@ -253,3 +253,11 @@ body.focus .chat-side-tab { display: none !important; }
 .chat-ops-banner { flex: none; margin: 6px 2px 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line)); border-left: 3px solid var(--bad); border-radius: 10px; background: color-mix(in srgb, var(--bad) 6%, var(--card)); }
 .chat-ops-banner .cob-t { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .chat-ops-banner .cob-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+
+/* agent 工具调用轨迹面板：默认折叠，展开看每一步的状态/耗时/结果摘要 */
+.ch-trace{margin:8px 0;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:#fafafa;font-size:13px}
+.ch-trace>summary{cursor:pointer;padding:6px 10px;font-weight:600;color:#475569}
+.ch-trow{padding:6px 10px;border-top:1px dashed #e5e7eb}
+.ch-trow:first-of-type{border-top:0}
+.ch-tic{margin-right:4px}
+.ch-tres{margin-top:2px;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow:auto}

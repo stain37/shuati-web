@@ -472,6 +472,8 @@
       var ctx = { mode: 'dry', planId: 'preview', seq: i + 1, virtual: virtual, capture: function () { throw new Error('dry 模式不能 capture'); } };
       var p = clone(steps[i].params);
       try {
+        var chk = checkParams(def.id, p);
+        if (!chk.ok) throw new Error('缺少参数：' + chk.missing.join('、') + (chk.example ? '（照这个格式给：' + chk.example + '）' : ''));
         if (def.resolve) p = (await def.resolve(ctx, p)) || p;
         var r = await def.run(ctx, p);
       } catch (e) {
@@ -769,6 +771,49 @@
     return listActions(false).map(function (a) {
       return a.id + ' — ' + a.title + '（' + a.risk + (a.reversible === false ? '，不可撤销' : '，可撤销') + (a.readOnly ? '，只读' : '') + '）';
     }).join('\n');
+  }
+  /* 参数校验（paramsSchema 的轻量版）：只声明「必填」和「几选一」，不引第三方 schema 库。
+     缺参数时不要硬跑（报错难懂），把「该给什么样子」直接返回给规划器 / 用户。 */
+  var PARAM_RULES = {
+    /* require：必须出现；anyOf / anyOf2：各是一组「给其中一个就够了」的键 */
+    'bank.delete': { anyOf: ['bankTitles', 'bankIds'], example: '{bankTitles:["题库名"]}' },
+    'bank.rename': { require: ['title'], anyOf: ['bankTitle', 'bankId'], example: '{bankTitle:"旧名", title:"新名"}' },
+    'bank.move': { anyOf: ['bankTitle', 'bankId'], example: '{bankTitle:"题库名", catTitle:"目录名"}' },
+    'cat.create': { require: ['title'], example: '{title:"目录名", parentTitle:"上级（可空）"}' },
+    'cat.rename': { require: ['catTitle', 'title'], example: '{catTitle:"旧名", title:"新名"}' },
+    'cat.move': { require: ['catTitle'], example: '{catTitle:"目录名", parentTitle:"新上级（空=顶层）"}' },
+    'question.delete': {
+      anyOf: ['bankTitle', 'bankId'],
+      anyOf2: ['nums', 'currentQ', 'wrong', 'ids', 'all'],
+      example: '{bankTitle:"题库名", nums:[3,5]} 或 {currentQ:true}'
+    },
+    'question.mastered': { anyOf: ['bankTitle', 'currentQ', 'bankId'], example: '{currentQ:true}' },
+    'question.favorite': { anyOf: ['bankTitle', 'currentQ', 'bankId'], example: '{bankTitle:"题库名", nums:[1,3], on:true}' },
+    'tag.add': { require: ['tags'], anyOf: ['bankTitle', 'currentQ', 'bankId'], example: '{bankTitle:"题库名", nums:[1,2], tags:["心衰"]}' },
+    'tag.remove': { require: ['tags'], anyOf: ['bankTitle', 'everywhere', 'bankId'], example: '{bankTitle:"题库名", tags:["心衰"], all:true}' }
+  };
+  function paramKeys(p) {
+    var out = [], q = p || {};
+    Object.keys(q).forEach(function (k) {
+      var v = q[k];
+      if (v === '' || v == null) return;
+      if (Array.isArray(v) && !v.length) return;
+      out.push(k);
+    });
+    return out;
+  }
+  function checkParams(actionId, params) {
+    var rule = PARAM_RULES[actionId], def = getAction(actionId);
+    var out = { ok: true, missing: [], example: rule ? rule.example : '', hint: def ? (def.paramsHint || '') : '' };
+    if (!rule) return out;
+    var have = paramKeys(params);
+    (rule.require || []).forEach(function (k) { if (have.indexOf(k) < 0) out.missing.push(k); });
+    [rule.anyOf, rule.anyOf2].forEach(function (g) {
+      if (!g || !g.length) return;
+      if (!g.some(function (k) { return have.indexOf(k) >= 0; })) out.missing.push('（' + g.join(' 或 ') + '）');
+    });
+    out.ok = !out.missing.length;
+    return out;
   }
   function plans() {
     return read(K.plans, []).slice().reverse().map(function (p) {
@@ -1687,6 +1732,7 @@
     register: register,
     alias: alias,
     getAction: getAction,
+    checkParams: checkParams,
     actions: listActions,
     catalog: catalog,
     preview: preview,

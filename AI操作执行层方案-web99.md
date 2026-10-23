@@ -1077,6 +1077,7 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 | 浮条按选区矩形定位，并反显当前加粗/斜体/代码/高亮/颜色 | showAt / markActive | web157 |
 | 表格转义竖线、对齐语法、聊天/导出表样式 | splitRow / style.css .tbl-wrap | web146 |
 | 图片：=WxH 尺寸语法、粘贴/拖拽内联插图、右下角拖宽、图区拖序 | mdToHtml / richInsertImgAtRange / richImgsBind | web146–154 |
+| 提示框（callout）：> [!tip] 文字 / > [!warning] 等五类，图标+类型标签，双向往返；斜杠菜单也有「提示框」 | collection.js CALLOUT_ICON / mdToHtml / mdFromHtml / slashApply | web160 |
 
 ### 22.2 AI agent（AQBot / Zed agent 思路）
 | 能力 | 落点 | 版本 |

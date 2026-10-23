@@ -845,10 +845,22 @@
       ? '<div class="chat-refs small muted">参考资料：' + n.refs.map(function (r, j) {
         return '[' + (j + 1) + '] 《' + E(r.name) + '》' + (r.page ? ' 第 ' + r.page + ' 页' : '');
       }).join('　') + '</div>' : '';
+    var tracePanel = '';
+    if (!isUser && n.trace && n.trace.length) {
+      var IC = { ok: '✅', err: '⚠', warn: '⏳', cache: '♻' };
+      tracePanel = '<details class="ch-trace"><summary>工具调用 ' + n.trace.length + ' 次</summary>'
+        + n.trace.map(function (t, i) {
+          return '<div class="ch-trow"><span class="ch-tic">' + (IC[t.state] || '🛠') + '</span>'
+            + '<b>' + (i + 1) + '. ' + E(t.name) + '</b>'
+            + (t.ms != null ? '<span class="small muted"> ' + t.ms + 'ms</span>' : '')
+            + '<div class="ch-tres small muted">' + E(t.result || '') + '</div></div>';
+        }).join('') + '</details>';
+    }
     return '<div class="chat-msg ' + (isUser ? 'user' : 'ai') + (n.streaming ? ' streaming' : '') + '" data-nid="' + E(n.id) + '">'
       + '<div class="chat-bubble">'
       + '<div class="chat-meta small muted">' + (isUser && n.tag ? '<span class="chat-tag">' + E(n.tag) + '</span>' : '') + branchHtml(n) + '</div>'
       + (editing ? editHtml(n) : ('<div class="chat-text">' + body + '</div>'))
+      + tracePanel
       + (!isUser ? statusHtml(n) : '')
       + (!isUser && n.reason ? reasonHtml(n) : '')
       + refs
@@ -2128,6 +2140,7 @@
       var parsed = agentParse(out);
       if (!parsed.tool) {
         var answer = String(parsed.text || '').trim() || '（模型没有返回正文）';
+        n.trace = trace.slice();
         n.text = (trace.length ? agentTraceText(trace) + '\n\n' : '') + answer;
         return;
       }
@@ -2137,6 +2150,7 @@
         trace.push({ name: parsed.tool, result: '工具不存在或不在当前技能里', state: 'warn' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: parsed.tool, args: parsed.args || {} }) });
         msgs.push({ role: 'user', content: '【工具结果】\n工具不存在或不在当前技能里。请改用可用工具，或直接回答。' });
+        n.trace = trace.slice();
         n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
         paintLog();
         continue;
@@ -2146,6 +2160,7 @@
       /* 重复动作检测：连续两次完全相同的调用说明模型在原地打转，直接收尾 */
       if (key === lastKey && trace.length) {
         trace.push({ name: tool.name, result: '连续两次调用同一工具、同一参数，已停止（避免空转）', state: 'warn' });
+        n.trace = trace.slice();
         n.text = agentTraceText(trace) + '\n\n（模型在重复同一个调用，先按已有结果回答）';
         return;
       }
@@ -2154,6 +2169,7 @@
         trace.push({ name: tool.name, result: cache[key], state: 'cache' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
         msgs.push({ role: 'user', content: '【工具结果：' + tool.name + '】\n' + clip(cache[key], 4000) + '\n请继续。' });
+        n.trace = trace.slice();
         n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
         paintLog();
         continue;
@@ -2164,8 +2180,19 @@
         trace.push({ name: tool.name, result: '工具映射失败', state: 'warn' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
         msgs.push({ role: 'user', content: '【工具结果】\n工具映射失败，请直接回答。' });
+        n.trace = trace.slice();
         n.text = agentTraceText(trace);
         continue;
+      }
+      /* 参数不全先反问，不要拿半截参数去预览/执行（AQBot: missing params → ask） */
+      var chkP = (AI_OPS && AI_OPS.checkParams) ? AI_OPS.checkParams(def.id, callArgs) : { ok: true };
+      if (!chkP.ok) {
+        trace.push({ name: tool.name, result: '参数不全：缺 ' + chkP.missing.join('、'), state: 'warn' });
+        n.trace = trace.slice();
+        n.text = agentTraceText(trace) + '\n\n要执行「' + def.title + '」还差：' + chkP.missing.join('、')
+          + '\n把这几项告诉我就能继续。格式示例：' + (chkP.example || chkP.hint || '');
+        paintLog();
+        return;
       }
       if (def.risk !== 'R0' || /^(open\.|quiz\.)/.test(def.id)) {
         if (def.risk === 'R0') {
@@ -2173,6 +2200,7 @@
           trace.push({ name: tool.name, result: navMsg, state: 'warn' });
           msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
           msgs.push({ role: 'user', content: '【工具结果】\n' + navMsg + '\n请直接回答，或让用户手动执行。' });
+          n.trace = trace.slice();
           n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
           paintLog();
           continue;
@@ -2182,15 +2210,18 @@
         catch (e) { pv = { ok: false, error: (e && e.message) || String(e) }; }
         if (!pv.ok) {
           trace.push({ name: tool.name, result: '预览失败：' + (pv.error || ''), state: 'err' });
+          n.trace = trace.slice();
           n.text = agentTraceText(trace);
           return;
         }
+        n.trace = trace.slice();
         n.text = (trace.length ? agentTraceText(trace) + '\n\n' : '')
           + '🛠 已请求写操作「' + tool.name + '」，请在下方预览卡确认。';
         opsShowPreview(pv, n, '技能工具：' + tool.name);
         return;
       }
       var result, t0 = Date.now(), okRun = true;
+      n.trace = trace.slice();
       n.text = agentTraceText(trace) + (trace.length ? '\n\n' : '') + '⏳ ' + (trace.length + 1) + '/' + MAX + '. ' + tool.name + ' 正在执行…';
       paintLog();
       try {
@@ -2200,11 +2231,13 @@
       } catch (e2) { okRun = false; result = '工具失败：' + ((e2 && e2.message) || e2); }
       cache[key] = result;
       trace.push({ name: tool.name, result: result, state: okRun ? 'ok' : 'err', ms: Date.now() - t0 });
+      n.trace = trace.slice();
       n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
       paintLog();
       msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
       msgs.push({ role: 'user', content: '【工具结果：' + tool.name + '】\n' + clip(result, 4000) + '\n请基于结果继续回答；还需要工具就继续输出工具调用 JSON，否则直接回答。' });
     }
+    n.trace = trace.slice();
     n.text = agentTraceText(trace) + '\n\n（工具调用达到上限，先把已有结果给你）';
   }
 
