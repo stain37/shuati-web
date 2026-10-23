@@ -1631,48 +1631,81 @@
     if (tags.length) steps.push({ action: 'tag.add', params: { bank: '$new', all: true, tags: tags } });
     return steps;
   }
+  /* 给模型看的 few-shot：三条覆盖「改名 / 多步（打标签 + 收藏）/ 只读导出」，
+     比只给动作清单更能压住「自创参数名」「动作名写错」这两类失败。 */
+  function opsFewShot() {
+    return ['示例 1：把《内科》题库改名成《内科学》'
+      + '\n{"steps":[{"action":"bank.rename","params":{"bankTitle":"内科","title":"内科学"}}]}',
+    '示例 2：给当前这道题打上「心衰」「利尿剂」，然后收藏它'
+      + '\n{"steps":[{"action":"tag.add","params":{"currentQ":true,"tags":["心衰","利尿剂"]}},{"action":"question.favorite","params":{"currentQ":true,"favorite":true}}]}',
+    '示例 3：导出错题'
+      + '\n{"steps":[{"action":"export.wrong","params":{}}]}'].join('\n\n');
+  }
+  /* 把模型输出解析成步骤；返回 {steps, bad}，bad 是模型写了但站里没有的动作名 */
+  function parsePlanObj(txt) {
+    var m = String(txt || '').match(/\{[\s\S]*\}/);
+    if (!m) return { steps: null, bad: [] };
+    var obj;
+    try { obj = JSON.parse(m[0]); } catch (e) { return { steps: null, bad: [] }; }
+    var steps = [], bad = [];
+    (obj.steps || []).forEach(function (s) {
+      if (!s) return;
+      if (s.tool && window.SKILLS && SKILLS.toolToStep) {
+        var st = SKILLS.toolToStep(s.tool, s.args || {});
+        if (st && AI_OPS.getAction(st.action)) steps.push(st);
+        else bad.push(String(s.tool));
+        return;
+      }
+      if (s.action && AI_OPS.getAction(s.action)) steps.push({ action: s.action, params: s.params || {} });
+      else if (s.action) bad.push(String(s.action));
+    });
+    return { steps: steps, bad: bad };
+  }
   async function planByModel(text) {
     if (!window.AI_OPS || typeof aiChat !== 'function') return null;
     var sk = (window.SKILLS) ? SKILLS.active() : null;
     var toolCat = (window.SKILLS && SKILLS.toolCatalog) ? SKILLS.toolCatalog() : '';
     var skillTxt = sk ? ('\n\n【当前技能：' + sk.name + '】\n' + sk.system) : '';
-    var prompt;
+    var head, tail;
     if (toolCat) {
-      prompt = '你是刷题站的本地操作规划器。当前技能只允许使用下面这些工具，不要发明工具：\n' + toolCat
+      head = '你是刷题站的本地操作规划器。当前技能只允许使用下面这些工具，不要发明工具：\n' + toolCat
         + '\n\n输出严格 JSON：{"steps":[{"tool":"工具名","args":{}}]}，不要解释、不要代码块。'
         + '\nargs 用工具说明里的参数名；不需要参数就写 {}。'
-        + skillTxt + '\n用户目标：' + text;
+        + skillTxt + '\n用户目标：';
+      tail = '';
     } else {
-      prompt = '你是刷题站的本地操作规划器。只能使用下面这些动作，不要发明新动作：\n' + AI_OPS.catalog()
+      head = '你是刷题站的本地操作规划器。只能使用下面这些动作，不要发明新动作：\n' + AI_OPS.catalog()
         + '\n\n参数写法：{"bankTitle":"题库名"}、{"bankTitles":["A","B"]}、{"current":true}、{"currentQ":true}、'
         + '{"nums":[3,5]}、{"qids":["q1"]}、{"wrong":true}、{"all":true}、{"tags":["标签"]}、{"on":true}、'
         + '{"title":"新名字"}、{"catTitle":"目录名"}、{"parentTitle":"上级目录"}、{"theme":"dark|light|auto"}、'
         + '{"fs":"s|m|l|xl"}、{"color":"blue|teal|indigo|violet|warm"}、{"text":"词表内容"}、'
         + '{"name":"知识库名","keyword":"关键词"}、{"favorite":true}。'
         + '\n输出严格 JSON：{"steps":[{"action":"动作id","params":{}}]}，不要解释、不要代码块。'
-        + skillTxt + '\n用户目标：' + text;
+        + skillTxt;
+      tail = '\n\n' + opsFewShot();
     }
-    try {
-      var txt = await aiChat([{ role: 'system', content: '你只输出站内动作计划 JSON。' }, { role: 'user', content: prompt }], function () {});
-      var m = String(txt || '').match(/\{[\s\S]*\}/);
-      if (!m) return null;
-      var obj = JSON.parse(m[0]);
-      var steps = [];
-      (obj.steps || []).forEach(function (s) {
-        if (!s) return;
-        if (s.tool && window.SKILLS && SKILLS.toolToStep) {
-          var st = SKILLS.toolToStep(s.tool, s.args || {});
-          if (st && AI_OPS.getAction(st.action)) steps.push(st);
-          return;
-        }
-        if (s.action && AI_OPS.getAction(s.action)) {
-          steps.push({ action: s.action, params: s.params || {} });
-        }
-      });
-      var allow = (window.SKILLS) ? SKILLS.allowedActions() : null;
-      if (allow && allow.length) steps = steps.filter(function (s) { return allow.indexOf(s.action) >= 0; });
-      return steps.length ? steps : null;
-    } catch (e) { return null; }
+    async function ask(extra) {
+      try {
+        return await aiChat([
+          { role: 'system', content: '你只输出站内动作计划 JSON。' },
+          { role: 'user', content: head + text + tail + extra }
+        ], function () { });
+      } catch (e) { return ''; }
+    }
+    var parsed = parsePlanObj(await ask(''));
+    /* 失败重试一次：没解析出来，或者写了站里没有的动作名 —— 把原因回给模型，别直接放弃 */
+    if (!parsed.steps || parsed.steps.length === 0 || parsed.bad.length) {
+      var why = parsed.bad.length
+        ? '\n\n上一次用了站里没有的动作：' + parsed.bad.slice(0, 6).join('、') + '。只能从上面清单里选。'
+        : '\n\n上一次输出不是合法 JSON（或没有 steps）。这次只输出 JSON 本体。';
+      var second = parsePlanObj(await ask(why));
+      if (second.steps && second.steps.length && !second.bad.length) parsed = second;
+      else if (!parsed.steps || !parsed.steps.length) parsed = second;
+    }
+    var steps = parsed.steps || [];
+    var allow = (window.SKILLS) ? SKILLS.allowedActions() : null;
+    if (allow && allow.length) steps = steps.filter(function (s) { return allow.indexOf(s.action) >= 0; });
+    return steps.length ? steps : null;
   }
   async function autoPlan(text, userNode) {
     var t = String(text || '').trim();

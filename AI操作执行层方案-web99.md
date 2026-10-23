@@ -1021,11 +1021,11 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 ### 20.3 验证与上线
 
 - 探针：`search-bank-probe.py` 17/17、`color-probe.py` 10/10、`variant-probe.py` 39/39、`home-page-probe.py` 30/30、`tag-page-probe.py` 15/15；`md-unit.mjs`（公式/表格/图片尺寸/货币反例）全过；`node --check`（Chatbox --check）app/collection/sw/cat/tags/variant 全过。
-- 上线：`stain37/shuati-web` → https://stain37.github.io/shuati-web/ ；提交 `59267354`(web144)、`f6eb766b`(web145)、`fb4e1b13`(web146)、`fe6772e0`(web147)；线上 `sw.js` 与四个文件字节数与本地一致（web145/web146 已实测；web147 待构建完成后同法校验）。
+- 上线：`stain37/shuati-web` → https://stain37.github.io/shuati-web/ ；提交 `59267354`(web144)、`f6eb766b`(web145)、`fb4e1b13`(web146)、`fe6772e0`(web147)、`0d8af39c`(web148)；线上 `sw.js` 与改动文件字节数与本地一致（web145–web148 均实测，web148 的 `collection.js` 120889B / `sw.js` 7981B 已对平）。
 
 ### 20.4 下一步
 
-1. 第 19 项：块级编辑（解析块拆块、拖拽排序、表格/图片作为块移动），按 3–4 轮做，先做「块拖拽排序」再做「块内图片/表格独立移动」。
+1. 第 19 项：块级编辑（解析块拆块、拖拽排序、表格/图片作为块移动），按 3–4 轮做。**第一轮已上线（web148）**：解析块标题行加「⠿ 块排序」开关，打开后鼠标放到段落 / 表格 / 图片左边的小把手上拖动，整块换位置，拖动过程有落点高亮，松手后按新 DOM 顺序 `mdFromHtml` 重新序列化并标「未保存…」，点到别处自动存盘。剩下两轮：块内图片/表格单独当块移动（现在图片在 `.rich-imgs` 区、表格已是块）、块复制/删除/插入空块。
 2. 阶段 2 机制项（路径级 WAL / 写后漂移 / 三态恢复 / 二次确认 / joblog / 去 reload）按 §19 排期。
 3. 公式覆盖到题干/选项（现在只覆盖 Markdown 渲染路径：解析、聊天、AI 输出）。
 

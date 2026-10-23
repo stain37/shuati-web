@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    刷题站 · 核心 app.js
    题库：banks/*.js（registerBank）+ 本地导入 + 临时套卷
    存储：全部在浏览器 localStorage
@@ -549,13 +549,46 @@ const qType = (q, ans) => ((ans || q.answer || []).length > 1 ? 'X' : 'A');
 const typeLabel = (q, ans) => ((ans || q.answer || []).length > 1 ? '多选' : '单选');
 const key = (bankId, qid) => bankId + '#' + qid;
 const kOf = (bank, q) => key(bank.id, q.id);
-/* 估算满分：单选/共用题干（A、B 型）每题 1.5 分，多选（X 型）每题 2 分。
-   只是给题库标一个「如果按考试算能拿多少分」的参考值，不改题目数据、不影响判分。 */
+/* 西综真题分值：165 道，满分 300。按**题号（题目在卷子里的顺序）**算，不是按题型：
+   1–40 每题 1.5；41–115 每题 2；116–135 每题 1.5；136–165 每题 2。
+   分值对照：A 型 1–40（1.5）生理 1–16、生化 17–28、病理 29–40；
+   41–115（2）内科 41–56、外科 57–67、内科病例 68–92、外科病例 93–107、人文 108–115；
+   B 型 116–135（1.5）生理 116–119、生化 120–123、病理 124–127、内科 128–131、外科 132–135；
+   X 型 136–165（2）生理 136–141、生化 142–147、病理 148–153、内科 154–159、外科 160–165。
+   题库/套卷正好 165 题时按这个表算；不是 165 题的库退回按题型估（单选 1.5、多选 2），不影响判分。 */
+const XZ_LEN = 165;
+const XZ_PT = n => (n >= 1 && n <= XZ_LEN) ? ((n <= 40 || (n >= 116 && n <= 135)) ? 1.5 : 2) : 0;
+const XZ_SUB = [[1, 16, '生理'], [17, 28, '生化'], [29, 40, '病理'], [41, 56, '内科'], [57, 67, '外科'],
+  [68, 92, '内科'], [93, 107, '外科'], [108, 115, '人文'],
+  [116, 119, '生理'], [120, 123, '生化'], [124, 127, '病理'], [128, 131, '内科'], [132, 135, '外科'],
+  [136, 141, '生理'], [142, 147, '生化'], [148, 153, '病理'], [154, 159, '内科'], [160, 165, '外科']];
+const XZ_SUB_ORDER = ['生理', '生化', '病理', '内科', '外科', '人文'];
+const xzSubOf = n => { for (let i = 0; i < XZ_SUB.length; i++) { const r = XZ_SUB[i]; if (n >= r[0] && n <= r[1]) return r[2]; } return ''; };
+const isXzPaper = list => Array.isArray(list) && list.length === XZ_LEN;
 const qScore = q => (qType(q, (q && q.answer) || []) === 'X' ? 2 : 1.5);
+/* 第 i 题（0 基）的分值：165 题的卷子按题号表，其它按题型估 */
+function ptAt(list, i) {
+  if (isXzPaper(list)) return XZ_PT(i + 1);
+  return qScore(list[i]);
+}
 function bankScore(bank) {
+  const qs = (bank && bank.questions) || [];
   let s = 0;
-  ((bank && bank.questions) || []).forEach(q => { s += qScore(q); });
+  qs.forEach((q, i) => { s += ptAt(qs, i); });
   return Math.round(s * 10) / 10;
+}
+/* 165 题的卷子给一份「各科满分」明细，其它库返回 null */
+function bankScoreBreak(bank) {
+  const qs = (bank && bank.questions) || [];
+  if (!isXzPaper(qs)) return null;
+  const m = {};
+  qs.forEach((q, i) => { const sub = xzSubOf(i + 1) || '其他'; m[sub] = (m[sub] || 0) + XZ_PT(i + 1); });
+  return m;
+}
+function bankScoreText(bank) {
+  const t = bankScore(bank), m = bankScoreBreak(bank);
+  if (!m) return '满分 ' + t;
+  return '满分 ' + t + '（' + XZ_SUB_ORDER.filter(s => m[s]).map(s => s + ' ' + m[s]).join('，') + '）';
 }
 /* 题号显示：临时套卷里的题目 id 是 p1/p2…（paperBanks 给的重编号），要去掉前缀 p；
    题库 id 不是纯数字的（比如导入时给的 q1、uuid 那种），就退回「它在题库里排第几」，
@@ -1670,7 +1703,7 @@ function renderHome() {
       <div class="card bank">
         <div class="info">
           <div class="name">${esc(b.title)}${b.source === 'local' ? '<span class="pill local">自建</span>' : '<span class="pill">内置</span>'}</div>
-          <div class="meta">${b.subtitle ? esc(b.subtitle) + '　' : ''}${b.questions.length} 题　满分 ${bankScore(b)}　已答 ${done}${wr ? `　<span class="warn">错题 ${wr}</span>` : ''}　正确率 ${acc}%</div>
+          <div class="meta">${b.subtitle ? esc(b.subtitle) + '　' : ''}${b.questions.length} 题　${bankScoreText(b)}　已答 ${done}${wr ? `　<span class="warn">错题 ${wr}</span>` : ''}　正确率 ${acc}%</div>
           <div class="prog"><i style="width:${pct}%"></i></div>
         </div>
         <div class="acts">
@@ -2896,7 +2929,7 @@ function renderGrid() {
     return true;
   });
 
-  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　满分 ${bankScore(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
+  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　${bankScoreText(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
     + (shown.length ? `<div class="grid">` + shown.map(q => {
       const k = kOf(bank, q), a = ANS[k];
       const no = bank.questions.indexOf(q) + 1;     // 用原题号，筛选后也不会串号

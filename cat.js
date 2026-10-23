@@ -1087,10 +1087,10 @@
   }
   function bankIconHtml(b) {
     var s = bankStat(b), pick = batOn(), on = (pick && batSel(b.id)) || chatSelB(b.id);
-    return '<div class="nb-icon nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true" title="' + E(b.title) + '（' + b.questions.length + ' 题）">'
+    return '<div class="nb-icon nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true" title="' + E(b.title) + '（' + b.questions.length + ' 题' + ((typeof bankScore === 'function') ? ' · 满分 ' + bankScore(b) : '') + '）">'
       + '<span class="nb-iic">' + ICON_BANK + '</span>'
       + '<span class="nb-iname">' + E(b.title) + '</span>'
-      + '<span class="nb-imeta">' + b.questions.length + ' 题 · ' + s.acc + '%</span>'
+      + '<span class="nb-imeta">' + b.questions.length + ' 题 · ' + s.acc + '%' + ((typeof bankScore === 'function') ? ' · ' + bankScore(b) + ' 分' : '') + '</span>'
       + '<span class="nb-ibar"><i style="width:' + s.pct.toFixed(1) + '%"></i></span>'
       /* 图标视图也得有个「⋯」：速刷 / 背题 / 模拟考试三个入口都在这个菜单里。
          平时淡出，鼠标停上去（或键盘 Tab 到）才实，免得图标视图看着太闹。 */
@@ -2576,7 +2576,7 @@
       var s = bankStat(bank);
       var crumb = pathOf(bank.cat || null).map(TITLE).join(' › ');
       sub.innerHTML = (crumb ? '位置：' + E(crumb) + '　·　' : '')
-        + '共 <b>' + bank.questions.length + '</b> 题　满分 ' + ((typeof bankScore === 'function') ? bankScore(bank) : '—') + '　已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
+        + '共 <b>' + bank.questions.length + '</b> 题　' + ((typeof bankScoreText === 'function') ? bankScoreText(bank) : '满分 —') + '　已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
         + (listed.length !== bank.questions.length ? '　·　筛出 ' + listed.length + ' 题' : '');
     }
     var cnt = document.getElementById('qlCnt');

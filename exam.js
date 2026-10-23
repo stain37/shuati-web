@@ -147,6 +147,23 @@ function paintExamQuestion(bank) {
   $('jumpInfo').textContent = `${i + 1} / ${qs.length}`;
 }
 
+/* 本卷得分：165 题的西综卷按题号分值表算（满分 300），其它按题型估；
+   返回 {got, all, full, pct}，结果页和庆祝动画共用同一份数。 */
+function examPoints(rev, qs) {
+  const full = (typeof isXzPaper === 'function') ? isXzPaper(qs) : qs.length === 165;
+  const map = {};
+  (rev || []).forEach(r => { map[r.qid] = r; });
+  let got = 0, all = 0;
+  qs.forEach((q, i) => {
+    const p = full ? ((typeof XZ_PT === 'function') ? XZ_PT(i + 1) : (i < 40 || (i >= 115 && i < 135) ? 1.5 : 2)) : ((typeof qScore === 'function') ? qScore(q) : 1.5);
+    all += p;
+    const r = map[q.id];
+    if (r && r.ok === true) got += p;
+  });
+  got = Math.round(got * 10) / 10; all = Math.round(all * 10) / 10;
+  return { got: got, all: all, full: full, pct: all ? Math.round(got / all * 100) : 0 };
+}
+
 function submitExam(auto) {
   const bank = bankById(EX && EX.id);
   if (!bank) { clearEX(); go('#/'); return; }
@@ -175,8 +192,9 @@ function submitExam(auto) {
   saveEX();
   /* 交卷庆祝（fx.js）：放在 saveEX() 之后、render() 之前 —— 结果页重绘时不能再放 */
   if (window.FX && typeof FX.celebrateExam === 'function') {
+    const ep = examPoints(rev, qs);
     try {
-      FX.celebrateExam({ bankId: bank.id, score: qs.length ? Math.round(correct / qs.length * 100) : 0, correct: correct, total: qs.length, auto: !!auto });
+      FX.celebrateExam({ bankId: bank.id, score: ep.pct, got: ep.got, all: ep.all, full: ep.full, correct: correct, total: qs.length, auto: !!auto });
     } catch (e) {}
   }
   toast(auto ? '时间到，已自动交卷' : '已交卷');
@@ -191,6 +209,7 @@ function paintExamResult(bank) {
   const wrongN = (EX.results || []).filter(r => r.ok === false).length;
   const blank = qs.length - correct - wrongN;
   const score = qs.length ? Math.round(correct / qs.length * 100) : 0;
+  const pts = examPoints(EX.results || [], qs);
   const used = fmtClock(EX.usedMs || 0);
 
   const rows = qs.map((q, i) => {
@@ -226,7 +245,8 @@ function paintExamResult(bank) {
   $('view').innerHTML = `
     <div class="card" style="margin-bottom:14px">
       <div class="stats">
-        <div><b>${score}</b><span>得分（百分制）</span></div>
+        <div><b>${pts.full ? pts.got + ' / ' + pts.all : score}</b><span>${pts.full ? '得分（300 分制）' : '得分（百分制）'}</span></div>
+        <div><b>${score}</b><span>正确率（%）</span></div>
         <div><b>${correct}/${qs.length}</b><span>答对</span></div>
         <div><b>${wrongN}</b><span>答错</span></div>
         <div><b>${blank}</b><span>未答</span></div>
