@@ -122,18 +122,30 @@ function kbChunk(text) {
     || /^[（(]?[一二三四五六七八九十\d]+[)）]?[、.．]\s*\S/.test(s)
     || /^\*\*[^*]{2,30}\*\*$/.test(s);
   const out = [];
+  const stack = [];   /* 标题栈：第N章 > 第M节 > 小标题；只留最近三级做路径 */
   let head = '', buf = '';
+  const pathOf = () => stack.filter(Boolean).slice(-3).join(' > ');
   const push = () => {
     const t = buf.trim();
     buf = '';
     if (!t) return;
     if (t.length < 60 && out.length && (out[out.length - 1].t.length + t.length) < MAX) { out[out.length - 1].t += '\n' + t; return; }
-    out.push({ h: head, t: t });
+    out.push({ h: head, hp: pathOf(), t: t });
   };
   String(text || '').split('\n').forEach(raw => {
     const s = raw.trim();
     if (!s) { if (buf) buf += '\n'; return; }
-    if (isHead(s) && s.length <= 40) { push(); head = s.replace(/^#{1,6}\s+/, '').replace(/\*\*/g, ''); return; }
+    if (isHead(s) && s.length <= 40) {
+      push();
+      const title = s.replace(/^#{1,6}\s+/, '').replace(/\*\*/g, '');
+      const lv = /^#{1,6}\s/.test(s) ? /^#+/.exec(s)[0].length
+        : /^第[0-9一二三四五六七八九十百千]+[分编部]/.test(title) ? 1
+          : /^第[0-9一二三四五六七八九十百千]+[章节]/.test(title) ? 2 : 3;
+      if (stack.length >= lv) stack.length = lv - 1;
+      stack[lv - 1] = title;
+      head = title;
+      return;
+    }
     if (buf.length + s.length > MAX && buf.length) {
       const tail = buf.slice(-OVER);
       push();
@@ -155,7 +167,7 @@ const KB_BUILD = {};         /* 库id → Promise：同一个库同时只建一�
 function kbYield() { return new Promise(r => setTimeout(r, 0)); }
 async function kbIndexAsync(docs, id) {
   const chunks = [], df = Object.create(null), names = [];
-  let total = 0, totalH = 0, totalN = 0;
+  let total = 0, totalH = 0, totalN = 0, totalP = 0;
   const flat = [];
   docs.forEach((d, di) => {
     const ntf = Object.create(null);
@@ -170,20 +182,23 @@ async function kbIndexAsync(docs, id) {
   for (let k = 0; k < flat.length; k++) {
     const [d, di, c, ci] = flat[k];
     const tf = Object.create(null), hs = Object.create(null);
-    let len = 0, hlen = 0;
+    let len = 0, hlen = 0, plen = 0;
     kbTokens(c.t).forEach(t => { tf[t] = (tf[t] || 0) + 1; len++; });
     kbTokens(c.h || '').forEach(t => { hs[t] = (hs[t] || 0) + 1; hlen++; });
+    const ps = Object.create(null);
+    kbTokens(c.hp || '').forEach(t => { ps[t] = (ps[t] || 0) + 1; plen++; });
     const seen = Object.create(null);
     Object.keys(tf).forEach(t => { seen[t] = 1; df[t] = (df[t] || 0) + 1; });
     Object.keys(hs).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
+    Object.keys(ps).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
     Object.keys(names[di] ? names[di].ntf : {}).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
-    total += len; totalH += hlen;
-    chunks.push({ d: di, ci: ci, h: c.h, t: c.t, tf: tf, len: len, hs: hs, hlen: hlen, txt: kbFlat((c.h ? c.h : '') + c.t), ck: kbHash(kbFlat(c.t)) });
+    total += len; totalH += hlen; totalP += plen;
+    chunks.push({ d: di, ci: ci, h: c.h, hp: c.hp || '', t: c.t, tf: tf, len: len, hs: hs, hlen: hlen, ps: ps, plen: plen, txt: kbFlat((c.hp ? c.hp + ' ' : '') + (c.h ? c.h : '') + c.t), ck: kbHash(kbFlat(c.t)) });
     if (k % 120 === 119) { if (id) KB_PROG[id] = { done: k + 1, total: n }; await kbYield(); }
   }
   if (id) KB_PROG[id] = { done: n, total: n };
   return { chunks: chunks, df: df, names: names,
-    avg: total / n, avgH: totalH / n, avgN: names.length ? totalN / names.length : 1 };
+    avg: total / n, avgH: totalH / n, avgP: totalP / n, avgN: names.length ? totalN / names.length : 1 };
 }
 /* 面板上显示的那行进度文字（没有在干重活就返回空） */
 function kbProgressText() {
@@ -198,7 +213,7 @@ function kbProgressText() {
 }
 function kbIndex(docs) {
   const chunks = [], df = Object.create(null), names = [];
-  let total = 0, totalH = 0, totalN = 0;
+  let total = 0, totalH = 0, totalN = 0, totalP = 0;
   docs.forEach((d, di) => {
     const ntf = Object.create(null);
     let nlen = 0;
@@ -207,24 +222,27 @@ function kbIndex(docs) {
     totalN += nlen;
     (d.chunks || []).forEach((c, ci) => {
       const tf = Object.create(null), hs = Object.create(null);
-      let len = 0, hlen = 0;
+      let len = 0, hlen = 0, plen = 0;
       kbTokens(c.t).forEach(t => { tf[t] = (tf[t] || 0) + 1; len++; });
       kbTokens(c.h || '').forEach(t => { hs[t] = (hs[t] || 0) + 1; hlen++; });
+      const ps = Object.create(null);
+      kbTokens(c.hp || '').forEach(t => { ps[t] = (ps[t] || 0) + 1; plen++; });
       /* df = 「这个词在本段里出现过」（三个字段任一算），每段只计一次 */
       const seen = Object.create(null);
       Object.keys(tf).forEach(t => { seen[t] = 1; df[t] = (df[t] || 0) + 1; });
       Object.keys(hs).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
+      Object.keys(ps).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
       Object.keys(ntf).forEach(t => { if (!seen[t]) { seen[t] = 1; df[t] = (df[t] || 0) + 1; } });
-      total += len; totalH += hlen;
-      chunks.push({ d: di, ci: ci, h: c.h, t: c.t, tf: tf, len: len, hs: hs, hlen: hlen, txt: kbFlat((c.h ? c.h : '') + c.t), ck: kbHash(kbFlat(c.t)) });
+      total += len; totalH += hlen; totalP += plen;
+      chunks.push({ d: di, ci: ci, h: c.h, hp: c.hp || '', t: c.t, tf: tf, len: len, hs: hs, hlen: hlen, ps: ps, plen: plen, txt: kbFlat((c.hp ? c.hp + ' ' : '') + (c.h ? c.h : '') + c.t), ck: kbHash(kbFlat(c.t)) });
     });
   });
   const n = chunks.length || 1;
   return { chunks: chunks, df: df, names: names,
-    avg: total / n, avgH: totalH / n, avgN: names.length ? totalN / names.length : 1 };
+    avg: total / n, avgH: totalH / n, avgP: totalP / n, avgN: names.length ? totalN / names.length : 1 };
 }
 /* BM25F 参数：一次查询的原始得分 = 三字段 BM25F + 字面命中加分 */
-const KB_K1 = 1.2, KB_B = 0.75, KB_WH = 4, KB_WD = 1;
+const KB_K1 = 1.2, KB_B = 0.75, KB_WH = 4, KB_WD = 1, KB_WP = 6;
 /* 一次查询的原始得分，按分数从高到低 */
 function kbHits(query, ids) {
   const qt = Array.from(new Set(kbTokens(query))).filter(t => t.length > 1 || /[\u4e00-\u9fff]/.test(t));
@@ -240,11 +258,12 @@ function kbHits(query, ids) {
       const dn = names[c.d];
       let s = 0;
       qt.forEach(t => {
-        const tf = c.tf[t] || 0, htf = (c.hs && c.hs[t]) || 0, ntf = dn ? (dn.ntf[t] || 0) : 0;
+        const tf = c.tf[t] || 0, htf = (c.hs && c.hs[t]) || 0, ptf = (c.ps && c.ps[t]) || 0, ntf = dn ? (dn.ntf[t] || 0) : 0;
         let tfn = 0;
         if (tf) tfn += tf / (1 - KB_B + KB_B * c.len / idx.avg);                                  /* 正文 */
         if (htf) tfn += KB_WH * htf / (1 - KB_B + KB_B * c.hlen / (idx.avgH || 1));              /* 标题（加权） */
-        if (ntf) tfn += KB_WD * ntf / (1 - KB_B + KB_B * dn.nlen / (idx.avgN || 1));             /* 文件名 */
+        if (ntf) tfn += KB_WD * ntf / (1 - KB_B + KB_B * dn.nlen / (idx.avgN || 1));
+        if (ptf) tfn += KB_WP * ptf / (1 - KB_B + KB_B * (c.plen || 1) / (idx.avgP || 1));             /* 文件名 */
         if (!tfn) return;
         const dfv = idx.df[t] || 1;
         s += Math.log(1 + (N - dfv + 0.5) / (dfv + 0.5)) * tfn * (KB_K1 + 1) / (KB_K1 + tfn);
@@ -265,6 +284,10 @@ function kbHits(query, ids) {
     });
   });
   hits.sort((a, b) => b.score - a.score);
+  if (hits.length) {
+    const mx = hits[0].score || 1;
+    hits.forEach(h => { h.ns = h.score / mx; });
+  }
   return hits;
 }
 function kbSearchSync(query, ids, topK) {
@@ -332,7 +355,7 @@ function kbSnippet(t, q, n) {
 function kbDetail(hits, query) {
   return hits.map(h => {
     const d = (KB_MEM[h.id] && KB_MEM[h.id].docs || [])[h.ch.d] || {};
-    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci, kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
+    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci, kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', path: h.ch.hp || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
   });
 }
 /* 确保这几个库已挂载并建好索引 */

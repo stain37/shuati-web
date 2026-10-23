@@ -291,7 +291,7 @@ const AI_SYS_BASE = [
   '你是我的私人刷题助教，面向中国的考试。用简体中文和 Markdown 回答，不要客套话。',
   '需要强调时可以用 ==高亮== 或 <font color="red">红字</font> 标色（如正确项标绿、错误项标红），但别滥用。',
   '严格按我这次的要求来写；我没提格式，就自己看情况组织，不要硬套固定小节。',
-  '如果我给了【参考资料】：优先使用资料里的说法，并在句末标出 [1] [2] 这样的编号；资料没覆盖的地方可以补充你自己的知识，但要注明「（模型补充）」。',
+  '如果我给了【参考资料】：优先使用资料里的说法，并在句末标出 [ID:1] [ID:2] 这样的编号（编号就是每条资料开头的 ID）；资料没覆盖的地方可以补充你自己的知识，但要注明「（模型补充）」。',
   '不要编造资料的出处；不确定的地方直说不确定。'
 ].join('\n');
 /* 想要固定四段的讲解格式时才加这段（配置里勾「套用模板」） */
@@ -388,7 +388,17 @@ async function aiContext(q, userQ) {
     const t = h.text.slice(0, per);
     if (used + t.length > (+cfg.maxChars || 3500) && blocks.length) return;
     used += t.length;
-    blocks.push('[' + (blocks.length + 1) + '] 《' + h.doc + (h.head ? ' · ' + h.head : '') + (h.page ? ' · 第' + h.page + '页' : '') + '》（知识库：' + h.kb + '）\n' + t);
+    /* 送模型的参考资料用 ID / Title / Path / Content 四行：
+       ① ID:n 让模型能写 [ID:2] 指向具体那一条（页面上的编号也是它）；
+       ② Path 是标题路径（章 > 节），比单个 head 更能说明这段在教材哪一节，
+          模型回答时可以直接说「按第三章第二节」，溯源也更好找。 */
+    const meta = [];
+    if (h.head) meta.push(h.head);
+    if (h.page) meta.push('第' + h.page + '页');
+    blocks.push('ID: ' + (blocks.length + 1)
+      + '\nTitle: 《' + h.doc + '》' + (meta.length ? ' · ' + meta.join(' · ') : '') + '（知识库：' + h.kb + '）'
+      + (h.path ? '\nPath: ' + h.path : '')
+      + '\n└── Content:\n' + t);
   });
   return { hits: hits.slice(0, blocks.length), text: blocks.join('\n\n'), count: blocks.length, note: note.join(' · ') };
 }
