@@ -976,3 +976,57 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 - `BroadcastChannel` + `navigator.locks` 做跨标签页互斥（版本号 fencing 已先兜底，属于体验优化）；
 - 动作补齐、可选 IndexedDB（真事务）、历史页/自检页。
 
+---
+
+## 20. 落地进度（web144 → web147，2026-10-24）
+
+### 20.1 24 项需求对照
+
+| # | 需求 | 状态 | 版本 | 落点 |
+| --- | --- | --- | --- | --- |
+| 1 | 改题库名字 | ✅ | web144 | `cat.js` `saveBankOrder()` 把 `title`/`subtitle` 写回 LOCAL 原始对象（以前只同步 cat/ord，改名刷新就回滚） |
+| 2 | 解析颜色 | ✅ | web145 | 能力本来就有（`FMT_COLORS`/`fmtBarEl`），修的是浮条串台：只在当前编辑器内取色、关闭时清选择 |
+| 3 | 临时套题管理 | ✅ | web144 | 套卷卡片加「改名」（prompt→`savePapers()`），删除原就有 |
+| 4 | 单库一键分类 | ✅ | web144 | `tagAll(onlyBankId)`/`classifyBasic(force, onlyBankId)` + `bankScopeHtml()` 下拉（标签页两处） |
+| 5 | 一键贴标签质量 | ✅ | web147 | 整批非 JSON 重试 1 次；开跑前 `JOB.snap` 快照 + 「撤销这次打标签」；写后逐题校验（写不进不算打上） |
+| 6 | 搜索命中范围 | ✅ | web145 | `hayOf()` 追加标签；`collect()` 里 AI 范围只**加宽**不替换（修「开 AI 后题库名搜不到」） |
+| 7 | 错题本 | ✅ | web144 | 独立页 `#/wrong` 本就有；补「加入/移出错题本」按钮（只动 `wrong`，不影响作答统计） |
+| 8 | 答题界面改题目 | ✅ | web146 | 抽屉「✎ 改题目」：题干/选项/答案/解析，`updateBankQuestion()` 写回 LOCAL（内置库只读） |
+| 9 | 图片粘贴/拖入正文 | ✅ | web146 | 解析块 paste 直接接管剪贴板图片（`input type=image`），drop 按落点插入；不再只会转纯文本 |
+| 10 | 主页上传入口 | ✅ | web144 | `#toUpload`「⬆ 上传题库」→ `#/import` |
+| 11 | 公式渲染 | ✅ | web146 | KaTeX 0.16.11 本地 vendored（`vendor/katex/`，20 个 woff2，CSS 去掉 woff/ttf 回退）；`mdMathExtract`/`mdMathBack` 在 `mdToHtml` 里 `$$…$$`/`$…$` 转 KaTeX，货币 `$5` 不误判 |
+| 12 | 表格渲染 | ✅ | web146 | `splitRow()` 还原 `\|`（表格编辑一次列就错位的根因）；`.tbl-wrap` 样式不再绑 `.exp`；对齐语法 `:--/:-:/--:` 生效 |
+| 13 | 变式单选/多选道数 | ✅ | web145 | `variant.js` 面板按方向分组 + 单选/多选分别设道数 |
+| 14 | 变式单删 | ✅ | web144 | chip 上的 `data-vdel` + `varqDel` |
+| 15 | 移出错题本 | ✅ | web144 | 同上第 7 项 |
+| 16 | 搜索按题库筛选 | ✅ | web145 | `paintSearch` 的 `bankOK` + `#sBank` 下拉（全部题库） |
+| 17 | 库内 AI 模糊搜索 | ✅ | web145 | `#qlAi` 开关（`qbank.ql.ai.v1`）+ `window.qaiTerms()`/`qaiExpandAny()`，`qlListed` 同时认扩展词 |
+| 18 | 题库总分 | ✅ | web144 | `qScore`（X 型 2 分、其余 1.5）+ `bankScore()`，首页卡/题列表/目录页显示满分 |
+| 19 | Notion 式块编辑 | ⏳ | — | 按用户要求后置（分 3–4 轮），本轮未动 |
+| 20 | 图片拉大拉小 | ✅ | web146 | Markdown 尺寸语法 `![图](url =200x120)`；解析图片右下角手柄拖动存 `NOTES.imgs[i].w` |
+| 21 | AI 贴人文标签 | ✅ | web144 | `HUMAN_TAGS` + `TAG_SUB_TAGS["人文"]`，`tagCandidates` 人文不再退回五科全量 |
+| 22 | 变式题同步 | ✅ | web144 | `sync.js` 载荷/合并/墓碑都带上 `qbank.var.v1` |
+| 23 | 长按排除选项 | ✅ | web144 | 长按 480ms → `QZ.excl`，`judge` 前过滤（第 90 步的判分逻辑） |
+| 24 | 每日复习出套卷 | ✅ | web144 | `startReview` 无到期题时从错题本兜底组卷，同一天重复点回到已有复习卷 |
+
+### 20.2 工程改动（本轮新增）
+
+- `collection.js`：`mdMathExtract`/`mdMathBack`（公式）、`splitRow` 转义竖线、图片尺寸语法、`richInsertImgAtRange`、`richImgsBind`（图片拖宽）、解析块 paste/drop 接管。
+- `app.js`：`updateBankQuestion`/`openQEditor`（答题页改题）、`#doEditQ`、`#editQHost`、`qScore`/`bankScore`。
+- `tags.js`：`tagAll` 批重试 + 快照撤销 + 写后校验；`HUMAN_TAGS`/`tagCandidates` 人文特判；`bankScopeHtml`。
+- `style.css`：`.tbl-wrap` 通用表样式、`.rich-img`/`.rich-rz`、`.qeditbox`、KaTeX 容器。
+- `sw.js`：CORE 增加 KaTeX（js/css/20 个 woff2），VERSION 到 `shuati-v68-web147`。
+- `index.html`：加载 `vendor/katex/katex.min.css|js`，脚本/样式缓存戳 `?v=20261101c`。
+
+### 20.3 验证与上线
+
+- 探针：`search-bank-probe.py` 17/17、`color-probe.py` 10/10、`variant-probe.py` 39/39、`home-page-probe.py` 30/30、`tag-page-probe.py` 15/15；`md-unit.mjs`（公式/表格/图片尺寸/货币反例）全过；`node --check`（Chatbox --check）app/collection/sw/cat/tags/variant 全过。
+- 上线：`stain37/shuati-web` → https://stain37.github.io/shuati-web/ ；提交 `59267354`(web144)、`f6eb766b`(web145)、`fb4e1b13`(web146)、`fe6772e0`(web147)；线上 `sw.js` 与四个文件字节数与本地一致（web145/web146 已实测；web147 待构建完成后同法校验）。
+
+### 20.4 下一步
+
+1. 第 19 项：块级编辑（解析块拆块、拖拽排序、表格/图片作为块移动），按 3–4 轮做，先做「块拖拽排序」再做「块内图片/表格独立移动」。
+2. 阶段 2 机制项（路径级 WAL / 写后漂移 / 三态恢复 / 二次确认 / joblog / 去 reload）按 §19 排期。
+3. 公式覆盖到题干/选项（现在只覆盖 Markdown 渲染路径：解析、聊天、AI 输出）。
+
+

@@ -578,7 +578,7 @@ function richBox(fk, text, custom, label) {
     : '';
   const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
   return `<div class="exp-wrap" data-note-for="${esc(fk)}">
-      <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span></div>
+      <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span><button class="btn tiny blk-toggle" data-blk="${esc(fk)}" title="块排序：打开后把鼠标放到某一块左边的小把手上拖动，段落 / 表格 / 图片整块换位置（第 19 条第一轮）">⠿ 块排序</button></div>
       <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，改完点一下别处自动保存">${body}</div>
       ${imgsHtml}
       <div class="aisrc-saved" data-aisrc="${esc(fk)}"></div>
@@ -738,9 +738,97 @@ function richImgsBind(wrap) {
     });
   });
 }
+/* 第 19 条第一轮：解析块的拖拽排序。块的顺序就是 markdown 的行序，
+   拖完按新 DOM 顺序重新序列化（mdFromHtml），所以段落 / 表格 / 图片都能整块换位置。 */
+var BLK = { grip: null, el: null, node: null, dragging: false };
+function blkGripEl() {
+  if (BLK.grip) return BLK.grip;
+  const g = document.createElement('button');
+  g.type = 'button';
+  g.className = 'blk-grip';
+  g.hidden = true;
+  g.textContent = '⠿';
+  g.title = '拖动这一块';
+  document.body.appendChild(g);
+  BLK.grip = g;
+  g.addEventListener('pointerdown', ev => {
+    ev.preventDefault(); ev.stopPropagation();
+    const node = BLK.node, el = BLK.el;
+    if (!node || !el) return;
+    BLK.dragging = true;
+    node.classList.add('blk-ghost');
+    let tgt = null, after = false;
+    const kids = () => Array.prototype.slice.call(el.children);
+    const move = e2 => {
+      const list = kids();
+      list.forEach(k => { k.classList.remove('blk-over'); k.classList.remove('blk-over-after'); });
+      const hit = list.find(k => { const r = k.getBoundingClientRect(); return e2.clientY >= r.top && e2.clientY <= r.bottom; });
+      if (!hit || hit === node) { tgt = null; if (g) g.hidden = true; return; }
+      const r = hit.getBoundingClientRect();
+      after = e2.clientY > r.top + r.height / 2;
+      hit.classList.add('blk-over');
+      if (after) hit.classList.add('blk-over-after');
+      tgt = hit;
+      const wr = el.getBoundingClientRect();
+      g.hidden = false;
+      g.style.left = Math.max(2, wr.left - 22) + 'px';
+      g.style.top = (after ? r.bottom - 14 : r.top - 12) + 'px';
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      node.classList.remove('blk-ghost');
+      kids().forEach(k => { k.classList.remove('blk-over'); k.classList.remove('blk-over-after'); });
+      BLK.dragging = false;
+      if (tgt && tgt !== node) {
+        if (after) tgt.after(node); else tgt.before(node);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        richState(el, '未保存…', true);
+        toast('块位置已换（点到别处自动保存）');
+      }
+      g.hidden = true;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+  return g;
+}
+function blkHover(ev) {
+  if (BLK.dragging || !BLK.grip) return;
+  const el = (ev.target && ev.target.closest) ? ev.target.closest('.rich-edit.blk-mode') : null;
+  if (!el) { BLK.grip.hidden = true; return; }
+  const kids = Array.prototype.slice.call(el.children);
+  const hit = kids.find(k => { const r = k.getBoundingClientRect(); return ev.clientY >= r.top && ev.clientY <= r.bottom; });
+  if (!hit) { BLK.grip.hidden = true; return; }
+  BLK.el = el; BLK.node = hit;
+  const wr = el.getBoundingClientRect(), hr = hit.getBoundingClientRect();
+  BLK.grip.hidden = false;
+  BLK.grip.style.left = Math.max(2, wr.left - 22) + 'px';
+  BLK.grip.style.top = (hr.top + Math.max(0, (Math.min(hr.height, 90) - 26) / 2)) + 'px';
+}
+function blkInitOnce() {
+  if (window.__blkInit) return;
+  window.__blkInit = true;
+  blkGripEl();
+  document.addEventListener('pointermove', blkHover, { passive: true });
+  document.addEventListener('click', ev => {
+    const b = (ev.target && ev.target.closest) ? ev.target.closest('.blk-toggle') : null;
+    if (!b) return;
+    const wrap = b.closest('.exp-wrap');
+    const ed = wrap && wrap.querySelector('.rich-edit');
+    if (!ed) return;
+    const on = !ed.classList.contains('blk-mode');
+    ed.classList.toggle('blk-mode', on);
+    b.classList.toggle('btn-primary', on);
+    b.textContent = on ? '⠿ 块排序（开）' : '⠿ 块排序';
+    if (on) toast('块排序已打开：鼠标放到段落 / 表格 / 图片左边的小把手上拖动', 2600);
+    else if (BLK.grip) BLK.grip.hidden = true;
+  });
+}
 /* 一次把页面上还没绑过的就地编辑器都绑上（重画完调一次就行） */function richBindAll(root) {
   const scope = root || document;
   if (!scope.querySelectorAll) return;
+  blkInitOnce();
   Array.prototype.slice.call(scope.querySelectorAll('.exp-wrap')).forEach(w => richImgsBind(w));
   Array.prototype.slice.call(scope.querySelectorAll('.rich-edit[contenteditable]')).forEach(el => {
     if (el.dataset.richBound === '1') return;
