@@ -1051,3 +1051,12 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 3. **本地同义词表**：高频医学词（DNA 损伤 ↔ 切除修复）不花模型调用就能互查。
 4. **trace 面板**：`ai-ops` 每步记录耗时/命中/失败原因，答错了能看出是哪一步（page-agent 的 trace）。
 5. **动作参数 schema**：`catalog()` 里给参数加「必需/可选」标记，规划器少自创参数。
+
+### 20.5 web152：题库排序「按名称 / 最近添加」（2026-10-24）
+
+- 主页「我的题库」标题右边新增 `排序：自定义顺序 / 按名称 / 最近添加` 下拉（`cat.js` `bankSortHtml()`，状态记 `qbank.banksort.v1`，`sechead()` 统一渲染，`bind()` 里 `change` 后重画并回第 1 页）。
+- `cat.js` `sortBank()` 改为按当前模式排序：`recent` 优先 `createdAt` 倒序，老的没有时间戳的题库按它在 `LOCAL` 里越靠后越新兜底（都是 0 时等价于「倒着入库顺序」）。
+- 建库时间落盘：`app.js:normalizeBank` 透传 `createdAt`，新建题库（导入纯文本 `app.js` 新建、`bf-folder.js` 批量导入、`variant.js` 存变式题库）写 `createdAt: Date.now()`。
+- 排序样式 `cat.css` `.nb-bsortwrap/.nb-bsort`（窄屏换行）。
+- 验证：新建 `C:\Users\chen\Desktop\工作1\sort-probe.py` **10 通过 / 0 失败**（下拉存在、三选项、默认自定义、最近添加 b3 最新在最前、无时间戳的排最后、选择进 localStorage、按名称 A→B→C→D、切页回来自动恢复、切回自定义恢复、无 JS 报错）；`home-page-probe` 回归 30/30；`node --check` app.js/cat.js/variant.js/bf-folder.js 全过。
+- 上线：提交 `aeb4fca2`，线上核到 `shuati-v68-web152`，`cat.js` 已含「最近添加」。

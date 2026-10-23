@@ -795,21 +795,117 @@ function blkGripEl() {
 }
 function blkHover(ev) {
   if (BLK.dragging || !BLK.grip) return;
+  const onGripOrBar = !!(ev.target && ev.target.closest && ev.target.closest('.blk-grip, .blk-bar'));
+  if (onGripOrBar) return;                        /* 鼠标移到把手 / 操作条上：保持显示，别闪 */
   const el = (ev.target && ev.target.closest) ? ev.target.closest('.rich-edit.blk-mode') : null;
-  if (!el) { BLK.grip.hidden = true; return; }
+  if (!el) { BLK.grip.hidden = true; blkBarHide(); return; }
   const kids = Array.prototype.slice.call(el.children);
   const hit = kids.find(k => { const r = k.getBoundingClientRect(); return ev.clientY >= r.top && ev.clientY <= r.bottom; });
-  if (!hit) { BLK.grip.hidden = true; return; }
+  if (!hit) { BLK.grip.hidden = true; blkBarHide(); return; }
   BLK.el = el; BLK.node = hit;
   const wr = el.getBoundingClientRect(), hr = hit.getBoundingClientRect();
   BLK.grip.hidden = false;
   BLK.grip.style.left = Math.max(2, wr.left - 22) + 'px';
   BLK.grip.style.top = (hr.top + Math.max(0, (Math.min(hr.height, 90) - 26) / 2)) + 'px';
+  blkBarShow(el, hit);
+}
+/* 第 19 条第二轮：块的复制 / 上移下移 / 插入空段落 / 删除。
+   操作条跟着鼠标悬停的那一块走（在把手右边），点按钮只动 DOM，存盘沿用 mdFromHtml 那条线。 */
+var BLKBAR = null;
+function blkBarEl() {
+  if (BLKBAR) return BLKBAR;
+  const bar = document.createElement('div');
+  bar.className = 'blk-bar';
+  bar.hidden = true;
+  bar.innerHTML = [
+    ['copy', '⧉', '复制这一块'],
+    ['up', '↑', '上移一块'],
+    ['down', '↓', '下移一块'],
+    ['ins', '＋', '在这一块下面插入空段落'],
+    ['del', '🗑', '删除这一块']
+  ].map(a => `<button type="button" class="blk-bbtn" data-bkact="${a[0]}" title="${a[2]}">${a[1]}</button>`).join('');
+  document.body.appendChild(bar);
+  bar.addEventListener('pointerdown', ev => { ev.preventDefault(); ev.stopPropagation(); });
+  bar.addEventListener('pointermove', ev => { ev.stopPropagation(); });
+  bar.addEventListener('click', ev => {
+    const b = ev.target && ev.target.closest ? ev.target.closest('[data-bkact]') : null;
+    if (!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    blkAct(b.getAttribute('data-bkact'));
+  });
+  BLKBAR = bar;
+  return bar;
+}
+function blkBarShow(el, node) {
+  const bar = blkBarEl();
+  const hr = node.getBoundingClientRect();
+  const w = bar.offsetWidth || 148;
+  bar.hidden = false;
+  bar.style.left = Math.max(2, Math.min(window.innerWidth - w - 8, hr.left + 16)) + 'px';
+  bar.style.top = Math.max(2, hr.top - 34) + 'px';
+  BLKBAR._el = el; BLKBAR._node = node;
+}
+function blkBarHide() { if (BLKBAR) BLKBAR.hidden = true; }
+/* 直接按当前 DOM 序列化存一份（块操作不经过 focus/blur，得自己落盘） */
+function blkSaveNow(el) {
+  try {
+    const wrap = el.closest ? el.closest('.exp-wrap') : null;
+    const fk = (wrap && wrap.dataset && wrap.dataset.noteFor) || '';
+    if (!fk) return;
+    const md = (typeof mdFromHtml === 'function') ? mdFromHtml(el.cloneNode(true)) : '';
+    const cur = (typeof NOTES === 'object' && NOTES) ? (NOTES[fk] || {}) : {};
+    NOTES[fk] = { text: md, imgs: cur.imgs || [], ts: Date.now(), ai: cur.ai || false };
+    if (typeof saveNotes === 'function' && saveNotes() === false) { toast('保存失败：浏览器存储满了', 3000, 'bad'); return; }
+    richState(el, '已保存');
+  } catch (e) { toast('这一块存不下来：' + (e && e.message), 3000, 'bad'); }
+}
+function blkAct(act) {
+  const el = (BLKBAR && BLKBAR._el) || BLK.el;
+  const node = (BLKBAR && BLKBAR._node) || BLK.node;
+  if (!el || !node || !node.isConnected || !el.contains(node)) { blkBarHide(); return; }
+  const kids = Array.prototype.slice.call(el.children);
+  if (act === 'copy') {
+    const c = node.cloneNode(true);
+    if (c.removeAttribute) c.removeAttribute('id');
+    node.after(c);
+    toast('已复制这一块（存盘后生效）');
+  } else if (act === 'up') {
+    const p = node.previousElementSibling;
+    if (!p) { toast('已经是第一块了'); return; }
+    node.parentNode.insertBefore(node, p);
+  } else if (act === 'down') {
+    const n = node.nextElementSibling;
+    if (!n) { toast('已经是最后一块了'); return; }
+    node.parentNode.insertBefore(n, node);
+  } else if (act === 'ins') {
+    const p = document.createElement('p');
+    p.appendChild(document.createElement('br'));
+    node.after(p);
+    try {
+      const r = document.createRange();
+      r.setStart(p, 0); r.collapse(true);
+      const s = window.getSelection();
+      if (s) { s.removeAllRanges(); s.addRange(r); }
+      el.focus();
+    } catch (e) {}
+    toast('下面插了一个空段落');
+  } else if (act === 'del') {
+    if (kids.length <= 1) { toast('这是唯一一块，删了就空了'); return; }
+    node.remove();
+    toast('已删除这一块（存盘后生效）');
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  richState(el, '未保存…', true);
+  blkSaveNow(el);
+  BLK.node = null;
+  blkBarHide();
+  if (BLK.grip) BLK.grip.hidden = true;
 }
 function blkInitOnce() {
   if (window.__blkInit) return;
   window.__blkInit = true;
   blkGripEl();
+  blkBarEl();                                   /* 先把操作条建好（默认 hidden），别等第一次悬停 */
   document.addEventListener('pointermove', blkHover, { passive: true });
   document.addEventListener('click', ev => {
     const b = (ev.target && ev.target.closest) ? ev.target.closest('.blk-toggle') : null;
@@ -821,7 +917,7 @@ function blkInitOnce() {
     ed.classList.toggle('blk-mode', on);
     b.classList.toggle('btn-primary', on);
     b.textContent = on ? '⠿ 块排序（开）' : '⠿ 块排序';
-    if (on) toast('块排序已打开：鼠标放到段落 / 表格 / 图片左边的小把手上拖动', 2600);
+    if (on) toast('块排序已打开：左边 ⠿ 拖动换位置，悬停时上方出现 复制 / 上移 / 下移 / 插入 / 删除', 3000);
     else if (BLK.grip) BLK.grip.hidden = true;
   });
 }
