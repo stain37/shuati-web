@@ -148,6 +148,8 @@ window.renderMathText = function (raw) {
   return mdMathBack(esc(M.txt), M);
 };
 /* 列表树：缩进（2/4 空格或 Tab）决定层级；任务项带勾选框；序号列表按同级重新编号 */
+var CALLOUT_ICON = { note: '📝', tip: '💡', warning: '⚠️', important: '❗', caution: '🚫' };
+var CALLOUT_LABEL = { note: '说明', tip: '要点', warning: '注意', important: '重要', caution: '警告' };
 function mdListHtml(items) {
   if (!items || !items.length) return '';
   const base = items[0].ind;
@@ -225,6 +227,14 @@ function mdToHtml(md) {
     }
     if ((m = t.match(/^(#{1,4})\s+(.*)$/))) { closeList(); const n = m[1].length + 2; out.push(`<h${n}>${m[2]}</h${n}>`); continue; }
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { closeList(); out.push('<hr>'); continue; }
+    /* 提示框（AFFiNE callout 的写法）：> [!tip] 一句话 → 带图标和颜色的块 */
+    if ((m = t.match(/^&gt;\s*\[!(note|tip|warning|important|caution)\]\s*(.*)$/i))) {
+      closeList();
+      const kind = m[1].toLowerCase();
+      out.push('<div class="callout callout-' + kind + '"><span class="callout-ico">' + (CALLOUT_ICON[kind] || '💡')
+        + '</span><span class="callout-body"><b class="callout-t">' + (CALLOUT_LABEL[kind] || '提示') + '</b> ' + m[2] + '</span></div>');
+      continue;
+    }
     if ((m = t.match(/^&gt;\s?(.*)$/))) { closeList(); out.push(`<blockquote>${m[1]}</blockquote>`); continue; }
     /* 列表（支持缩进嵌套 + 任务列表）：连续列表行整块收成一棵树再渲染，
        以前一律拍平，「鉴别诊断 1) 2) a) b)」会挤成一层。 */
@@ -684,6 +694,16 @@ function mdFromHtml(root) {
       walkList(n, 0, tag === 'ol');
       return;
     }
+    if (n.classList && n.classList.contains('callout')) {
+      const cls = String(n.className || '');
+      const km = cls.match(/callout-(note|tip|warning|important|caution)/);
+      const kind = km ? km[1] : 'tip';
+      const clone = n.cloneNode(true);
+      const ico = clone.querySelector('.callout-ico'); if (ico) ico.remove();
+      const lab = clone.querySelector('.callout-t'); if (lab) lab.remove();
+      pushRaw('> [!' + kind + '] ' + inlineOf(clone, false).replace(/\s+/g, ' ').trim());
+      return;
+    }
     if (tag === 'blockquote') {
       inlineOf(n, false).split('\n').forEach(t => pushRaw('> ' + t.trim()));
       return;
@@ -841,6 +861,7 @@ const SLASH_ITEMS = [
   { k: 'task', t: '任务清单', d: '带勾选框的待办' },
   { k: 'code', t: '代码块', d: '语言名 + 复制按钮' },
   { k: 'quote', t: '引用', d: '缩进一条引用' },
+  { k: 'callout', t: '提示框', d: '带图标的一句话（要点 / 注意）' },
   { k: 'table', t: '表格', d: '2×2 表格' },
   { k: 'hr', t: '分隔线', d: '一条横线' }
 ];
@@ -903,6 +924,14 @@ function slashApply(el, kind) {
     li.appendChild(chk); li.appendChild(document.createTextNode(txt || '待办'));
     node.appendChild(li);
   } else if (kind === 'quote') { node = mk('blockquote'); node.textContent = txt || '引用'; }
+  else if (kind === 'callout') {
+    const d = mk('div', 'callout callout-tip');
+    const ic = mk('span', 'callout-ico'); ic.textContent = CALLOUT_ICON.tip;
+    const bd = mk('span', 'callout-body');
+    const lb = mk('b', 'callout-t'); lb.textContent = CALLOUT_LABEL.tip;
+    bd.appendChild(lb); bd.appendChild(document.createTextNode(' ' + (txt || '要点')));
+    d.appendChild(ic); d.appendChild(bd); node = d;
+  }
   else if (kind === 'code') {
     const holder = document.createElement('div');
     holder.innerHTML = mdFenceHtml('', txt || '');

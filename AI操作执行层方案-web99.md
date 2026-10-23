@@ -1084,6 +1084,8 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 | 对话历史按 token 预算裁剪，且一问一答整组保留（不会留下没问题的回答） | chat.js estTok / histMsgs | web158 |
 | 等待分级提示：10 秒「还没开始输出」→ 15 秒「可能卡住」→ 45 秒「点停止再 ↻ 重试」 | chat.js tickStatus | web158 |
 | 知识库低置信过滤（低于最高分 25% 丢）、空命中给出可执行原因、单源降级提示 | ai.js aiContext | web158 |
+| 工具轨迹四态 ✅成功 / ⚠失败 / ⏳未执行 / ♻复用上次结果，每条带耗时 | chat.js agentTraceText | web159 |
+| 执行中提示带步数「3/4 正在执行…」；连续两次同一工具同一参数自动收尾，避免空转 | chat.js runAgentChat | web159 |
 
 ### 22.3 验证与上线
 - 探针：slash 18/18、undo 12/12、md-editor 19/19、color 10/10、block2 15/15、block3 12/12、home-page 30/30、kb-page 0 fail；
