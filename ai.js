@@ -381,6 +381,24 @@ async function aiContext(q, userQ) {
   /* 同一份资料的重复段落合并成一个参考位（同一文件 + 同一页只留第一条），
      不然参考资料里会出现两条一模一样的 —— 面板上、给模型看的提示词里都只留一条 */
   hits = aiUniqHits(hits);
+  /* ④ 低置信过滤：分数不到最高分 25% 的段落不要（AQBot 同思路，宁可空手也别喂无关内容）。
+     被滤光时说清原因，别让用户以为「知识库里没有」。 */
+  let dropped = 0;
+  if (hits.length > 1) {
+    const top = hits[0].score || 0;
+    if (top > 0) {
+      const kept = hits.filter((h, i) => i === 0 || (h.score || 0) >= top * 0.25);
+      if (kept.length !== hits.length) { dropped = hits.length - kept.length; hits = kept; }
+    }
+  }
+  if (!hits.length) {
+    return { hits: [], text: '', count: 0, note: '没有命中知识库：换个更具体的说法（教材里的名词），或再多选几份资料' };
+  }
+  if (dropped) note.push(dropped + ' 段分数太低被滤掉');
+  /* ⑤ 只命中一份资料时提醒模型/用户「结论可能不全面」（AQBot 单源降级提示） */
+  const srcs = {};
+  hits.forEach(h => { srcs[(h.kb || '') + '|' + (h.doc || '')] = 1; });
+  if (Object.keys(srcs).length === 1 && hits.length <= 2) note.push('只命中 1 份资料，答案可能不全面');
   const per = Math.max(400, Math.floor((+cfg.maxChars || 3500) / Math.max(1, hits.length)));
   const blocks = [];
   let used = 0;

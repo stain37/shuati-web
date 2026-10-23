@@ -1976,7 +1976,12 @@
     if (!el) return;
     var sec = Math.max(0, Math.round((Date.now() - (RUN ? RUN.t0 : n.ts)) / 1000));
     var base = n.phase === 'retrieval' ? '正在检索知识库' : (n.phase === 'tool' ? '正在调用工具' : (n.phase === 'thinking' ? '深度思考中' : '正在思考'));
-    el.textContent = base + ' ' + sec + ' 秒…' + (sec >= 20 ? '（模型有点慢，还在等）' : '');
+    /* 分级看门狗：10 秒还没首个字 / 15 秒以上 / 45 秒以上，各给一句人话，别让用户干等 */
+    var extra = '';
+    if (sec >= 45) extra = '（等了 ' + sec + ' 秒还没回：可点「停止」，再用消息上的 ↻ 重试）';
+    else if (sec >= 15) extra = '（网络或模型可能卡住了，可点「停止」后重试）';
+    else if (sec >= 10) extra = '（模型还没开始输出，再等一下）';
+    el.textContent = base + ' ' + sec + ' 秒…' + extra;
   }
   function phase(n, p) {
     n.phase = p;
@@ -2025,13 +2030,34 @@
     });
   }
 
+  /* 粗估 token：中文按 1 字≈1 token，其余按 4 字符≈1 token（AQBot 同思路，不引第三方分词器） */
+  function estTok(s) {
+    var t = String(s || ''), cjk = (t.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+    return Math.ceil(cjk + (t.length - cjk) / 4);
+  }
+  /* 历史消息：按 token 预算裁剪，且「一问一答」整组保留/整组丢弃（不会留下没有问题的回答） */
   function histMsgs(userNode, n) {
-    var out = [];
-    pathBefore(userNode).slice(-(n || 6)).forEach(function (m) {
+    var BUDGET = 5000;   /* 历史总预算（token），超了就从最早的一轮整组丢 */
+    var groups = [];
+    pathBefore(userNode).forEach(function (m) {
       if (!m || !m.text) return;
-      if (m.role === 'user') out.push({ role: 'user', content: clip(m.qtext || m.text, 1500) });
-      else if (m.role === 'ai' && m.text) out.push({ role: 'assistant', content: clip(m.text, 1800) });
+      if (m.role === 'user') {
+        groups.push([{ role: 'user', content: clip(m.qtext || m.text, 1500) }]);
+      } else if (m.role === 'ai' && m.text) {
+        var msg = { role: 'assistant', content: clip(m.text, 1800) };
+        if (groups.length && groups[groups.length - 1].length < 2) groups[groups.length - 1].push(msg);
+        else groups.push([msg]);
+      }
     });
+    var max = n || 6, keep = [], used = 0;
+    for (var i = groups.length - 1; i >= 0 && keep.length < max; i--) {
+      var g = groups[i], cost = 0;
+      for (var j = 0; j < g.length; j++) cost += estTok(g[j].content);
+      if (keep.length && used + cost > BUDGET) break;   /* 至少留最新一轮 */
+      keep.unshift(g); used += cost;
+    }
+    var out = [];
+    keep.forEach(function (g) { g.forEach(function (m) { out.push(m); }); });
     return out;
   }
   function ensureAI() {
