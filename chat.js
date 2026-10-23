@@ -2068,9 +2068,13 @@
   }
 
   /* ---------- agent loop：只读工具自动执行，结果回填给模型 ---------- */
+  /* 工具轨迹四态（AQBot / Zed 风格）：✅ 成功 · ⚠ 失败 · ⏳ 未执行 · ♻ 复用上次结果，并带耗时 */
   function agentTraceText(trace) {
+    var ICON = { ok: '✅', err: '⚠', warn: '⏳', cache: '♻' };
     return (trace || []).map(function (t, i) {
-      return '🛠 ' + (i + 1) + '. ' + t.name + ' → ' + clip(t.result || '', 500);
+      var ic = ICON[t.state] || '🛠';
+      var took = (t.ms != null) ? (' · ' + t.ms + 'ms') : '';
+      return ic + ' ' + (i + 1) + '. ' + t.name + took + ' → ' + clip(t.result || '', 500);
     }).join('\n');
   }
   function agentParse(out) {
@@ -2114,7 +2118,7 @@
     if (brief) parts.push(brief);
     parts.push('【我的问题】' + (text || '（见附件）'));
     msgs.push({ role: 'user', content: parts.join('\n\n') });
-    var trace = [], cache = {}, MAX = 4;
+    var trace = [], cache = {}, MAX = 4, lastKey = '';
     for (var step = 0; step < MAX; step++) {
       if (RUN && RUN.ctl && RUN.ctl.signal && RUN.ctl.signal.aborted) {
         var ae = new Error('aborted'); ae.name = 'AbortError'; throw ae;
@@ -2130,7 +2134,7 @@
       var tool = null;
       for (var i = 0; i < tools.length; i++) if (tools[i].name === parsed.tool) { tool = tools[i]; break; }
       if (!tool) {
-        trace.push({ name: parsed.tool, result: '工具不存在或不在当前技能里' });
+        trace.push({ name: parsed.tool, result: '工具不存在或不在当前技能里', state: 'warn' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: parsed.tool, args: parsed.args || {} }) });
         msgs.push({ role: 'user', content: '【工具结果】\n工具不存在或不在当前技能里。请改用可用工具，或直接回答。' });
         n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
@@ -2139,8 +2143,15 @@
       }
       var callArgs = parsed.args || {};
       var key = tool.name + ':' + JSON.stringify(callArgs);
+      /* 重复动作检测：连续两次完全相同的调用说明模型在原地打转，直接收尾 */
+      if (key === lastKey && trace.length) {
+        trace.push({ name: tool.name, result: '连续两次调用同一工具、同一参数，已停止（避免空转）', state: 'warn' });
+        n.text = agentTraceText(trace) + '\n\n（模型在重复同一个调用，先按已有结果回答）';
+        return;
+      }
+      lastKey = key;
       if (cache[key]) {
-        trace.push({ name: tool.name, result: cache[key] });
+        trace.push({ name: tool.name, result: cache[key], state: 'cache' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
         msgs.push({ role: 'user', content: '【工具结果：' + tool.name + '】\n' + clip(cache[key], 4000) + '\n请继续。' });
         n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
@@ -2150,7 +2161,7 @@
       var stepObj = (SKILLS && SKILLS.toolToStep) ? SKILLS.toolToStep(tool.name, callArgs) : null;
       var def = stepObj && AI_OPS.getAction(stepObj.action);
       if (!stepObj || !def) {
-        trace.push({ name: tool.name, result: '工具映射失败' });
+        trace.push({ name: tool.name, result: '工具映射失败', state: 'warn' });
         msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
         msgs.push({ role: 'user', content: '【工具结果】\n工具映射失败，请直接回答。' });
         n.text = agentTraceText(trace);
@@ -2159,7 +2170,7 @@
       if (def.risk !== 'R0' || /^(open\.|quiz\.)/.test(def.id)) {
         if (def.risk === 'R0') {
           var navMsg = '这个工具会切换页面，不能在 agent loop 里自动执行。';
-          trace.push({ name: tool.name, result: navMsg });
+          trace.push({ name: tool.name, result: navMsg, state: 'warn' });
           msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });
           msgs.push({ role: 'user', content: '【工具结果】\n' + navMsg + '\n请直接回答，或让用户手动执行。' });
           n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
@@ -2170,7 +2181,7 @@
         try { pv = await AI_OPS.preview([stepObj]); }
         catch (e) { pv = { ok: false, error: (e && e.message) || String(e) }; }
         if (!pv.ok) {
-          trace.push({ name: tool.name, result: '预览失败：' + (pv.error || '') });
+          trace.push({ name: tool.name, result: '预览失败：' + (pv.error || ''), state: 'err' });
           n.text = agentTraceText(trace);
           return;
         }
@@ -2179,13 +2190,16 @@
         opsShowPreview(pv, n, '技能工具：' + tool.name);
         return;
       }
-      var result;
+      var result, t0 = Date.now(), okRun = true;
+      n.text = agentTraceText(trace) + (trace.length ? '\n\n' : '') + '⏳ ' + (trace.length + 1) + '/' + MAX + '. ' + tool.name + ' 正在执行…';
+      paintLog();
       try {
         var r = await AI_OPS.runNow([stepObj]);
+        okRun = !!r.ok;
         result = r.ok ? (r.done || []).map(function (d) { return d.text; }).join('\n') : ('工具失败：' + (r.error || ''));
-      } catch (e2) { result = '工具失败：' + ((e2 && e2.message) || e2); }
+      } catch (e2) { okRun = false; result = '工具失败：' + ((e2 && e2.message) || e2); }
       cache[key] = result;
-      trace.push({ name: tool.name, result: result });
+      trace.push({ name: tool.name, result: result, state: okRun ? 'ok' : 'err', ms: Date.now() - t0 });
       n.text = agentTraceText(trace) + '\n\n（正在根据工具结果继续…）';
       paintLog();
       msgs.push({ role: 'assistant', content: JSON.stringify({ tool: tool.name, args: callArgs }) });

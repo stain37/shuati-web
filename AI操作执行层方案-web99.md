@@ -1062,3 +1062,31 @@ AI_OPS.hashPlan(steps) / AI_OPS.stepKey(planId, step, index)
 - 排序样式 `cat.css` `.nb-bsortwrap/.nb-bsort`（窄屏换行）。
 - 验证：新建 `C:\Users\chen\Desktop\工作1\sort-probe.py` **10 通过 / 0 失败**（下拉存在、三选项、默认自定义、最近添加 b3 最新在最前、无时间戳的排最后、选择进 localStorage、按名称 A→B→C→D、切页回来自动恢复、切回自定义恢复、无 JS 报错）；`home-page-probe` 回归 30/30；`node --check` app.js/cat.js/variant.js/bf-folder.js 全过。
 - 上线：提交 `aeb4fca2`，线上核到 `shuati-v68-web152`，`cat.js` 已含「最近添加」。
+
+## 22. 依据 AQBot / AFFiNE 的改造（web156 → web158，2026-10-24）
+
+### 22.1 markdown 编辑器（AFFiNE / marked 思路）
+| 能力 | 落点 | 版本 |
+| --- | --- | --- |
+| 代码块：语言名 + 一键复制 + 行内代码样式 | collection.js mdFenceHtml / mdCopyInitOnce，style.css .md-code | web156 |
+| 嵌套列表（保序、可缩进）双向 | mdListHtml / mdFromHtml → walkList | web156 |
+| 任务清单 - [ ] / - [x] 可点勾选、round-trip | mdTaskLine / .md-chk | web156 |
+| 删除线 ~~x~~ 双向 | mdToHtml / mdFromHtml | web156 |
+| 斜杠菜单 / 与 、（行首或空块）→ 段落/标题/H2/H3/列表/待办/引用/代码/表格/分割线 | slashMap / slashMenu / slashApply | web156 |
+| 撤销 / 重做：Ctrl+Z、Ctrl+Shift+Z、Ctrl+Y，块操作与斜杠换块可撤 | undoState / undoSnap / undoStep | web157 |
+| 浮条按选区矩形定位，并反显当前加粗/斜体/代码/高亮/颜色 | showAt / markActive | web157 |
+| 表格转义竖线、对齐语法、聊天/导出表样式 | splitRow / style.css .tbl-wrap | web146 |
+| 图片：=WxH 尺寸语法、粘贴/拖拽内联插图、右下角拖宽、图区拖序 | mdToHtml / richInsertImgAtRange / richImgsBind | web146–154 |
+
+### 22.2 AI agent（AQBot / Zed agent 思路）
+| 能力 | 落点 | 版本 |
+| --- | --- | --- |
+| 对话历史按 token 预算裁剪，且一问一答整组保留（不会留下没问题的回答） | chat.js estTok / histMsgs | web158 |
+| 等待分级提示：10 秒「还没开始输出」→ 15 秒「可能卡住」→ 45 秒「点停止再 ↻ 重试」 | chat.js tickStatus | web158 |
+| 知识库低置信过滤（低于最高分 25% 丢）、空命中给出可执行原因、单源降级提示 | ai.js aiContext | web158 |
+
+### 22.3 验证与上线
+- 探针：slash 18/18、undo 12/12、md-editor 19/19、color 10/10、block2 15/15、block3 12/12、home-page 30/30、kb-page 0 fail；
+ode --check 全过。
+- 版本：web156（markdown 批次 + 斜杠菜单，提交含 bump-web156）、web157（撤销/重做 + 浮条，d8a897ab）、web158（agent/RAG，ea915cb4）；线上已核 sw.js = web158、ai.js 91181B、chat.js 122000B 与本地一致。
+
