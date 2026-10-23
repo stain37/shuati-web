@@ -106,6 +106,14 @@ function mdMathBack(html, M) {
     catch (e) { return esc(it.display ? '$$' + it.tex + '$$' : '$' + it.tex + '$'); }
   });
 }
+/* 题干 / 选项不走 markdown，但公式要能渲染：只把 $…$ / $$…$$ 换成 KaTeX，其余按纯文本转义（第 11 条覆盖到题干） */
+window.renderMathText = function (raw) {
+  const t = String(raw == null ? '' : raw);
+  if (!window.katex || t.indexOf('$') < 0) return esc(t);
+  const M = mdMathExtract(t);
+  if (!M) return esc(t);
+  return mdMathBack(esc(M.txt), M);
+};
 function mdToHtml(md) {
   if (!md) return '';
   const F = mdFences(md);

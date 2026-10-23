@@ -2206,6 +2206,7 @@ function importAllData(e) {
 /* ============================================================
    答题页
    ============================================================ */
+const stemHtml = t => (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
 function renderQuiz(bankId) {
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
   const bank = bankById(bankId);
@@ -2251,7 +2252,7 @@ function renderQuiz(bankId) {
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
     if (!recite && !locked && (QZ.excl[q.id] || []).indexOf(K) >= 0) cls += ' excl';   /* 长按排除：变灰、不参与选择与判分 */
-    return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${esc(optText(t, K))}</span></button>`;
+    return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${stemHtml(optText(t, K))}</span></button>`;
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
@@ -2280,8 +2281,8 @@ function renderQuiz(bankId) {
       <div class="vstrip" id="vStrip"></div>
       <div class="qtwo">
       <div id="qBody">
-      ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
-      <div class="stem">${esc(q.stem)}</div>
+      ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
+      <div class="stem">${stemHtml(q.stem)}</div>
       ${typeof tagRowHtml === 'function' ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
       </div>
@@ -3210,8 +3211,8 @@ function doPreview() {
     ${qs.slice(0, 3).map(q => `
       <div class="card" style="margin-bottom:10px">
         <div class="qno small">第 ${qNo(q, qs)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}</div>
-        ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
-        <div style="margin:6px 0">${esc(q.stem)}</div>
+        ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
+        <div style="margin:6px 0">${stemHtml(q.stem)}</div>
         <div class="small">${q.options.map((o, i) => esc('ABCDEFGH'[i] + '. ' + o)).join('<br>')}</div>
         <div class="small" style="margin-top:6px;color:var(--ok)">答案：${q.answer.join('')}</div>
         ${q.explain ? `<div class="small muted" style="margin-top:4px">解析：${esc(q.explain)}</div>` : ''}
