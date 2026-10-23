@@ -13,6 +13,9 @@
 
   var DIRS = ['老师爱考病例题', '考细节/数字', '加大难度', '保持难度', '考易混概念辨析', '多选为主', '考计算', '考机制/原理', '偏基础'];
   var N_OPTS = [3, 5, 8];
+  /* 第 13 条：单选题、多选题分开选出几道（都是 0 → 按老规矩 3 道、题型自定） */
+  var V_SG = [0, 1, 2, 3, 4];
+  var V_MX = [0, 1, 2, 3, 4];
   var SIM_MIN = 0.22;        /* 相似度门槛：低于这个就不列 */
   var SIM_TOP = 3;           /* 最多列几道 */
   var SIM_SCAN = 4000;       /* 最多扫多少道已有题，防止十几万题时卡住 */
@@ -117,6 +120,9 @@
   function panelHtml(st) {
     var chips = DIRS.map(function (d) { return '<span class="vchip' + (st.dirs.indexOf(d) >= 0 ? ' on' : '') + '" data-dir="' + esc(d) + '">' + esc(d) + '</span>'; }).join('');
     var ns = N_OPTS.map(function (n) { return '<span class="vchip vnchip' + (st.n === n ? ' on' : '') + '" data-n="' + n + '">' + n + ' 道</span>'; }).join('');
+    var sgN = (st.sg == null ? 2 : +st.sg), mxN = (st.mx == null ? 1 : +st.mx);
+    var sgs = V_SG.map(function (n) { return '<span class="vchip vsgchip' + (sgN === n ? ' on' : '') + '" data-sg="' + n + '">' + (n ? n + ' 道' : '不出') + '</span>'; }).join('');
+    var mxs = V_MX.map(function (n) { return '<span class="vchip vmxchip' + (mxN === n ? ' on' : '') + '" data-mx="' + n + '">' + (n ? n + ' 道' : '不出') + '</span>'; }).join('');
     var kbs = (typeof aiChipHtml === 'function') ? aiChipHtml() : '';
     return '<div class="vpanel" data-vk="' + esc(st.k) + '">' +
       '<div class="vhead"><b>AI 变式题</b>' +
@@ -128,8 +134,9 @@
       '<div class="vlab">命题方向 <span class="muted">（可多选，会拼进提问里）</span></div>' +
       '<div class="vchips">' + chips + '</div>' +
       '<textarea class="vask" rows="2" placeholder="也可以直接说人话，比如：我们老师喜欢出病例题，问「最可能的诊断」，选项互相干扰；难度比这题再高一点"></textarea>' +
-      '<div class="vlab">出几道</div>' +
-      '<div class="vchips">' + ns + '</div>' +
+      '<div class="vlab">出几道 <span class="muted">（单选 / 多选分开选，会按题型出题）</span></div>' +
+      '<div class="vchips"><span class="vtiny">单选</span>' + sgs + '</div>' +
+      '<div class="vchips"><span class="vtiny">多选</span>' + mxs + '</div>' +
       '<div class="vlab">参考资料（本地知识库）</div>' +
       '<div class="aichips"><span class="aichipbox">' + kbs + '</span><span class="aichint"></span></div>' +
       '<div class="vactions">' +
@@ -148,7 +155,7 @@
     var st = V_LAST[k];
     if (!st) {
       st = V_LAST[k] = {
-        k: k, q: q, dirs: [], ask: '', n: 3,
+        k: k, q: q, dirs: [], ask: '', n: 3, sg: 2, mx: 1,
         running: false, ctl: null, text: '', ctx: null, msgs: [], parsed: null,
         parseErr: '', err: null, sims: {}, uid: 'var:' + Math.random().toString(36).slice(2, 8),
         endTs: 0, ts: 0, timer: null, notes: []
@@ -271,10 +278,18 @@
         c.classList.toggle('on', i < 0);
       };
     });
-    p.querySelectorAll('.vnchip').forEach(function (c) {
+    p.querySelectorAll('.vsgchip').forEach(function (c) {
       c.onclick = function () {
-        st.n = +c.dataset.n || 3;
-        p.querySelectorAll('.vnchip').forEach(function (x) { x.classList.toggle('on', x === c); });
+        st.sg = +c.dataset.sg || 0;
+        p.querySelectorAll('.vsgchip').forEach(function (x) { x.classList.toggle('on', x === c); });
+        var sp = splitCount(st); st.n = sp.n;
+      };
+    });
+    p.querySelectorAll('.vmxchip').forEach(function (c) {
+      c.onclick = function () {
+        st.mx = +c.dataset.mx || 0;
+        p.querySelectorAll('.vmxchip').forEach(function (x) { x.classList.toggle('on', x === c); });
+        var sp = splitCount(st); st.n = sp.n;
       };
     });
     var ta = p.querySelector('.vask');
@@ -343,24 +358,37 @@
     if (t) parts.push(t);
     return parts.join('；') || '按你自己的判断，出这道题同考点的常规考法';
   }
+  /* 单选题 / 多选题的道数拆开算：两类都选 0 就退回「3 道、题型自定」 */
+  function splitCount(st) {
+    var sg = st.sg == null ? 2 : Math.max(0, +st.sg || 0);
+    var mx = st.mx == null ? 1 : Math.max(0, +st.mx || 0);
+    if (!sg && !mx) return { sg: 0, mx: 0, n: 3, text: '3 道（题型自定）' };
+    var parts = [];
+    if (sg) parts.push('单选 ' + sg + ' 道');
+    if (mx) parts.push('多选 ' + mx + ' 道');
+    return { sg: sg, mx: mx, n: sg + mx, text: parts.join(' + ') };
+  }
   function sysText(st) {
+    var sp = splitCount(st);
     var base = (typeof aiSysText === 'function') ? aiSysText() : '你是一位医学考试的命题老师。';
     return base +
-      '\n\n【本次任务】你是命题老师。基于我给的源题，按【命题方向】出 ' + st.n + ' 道同考点变式题。' +
+      '\n\n【本次任务】你是命题老师。基于我给的源题，按【命题方向】出 ' + sp.n + ' 道同考点变式题（' + sp.text + '）。' +
       '\n要求：' +
       '\n1) 考点必须与源题一致，但情境/数字/问法/选项要换，不能只改几个字；' +
-      '\n2) 每题都要给正确选项和简短解析（解析里点出考点）；' +
-      '\n3) 严格按下面的纯文本格式输出，不要写表格、不要代码块、不要额外解释：' +
+      '\n2) 单选题只能有 1 个正确选项；多选题要有 2–4 个正确选项，答案按字母顺序连写（如 ABD）；' +
+      '\n3) 每题都要给正确选项和简短解析（解析里点出考点）；' +
+      '\n4) 严格按下面的纯文本格式输出，不要写表格、不要代码块、不要额外解释：' +
       '\n# 变式题\n\n1. 题干…\nA. …\nB. …\nC. …\nD. …\n答案：X\n解析：…';
   }
   function askText(st) {
+    var sp = splitCount(st);
     var user = '';
     try {
       user = (typeof aiUserText === 'function')
         ? aiUserText(st.q, (st.ctx && st.ctx.text) || '', dirText(st), st.k)
         : ('【题目】' + (st.q && st.q.stem || ''));
     } catch (e) { user = '【题目】' + (st.q && st.q.stem || ''); }
-    return user + '\n【命题方向】' + dirText(st) + '\n【题数】' + st.n;
+    return user + '\n【命题方向】' + dirText(st) + '\n【题数】' + sp.n + '（' + sp.text + '）';
   }
   function copyAsk(st) {
     var txt = sysText(st) + '\n\n' + askText(st);

@@ -337,10 +337,12 @@ function fmtBarInit(el) {
   const bar = fmtBarEl();
   FMT_TA = el;
   const dom = !!el.isContentEditable;                 // contenteditable（方案十）还是 textarea（§9 的完整编辑器）
-  const refresh = () => {
-    if (dom) { try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} return; }
-    if (typeof el.oninput === 'function') el.oninput();
+  const refreshOf = (t) => {
+    if (!t) return;
+    if (t.isContentEditable) { try { t.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} return; }
+    if (typeof t.oninput === 'function') t.oninput();
   };
+  const refresh = () => refreshOf(el);
   const hasSel = () => (dom ? fmtDomHasSel(el) : fmtHasSel(el));
   const showAt = (x, y) => {
     if (!hasSel()) { fmtBarHide(); return; }
@@ -354,33 +356,38 @@ function fmtBarInit(el) {
   bar.onclick = ev => {
     const b = ev.target.closest ? ev.target.closest('button[data-fmt],button[data-color]') : null;
     if (!b) return;
+    /* 页面上可能同时开着好几个解析框：浮条是公用的，谁最后被选中就用谁当目标。
+       以前这里写死闭包里的 el，等于「点了颜色改到最后一个绑定的框上」（用户反馈：给解析加颜色没反应） */
+    const t = (FMT_TA && FMT_TA.isConnected) ? FMT_TA : el;
+    const isDom = !!t.isContentEditable;
+    const again = () => refreshOf(t);
     const f = b.dataset.fmt;
-    if (dom) {
-      try { el.focus({ preventScroll: true }); } catch (e) {}    // execCommand 要求焦点在编辑区里（点浮条时焦点可能已经不在）
+    if (isDom) {
+      try { t.focus({ preventScroll: true }); } catch (e) {}    // execCommand 要求焦点在编辑区里（点浮条时焦点可能已经不在）
       if (f === 'b') fmtDomCmd('bold');
       else if (f === 'i') fmtDomCmd('italic');
       else if (f === 'c') fmtDomWrap('<code>', '</code>');
       else if (f === 'h') fmtDomWrap('<mark>', '</mark>');
       else if (f === 'none') fmtDomClear();
       else if (b.dataset.color) fmtDomWrap('<span style="color:' + b.dataset.color + '">', '</span>');
-      refresh();
+      again();
     } else {
-      if (f === 'b') fmtWrap(el, '**', '**', refresh);
-      else if (f === 'i') fmtWrap(el, '*', '*', refresh);
-      else if (f === 'c') fmtWrap(el, '`', '`', refresh);
-      else if (f === 'h') fmtWrap(el, '==', '==', refresh);
-      else if (f === 'none') fmtWrap(el, '', '', refresh);
-      else if (b.dataset.color) fmtWrap(el, '<font color="' + b.dataset.color + '">', '</font>', refresh);
+      if (f === 'b') fmtWrap(t, '**', '**', again);
+      else if (f === 'i') fmtWrap(t, '*', '*', again);
+      else if (f === 'c') fmtWrap(t, '`', '`', again);
+      else if (f === 'h') fmtWrap(t, '==', '==', again);
+      else if (f === 'none') fmtWrap(t, '', '', again);
+      else if (b.dataset.color) fmtWrap(t, '<font color="' + b.dataset.color + '">', '</font>', again);
     }
-    try { el.focus(); } catch (e) {}
+    try { t.focus(); } catch (e) {}
     keep();
   };
   /* 元素上的监听只挂一次；bar 的 onclick 每次重指向当前目标（textarea 和 contenteditable 共用一条浮条） */
   if (el.dataset.fmtBound === '1') return;
   el.dataset.fmtBound = '1';
-  el.addEventListener('mouseup', ev => setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0));
-  el.addEventListener('touchend', () => setTimeout(() => showAt(), 80));
-  el.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') showAt(); });
+  el.addEventListener('mouseup', ev => { FMT_TA = el; setTimeout(() => showAt(ev.clientX, ev.clientY - 6), 0); });
+  el.addEventListener('touchend', () => { FMT_TA = el; setTimeout(() => showAt(), 80); });
+  el.addEventListener('keyup', ev => { if (ev.shiftKey || ev.key === 'Shift' || ev.key === 'Escape') { FMT_TA = el; showAt(); } });
   el.addEventListener('scroll', fmtBarHide);
   el.addEventListener('blur', () => setTimeout(() => { if (!bar.matches(':hover')) fmtBarHide(); }, 160));
   if (!FMT_DOC) {
@@ -822,7 +829,9 @@ function splitKw(kw) {
   return String(kw == null ? '' : kw).trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 function hayOf(k, q, b) {
-  return (q.stem + ' ' + (q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + explainOf(k, q) + ' ' + ((b && b.title) || '')).toLowerCase();
+  /* 题库名 + 考点标签也进命中范围：以前只有题干/选项/解析，搜「内科」「心衰标签」时
+     普通搜索找不到、只有 AI 模糊能沾到边（用户反馈命中范围不该 AI 独有） */
+  return (q.stem + ' ' + (q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + explainOf(k, q) + ' ' + ((b && b.title) || '') + ' ' + tagListOf(k).join(' ')).toLowerCase();
 }
 /* 这一行为什么会命中：题干里没有关键词时，告诉用户是「选项 / 解析 / 题库名」命中的
    （不然搜「B 型题里的某个词」，列表里每条题干看起来都跟关键词无关，很容易以为搜错了） */
@@ -863,7 +872,9 @@ function collect(mode, kw, scope) {
       else if (mode === 'fav') { if (!FAV[k]) continue; }
       else if (mode === 'due') { if (!isDue(k)) continue; }
       if (terms.length) {
-        const hay = scope ? qaiHay(it, scope) : it.hay;
+        /* AI 命中范围只用来「加宽」：本地全文（含题库名、标签）永远都算命中，
+           不然开了 AI 之后反而搜不到题库名（用户反馈的老毛病） */
+        const hay = scope ? (it.hay + ' ' + qaiHay(it, scope)) : it.hay;
         let miss = false;
         for (let i = 0; i < terms.length; i++) if (hay.indexOf(terms[i]) < 0) { miss = true; break; }
         if (miss) continue;
@@ -1016,6 +1027,17 @@ function qaiBindNote(host, q) {
     b.onclick = function (e) { e.preventDefault(); qaiPickTerm(b.getAttribute('data-qterm')); };
   });
 }
+/* 题库管理页的「库内搜索」也可以开 AI 模糊（第 17 条），但全站开关可能是关的，
+   所以这里导出两个小口子：读已扩展的词 / 主动扩展一次 */
+window.qaiTerms = function (kw) {
+  var c = QAI.cache.get(String(kw == null ? '' : kw).trim());
+  return (c && c.terms) || [];
+};
+window.qaiExpandAny = function (kw) {
+  var was = QAI.on;
+  QAI.on = true;
+  try { qaiExpand(kw); } catch (e) {} finally { QAI.on = was; }
+};
 function qaiApply() {
   if (document.getElementById('lkw')) {
     var st = LP[QAI_LIST_MODE] || LP.wrong;
@@ -1987,18 +2009,20 @@ function paintSearch(anim) {
     : scope === 'undone' ? !ANS[it.k] : true;
   const tagOK = it => !st.tag || tagListOf(it.k).indexOf(st.tag) >= 0;
   const baseOK = it => !st.base || tagListOf(it.k).indexOf(st.base) >= 0;
-  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(tagOK).filter(baseOK) : [];
+  /* 第 16 条：搜索支持按题库筛选（st.bank 早就存在 mkState 里，但一直没用上） */
+  const bankOK = it => !st.bank || st.bank === 'all' || (it.bank && it.bank.id === st.bank);
+  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK) : [];
   const aiCache = (QAI.on && kw.length >= 2) ? qaiCached(kw) : null;
   const aiTerms = (aiCache && aiCache.terms) || [];
-  const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(tagOK).filter(baseOK), aiTerms, 120) : [];
+  const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK), aiTerms, 120) : [];
   const aiKeys = new Set(aiHits.map(it => it.k));
   let items = [];
   if (kw) {
     items = aiHits.slice();
     items = items.concat(local.filter(it => !aiKeys.has(it.k)));
-  } else if (st.tag || st.base) {
-    /* 只有标签 / 基本标签、没有关键词：也把筛选下的题列出来 */
-    items = collect('all').filter(scopeOK).filter(tagOK).filter(baseOK);
+  } else if (st.tag || st.base || (st.bank && st.bank !== 'all')) {
+    /* 只有标签 / 基本标签 / 题库、没有关键词：也把筛选下的题列出来 */
+    items = collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK);
   }
   const total = items.length;
   const filterBits = [];
@@ -2014,6 +2038,11 @@ function paintSearch(anim) {
       <div class="tools" style="margin-top:0">
         <span class="tl">范围</span>
         ${scopes.map(([k, t]) => `<button class="chip${scope === k ? ' on' : ''}" data-scope="${k}">${t}</button>`).join('')}
+        <span class="tl" style="margin-left:10px">题库</span>
+        <select id="sBank" class="inp tiny" title="只在选中的题库里搜">
+          <option value="all">全部题库</option>
+          ${allBanks().filter(b => !b.paper).map(b => `<option value="${esc(b.id)}"${st.bank === b.id ? ' selected' : ''}>${esc(b.title || b.id)}</option>`).join('')}
+        </select>
         <span class="spacer-grow"></span>
         <span class="tl">${kw ? '命中 ' + total + ' 题' + (total > shown.length ? '（只显示前 ' + shown.length + ' 条）' : '') : (filterLabel ? esc(filterLabel) + '：' + total + ' 题' : '输入关键词开始搜索')}</span>
         ${QAI.on && kw.length >= 2 ? qaiNoteHtml(kw, aiHits.length) : ''}
@@ -2033,6 +2062,8 @@ function paintSearch(anim) {
   if (anim) staggerList($('sres'));
 
   host.querySelectorAll('[data-scope]').forEach(c => c.onclick = () => { st.scope = c.dataset.scope; paintSearch(true); });
+  const sbk = host.querySelector('#sBank');
+  if (sbk) sbk.onchange = () => { st.bank = sbk.value || 'all'; paintSearch(true); };
   host.querySelectorAll('.wi').forEach(node => {
     const it = shown.find(x => x.k === node.dataset.k);
     if (it) bindItem(node, 'search', it);

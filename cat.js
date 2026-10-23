@@ -2469,7 +2469,11 @@
     var bank = bankOf(bankId);
     var appT = document.getElementById('appTitle');
     if (appT) appT.textContent = bank ? ('题目管理 · ' + bank.title) : '题目管理';
-    if (!QL || QL.bankId !== bankId) QL = { bankId: bankId, sel: {}, q: '' };
+    if (!QL || QL.bankId !== bankId) {
+      var qlAiOn = false;
+      try { qlAiOn = readLS('qbank.ql.ai.v1', false) === true; } catch (e) {}
+      QL = { bankId: bankId, sel: {}, q: '', ai: qlAiOn };
+    }
     if (!bank) {
       view.innerHTML = '<div class="card"><div class="empty">找不到这个题库（可能已经被删掉了）。</div>'
         + '<div class="actions" style="margin-top:10px"><button class="btn" id="qlBack">‹ 回题库列表</button></div></div>';
@@ -2491,7 +2495,8 @@
       +   (local ? '<div class="ql-hint small muted">一张张读：<b>点卡片左上角的方框（或卡片顶行）选中</b>不要的题，再点「删除选中」；也可以点每张卡片右上角的「删除」单独删。删除会连这道题的作答记录、收藏、解析一起清掉，不可恢复。</div>' : '')
       + '</div>'
       + '<div class="card ql-bar">'
-      +   '<input id="qlSearch" class="nb-search" type="search" placeholder="在题干 / 选项 / 解析里搜（比如某个关键词）" value="' + E(QL.q) + '">'
+      +   '<input id="qlSearch" class="nb-search" type="search" placeholder="在题干 / 共用题干 / 选项 / 解析里搜（比如某个关键词）" value="' + E(QL.q) + '">'
+      +   '<button class="chip' + (QL.ai ? ' on' : '') + '" id="qlAi" title="AI 模糊：按你的描述扩展检索词，只在本题库内匹配">✨ AI 模糊</button>'
       +   (local
             ? '<button class="btn small" data-ql="selAll">全选（筛出来的）</button>'
               + '<button class="btn small" data-ql="selInv">反选</button>'
@@ -2513,8 +2518,19 @@
         clearTimeout(qlistRender._t);
         qlistRender._t = setTimeout(function () { qlPaint(); }, 200);
       });
-      search.addEventListener('keydown', function (e) { if (e.key === 'Enter') { QL.q = search.value; qlPaint(); } });
+      search.addEventListener('keydown', function (e) { if (e.key === 'Enter') { QL.q = search.value; qlPaint(); if (QL.ai && QL.q.trim().length >= 2 && typeof window.qaiExpandAny === 'function') { window.qaiExpandAny(QL.q.trim()); setTimeout(function () { qlPaint(); }, 400); } } });
     }
+    var qlAiBtn = document.getElementById('qlAi');
+    if (qlAiBtn) qlAiBtn.onclick = function () {
+      QL.ai = !QL.ai;
+      qlAiBtn.classList.toggle('on', QL.ai);
+      try { writeLS('qbank.ql.ai.v1', QL.ai); } catch (e) {}
+      if (QL.ai && (QL.q || '').trim().length >= 2 && typeof window.qaiExpandAny === 'function') {
+        window.qaiExpandAny(QL.q.trim());
+        setTimeout(function () { qlPaint(); }, 500);
+      }
+      qlPaint();
+    };
     view.querySelectorAll('[data-ql]').forEach(function (el) {
       el.onclick = function () {
         var act = el.dataset.ql;
@@ -2531,11 +2547,19 @@
     var bank = bankOf(QL.bankId);
     if (!bank) return [];
     var needle = (QL.q || '').trim().toLowerCase();
+    /* 第 17 条：库内搜索也能开 AI 模糊——AI 只把描述扩成检索词，仍在本题库文本里做包含匹配 */
+    var terms = (QL.ai && needle.length >= 2 && typeof window.qaiTerms === 'function')
+      ? (window.qaiTerms(needle) || []).map(function (t) { return String(t || '').toLowerCase(); }).filter(Boolean)
+      : [];
     var out = [];
     bank.questions.forEach(function (q, i) {
       if (needle) {
-        var hay = (String(q.stem || '') + ' ' + (q.options || []).join(' ') + ' ' + String(q.explain || '')).toLowerCase();
-        if (hay.indexOf(needle) < 0) return;
+        var hay = (String(q.stem || '') + ' ' + String(q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + String(q.explain || '')).toLowerCase();
+        if (hay.indexOf(needle) < 0) {
+          var hit = false;
+          for (var ti = 0; ti < terms.length; ti++) { if (hay.indexOf(terms[ti]) >= 0) { hit = true; break; } }
+          if (!hit) return;
+        }
       }
       out.push({ q: q, i: i });
     });
