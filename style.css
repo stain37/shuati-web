@@ -321,6 +321,14 @@ body.dark .exp code{background:#1e2739}
 body.dark .fb.ok{border-color:var(--ok-line)}
 body.dark .fb.bad{border-color:var(--bad-line)}
 .tbl-wrap{overflow-x:auto;margin:10px 0;border:1px solid var(--line);border-radius:var(--r-s)}
+/* 表格样式不绑在 .exp 上：AI 聊天 / 图表 / 导出里只要用了 tbl-wrap 也该像样 */
+.tbl-wrap table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0;background:var(--card)}
+.tbl-wrap th,.tbl-wrap td{border:1px solid var(--line);padding:6px 9px;vertical-align:top;text-align:left}
+.tbl-wrap th{background:var(--bg2);font-weight:700;white-space:nowrap}
+.tbl-wrap tbody tr:nth-child(even){background:var(--bg2)}
+/* 公式（KaTeX）：行内跟着正文，独立公式横向可滚，别把卡片撑破 */
+.exp .katex,.aiout .katex,.rich-edit .katex{font-size:1.02em}
+.katex-display{overflow-x:auto;overflow-y:hidden;padding:3px 0;margin:8px 0}
 .exp table,.ed-preview table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0;background:var(--card)}
 .exp th,.exp td,.ed-preview th,.ed-preview td{border:1px solid var(--line);padding:6px 9px;vertical-align:top;text-align:left}
 .exp th,.ed-preview th{background:var(--bg2);font-weight:700;white-space:nowrap}
@@ -570,6 +578,12 @@ body.dark .gstem b{color:var(--text)}
 .thumb .x{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(17,24,39,.72);color:#fff;cursor:pointer;font-size:13px;line-height:1;padding:0}
 .ed-preview{background:var(--card);border:1px solid var(--line);border-radius:var(--r-s);padding:10px;font-size:14px;min-height:40px}
 .rich-imgs{margin-top:10px}
+.rich-img{position:relative;display:inline-block;max-width:100%;vertical-align:top}
+.rich-img img{width:100%;max-width:100%;border-radius:var(--r-s);border:1px solid var(--line);display:block;margin:8px 0}
+.rich-img:not([style]) img{width:auto}
+.rich-rz{position:absolute;right:-7px;bottom:1px;width:22px;height:22px;border-radius:50%;background:var(--primary);border:2px solid var(--card);cursor:nwse-resize;opacity:0;transition:opacity .15s;touch-action:none}
+.rich-img:hover .rich-rz,.rich-rz:active{opacity:1}
+.rich-rz::after{content:'';position:absolute;right:4px;bottom:3px;width:6px;height:6px;border-right:2px solid #fff;border-bottom:2px solid #fff}
 .rich-imgs img,.ed-preview img,.exp img{max-width:100%;border-radius:var(--r-s);border:1px solid var(--line);display:block;margin:8px 0}
 body.dark .ed{background:#131a27}
 body.dark .thumb{background:#1b2334}
@@ -602,6 +616,12 @@ body.dark .wmeta.good{color:#86efac}
 
 /* ===== 改答案小面板 / 复习曲线设置 ===== */
 .fixbox{margin-top:10px;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-m);padding:12px}
+/* 答题页「改题目」：题干/选项/解析都是输入框，选项一行一个 */
+.qeditbox label.small{display:block;margin:10px 0 4px;font-weight:600}
+.qeditbox textarea{width:100%;box-sizing:border-box}
+.qe-opt{display:flex;align-items:center;gap:8px;margin:5px 0}
+.qe-opt .k{flex:0 0 22px;height:22px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.qe-opt input{flex:1;min-width:0}
 .fixrow{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0}
 .fixopt{display:flex;align-items:center;justify-content:center;min-width:46px;padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:pointer;font-size:13.5px;font-weight:600;user-select:none;transition:.15s}
 .fixopt input{display:none}

@@ -87,13 +87,41 @@ function mdFencesBack(html, fences) {
     .replace(new RegExp('<p>\\s*' + MD_FENCE + 'F(\\d+)' + MD_FENCE + '\\s*</p>', 'g'), (m, i) => put(+i))
     .replace(new RegExp(MD_FENCE + 'F(\\d+)' + MD_FENCE, 'g'), (m, i) => put(+i));
 }
+/* 公式：$$...$$ 独立成行 / $...$ 行内。先抽出来换成哨兵，正文按 markdown 正常走，
+   最后统一用 KaTeX 渲染后塞回去（KaTeX 没加载就原样留 LaTeX，不丢内容）。 */
+function mdMathExtract(md) {
+  if (!window.katex || typeof window.katex.renderToString !== 'function') return null;
+  const store = [];
+  const put = (tex, display) => { store.push({ tex: tex, display: display }); return '\u0003M' + (store.length - 1) + '\u0003'; };
+  let s = String(md).replace(/\$\$([\s\S]+?)\$\$/g, (m, t) => put(t, true));
+  s = s.replace(/(^|[^\\$\u0003])\$([^\n$]+?)\$(?!\d)/g, (m, pre, t) => pre + put(t, false));
+  return store.length ? { txt: s, store: store } : null;
+}
+function mdMathBack(html, M) {
+  if (!M) return html;
+  return String(html).replace(/\u0003M(\d+)\u0003/g, (m, i) => {
+    const it = M.store[+i];
+    if (!it) return '';
+    try { return window.katex.renderToString(it.tex, { displayMode: it.display, throwOnError: false, strict: 'ignore' }); }
+    catch (e) { return esc(it.display ? '$$' + it.tex + '$$' : '$' + it.tex + '$'); }
+  });
+}
 function mdToHtml(md) {
   if (!md) return '';
   const F = mdFences(md);
   md = F.txt;
   md = mdTidy(md);
+  const MATH = mdMathExtract(md);
+  if (MATH) md = MATH.txt;
   let s = esc(mdColorize(mdEscOpen(md)));
-  s = s.replace(/!\[([^\]]*)\]\((data:image\/[^)\s]+|[^)\s]+)\)/g, (m, a, u) => `<img alt="${a}" src="${u}">`);
+  s = s.replace(/!\[([^\]]*)\]\(\s*(data:image\/[^)\s]+|[^)\s]+?)\s*(?:=\s*(\d*)\s*x\s*(\d*)\s*)?\)/g, (m, a, u, w, h) => {
+    /* 图片尺寸语法：![图](url =200x120) / =200x / =x120（第 20 条：图片能拉大拉小） */
+    let extra = '';
+    if (w) extra += ' width="' + w + '"';
+    if (h) extra += ' height="' + h + '"';
+    if (w || h) extra += ' style="' + (w ? 'width:' + w + 'px;' : '') + (h ? 'height:' + h + 'px;' : '') + 'max-width:100%"';
+    return `<img alt="${a}" src="${u}"${extra}>`;
+  });
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
     /^(https?:|data:|\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : `${t}（${u}）`);
   s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
@@ -142,15 +170,18 @@ function mdToHtml(md) {
     closeList(); out.push(`<p>${t}</p>`);
   }
   closeList();
-  return mdFencesBack(mdEscEnd(mdColorEnd(out.join('\n'))), F.fences);
+  return mdMathBack(mdFencesBack(mdEscEnd(mdColorEnd(out.join('\n'))), F.fences), MATH);
 }
 
 /* 表格辅助 */
 function splitRow(line) {
   let s = line.trim();
+  /* 单元格里的竖线在 mdFromHtml 里写成 \|：先藏起来，分隔完再还原（以前不还原，
+     表格改一次再编辑列就错位，用户反馈「表格渲染不行」） */
+  s = s.replace(/\\\|/g, '\u0001');
   if (s.charAt(0) === '|') s = s.slice(1);
   if (s.slice(-1) === '|') s = s.slice(0, -1);
-  return s.split('|').map(x => x.trim());
+  return s.split('|').map(x => x.trim().replace(/\u0001/g, '|'));
 }
 function isTableSep(line) {
   let s = String(line).trim();
@@ -461,7 +492,16 @@ function mdFromHtml(root) {
     if (tag === 'code') return '`' + inlineOf(n, true) + '`';
     if (tag === 'del' || tag === 's' || tag === 'strike') return inlineOf(n, inCode);
     if (tag === 'a') { const h = n.getAttribute('href') || ''; return h ? '[' + inlineOf(n, inCode) + '](' + h + ')' : inlineOf(n, inCode); }
-    if (tag === 'img') return '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')';
+    if (tag === 'img') {
+      const w = n.getAttribute('width'), h = n.getAttribute('height');
+      let size = '';
+      if (w || h) {
+        const sw = w || (n.style && /width:\s*(\d+)px/.exec(n.style.width || '') || [])[1] || '';
+        const sh = h || (n.style && /height:\s*(\d+)px/.exec(n.style.height || '') || [])[1] || '';
+        size = ' =' + sw + 'x' + sh;
+      }
+      return '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + size + ')';
+    }
     const c = (n.style && n.style.color) ? mdColorHex(n.style.color) : (tag === 'font' ? mdColorHex(n.getAttribute('color')) : '');
     if (c) return '<font color="' + c + '">' + inlineOf(n, inCode) + '</font>';
     return inlineOf(n, inCode);                     // 未知标签：丢标签、留文字
@@ -534,7 +574,7 @@ function richBox(fk, text, custom, label) {
   const n = (typeof noteOf === 'function') ? noteOf(fk) : null;
   const imgs = (n && n.imgs) || [];
   const imgsHtml = imgs.length
-    ? '<div class="rich-imgs">' + imgs.map(im => `<img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy">`).join('') + '</div>'
+    ? '<div class="rich-imgs">' + imgs.map((im, i) => `<span class="rich-img" data-imgi="${i}"${im.w ? ' style="width:' + im.w + 'px"' : ''}><img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy"><i class="rich-rz" title="拖动改图片宽度"></i></span>`).join('') + '</div>'
     : '';
   const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
   return `<div class="exp-wrap" data-note-for="${esc(fk)}">
@@ -543,6 +583,26 @@ function richBox(fk, text, custom, label) {
       ${imgsHtml}
       <div class="aisrc-saved" data-aisrc="${esc(fk)}"></div>
     </div>`;
+}
+function richInsertImgAtRange(el, rng, src, alt) {
+  const x = document.createElement('img');
+  x.src = src; x.alt = alt || ''; x.loading = 'lazy';
+  const sp = document.createElement('span');
+  sp.className = 'rich-img in-text';
+  sp.appendChild(x);
+  const h = document.createElement('i');
+  h.className = 'rich-rz'; h.title = '拖动改图片宽度';
+  sp.appendChild(h);
+  if (rng && el.contains(rng.startContainer)) {
+    rng.deleteContents();
+    rng.insertNode(sp);
+    const after = document.createRange();
+    after.setStartAfter(sp); after.collapse(true);
+    const sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(after); }
+  } else el.appendChild(sp);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  return sp;
 }
 function richBind(el, fk) {
   if (!el || !fk) return null;
@@ -564,6 +624,21 @@ function richBind(el, fk) {
   el.addEventListener('input', () => { richState(el, el.innerHTML === before ? '' : '未保存…', true); });
   el.addEventListener('blur', save, true);
   el.addEventListener('paste', ev => {              // 从网页 / Word 粘进来的一律只留纯文字
+    const cb0 = ev.clipboardData || window.clipboardData;
+    const imgs0 = cb0 && cb0.items ? Array.prototype.slice.call(cb0.items).filter(it => /^image\//.test(it.type || '')) : [];
+    if (imgs0.length) {                              // 第 9 条：Ctrl+V 直接把截图粘进正文
+      ev.preventDefault();
+      (async () => {
+        for (const it of imgs0) {
+          const f = it.getAsFile();
+          if (!f) continue;
+          try { richInsertImgAtRange(el, null, await compressImage(f), f.name || '粘贴的图片'); }
+          catch (err) { toast('图片粘贴失败：' + (f.name || '剪贴板图片')); }
+        }
+        richState(el, '未保存…', true);
+      })();
+      return;
+    }
     ev.preventDefault();
     const cb = ev.clipboardData || window.clipboardData;
     const t = (cb ? cb.getData('text/plain') : '') || '';
@@ -612,23 +687,61 @@ function richBind(el, fk) {
     let md = '';
     try { md = mdFromHtml(el.cloneNode(true)); } catch (err) { md = (NOTES[fk] || {}).text || ''; }
     const cur = NOTES[fk] || {};
-    NOTES[fk] = { text: md || cur.text || '', imgs: (cur.imgs || []).concat(added), ts: Date.now(), ai: cur.ai || false };
+    NOTES[fk] = { text: md || cur.text || '', imgs: cur.imgs || [], ts: Date.now(), ai: cur.ai || false };
     if (typeof saveNotes === 'function' && saveNotes() === false) { toast('保存失败：浏览器存储满了', 3000, 'bad'); return; }
     const wrap = el.closest('.exp-wrap');
-    let box = wrap && wrap.querySelector('.rich-imgs');
-    if (!box && wrap) { box = document.createElement('div'); box.className = 'rich-imgs'; wrap.appendChild(box); }
-    if (box) added.forEach(im => {
-      const x = document.createElement('img'); x.src = im.src; x.alt = im.name || ''; x.loading = 'lazy'; box.appendChild(x);
-    });
+    added.forEach(im => { richInsertImgAtRange(el, null, im.src, im.name || ''); });
+    if (wrap && typeof richImgsBind === 'function') richImgsBind(wrap);
     richState(el, '已保存');
     toast('已插入 ' + added.length + ' 张图片');
   });
   fmtBarInit(el);
   return RICH;
 }
+/* 解析里的图片：右下角手柄拖动改宽度，宽度存进 NOTES[fk].imgs[i].w（第 20 条） */
+function richImgsBind(wrap) {
+  if (!wrap || !wrap.dataset) return;
+  const fk = wrap.dataset.noteFor;
+  Array.prototype.slice.call(wrap.querySelectorAll('.rich-img')).forEach(sp => {
+    if (sp.dataset.rzBound === '1') return;
+    sp.dataset.rzBound = '1';
+    const h = sp.querySelector('.rich-rz');
+    if (!h) return;
+    h.addEventListener('pointerdown', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const startX = ev.clientX, startW = sp.getBoundingClientRect().width;
+      let last = Math.round(startW);
+      const move = e2 => {
+        const w = Math.max(60, Math.round(startW + (e2.clientX - startX)));
+        sp.style.width = w + 'px';
+        last = w;
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        const n = NOTES[fk] || {};
+        const imgs = n.imgs || [];
+        const i = parseInt(sp.dataset.imgi, 10);
+        if (imgs[i]) {
+          imgs[i].w = last;
+          NOTES[fk] = { text: n.text || '', imgs: imgs, ts: Date.now(), ai: n.ai || false };
+          if (typeof saveNotes === 'function') saveNotes();
+          toast('图片宽度已保存：' + last + 'px');
+        } else {
+          const ed = sp.closest('.rich-edit');
+          if (ed) ed.dispatchEvent(new Event('input', { bubbles: true }));
+          toast('图片宽度已改：' + last + 'px（点到别处自动保存）');
+        }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  });
+}
 /* 一次把页面上还没绑过的就地编辑器都绑上（重画完调一次就行） */function richBindAll(root) {
   const scope = root || document;
   if (!scope.querySelectorAll) return;
+  Array.prototype.slice.call(scope.querySelectorAll('.exp-wrap')).forEach(w => richImgsBind(w));
   Array.prototype.slice.call(scope.querySelectorAll('.rich-edit[contenteditable]')).forEach(el => {
     if (el.dataset.richBound === '1') return;
     const fk = el.dataset.noteFor;

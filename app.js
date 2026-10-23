@@ -1955,6 +1955,75 @@ function delBankQuestion(bankId, qid) {
 window.delBankQuestion = delBankQuestion;   /* cat.js 的题目管理页要调 */
 window.delTargetOf = delTargetOf;
 
+/* 第 8 条：在答题页直接改题目（题干 / 选项 / 答案 / 解析）。只对自建题库生效，
+   内置题库是只读文件；套卷里的题改它原题库里的那道。 */
+function updateBankQuestion(bankId, qid, patch) {
+  if (!Array.isArray(LOCAL)) return { ok: false, reason: 'builtin' };
+  const raw = LOCAL.find(x => x && x.id === bankId);
+  if (!raw) return { ok: false, reason: 'builtin' };
+  const qs = Array.isArray(raw.questions) ? raw.questions : (raw.questions = []);
+  const q = qs.find(x => x && String(x.id) === String(qid));
+  if (!q) return { ok: false, reason: 'missing' };
+  if (patch.stem != null) q.stem = patch.stem;
+  if (patch.group != null) q.group = patch.group;
+  if (patch.groupTitle != null) q.groupTitle = patch.groupTitle;
+  if (Array.isArray(patch.options)) q.options = patch.options;
+  if (Array.isArray(patch.answer)) q.answer = patch.answer;
+  if (patch.explain != null) q.explain = patch.explain;
+  writeLS(LS.banks, LOCAL);
+  invalidateBanks();
+  try { if (window.BF && BF.autoSync) BF.autoSync(); } catch (e) {}
+  return { ok: true, q: q };
+}
+window.updateBankQuestion = updateBankQuestion;
+
+function openQEditor(host, fk, q, target, done) {
+  if (!host || !q || !target) return;
+  const opts = (q.options || []).slice();
+  const ans = (ansOf(fk, q) || []).slice();
+  const letters = 'ABCDEFGH'.split('');
+  host.innerHTML =
+    '<div class="fixbox qeditbox">' +
+    '<div class="small muted">改题库里的这道题（题干 / 选项 / 答案 / 解析）。保存后会写回题库，同步时会一起同步出去。</div>' +
+    '<label class="small">题干</label><textarea id="qeStem" rows="3" spellcheck="false">' + esc(q.stem || '') + '</textarea>' +
+    '<label class="small">选项（每行一个，最多 8 个；空行会去掉，字母自动重排）</label>' +
+    opts.map((o, i) => '<div class="qe-opt"><span class="k">' + letters[i] + '</span><input data-qeo="' + i + '" value="' + esc(String(o == null ? '' : o)) + '"></div>').join('') +
+    '<div class="actions"><button class="btn" id="qeAdd">＋ 加一个选项</button></div>' +
+    '<label class="small">正确答案</label>' +
+    '<div class="fixrow">' + letters.map(L => '<label class="fixopt' + (ans.indexOf(L) >= 0 ? ' on' : '') + '"><input type="checkbox" data-qea="' + L + '"' + (ans.indexOf(L) >= 0 ? ' checked' : '') + '><span>' + L + '</span></label>').join('') + '</div>' +
+    '<label class="small">解析（可留空，留空就回到题库自带解析）</label><textarea id="qeExp" rows="3" spellcheck="false">' + esc(q.explain || '') + '</textarea>' +
+    '<div class="actions"><button class="btn primary" id="qeOk">保存改动</button><button class="btn" id="qeCancel">取消</button></div></div>';
+  host.querySelectorAll('.fixopt input').forEach(cb => cb.onchange = () => cb.parentNode.classList.toggle('on', cb.checked));
+  const addOpt = host.querySelector('#qeAdd');
+  if (addOpt) addOpt.onclick = () => {
+    const inputs = host.querySelectorAll('[data-qeo]');
+    if (inputs.length >= 8) { toast('最多 8 个选项'); return; }
+    const i = inputs.length, L = letters[i];
+    const row = document.createElement('div');
+    row.className = 'qe-opt';
+    row.innerHTML = '<span class="k">' + L + '</span><input data-qeo="' + i + '" value="">';
+    inputs[inputs.length - 1].closest('.qe-opt').after(row);
+  };
+  host.querySelector('#qeCancel').onclick = () => { host.innerHTML = ''; };
+  host.querySelector('#qeOk').onclick = () => {
+    const stem = host.querySelector('#qeStem').value.trim();
+    const options = Array.from(host.querySelectorAll('[data-qeo]')).map(el => el.value.trim()).filter(t => t !== '');
+    const ansL = Array.from(host.querySelectorAll('.fixopt input')).filter(cb => cb.checked).map(cb => cb.dataset.qea)
+      .filter((L, i, arr) => arr.indexOf(L) === i && letters.indexOf(L) < options.length);
+    const explain = host.querySelector('#qeExp').value;
+    if (!stem) { toast('题干不能空'); return; }
+    if (!options.length) { toast('至少留一个选项'); return; }
+    if (!ansL.length) { toast('至少勾一个正确答案'); return; }
+    const r = updateBankQuestion(target.bankId, target.qid, { stem: stem, options: options, answer: ansL, explain: explain });
+    if (!r.ok) { toast(r.reason === 'builtin' ? '内置题库是只读文件，改不了' : '这道题已经不在了'); return; }
+    host.innerHTML = '';
+    toast('题目已改好', 1600, 'ok');
+    if (done) done();
+  };
+}
+window.openQEditor = openQEditor;
+
+
 function storageBytes() {
   let n = 0;
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += (k || '').length + (localStorage.getItem(k) || '').length; } } catch (e) {}
@@ -2197,6 +2266,7 @@ function renderQuiz(bankId) {
             ${rec ? `<button class="btn" id="doRedo">再答一次</button>` : ''}
             <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
             <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
+            ${delT ? '<button class="btn" id="doEditQ" title="直接改这道题的题干 / 选项 / 答案 / 解析（写回题库，内置题库只读）">✎ 改题目</button>' : ''}
             <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
             <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
             <button class="btn" id="doWrongToggle" title="手动把这道题放进 / 移出错题本（不影响作答记录里的对错次数）">${(ANS[fk] && ANS[fk].wrong) ? '↩ 移出错题本' : '＋ 加入错题本'}</button>
@@ -2217,6 +2287,7 @@ function renderQuiz(bankId) {
       </div>
       <div id="noteHost"></div>
       <div id="fixHost"></div>
+      <div id="editQHost"></div>
       <div id="aiHost"></div>
       <div id="vHost"></div>
     </div>`;
@@ -2263,6 +2334,7 @@ function renderQuiz(bankId) {
     openNoteEditor(fk, $('noteHost'), q, render);
   });
   on('doFix', () => { qSheetToggle(false); openAnsEditor($('fixHost'), fk, q, render); });
+  if (delT) on('doEditQ', () => { qSheetToggle(false); openQEditor($('editQHost'), fk, q, delT, render); });
   /* 「删除本题」：只删自建题库里的题（套卷里的题记在它原来的题库上）。删完自动跳到下一题 */
   if (delT) on('doDelQ', () => {
     qSheetToggle(false);   /* 先收抽屉：确认框是 .mask（z 40），抽屉 z 35，不收就会盖在上面 */
