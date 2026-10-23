@@ -1826,6 +1826,10 @@
           if (!b) return;
           raw.cat = b.cat == null ? null : b.cat;
           if (b.ord == null) delete raw.ord; else raw.ord = b.ord;
+          /* 改名 / 改副标题也要写回原始对象：旧版只同步 cat/ord，
+             名字改了只留在缓存副本里，刷新后重新读 localStorage 又变回旧名 —— 这就是「改不了题库名字」 */
+          if (b.title) raw.title = b.title;
+          if (b.subtitle == null) delete raw.subtitle; else raw.subtitle = b.subtitle;
         });
       }
       if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL);
@@ -2548,7 +2552,7 @@
       var s = bankStat(bank);
       var crumb = pathOf(bank.cat || null).map(TITLE).join(' › ');
       sub.innerHTML = (crumb ? '位置：' + E(crumb) + '　·　' : '')
-        + '共 <b>' + bank.questions.length + '</b> 题　已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
+        + '共 <b>' + bank.questions.length + '</b> 题　满分 ' + ((typeof bankScore === 'function') ? bankScore(bank) : '—') + '　已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
         + (listed.length !== bank.questions.length ? '　·　筛出 ' + listed.length + ' 题' : '');
     }
     var cnt = document.getElementById('qlCnt');

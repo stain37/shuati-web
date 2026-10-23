@@ -550,7 +550,31 @@
     if (n) varqSave();
     return n;
   }
-  function varqClear(k) { var m = varqAll(); if (m[k]) { delete m[k]; varqSave(); } }
+  function varqClear(k) {
+    var m = varqAll();
+    if (m[k]) { delete m[k]; varqSave(); try { if (typeof tombAdd === 'function') tombAdd('var', k); } catch (e) {} }
+  }
+  /* 单独删一道变式：列表整体前移，当前打开序号与「刚点的选项」缓存一起搬 */
+  function varqDel(k, i) {
+    var m = varqAll(), l = m[k];
+    if (!l || !l[i]) return false;
+    l.splice(i, 1);
+    if (!l.length) { delete m[k]; try { if (typeof tombAdd === 'function') tombAdd('var', k); } catch (e) {} }
+    var op = varqOpenIdx(k);
+    if (op === i) delete VOPEN[k]; else if (op > i) VOPEN[k] = op - 1;
+    var np = {};
+    Object.keys(VPICK).forEach(function (kk) {
+      if (kk.indexOf(k + '#') !== 0) { np[kk] = VPICK[kk]; return; }
+      var n = +kk.slice(k.length + 1);
+      if (n === i) return;
+      np[k + '#' + (n > i ? n - 1 : n)] = VPICK[kk];
+    });
+    VPICK = np;
+    varqSave();
+    return true;
+  }
+  /* 云同步把 qbank.var.v1 覆盖后，让内存缓存失效（下次 varqAll 重新读） */
+  function varqReload() { VARM = null; }
   function varqFK(k, i) { return 'var:' + k + '#' + i; }
   function varqOpenIdx(k) { return (typeof VOPEN[k] === 'number') ? VOPEN[k] : -1; }
   function varqPaint(host, k) {
@@ -566,7 +590,8 @@
       + '<button class="vchip vsc' + (open < 0 ? ' on' : '') + '" data-vopen="-1" title="回到原题">原题</button>'
       + list.map(function (v, i) {
           var st = v.r ? (v.r.ok ? ' ok' : ' bad') : '';
-          return '<button class="vchip vsc' + st + (open === i ? ' on' : '') + '" data-vopen="' + i + '" title="切到这道变式（纯练习：不计错题本 / 正确率 / 复习）">变式 ' + (i + 1) + (v.r ? (v.r.ok ? ' ✓' : ' ✗') : '') + '</button>';
+          return '<span class="vchip-w"><button class="vchip vsc' + st + (open === i ? ' on' : '') + '" data-vopen="' + i + '" title="切到这道变式（纯练习：不计错题本 / 正确率 / 复习）">变式 ' + (i + 1) + (v.r ? (v.r.ok ? ' ✓' : ' ✗') : '') + '</button>'
+            + '<button class="vchip-x" data-vdel="' + i + '" title="删除这道变式">×</button></span>';
         }).join('')
       + '<button class="vchip vsc vclr" data-vclr="1" title="清空这道题的所有变式">清空</button></div>';
     var body = '';
@@ -601,6 +626,12 @@
     });
     var clr = host.querySelector('[data-vclr]');
     if (clr) clr.onclick = function () { if (confirm('清空这道题的所有变式？')) { varqClear(k); varqPaint(host, k); } };
+    host.querySelectorAll('[data-vdel]').forEach(function (b) {
+      b.onclick = function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        if (varqDel(k, +b.dataset.vdel)) varqPaint(host, k);
+      };
+    });
     var cls2 = host.querySelector('[data-vclose]');
     if (cls2) cls2.onclick = function () { delete VOPEN[k]; varqPaint(host, k); };
     if (open < 0) return;
@@ -644,6 +675,8 @@
   window.varqAdd = varqAdd;
   window.varqList = varqList;
   window.varqClear = varqClear;
+  window.varqDel = varqDel;
+  window.varqReload = varqReload;
 
   window.openVariant = openVariant;
   window.variantReopenFor = reopenFor;

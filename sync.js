@@ -19,7 +19,7 @@ const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
-  scope: { ans: true, note: true, qtn: true, paper: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true },
+  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -35,6 +35,7 @@ const SYNC_SCOPES = [
   { k: 'note', label: '笔记 · 自定义解析 · 修正答案', tip: '你写过的东西、手动改过的正确答案，以及 AI 解析引用到的参考资料清单（只存出处，正文在资料库 / PDF 里）' },
   { k: 'qtn', label: '口诀 / 思路便签', tip: '答题页右侧那份小便签（几个字的口诀、判别法、易错点）。跟解析分开存，所以单独一项。' },
   { k: 'paper', label: '套卷（组卷）', tip: '临时套卷的定义' },
+  { k: 'var', label: '变式题', tip: 'AI 照原题出的变式题（纯练习，不计错题本 / 正确率；删掉的也会跟着走）' },
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
@@ -243,6 +244,7 @@ async function syncPayload() {
   if (s.note && typeof aiSrcNorm === 'function') { const m = aiSrcNorm(); if (Object.keys(m).length) d.aisrc = m; }
   if (s.qtn) d.qtn = QTN;
   if (s.paper) d.papers = PAPERS;
+  if (s.var) { try { d.var = JSON.parse(localStorage.getItem('qbank.var.v1') || '{}'); } catch (e) { d.var = {}; } }
   if (s.cat) d.cats = catRows();
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
@@ -251,6 +253,7 @@ async function syncPayload() {
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
+  if (s.var) tomb.var = TOMB.var || {};
   if (s.qtn) tomb.qtn = TOMB.qtn || {};              /* 便签的「清空即删除」也靠墓碑传播，不然会在另一台设备上复活 */
   if (s.note) tomb.aisrc = TOMB.aisrc || {};         /* 解析删了，它带的那份参考资料也一起走 */
   if (s.tag) { tomb.tag = TOMB.tag || {}; tomb.vocab = TOMB.vocab || {}; }
@@ -266,7 +269,7 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
-  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'vocab', 'qtn', 'aisrc'].forEach(k => {
+  ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'vocab', 'qtn', 'aisrc', 'var'].forEach(k => {
     const mine = TOMB[k] = TOMB[k] || {}, theirs = ct[k] || {};
     Object.keys(theirs).forEach(x => { if (!mine[x] || theirs[x] > mine[x]) mine[x] = theirs[x]; });
   });
@@ -287,6 +290,17 @@ function syncMergeCloud(cloud) {
 
   /* 3) 数组类：同 id 以本机为准（本机的可能更新），云端独有的补进来 */
   if (s.paper && Array.isArray(d.papers)) { d.papers.forEach(p => { if (p && p.id && !PAPERS.some(x => x.id === p.id)) { PAPERS.push(p); added++; } }); savePapers(); }
+  if (s.var && d.var) {
+    let mem = {};
+    try { mem = JSON.parse(localStorage.getItem('qbank.var.v1') || '{}'); } catch (e) { mem = {}; }
+    let hit = 0;
+    Object.keys(d.var).forEach(k => {
+      if (ct.var && ct.var[k]) return;                      /* 云端记了「这题的变式被清空」，不复活 */
+      if (!mem[k] || !mem[k].length) { mem[k] = d.var[k]; hit++; }
+    });
+    if (hit) { writeLS('qbank.var.v1', mem); added += hit; }
+    if (typeof varqReload === 'function') varqReload(); else if (window.varqReload) window.varqReload();
+  }
   if (s.banks && Array.isArray(d.banks)) { d.banks.forEach(b => { if (b && b.id && !LOCAL.some(x => x.id === b.id)) { LOCAL.push(b); added++; } }); writeLS(LS.banks, LOCAL); invalidateBanks(); }
   if (s.cat && Array.isArray(d.cats) && d.cats.length) {
     try {

@@ -549,6 +549,14 @@ const qType = (q, ans) => ((ans || q.answer || []).length > 1 ? 'X' : 'A');
 const typeLabel = (q, ans) => ((ans || q.answer || []).length > 1 ? '多选' : '单选');
 const key = (bankId, qid) => bankId + '#' + qid;
 const kOf = (bank, q) => key(bank.id, q.id);
+/* 估算满分：单选/共用题干（A、B 型）每题 1.5 分，多选（X 型）每题 2 分。
+   只是给题库标一个「如果按考试算能拿多少分」的参考值，不改题目数据、不影响判分。 */
+const qScore = q => (qType(q, (q && q.answer) || []) === 'X' ? 2 : 1.5);
+function bankScore(bank) {
+  let s = 0;
+  ((bank && bank.questions) || []).forEach(q => { s += qScore(q); });
+  return Math.round(s * 10) / 10;
+}
 /* 题号显示：临时套卷里的题目 id 是 p1/p2…（paperBanks 给的重编号），要去掉前缀 p；
    题库 id 不是纯数字的（比如导入时给的 q1、uuid 那种），就退回「它在题库里排第几」，
    免得界面上冒出「第 q1 题」这种内部编号。
@@ -740,7 +748,7 @@ function openAnsEditor(host, k, q, done) {
 }
 
 /* ---------- 运行时状态 ---------- */
-const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, order: null, streak: 0, focusCur: false };
+const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false };
 const SS = {
   get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -1662,7 +1670,7 @@ function renderHome() {
       <div class="card bank">
         <div class="info">
           <div class="name">${esc(b.title)}${b.source === 'local' ? '<span class="pill local">自建</span>' : '<span class="pill">内置</span>'}</div>
-          <div class="meta">${b.subtitle ? esc(b.subtitle) + '　' : ''}${b.questions.length} 题　已答 ${done}${wr ? `　<span class="warn">错题 ${wr}</span>` : ''}　正确率 ${acc}%</div>
+          <div class="meta">${b.subtitle ? esc(b.subtitle) + '　' : ''}${b.questions.length} 题　满分 ${bankScore(b)}　已答 ${done}${wr ? `　<span class="warn">错题 ${wr}</span>` : ''}　正确率 ${acc}%</div>
           <div class="prog"><i style="width:${pct}%"></i></div>
         </div>
         <div class="acts">
@@ -1687,6 +1695,7 @@ function renderHome() {
         </div>
         <div class="acts">
           <button class="btn primary" data-start="${b.id}">${done ? '继续' : '开始'}${b.exam ? '考试' : '做题'}</button>
+          <button class="btn" data-renpaper="${b.id}" title="给这份套卷 / 试卷改个名字">改名</button>
           <button class="btn danger" data-delpaper="${b.id}">删除${b.exam ? '试卷' : '套卷'}</button>
         </div>
       </div>`;
@@ -1734,6 +1743,7 @@ function renderHome() {
       <button class="btn primary" id="toImport">＋ 导入 / 新建题库</button>
       ${dueN ? `<button class="btn primary" id="toReview">今日复习 ${srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN} 题</button>` : ''}
       <button class="btn" id="toRand">随机抽 30 题</button>
+      <button class="btn" id="toUpload" title="上传题库文件（.json / 纯文本），也可以直接粘贴题目">⬆ 上传题库</button>
     </div>
     <div class="toolbar sub">
       <button class="btn" id="toWrong">错题本${wrongN ? '（' + wrongN + (dueN ? ' · 待复习 ' + dueN : '') + '）' : ''}</button>
@@ -1760,6 +1770,7 @@ function renderHome() {
   $('stat').textContent = `${totalDone}/${totalQ}`;
   $('bar').style.width = (totalQ ? totalDone / totalQ * 100 : 0) + '%';
   on('toImport', () => go('#/import'));
+  on('toUpload', () => go('#/import'));
   on('toWrong', () => go('#/wrong'));
   on('toFav', () => go('#/fav'));
   on('toSearch', () => go('#/search'));
@@ -1785,6 +1796,14 @@ function renderHome() {
   document.querySelectorAll('[data-export]').forEach(el => el.onclick = () => exportBank(bankById(el.dataset.export)));
   document.querySelectorAll('[data-rand]').forEach(el => el.onclick = () => randomPaper([bankById(el.dataset.rand)], 30));
   document.querySelectorAll('[data-delpaper]').forEach(el => el.onclick = () => deletePaper(el.dataset.delpaper));
+  document.querySelectorAll('[data-renpaper]').forEach(el => el.onclick = () => {
+    const p = PAPERS.find(x => x.id === el.dataset.renpaper);
+    if (!p) return;
+    const t = (prompt('套卷名称', p.title) || '').trim();
+    if (!t || t === p.title) return;
+    p.title = t; savePapers(); invalidateBanks(); render();
+    toast('已改名：' + t, 1600, 'ok');
+  });
   document.querySelectorAll('[data-edit]').forEach(el => el.onclick = () => {
     const b = bankById(el.dataset.edit);
     SS.set('editing', b.id);
@@ -1845,6 +1864,8 @@ function makePaper(title, keys, opts) {
   let id = (opts.exam ? 'exam-' : 'paper-') + Date.now().toString(36);
   while (PAPERS.some(p => p.id === id)) id += '-' + i2s();   // 防撞车
   const p = { id: id, title: title || ((opts.exam ? '模拟考试 · ' : '套卷 · ') + keys.length + ' 题'), createdAt: Date.now(), keys: keys, exam: !!opts.exam, duration: opts.duration || 0 };
+  if (opts.kind) p.kind = opts.kind;          // 'review' = 每日复习卷，用来防同一天重复生成
+  if (opts.day) p.day = opts.day;
   PAPERS.push(p);
   savePapers();
   invalidateBanks();
@@ -2123,6 +2144,7 @@ function renderQuiz(bankId) {
       if (ansOf(fk, q).includes(K)) cls += ' right';
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
+    if (!recite && !locked && (QZ.excl[q.id] || []).indexOf(K) >= 0) cls += ' excl';   /* 长按排除：变灰、不参与选择与判分 */
     return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${esc(optText(t, K))}</span></button>`;
   }).join('');
 
@@ -2177,6 +2199,7 @@ function renderQuiz(bankId) {
             <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
             <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
             <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
+            <button class="btn" id="doWrongToggle" title="手动把这道题放进 / 移出错题本（不影响作答记录里的对错次数）">${(ANS[fk] && ANS[fk].wrong) ? '↩ 移出错题本' : '＋ 加入错题本'}</button>
             ${delT ? '<button class="btn danger" id="doDelQ" title="把这道题从题库里永久删掉（它的作答记录 / 收藏 / 解析会一起清）">🗑 删除本题</button>' : ''}
           </div>
           <button class="btn" data-qsheet="0">取消</button>
@@ -2214,7 +2237,20 @@ function renderQuiz(bankId) {
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
-  else $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => onPick(bank, q, el.dataset.k));
+  else $('view').querySelectorAll('.opt').forEach(el => {
+    el.onclick = () => {
+      if (el.dataset.lp === '1') { el.dataset.lp = ''; return; }   /* 长按刚排除/恢复，别再顺手选中 */
+      onPick(bank, q, el.dataset.k);
+    };
+    let timer = null;
+    const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    el.addEventListener('pointerdown', () => {
+      stop();
+      timer = setTimeout(() => { timer = null; el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); }, 480);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach(ev => el.addEventListener(ev, stop));
+    el.addEventListener('contextmenu', ev => { ev.preventDefault(); el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); });
+  });
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
@@ -2250,6 +2286,18 @@ function renderQuiz(bankId) {
   });
   on('doAI', () => { qSheetToggle(false); if (typeof aiOpenPanel === 'function') aiOpenPanel($('aiHost'), fk, q); else toast('AI 模块没加载（ai.js）'); });
   on('doVariant', () => { qSheetToggle(false); if (typeof openVariant === 'function') openVariant($('vHost'), fk, q); else toast('变式题模块没加载（variant.js）'); });
+  /* 手动加 / 移出错题本：只动 wrong 标记，对错次数和复习排期照旧 */
+  on('doWrongToggle', () => {
+    qSheetToggle(false);
+    const a = ANS[fk] || (ANS[fk] = { sel: [], ok: false, tries: 0, wrong: 0, ts: Date.now(), upd: Date.now() });
+    const had = (a.wrong || 0) > 0;
+    a.wrong = had ? 0 : Math.max(1, a.wrong || 0);
+    a.ts = a.ts || Date.now();
+    a.upd = Date.now();
+    saveAns();
+    toast(had ? '已移出错题本' : '已加入错题本', 1600, 'ok');
+    render();
+  });
   /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
   if (typeof varqBind === 'function') varqBind($('vStrip'), fk);
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
@@ -2477,8 +2525,21 @@ function subjectCount(bank, sub) {
   return arr.length;
 }
 
+/* 长按排除某个选项：只是「先不选它」（本机内存，不写库），不参与选择与判分 */
+function toggleExcl(q, K) {
+  if (!q || !K) return;
+  const arr = QZ.excl[q.id] || (QZ.excl[q.id] = []);
+  const i = arr.indexOf(K);
+  if (i >= 0) arr.splice(i, 1); else arr.push(K);
+  const pend = QZ.pending[q.id];
+  if (pend) { const j = pend.indexOf(K); if (j >= 0) pend.splice(j, 1); }
+  toast(i >= 0 ? ('选项 ' + K + ' 已恢复') : ('已排除选项 ' + K + '（长按可恢复，不参与判分）'), 1700);
+  render();
+}
+
 function onPick(bank, q, K) {
   if (answered(kOf(bank, q))) return;
+  if ((QZ.excl[q.id] || []).indexOf(K) >= 0) { toast('这个选项已被长按排除，长按恢复后再选'); return; }
   if (qType(q, ansOf(favKey(bank, q), q)) === 'X') {
     const cur = QZ.pending[q.id] || (QZ.pending[q.id] = []);
     const i = cur.indexOf(K);
@@ -2521,6 +2582,7 @@ function commitAnswer(k, sel, answer) {
 }
 
 function judge(bank, q, sel) {
+  sel = (sel || []).filter(K => (QZ.excl[q.id] || []).indexOf(K) < 0);   /* 长按排除的选项不参与判分 */
   const k = kOf(bank, q);
   const ans = ansOf(favKey(bank, q), q);      // 手工修正过的答案优先
   const ok = commitAnswer(k, sel, ans);
@@ -2762,7 +2824,7 @@ function renderGrid() {
     return true;
   });
 
-  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
+  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　满分 ${bankScore(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
     + (shown.length ? `<div class="grid">` + shown.map(q => {
       const k = kOf(bank, q), a = ANS[k];
       const no = bank.questions.indexOf(q) + 1;     // 用原题号，筛选后也不会串号
@@ -3132,9 +3194,25 @@ function dueKeys(limit) {
 function startReview(limit) {
   const cap = +srsCfg().daily || 0;                  // 0 = 不限
   const max = Math.min(limit && limit > 0 ? limit : 9999, cap || 9999);
+  const today = new Date().toISOString().slice(0, 10);
+  /* 同一天重复点「今日复习」：直接回到今天那份复习卷，别生成一堆同名套卷 */
+  const had = PAPERS.filter(p => p.kind === 'review' && p.day === today).pop();
+  if (had && allBanks().some(b => b.id === had.id)) { go('#/bank/' + had.id); return; }
   const ks = dueKeys(max);
-  if (!ks.length) { toast('今天没有到期的复习，休息一下'); return; }
-  makePaper('今日复习 · ' + ks.length + ' 题', ks);
+  if (!ks.length) {
+    /* 没有到期题也别什么都不发生（用户反馈「每日复习不生成套卷」）：
+       退一步用错题本里的题组一份卷，实在没有才提示 */
+    const wk = [];
+    baseBanks().forEach(b => b.questions.forEach(q => {
+      const k = kOf(b, q); const a = ANS[k];
+      if (a && (a.wrong || 0) > 0) wk.push(k);
+    }));
+    if (!wk.length) { toast('今天没有到期复习，错题本也是空的；先刷几题吧'); return; }
+    toast('今天没有到期复习，用错题本里的 ' + Math.min(wk.length, max) + ' 道题组卷', 2200, 'ok');
+    makePaper('错题复习 · ' + Math.min(wk.length, max) + ' 题', wk.slice(0, max), { kind: 'review', day: today });
+    return;
+  }
+  makePaper('今日复习 · ' + ks.length + ' 题', ks, { kind: 'review', day: today });
 }
 
 function renderStats() {
