@@ -173,7 +173,7 @@ let FAV = readLS(LS.fav, {});
 let NOTES = readLS(LS.note, {});
 let QTN = readLS(LS.qtn, {});      /* 答题页右侧便签（口诀 / 思路）：跟解析分开存，一个题目一条 */
 let PAPERS = readLS(LS.paper, []);     // [{ id, title, createdAt, keys:[] }]
-let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false });
+let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textColor: 'auto' });
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
@@ -472,6 +472,15 @@ function applyLook() {
   document.body.classList.toggle('reduce-motion', !!SET.reduceMotion);
   /* 面板磨砂（背景模糊）：默认开；关掉就是纯半透明，不看背景纹理 */
   document.body.classList.toggle('frost', SET.frost !== false);
+  /* 正文颜色：只动阅读区（题干 / 选项 / 解析），不动按钮与标题 */
+  const tc = ['auto', 'ink', 'blue', 'brown', 'green', 'custom'].indexOf(SET.textColor) >= 0 ? SET.textColor : 'auto';
+  if (document.documentElement) {
+    document.documentElement.setAttribute('data-tc', tc);
+    if (tc === 'auto') document.documentElement.style.removeProperty('--read-c');
+    else document.documentElement.style.setProperty('--read-c',
+      tc === 'ink' ? '#111827' : tc === 'blue' ? '#1d4ed8' : tc === 'brown' ? '#7c3a12'
+        : tc === 'green' ? '#166534' : (SET.textColorPick || '#334155'));
+  }
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -2330,7 +2339,8 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
-        <button class="btn qd-grip" id="qdGrip" title="按住拖动题目区块；松手会吸附到窗口边 / 居中，位置会记住">⠿</button>
+        <button class="btn qn-open" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
+        <button class="btn qd-grip" id="qdGrip" title="拖动题目区块（右下角可拉大小）；再点一下回到正常排版">⠿</button>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
       </div>
@@ -2339,13 +2349,9 @@ function renderQuiz(bankId) {
       <div id="qBody">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
       <div class="stem">${stemHtml(q.stem)}</div>
-      <div class="tag-slot" id="tagSlot"></div>
+      ${tagRowHtml(fk, q)}
       <div class="opts">${opts}</div>
       </div>
-      <aside class="qnbox" id="qnBox">
-        <div class="qn-cap">✎ 口诀 / 思路<span class="qn-state small muted" id="qnState"></span></div>
-        <textarea id="qnTa" rows="4" spellcheck="false" placeholder="只记几个字：口诀、判别法、易错点。&#10;（跟解析分开存，只在本机）">${esc((QTN[fk] || {}).text || '')}</textarea>
-      </aside>
       </div>
       <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
@@ -2398,7 +2404,10 @@ function renderQuiz(bankId) {
     if (!cur || cur.hasAttribute('hidden')) document.body.classList.remove('sheet-open');
   })();
   uiQuizFloat();                 /* 题目区块可拖动吸附（第 4 条） */
-  uiTagDock(bank, q, fk);        /* 考点标签吸附在题目旁边、可拉大小、可隐藏（第 5 条） */
+  /* 第 5 条修正：考点标签回到正文内联（原来那样），不再往 body 挂浮动面板
+     —— 挂 body 的整页可见 + 面板里的按钮点不动，都是它带来的。 */
+  document.querySelectorAll('body > .tagdock, body > .tagpill').forEach(el => el.remove());
+  uiQnPanel(fk);                 /* 口诀 / 思路：独立浮窗（可拖 / 可拉大小，只在本页） */
   /* §8：管理动作抽屉的开关（「⋯ 更多」按钮 / 遮罩 / 取消 三处都关） */
   on('doMore', () => qSheetToggle(true));
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
@@ -2573,11 +2582,97 @@ function toggleFav(k, btn) {
   render();
 }
 
+/* ===== 口诀 / 思路浮窗（第 5 条修正） =====
+   需求原话：「口诀思路需要独立于答题区块」「不要全界面显示，我在主页都能看到」。
+   所以：不塞进答题卡的侧栏，也不挂 body，而是挂在 #view 里 → 换页自然消失；标题栏拖动、右下角拉大小。 */
+const QN_KEY = 'qbank.qnbox.v1';
+function qnState() { return readLS(QN_KEY, null) || { x: null, y: null, w: 300, h: 210 }; }
+function qnSave(v) { writeLS(QN_KEY, v); }
+function uiQnPanel(fk) {
+  const view = document.getElementById('view');
+  if (!view) return;
+  view.querySelectorAll('.qnfloat').forEach(el => el.remove());
+  const panel = document.createElement('section');
+  panel.className = 'qnfloat';
+  panel.id = 'qnFloat';
+  panel.hidden = true;
+  panel.innerHTML = '<div class="qn-h"><span class="qn-cap">✎ 口诀 / 思路</span>'
+    + '<span class="qn-state small muted" id="qnState"></span><span class="spacer-grow"></span>'
+    + '<button type="button" class="qn-x" title="关掉（再点题目上方的「✎ 口诀」打开）">✕</button></div>'
+    + '<textarea id="qnTa" spellcheck="false" placeholder="只记几个字：口诀、判别法、易错点。&#10;（跟解析分开存，只在本机）">'
+    + esc((QTN[fk] || {}).text || '') + '</textarea><i class="qn-rz" title="拖动改大小"></i>';
+  view.appendChild(panel);
+  const st = qnState();
+  const btn = document.getElementById('btnQn');
+  const place = () => {
+    const card = view.querySelector('#qBody') ? view.querySelector('.card') : null;
+    const cr = card ? card.getBoundingClientRect() : { right: window.innerWidth - 320, top: 90 };
+    const w = Math.max(220, Math.min(window.innerWidth - 16, st.w || 300));
+    const h = Math.max(140, Math.min(window.innerHeight - 80, st.h || 210));
+    let x = st.x, y = st.y;
+    if (x == null || y == null) {
+      const rx = cr.right + 14;
+      x = (rx + w <= window.innerWidth - 8) ? rx : Math.max(8, cr.right - w - 8);
+      y = Math.max(70, cr.top + 40);
+    }
+    panel.style.width = w + 'px'; panel.style.height = h + 'px';
+    panel.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, x)) + 'px';
+    panel.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, y)) + 'px';
+  };
+  const open = () => { panel.hidden = false; place(); btn && btn.classList.add('on'); };
+  const close = () => { panel.hidden = true; btn && btn.classList.remove('on'); };
+  if (btn) btn.onclick = () => (panel.hidden ? open() : close());
+  panel.querySelector('.qn-x').onclick = close;
+  /* 拖标题栏 */
+  const hd = panel.querySelector('.qn-h');
+  let dg = null;
+  hd.addEventListener('pointerdown', ev => {
+    const r = panel.getBoundingClientRect();
+    dg = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
+    try { hd.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
+  });
+  hd.addEventListener('pointermove', ev => {
+    if (!dg) return;
+    const w = panel.getBoundingClientRect().width, h = panel.getBoundingClientRect().height;
+    const x = Math.max(4, Math.min(window.innerWidth - w - 4, ev.clientX - dg.dx));
+    const y = Math.max(4, Math.min(window.innerHeight - h - 4, ev.clientY - dg.dy));
+    panel.style.left = x + 'px'; panel.style.top = y + 'px';
+  });
+  hd.addEventListener('pointerup', () => {
+    if (!dg) return; dg = null;
+    st.x = Math.round(panel.getBoundingClientRect().left);
+    st.y = Math.round(panel.getBoundingClientRect().top);
+    qnSave(st);
+  });
+  /* 右下角拉大小 */
+  const rz = panel.querySelector('.qn-rz');
+  let rs = null;
+  rz.addEventListener('pointerdown', ev => {
+    const r = panel.getBoundingClientRect();
+    rs = { w: r.width, h: r.height, x: ev.clientX, y: ev.clientY };
+    try { rz.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  rz.addEventListener('pointermove', ev => {
+    if (!rs) return;
+    const w = Math.max(200, Math.min(window.innerWidth - 16, rs.w + ev.clientX - rs.x));
+    const h = Math.max(130, Math.min(window.innerHeight - 16, rs.h + ev.clientY - rs.y));
+    panel.style.width = w + 'px'; panel.style.height = h + 'px';
+  });
+  rz.addEventListener('pointerup', () => {
+    if (!rs) return; rs = null;
+    st.w = Math.round(panel.getBoundingClientRect().width);
+    st.h = Math.round(panel.getBoundingClientRect().height);
+    qnSave(st);
+  });
+}
+
 /* ===== 题目区块拖动吸附（第 4 条） =====
    「⠿」按住拖：整个答题卡变浮层跟着走；靠近窗口左 / 右 / 上 / 下边或中心线时吸附，
    位置存在 qbank.quizfloat.v1，下次进来还在原处。再点一次「⠿」回到正常排版。 */
 const QF_KEY = 'qbank.quizfloat.v1';
-function qfState() { return readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0 }; }
+function qfState() { return readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0, h: 0 }; }
 function qfSave(st) { writeLS(QF_KEY, st); }
 function uiQuizFloat() {
   const card = document.querySelector('#view > .card');
@@ -2592,18 +2687,22 @@ function uiQuizFloat() {
       const x = (st.x == null || !st.x) ? Math.max(8, Math.round((window.innerWidth - w) / 2)) : st.x;
       const y = (st.y == null || !st.y) ? 72 : st.y;
       card.style.width = w + 'px';
+      if (st.h) card.style.height = st.h + 'px';
       card.style.left = Math.max(0, Math.min(window.innerWidth - 80, x)) + 'px';
       card.style.top = Math.max(0, Math.min(window.innerHeight - 80, y)) + 'px';
       st.w = w; st.x = +card.style.left.replace('px', ''); st.y = +card.style.top.replace('px', '');
+      if (!card.querySelector('.qf-rz')) { const r0 = document.createElement('i'); r0.className = 'qf-rz'; r0.title = '拖动改大小'; card.appendChild(r0); rzBind(r0); }
     } else {
-      card.style.width = ''; card.style.left = ''; card.style.top = '';
+      card.style.width = ''; card.style.height = ''; card.style.left = ''; card.style.top = '';
+      card.querySelectorAll('.qf-rz').forEach(x => x.remove());
     }
     grip.classList.toggle('on', on);
     grip.title = on ? '拖动题目区块；再点一下回到正常排版' : '按住拖动题目区块；松手会吸附到窗口边 / 居中';
     qfSave(st);
   };
   applyFloat(!!st.float);
-  grip.onclick = () => applyFloat(!st.float);
+  let moved = false;                                   /* 拖过就别再当成「点一下切回正常排版」 */
+  grip.onclick = () => { if (moved) { moved = false; return; } applyFloat(!st.float); };
   const guideV = document.createElement('div'), guideH = document.createElement('div');
   guideV.className = 'qd-guide v'; guideH.className = 'qd-guide h';
   document.body.appendChild(guideV); document.body.appendChild(guideH);
@@ -2613,10 +2712,33 @@ function uiQuizFloat() {
     if (vx != null) guideV.style.left = vx + 'px';
     if (hy != null) guideH.style.top = hy + 'px';
   };
+  /* 右下角拉大小（自由拉，任意长宽；记得住） */
+  function rzBind(el) {
+    let rs = null;
+    el.addEventListener('pointerdown', ev => {
+      const r = card.getBoundingClientRect();
+      rs = { w: r.width, h: r.height, x: ev.clientX, y: ev.clientY };
+      try { el.setPointerCapture(ev.pointerId); } catch (e) {}
+      ev.preventDefault(); ev.stopPropagation();
+    });
+    el.addEventListener('pointermove', ev => {
+      if (!rs) return;
+      const w = Math.max(320, Math.min(window.innerWidth - 16, rs.w + ev.clientX - rs.x));
+      const h = Math.max(240, Math.min(window.innerHeight - 16, rs.h + ev.clientY - rs.y));
+      card.style.width = w + 'px'; card.style.height = h + 'px';
+    });
+    el.addEventListener('pointerup', () => {
+      if (!rs) return; rs = null;
+      st.w = Math.round(card.getBoundingClientRect().width);
+      st.h = Math.round(card.getBoundingClientRect().height);
+      qfSave(st);
+    });
+  }
   let drag = null;
   const onDown = (ev) => {
     if (!card.classList.contains('qf-float')) { applyFloat(true); }
     const r = card.getBoundingClientRect();
+    moved = false;
     drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: r.left, y: r.top };
     card.classList.add('qf-dragging');
     try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
@@ -2625,6 +2747,7 @@ function uiQuizFloat() {
   const onMove = (ev) => {
     if (!drag) return;
     let x = ev.clientX - drag.dx, y = ev.clientY - drag.dy;
+    if (!moved && (Math.abs(x - drag.x) > 4 || Math.abs(y - drag.y) > 4)) moved = true;
     x = Math.max(0, Math.min(window.innerWidth - 80, x));
     y = Math.max(0, Math.min(window.innerHeight - 60, y));
     card.style.left = x + 'px'; card.style.top = y + 'px';
@@ -3872,6 +3995,8 @@ function openSettings() {
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
   if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
+  if ($('setTextColor')) $('setTextColor').value = SET.textColor || 'auto';
+  if ($('setTextColorPick')) $('setTextColorPick').value = SET.textColorPick || '#334155';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if ($('setBg')) $('setBg').value = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
   const uiA = Math.round((isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1) * 100);
@@ -3886,6 +4011,8 @@ on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');
 on('setFs', e => setLook('fs', e.target.value), 'change');
+on('setTextColor', e => setLook('textColor', e.target.value), 'change');
+on('setTextColorPick', e => { SET.textColorPick = e.target.value; setLook('textColor', 'custom'); }, 'input');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
 on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
 on('setBgPick', bgPick);

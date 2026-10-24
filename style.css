@@ -602,7 +602,9 @@ body.dark .gstem b{color:var(--text)}
 .rich-rz::after{content:'';position:absolute;right:4px;bottom:3px;width:6px;height:6px;border-right:2px solid #fff;border-bottom:2px solid #fff}
 /* 第 19 条第一轮：解析块排序（拖动左边小手换整块位置） */
 .blk-toggle{margin-left:auto}
-.blk-grip{position:fixed;z-index:60;width:20px;height:26px;padding:0;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--sub);font-size:13px;line-height:1;cursor:grab;touch-action:none}
+.blk-grip{position:fixed;z-index:60;width:22px;height:30px;padding:0;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--sub);font-size:15px;line-height:1;cursor:grab;touch-action:none}
+/* 热区比看得见的那块大一圈：鼠标/手指偏一点也能抓住（原来 20×26 太难点） */
+.blk-grip::after{content:'';position:absolute;inset:-12px;border-radius:12px}
 .blk-grip:hover{color:var(--primary);border-color:var(--primary)}
 .blk-grip:active{cursor:grabbing}
 .rich-edit.blk-mode > *{position:relative}
@@ -1966,10 +1968,14 @@ body.dark select.inp, body.dark .srsgrid select { background-color: #111827; }
 .bpick-cur { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bpick-ar { font-style: normal; font-size: 11px; color: var(--sub); }
 .bpick-pop {
-  position: absolute; z-index: 80; top: calc(100% + 6px); left: 0; width: 300px;
-  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  box-shadow: 0 16px 34px rgba(15, 23, 42, .18); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  position: fixed; z-index: 80; width: 300px; max-height: 62vh;
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .26); padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }
+.bpick-pop[hidden] { display: none; }
+.bpick-cap { display: flex; align-items: center; justify-content: space-between; font-size: calc(var(--fs) * .85); font-weight: 600; color: var(--sub); padding: 0 2px 2px; }
+.bpick-x { width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent; color: var(--sub); cursor: pointer; font-size: 13px; }
+.bpick-x:hover { background: var(--line); color: var(--text); }
 .bpick-top { display: flex; gap: 6px; align-items: center; }
 .bpick-q { flex: 1; min-width: 0; padding: 7px 10px !important; border-radius: 10px !important; }
 .bpick-ai { flex: 0 0 auto; white-space: nowrap; }
@@ -2074,3 +2080,35 @@ body.dark .tagdock .td-head { background: #1b2334; }
 body.dark .ctx-menu{box-shadow:0 10px 30px rgba(0,0,0,.5)}
 body.dark .ctx-item:hover{background:rgba(99,102,241,.22)}
 body.dark .ctx-item.danger:hover{background:rgba(220,38,38,.18)}
+
+/* ===== 题目浮动区块的右下角拉大小 ===== */
+#view > .card.qf-float { resize: none; }
+.qf-rz { position: absolute; right: 4px; bottom: 4px; width: 18px; height: 18px; border-radius: 4px;
+  cursor: nwse-resize; touch-action: none; opacity: .55;
+  background: linear-gradient(135deg, transparent 46%, var(--sub) 46%, var(--sub) 54%, transparent 54%); }
+.qf-rz:hover { opacity: 1; background: linear-gradient(135deg, transparent 42%, var(--primary) 42%, var(--primary) 58%, transparent 58%); }
+#view > .card.qf-float { overflow: auto; }
+
+/* ===== 口诀 / 思路独立浮窗（只在本页；标题栏拖、右下角拉大小） ===== */
+.qn-open { white-space: nowrap; }
+.qn-open.on { border-color: var(--primary); color: var(--primary); }
+.qnfloat { position: fixed; z-index: 47; display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, .22); overflow: hidden; }
+.qnfloat[hidden] { display: none; }
+.qn-h { display: flex; align-items: center; gap: 6px; padding: 7px 10px; cursor: grab; touch-action: none;
+  background: var(--bg2, #f8fafc); border-bottom: 1px solid var(--line);
+  font-size: calc(var(--fs) * .82); font-weight: 600; color: var(--sub); }
+.qn-h:active { cursor: grabbing; }
+.qn-x { width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--sub); cursor: pointer; font-size: 12px; }
+.qn-x:hover { background: var(--line); color: var(--text); }
+.qnfloat textarea { flex: 1; min-height: 90px; border: 0; outline: 0; resize: none; padding: 10px 12px;
+  background: transparent; color: var(--text); font: inherit; font-size: calc(var(--fs) * .92); line-height: 1.7; }
+.qn-rz { position: absolute; right: 3px; bottom: 3px; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; opacity: .5;
+  background: linear-gradient(135deg, transparent 46%, var(--sub) 46%, var(--sub) 54%, transparent 54%); }
+.qn-rz:hover { opacity: 1; }
+body.dark .qn-h { background: #141b28; }
+
+/* ===== 正文颜色（设置里选，只作用于阅读区） ===== */
+html[data-tc] .stem, html[data-tc] .gstem, html[data-tc] .opts .opt .ot,
+html[data-tc] .exp-wrap .rich-edit, html[data-tc] .fb .expl, html[data-tc] .wi .stem { color: var(--read-c); }

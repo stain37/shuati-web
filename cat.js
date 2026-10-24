@@ -2838,6 +2838,7 @@ function bankPickerHtml(id, value, opt) {
     + '<button type="button" class="bpick-btn" data-bp-toggle="1" title="点开可以搜题库名、也可以开 AI 模糊">'
     + '<span class="bpick-cur">' + bE(bankPickerLabel(cur, opt)) + '</span><i class="bpick-ar">▾</i></button>'
     + '<div class="bpick-pop" hidden>'
+    + '<div class="bpick-cap"><span>选一个题库</span><button type="button" class="bpick-x" title="关闭">✕</button></div>'
     + '<div class="bpick-top"><input class="inp bpick-q" type="search" placeholder="输入题库名 / 分类搜…" autocomplete="off">'
     + '<button type="button" class="chip bpick-ai" data-bp-ai="1" title="开了之后关键词会用 AI 扩词再匹配">✨ AI 模糊</button></div>'
     + '<div class="bpick-list"></div>'
@@ -2880,10 +2881,22 @@ function bankPickerBind(root, id, onChange) {
     if (!rows.length) html += '<div class="bpick-none">没找到题库' + (st.ai ? '（试试关掉 AI 模糊）' : '') + '</div>';
     list.innerHTML = html;
   }
+  /* 弹层改成屏幕居中的一层（固定定位）：以前是贴着按钮 absolute 展开，
+     在搜索页正好盖住下面的「基本科目」筛选栏，怎么翻都可能挡住。 */
+  function place() {
+    var w = Math.min(420, window.innerWidth - 24);
+    var h = Math.min(420, Math.round(window.innerHeight * .62));
+    pop.style.position = 'fixed';
+    pop.style.width = w + 'px';
+    pop.style.maxHeight = h + 'px';
+    pop.style.left = Math.round((window.innerWidth - w) / 2) + 'px';
+    pop.style.top = Math.round(Math.max(10, (window.innerHeight - h) / 2 - 20)) + 'px';
+  }
   function open() {
     pop.hidden = false;
     box.classList.add('open');
     paintList();
+    place();
     try { q.focus({ preventScroll: true }); } catch (e) {}
   }
   function close() { pop.hidden = true; box.classList.remove('open'); }
@@ -2909,6 +2922,9 @@ function bankPickerBind(root, id, onChange) {
     ai.textContent = st.ai ? '✨ AI 模糊（开）' : '✨ AI 模糊';
     paintList();
   });
+  var xBtn = box.querySelector('.bpick-x');
+  if (xBtn) xBtn.addEventListener('click', function (ev) { ev.stopPropagation(); close(); });
+  window.addEventListener('resize', function () { if (!pop.hidden) place(); });
   list.addEventListener('click', function (ev) {
     var it = ev.target.closest('.bpick-i');
     if (!it) return;

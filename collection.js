@@ -1308,7 +1308,15 @@ function blkHover(ev) {
   if (BLK.dragging || !BLK.grip) return;
   const onGripOrBar = !!(ev.target && ev.target.closest && ev.target.closest('.blk-grip, .blk-bar'));
   if (onGripOrBar) return;                        /* 鼠标移到把手 / 操作条上：保持显示，别闪 */
-  const el = (ev.target && ev.target.closest) ? ev.target.closest('.rich-edit.blk-mode') : null;
+  var el = (ev.target && ev.target.closest) ? ev.target.closest('.rich-edit.blk-mode') : null;
+  if (!el) {
+    /* 触发半径：鼠标停在块左边那条空沟里（没压在文字上）也算，找 Y 落在哪个块上 */
+    var allBlk = document.querySelectorAll('.rich-edit.blk-mode');
+    for (var bi = 0; bi < allBlk.length; bi++) {
+      var wr0 = allBlk[bi].getBoundingClientRect();
+      if (ev.clientX >= wr0.left - 28 && ev.clientX <= wr0.right && ev.clientY >= wr0.top && ev.clientY <= wr0.bottom) { el = allBlk[bi]; break; }
+    }
+  }
   if (!el) { BLK.grip.hidden = true; blkBarHide(); return; }
   const kids = Array.prototype.slice.call(el.children);
   const hit = kids.find(k => { const r = k.getBoundingClientRect(); return ev.clientY >= r.top && ev.clientY <= r.bottom; });

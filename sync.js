@@ -249,7 +249,7 @@ async function syncPayload() {
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
-  if (s.tag && typeof TAGS !== 'undefined') { d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); }
+  if (s.tag && typeof TAGS !== 'undefined') { d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); d.tagTs = (TAGS.tagTs ? TAGS.tagTs() : {}); }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
@@ -317,7 +317,7 @@ function syncMergeCloud(cloud) {
   if (s.kb) added += syncKbMerge(d.kb, cloud.kbDrop);
 
   /* 6) 考点标签：同一道题以本机为准，本机没有的补进来；词表取并集 */
-  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0) || 0); } catch (e) {} }
+  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0, d.tagTs) || 0); } catch (e) {} }
 
   migrate(); invalidateBanks();
   return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };

@@ -1125,3 +1125,54 @@ ode --check 全过。
 - `md-caption-test.mjs` 6 项全过（图注 figure、尺寸共存、无图注不包 figure、纯图注、标题渲染）。
 - 回归：md-editor 19/19、block2 15/15、block3 12/12、color 10/10、math-stem 7/7、slash 18/18、undo 12/12、home-page 30/30。
 - 上线：web161（参数校验 + 轨迹面板，提交 34af240d/e03eb5cf）；web162（图注 + 目录，提交 337ebb5c）；线上核到 `sw.js = shuati-v68-web162`、`collection.js` 144010B 含 `md-toc-btn`/`md-fig`、`ai-ops.js` 含 `PARAM_RULES`。
+
+---
+
+## §24 八项界面改进：右键菜单 / 题库选择器 / 折叠 / 拖动面板 / 套卷批量 / 复习不建卷（web163）
+
+### 24.1 需求
+1. 照 AppFlowy 的右键菜单与 markdown 编辑器改进本站；
+2. 选定题库的所有入口（搜索、贴标签、收藏 / 错题）加「可搜索 + AI 模糊」的题库选择器；
+3. 解析可折叠；
+4. 答题界面的题目区块可拖动/吸附；
+5. 标签面板贴在答题区块旁，可拉伸变形、可隐藏；
+6. 临时套卷批量管理；
+7. 每日复习不再自动生成套卷；
+8. 搜索框 / 选择框美化。
+
+参考代码：`C:\Users\chen\Desktop\工作1\_ref\AQBot-main\AQBot-main`、`C:\appflowy-ref\AppFlowy-main`；
+分析结论在 `C:\Users\chen\Desktop\工作1\_ref\ANALYSIS-APPFLOWY.md`（AppFlowy 桌面端其实没有块级右键菜单，
+真正的块菜单是 hover ⋮⋮ → 「编辑块」的四项 PopoverAction；右键只有复制/剪切/粘贴/全选）。
+
+### 24.2 逐项落地
+- **①右键菜单**（`collection.js` 末尾 `ctxEl/ctxOpen/ctxClose/ctxRichItems/ctxItemItems`，`style.css` `.ctx-menu`）：
+  桌面 `contextmenu`、触屏长按 480ms（`CTX_LP`，选项上的长按仍留给「排除选项」）。
+  解析块菜单 = 复制/上移/下移/插入空段落/删除 + 加粗/斜体/删除线/行内代码 + 转成标题/无序/有序/引用（转成复用 `slashApply`）；
+  题目卡片菜单 = 打开/收藏/错题本/复制题干/复制解析，多选时多一条「选中的 N 道一起加入/移出错题本」。
+  菜单规格照 AppFlowy `pop_up_action.dart`：行高 36、图标 20、说明 12px 灰、最小宽 190、最大高 420。
+- **②题库选择器**（`cat.js` `bankPickerHtml/bankPickerBind`，带 `bE()` 局部转义——被追加在 IIFE 外，不能用内层 `E`）：
+  搜索页、标签页、收藏/错题页共用；支持输入筛选与「AI 模糊」（`window.qaiExpandAny`）。
+- **③解析折叠**（`collection.js` `EXPFOLD` / `expFoldToggle` / `.exp-fold` / `.exp-wrap.collapsed`，键 `qbank.expfold.v1`）：
+  默认展开；折叠后只留「解析 ▸ 展开」一行。注意解析只有答题后才会渲染（`app.js:2991` 条件），探针必须先答题。
+- **④题目区块浮动拖动**（`app.js` `uiQuizFloat` + `.qf-float` + `#qdGrip` + `.qd-guide`，键 `qbank.quizfloat.v1`）：
+  把手拖走，靠近左/右/上/下边吸附并出参考线；位置与宽度落盘。
+- **⑤标签面板**（`app.js` `uiTagDock` + `body > .tagdock` + `.tagpill`，键 `qbank.tagdock.v1`）：
+  正文标签行移出到旁侧面板；拖标题栏移动、右下角拉伸、✕ 隐藏成小钮、小钮恢复；考点仍用 `TAGS.bindRow`。
+- **⑥临时套卷批量管理**（`app.js` `deletePapers/renamePaper/exportPapers`；`cat.js` `PAPER_MANAGE/PAPER_SEL`）：
+  套卷页每张卡有勾选框，底部批量条 = 全选/反选/删除选中/导出选中/退出；单卡可改名。
+- **⑦每日复习不自动建卷**（`app.js` `LIVE_PAPER`）：复习改用临时卷（`opts.transient`），不再写进「临时套卷」；
+  没有到期题时不建空卷，只提示。
+- **⑧美化**（`style.css`）：输入框/下拉/搜索框统一圆角、聚焦描边、搜索图标。
+- **markdown 三处流水线修复**（同批）：行内代码占位符提前到加粗之前、连续的 `> ` 合并成一个引用块（`<br>` 连接）、
+  表格列数按表头与数据行的最大值补齐（以前按表头截断会丢列）。
+
+### 24.3 验证
+- 新建 `工作1\ctxmenu-probe.py`：18 通过 / 0 失败（卡片菜单项、移出错题本计数归零、菜单自动关闭；
+  解析块菜单项齐全、复制后块数 3→4、删除后 4→3、编辑落盘 `qbank.notes.v2`、无 JS 报错）。
+- 回归：`batch2b-probe.py` 37/37、`search-bank-probe.py` 18/18、`home-page-probe.py` 30/30。
+
+### 24.4 上线
+- `sw.js` `VERSION = 'shuati-v68-web163'`；`index.html` 里 `collection.js`/`style.css` 缓存戳 → `?v=20261106a`。
+- 提交 `2a6ac5c7`（增量 190 个文件，跳过 182），随后补 sw.js 版本说明再提交一次。
+- 线上核验：`sw.js` 版本 `shuati-v68-web163`、`collection.js` 168155B、`style.css` 149652B，与磁盘字节一致
+  （本地文本读取会把 CRLF 折成 LF，比对要用二进制读）。

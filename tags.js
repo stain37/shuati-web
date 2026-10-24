@@ -10,6 +10,15 @@
   if (typeof document === 'undefined') return;
 
   var T_KEY = 'qbank.tags.v1', V_KEY = 'qbank.tagvocab.v1';
+  /* 每道题标签的修改时间（qbank.tagts.v1）。云同步靠它判断「哪边是新的」：
+     没有这一层时，手机上只要这道题本机有标签，pad 上传的就会被整条丢掉。 */
+  var TAG_TS_KEY = 'qbank.tagts.v1';
+  var TAG_TS = (function () {
+    try { return JSON.parse(localStorage.getItem(TAG_TS_KEY) || '{}') || {}; } catch (e) { return {}; }
+  })();
+  function tagTsSave() { try { localStorage.setItem(TAG_TS_KEY, JSON.stringify(TAG_TS)); } catch (e) {} }
+  function tagTsSet(k) { var t = Date.now(); TAG_TS[k] = t; tagTsSave(); return t; }
+  function tagTsDel(k) { if (TAG_TS[k] != null) { delete TAG_TS[k]; tagTsSave(); } }
   var MAX_PER_Q = 6;              /* 一道题最多挂几个标签 */
   var BATCH = 15;                 /* AI 分类：一批多少题 */
   var V_MIN = 15, V_MAX = 40;     /* 词表建议条数 */
@@ -293,9 +302,11 @@
 
     if (!list.length) {
       delete TAGD[k];
+      tagTsSet(k);                                            /* 清空也是一次修改：云端旧的标签不该再合回来 */
       if (typeof tombAdd === 'function') tombAdd('tag', k);   /* 记墓碑：别被另一个标签页的合并复活 */
     } else {
       TAGD[k] = list;
+      tagTsSet(k);
       /* 重新给题打上标签 = 反向操作，把墓碑撤掉，不然 mergeWrite 会把这条当「已删」再丢一次 */
       if (typeof tombDel === 'function') { try { tombDel('tag', k); } catch (e) {} }
     }
@@ -1623,25 +1634,40 @@
     defaultVocab: function () { return DEFAULT_VOCAB.slice(); }, restoreDefaultVocab: restoreDefaultVocab,
     clearApplied: clearAppliedTags, askClearApplied: askClearApplied,
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,
-    /* 云同步用：云端那份标签并进来。同一道题以本机为准（本机更可能是刚改过的），
-       本机没有的题补上；云端词表也合进词表里。墓碑里的题不复活。 */
-    mergeIn: function (cloudTags, cloudVocab, cloudTs) {
+    tagTs: function () { return TAG_TS; },
+    /* 云同步用：云端那份标签并进来。
+       规则（有逐题时间戳 qbank.tagts.v1 时）：云端这道题比本机新 → 用云端的（pad 上改的能传到手机）；
+       本机更新 → 留着本机的；本机没有 → 补上。没有时间戳的老云端数据 → 并集合并，至少不会丢。 */
+    mergeIn: function (cloudTags, cloudVocab, cloudTs, cloudTagTs) {
       var n = 0;
       try {
         var T = (typeof TOMB === 'object' && TOMB) ? TOMB : {};
         var tomb = T.tag || {};
         var wipeTag = (T.wipe || {}).tag || 0;
-        /* 本机整表清空比云端这份新：不从云端补标签（标签没有逐条时间戳） */
+        /* 本机整表清空比云端这份新：不从云端补标签 */
         if (wipeTag && (!cloudTs || cloudTs <= wipeTag)) return 0;
+        var C = (cloudTagTs && typeof cloudTagTs === 'object') ? cloudTagTs : null;
         Object.keys(cloudTags || {}).forEach(function (k) {
           var v = norm(cloudTags[k]);
           var bs = v.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
           var us = v.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
           v = bs.slice(0, 1).concat(us).slice(0, MAX_PER_Q);   /* 六科最多一科 */
           if (!v.length || tomb[k]) return;
-          if (TAGD[k] && TAGD[k].length) return;          /* 本机有：留着本机的 */
-          TAGD[k] = v; n++;
+          var mine = tagsOf(k);
+          if (!mine.length) { TAGD[k] = v; TAG_TS[k] = (C && +C[k]) || (+cloudTs || Date.now()); n++; return; }
+          if (C && +C[k]) {
+            /* 有逐题时间戳：谁新听谁的 */
+            if ((+C[k]) > (+TAG_TS[k] || 0)) { TAGD[k] = v; TAG_TS[k] = +C[k]; n++; }
+            return;
+          }
+          /* 老格式云端数据（没有逐题时间戳）：并集，本机的六科优先 */
+          var merged = (mine.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; }).slice(0, 1))
+            .concat(mine.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; }))
+            .concat(v.filter(function (t) { if (BASIC_TAGS.indexOf(t) >= 0) return !mine.some(function (x) { return BASIC_TAGS.indexOf(x) >= 0; }); return mine.indexOf(t) < 0; }))
+            .slice(0, MAX_PER_Q);
+          if (merged.length !== mine.length) { TAGD[k] = merged; n++; }
         });
+        if (n) tagTsSave();
         /* 词表：删除墓碑优先；整表清空（clearAllTags）比云端新时先不并 */
         var vwipe = (T.wipe || {}).vocab || 0;
         var vTomb = T.vocab || {};
