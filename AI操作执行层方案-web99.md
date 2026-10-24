@@ -1228,3 +1228,14 @@ ode --check 全过。
 - **知识库参考资料带前后文**：`kb.js` 的 `kbChunkOf()` + `kbDetail()` 为每条命中补 `pre/post`（各截 260 字）；`ai.js` 的 `aiContext()` 写入 `〔衔接上文〕/〔衔接下文〕`，提示里注明「条参考带上了前后文」。
 - 单测：`工作1\kb-neighbor-test.py` 用 node stub 加载 `kb.js`，验 36 段切分、邻段截断、首段无上文，**6/6**；`home-page-probe.py` **30/0**。
 - 版本：`sw.js` = `shuati-v68-web167`，提交 `17b204f5`；线上逐文件字节一致（app.js 231282 / kb.js 48210 / ai.js 114787 / style.css 153281 / sw.js 10139）。
+
+## 24.8 检索索引落盘 / 检索自检护栏（web168）
+
+按 `工作1\_ref\ANALYSIS-ALLINRAG.md` 的性价比清单，先做不碰检索语义的第 1、2 条。
+
+- **B2 索引落盘**：`kb.js` IndexedDB 升到 v2，新增 `idx` store（结构化克隆，不走 `JSON.stringify`）。新增 `kbIdxSig()`（docs 条数 + 正文字数做签名）/ `kbIdxPut()` / `kbIdxGet()` / `kbIdxDel()`；`kbEnsure()` 先读盘上索引，签名一致直接用（`window.__kbIdxHits`），不一致才 `kbIndexAsync` 重建并写回（`window.__kbIdxBuilds`）。资料增删 / 改正文 / 文件库重切时 `kbIdxDel()` 失效。
+- 效果（本机实测）：`file:file-内科` 2179 段；首次建 5 个库索引，刷新后 6 次缓存命中、0 次重建 —— 冷启不再每次重切 361 万字。
+- **H1 检索自检**：`kb.js` 新增 `kbEvalSet(n)`（从每个勾选库抽样段，取段内稀有的 8 字原文当查询，自动标注）、`kbEvalRun(n)`（算 Top1 / Recall@5 / MRR）、`kbRunEval()`（知识库页「检索自检」按钮，掉基线 2 点标红）；`window.kbEval` / `window.kbEvalSet` 暴露给探针。
+- 基线（60 条自动样本，全库）：**Top1 88.3% / Recall@5 100% / MRR 0.938**。以后改权重、改切段、加同义表，先看这三个数别掉。
+- 探针：`工作1\kb-idx-probe.py` **6/6**（建索引 → IDB 有记录带 sig → 刷新命中缓存且 0 重建）；`工作1\kb-eval-probe.py` **9/9**（kbEval 暴露、n=60、三项指标、面板按钮渲染）；`kb-page-probe.py` 全绿（fail=0）。
+- 版本：`sw.js` = `shuati-v68-web168`；线上逐文件核字节（kb.js / sw.js）。
