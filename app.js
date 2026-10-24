@@ -1344,80 +1344,16 @@ const BNV_KEY = 'qbank.bnavdock.v1';
 function bnvState() { try { return JSON.parse(localStorage.getItem(BNV_KEY) || '{}') || {}; } catch (e) { return {}; } }
 function bnvSave(st) { try { localStorage.setItem(BNV_KEY, JSON.stringify(st)); } catch (e) {} }
 function uiBottomNavDock() {
+  /* 底栏恢复原样（用户 2026-10-24 反馈：拖动/拉大小不要了）。
+     以前拖过、存过浮动状态的设备，这里一次性清干净，避免残留 inline 样式把底栏顶歪。 */
   const nav = document.querySelector('.bnav');
-  if (!nav || nav.__dockReady) return;
-  nav.__dockReady = true;
-  const st = bnvState();
-  const apply = () => {
-    if (!st.float) {
-      nav.classList.remove('bnv-float');
-      nav.style.left = nav.style.top = nav.style.width = nav.style.height = '';
-      return;
-    }
-    nav.classList.add('bnv-float');
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const w = Math.min(Math.max(+st.w || 420, 220), vw - 16);
-    const h = Math.min(Math.max(+st.h || 64, 52), vh - 140);
-    st.w = w; st.h = h;
-    st.x = Math.min(Math.max(st.x == null ? 12 : +st.x, 6), Math.max(6, vw - w - 6));
-    st.y = Math.min(Math.max(st.y == null ? vh - h - 96 : +st.y, 64), Math.max(64, vh - h - 6));
-    nav.style.left = st.x + 'px'; nav.style.top = st.y + 'px';
-    nav.style.width = w + 'px'; nav.style.height = h + 'px';
-    nav.style.right = 'auto'; nav.style.bottom = 'auto';
-  };
-  apply();
-
-  const grip = document.createElement('button');
-  grip.type = 'button';
-  grip.className = 'bnv-grip';
-  grip.title = '拖动底栏换位置；双击回到底部';
-  grip.setAttribute('aria-label', '拖动底栏');
-  grip.textContent = '⠿';
-  nav.appendChild(grip);
-  const rz = document.createElement('i');
-  rz.className = 'bnv-rz';
-  rz.title = '拖动改底栏大小';
-  nav.appendChild(rz);
-
-  let drag = null;
-  grip.addEventListener('pointerdown', ev => {
-    if (!st.float) { st.float = true; const r = nav.getBoundingClientRect(); st.x = r.left; st.y = r.top; st.w = r.width; st.h = r.height; apply(); }
-    const r = nav.getBoundingClientRect();
-    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
-    try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
-    ev.preventDefault(); ev.stopPropagation();
-  });
-  grip.addEventListener('pointermove', ev => {
-    if (!drag) return;
-    const w = nav.getBoundingClientRect().width, h = nav.getBoundingClientRect().height;
-    st.x = Math.max(4, Math.min(window.innerWidth - w - 4, ev.clientX - drag.dx));
-    st.y = Math.max(56, Math.min(window.innerHeight - h - 4, ev.clientY - drag.dy));
-    nav.style.left = st.x + 'px'; nav.style.top = st.y + 'px';
-  });
-  const endDrag = () => { if (!drag) return; drag = null; apply(); bnvSave(st); };
-  grip.addEventListener('pointerup', endDrag);
-  grip.addEventListener('pointercancel', endDrag);
-  grip.addEventListener('dblclick', ev => { ev.preventDefault(); st.float = false; apply(); bnvSave(st); });
-
-  let rs = null;
-  rz.addEventListener('pointerdown', ev => {
-    if (!st.float) { st.float = true; const r = nav.getBoundingClientRect(); st.x = r.left; st.y = r.top; st.w = r.width; st.h = r.height; apply(); }
-    const r = nav.getBoundingClientRect();
-    rs = { w: r.width, h: r.height, x: ev.clientX, y: ev.clientY };
-    try { rz.setPointerCapture(ev.pointerId); } catch (e) {}
-    ev.preventDefault(); ev.stopPropagation();
-  });
-  rz.addEventListener('pointermove', ev => {
-    if (!rs) return;
-    st.w = Math.max(220, Math.min(window.innerWidth - st.x - 8, rs.w + ev.clientX - rs.x));
-    st.h = Math.max(52, Math.min(window.innerHeight - st.y - 8, rs.h + ev.clientY - rs.y));
-    nav.style.width = st.w + 'px'; nav.style.height = st.h + 'px';
-  });
-  const endRs = () => { if (!rs) return; rs = null; apply(); bnvSave(st); };
-  rz.addEventListener('pointerup', endRs);
-  rz.addEventListener('pointercancel', endRs);
-
-  window.addEventListener('resize', apply);
+  if (!nav) return;
+  nav.classList.remove('bnv-float');
+  nav.style.left = nav.style.top = nav.style.width = nav.style.height = '';
+  nav.style.right = nav.style.bottom = '';
+  const g = nav.querySelector('.bnv-grip'); if (g) g.remove();
+  const r = nav.querySelector('.bnv-rz'); if (r) r.remove();
+  try { localStorage.removeItem('qbank.bnavdock.v1'); } catch (e) {}
 }
 uiHomeNavInit();
 uiBottomNavInit();

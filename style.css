@@ -2126,10 +2126,24 @@ html[data-tc] .exp-wrap .rich-edit, html[data-tc] .fb .expl, html[data-tc] .wi .
 .bnv-rz{position:absolute;right:1px;bottom:1px;z-index:3;width:16px;height:16px;display:none;cursor:nwse-resize;
   border-radius:0 0 6px 0;background:linear-gradient(135deg,transparent 46%,color-mix(in srgb,var(--line) 85%,transparent) 47%)}
 .bnv-float .bnv-rz{display:block}
-.bnav{position:relative}
 
-/* ===== ⑥ 极简模式（web166） ===== */
+/* ===== ⑥ 极简模式（web166，2026-10-24 加强为「最简单的 UI」） =====
+   目标：只留结构、文字和数字，不要任何特效层。
+   ① 装饰层全撤：背景图 / 视频背景 / 粒子特效 / 入场动画层 / 引导卡 / 同步卡
+   ② 所有元素：动画、过渡、阴影、渐变、纹理、毛玻璃、滤镜一律关掉
+   ③ 圆角收紧、留白变小，像一张表格而不是卡片墙
+   ④ 动画指示器、闪烁、光晕、渐变按钮全部不渲染 */
 body.minimal #firstGuide,body.minimal #syncHomeCard{display:none!important}
-body.minimal .bg-media,body.minimal .bg-video,body.minimal .fx,body.minimal .motion{display:none!important}
-body.minimal *{animation:none!important;transition:none!important}
+body.minimal .bg-media,body.minimal .bg-video,body.minimal .fx,body.minimal .motion,
+body.minimal .bnav-ind,body.minimal .glow,body.minimal .spark,body.minimal .shimmer{display:none!important}
+body.minimal *{animation:none!important;transition:none!important;box-shadow:none!important;text-shadow:none!important;
+  background-image:none!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 body.minimal.frost{--frost-blur:0px}
+body.minimal .card,body.minimal .sheet,body.minimal .box,body.minimal .panel,body.minimal .opt,
+body.minimal .btn,body.minimal .chip,body.minimal .inp,body.minimal .fold,body.minimal .tools{border-radius:6px!important}
+body.minimal .view,body.minimal #view{padding-top:8px!important}
+body.minimal .card{margin:6px 0!important}
+body.minimal .toolbar.main,body.minimal .toolbar.sub{gap:6px!important}
+body.minimal .tools{margin-top:4px!important}
+body.minimal .bnav{background:var(--card)!important;border:1px solid var(--line)!important}
+body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!important;color:var(--text)!important;border:1px solid var(--line)!important}

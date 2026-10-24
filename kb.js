@@ -355,11 +355,27 @@ function kbSnippet(t, q, n) {
   const s = Math.max(0, pos - Math.floor(n / 3));
   return (s > 0 ? '…' : '') + t.slice(s, s + n) + (s + n < t.length ? '…' : '');
 }
+/* 取同一篇资料相邻的一段（ci±1）。只送命中段经常缺上下文：
+   定义在上一段、结论在下一段，模型只看到中间那段就会答得很飘。 */
+function kbChunkOf(id, d, ci) {
+  const idx = KB_IDX[id];
+  if (!idx) return null;
+  if (!idx._byDC) {
+    const m = Object.create(null);
+    idx.chunks.forEach(c => { m[c.d + '#' + c.ci] = c; });
+    idx._byDC = m;
+  }
+  return idx._byDC[d + '#' + ci] || null;
+}
 /* 把原始命中变成对外结构（带出处和摘要） */
 function kbDetail(hits, query) {
   return hits.map(h => {
     const d = (KB_MEM[h.id] && KB_MEM[h.id].docs || [])[h.ch.d] || {};
-    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci, kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', path: h.ch.hp || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
+    const pv = kbChunkOf(h.id, h.ch.d, h.ch.ci - 1);
+    const nx = kbChunkOf(h.id, h.ch.d, h.ch.ci + 1);
+    return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci,
+      pre: pv ? String(pv.t).slice(-260) : '', post: nx ? String(nx.t).slice(0, 260) : '',
+      kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', path: h.ch.hp || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
   });
 }
 /* 确保这几个库已挂载并建好索引 */

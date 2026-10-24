@@ -395,6 +395,7 @@ async function aiContext(q, userQ) {
     return { hits: [], text: '', count: 0, note: '没有命中知识库：换个更具体的说法（教材里的名词），或再多选几份资料' };
   }
   if (dropped) note.push(dropped + ' 段分数太低被滤掉');
+  if (bridged) note.push(bridged + ' 条参考带上了前后文');
   /* ⑤ 只命中一份资料时提醒模型/用户「结论可能不全面」（AQBot 单源降级提示） */
   const srcs = {};
   hits.forEach(h => { srcs[(h.kb || '') + '|' + (h.doc || '')] = 1; });
@@ -402,8 +403,14 @@ async function aiContext(q, userQ) {
   const per = Math.max(400, Math.floor((+cfg.maxChars || 3500) / Math.max(1, hits.length)));
   const blocks = [];
   let used = 0;
+  let bridged = 0;                       /* 有几条参考真的衔上了前后文 */
   hits.forEach(h => {
-    const t = h.text.slice(0, per);
+    /* 邻段扩展：命中段前后各带一小截，补「定义在上一段 / 结论在下一段」的缺口。
+       预算：正文 per 字，前后各最多 200 字。 */
+    const pre = h.pre ? String(h.pre).slice(-200) : '';
+    const post = h.post ? String(h.post).slice(0, 200) : '';
+    if (pre || post) bridged++;
+    const t = (pre ? '〔衔接上文〕' + pre + '\n' : '') + h.text.slice(0, per) + (post ? '\n〔衔接下文〕' + post : '');
     if (used + t.length > (+cfg.maxChars || 3500) && blocks.length) return;
     used += t.length;
     /* 送模型的参考资料用 ID / Title / Path / Content 四行：
