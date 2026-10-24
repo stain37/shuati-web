@@ -1977,7 +1977,7 @@ body.dark select.inp, body.dark .srsgrid select { background-color: #111827; }
 .bpick-x { width: 24px; height: 24px; border: 0; border-radius: 7px; background: transparent; color: var(--sub); cursor: pointer; font-size: 13px; }
 .bpick-x:hover { background: var(--line); color: var(--text); }
 .bpick-top { display: flex; gap: 6px; align-items: center; }
-.bpick-q { flex: 1; min-width: 0; padding: 7px 10px !important; border-radius: 10px !important; }
+.bpick-q { flex: 1; min-width: 0; padding: 7px 10px !important; border-radius: 10px !important; background-image: none !important; }
 .bpick-ai { flex: 0 0 auto; white-space: nowrap; }
 .bpick-ai.on { background: var(--primary); color: #fff; border-color: var(--primary); }
 .bpick-list { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }

@@ -2774,6 +2774,9 @@ function uiQuizFloat() {
     st.w = card.getBoundingClientRect().width;
     qfSave(st);
     drag = null;
+    /* 拖完松手后的那个合成 click 要吞掉，但 420ms 之后再点时就得能切回正常排版 */
+    clearTimeout(onUp.__t);
+    onUp.__t = setTimeout(function () { moved = false; }, 420);
   };
   grip.addEventListener('pointerdown', onDown);
   grip.addEventListener('pointermove', onMove);

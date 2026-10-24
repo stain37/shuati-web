@@ -1176,3 +1176,22 @@ ode --check 全过。
 - 提交 `2a6ac5c7`（增量 190 个文件，跳过 182），随后补 sw.js 版本说明再提交一次。
 - 线上核验：`sw.js` 版本 `shuati-v68-web163`、`collection.js` 168155B、`style.css` 149652B，与磁盘字节一致
   （本地文本读取会把 CRLF 折成 LF，比对要用二进制读）。
+
+### 24.5 web164：交互修补与标签同步时间戳
+
+| # | 问题 | 处理 |
+|---|---|---|
+| 1 | 题库搜索式选择器遮住「基本科目」筛选栏 | `cat.js` 的 `bankPickerHtml/bankPickerBind` 把弹层改成 `position:fixed`、`min(420px, 100vw-24px)` × `min(420px, 62vh)`，水平居中、垂直在视口中部；弹层加标题行 `.bpick-cap` 和 `.bpick-x` 关闭钮；`window.resize` 时重新定位。 |
+| 2 | 块排序把手「触发半径还是小」 | `style.css` 把手改 22×30 并用 `::after{inset:-12px}` 外扩热区；`collection.js` 的 `blkHover` 增加「左侧沟槽」判断：鼠标在 `.rich-edit.blk-mode` 左边 28px 内、Y 落在某块上，也算命中（不必压在文字上）。 |
+| 3 | 答题页浮块「能拖但吸附不了」 | 根因是拖动结束后紧跟的 `click` 把浮层切回非浮动：`app.js` 用 `let moved` 标记，`onMove` 位移 >4px 置真，`grip.onclick` 见到 `moved` 就跳过本次切换；吸附仍然按左右阈值吸边。 |
+| 4 | 浮块不能随意拉大小 | 新增 `rzBind(el)`：浮动时自动插 `.qf-rz`（右下角把手，`pointer` 拖动改宽高），松手写 `qbank.quizfloat.v1` 的 `w/h`；`qfState()` 默认 `h:0`，`applyFloat()` 恢复/保存高度。 |
+| 5 | 考点标签面板「按钮按不动」 | 撤掉 `body > .tagdock` 浮动面板与 `uiTagDock`，考点行回正文内联 `tagRowHtml(fk,q)`；渲染时清掉残留的 `body > .tagdock/.tagpill`。 |
+| 6 | 「口诀思路」要独立于答题区块、又不能全站可见 | `app.js` 新增 `uiQnPanel(fk)`：面板挂在 `#view` 内的 `section.qnfloat#qnFloat`，标题栏 `.qn-h` 可拖、`.qn-rz` 可缩放、`.qn-x` 关闭，尺寸落 `qbank.qnbox.v1`；换页/回主页即消失；答题卡左侧旧 `aside.qnbox` 删除，题干区加「✎ 口诀」入口。 |
+| 7 | 解析收不起来 | 其实已有 `EXPFOLD`（`qbank.expfold.v1`）+ `.exp-wrap.collapsed`，本轮补齐样式与「重画后仍收起」的验证，并在 `style.css` 里把收起后的标题行做成一行可点条。 |
+| 8 | 正文颜色要能自选 | 设置里加「正文颜色」`#setTextColor`（自动/墨黑/深蓝/棕褐/墨绿/自定义）+ `#setTextColorPick`；`applyLook()` 写 `html[data-tc]` 与 `--read-c`，题干/选项/解析/反馈区统一读这个变量。 |
+| 9 | **标签云同步：pad 上传的标签，手机上还是本地旧的** | 根因：`TAGS.mergeIn` 里「本机这道题已有标签就整条丢弃云端」，而标签没有逐题时间戳，永远判不出谁新。修法：新增 `qbank.tagts.v1`（每道题标签修改时间），`setTags` 任何写入（含清空）都记时间戳；同步上传载荷加 `d.tagTs`；`mergeIn(cloudTags, cloudVocab, cloudTs, cloudTagTs)` 改成——云端逐题时间戳更新 → 用云端覆盖；本机更新 → 保留本机；本机没有 → 补上；老格式云端数据（无 `tagTs`）→ 并集合并，至少不丢。 |
+
+验证：`工作1\fix164-probe.py` **44 通过 / 0 失败**（选择器位置与不重叠、把手尺寸与左侧沟槽热区、拖完仍浮动/吸边/拉大小/尺寸落盘、标签回内联且无 body 级面板、口诀浮窗拖/缩放/落盘/关闭/主页不可见、折叠落盘且重画仍收起、正文颜色与落盘、JS 无报错）；`工作1\tag-sync-probe.py` **15 通过 / 0 失败**（云端新覆盖、本机新保留、老数据并集、载荷带 `tagTs`）。
+
+版本：`sw.js` `shuati-v68-web164`，`index.html` 六个文件缓存戳 `?v=20261106b`，提交 `d21423b4`；线上逐文件二进制比对一致（collection.js 168618B、style.css 150474B、tags.js 175139B、sync.js 50765B、app.js 228246B、cat.js 156514B）。
+

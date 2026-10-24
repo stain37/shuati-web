@@ -2848,6 +2848,10 @@ function bankPickerBind(root, id, onChange) {
   root = root || document;
   var box = root.querySelector('.bpick[data-bpick="' + id + '"]');
   if (!box || box.dataset.bound) return;
+  /* 弹层会被搬到 body 上；页面重画后旧弹层没人收，先清掉 */
+  Array.prototype.forEach.call(document.querySelectorAll('body > .bpick-pop'), function (el) {
+    if (!el.__home || !el.__home.isConnected) el.remove();
+  });
   box.dataset.bound = '1';
   var opt = { all: box.getAttribute('data-bp-all') === '1', allLabel: box.getAttribute('data-bp-label') || '全部题库', papers: box.getAttribute('data-bp-papers') === '1' };
   var btn = box.querySelector('.bpick-btn');
@@ -2881,25 +2885,41 @@ function bankPickerBind(root, id, onChange) {
     if (!rows.length) html += '<div class="bpick-none">没找到题库' + (st.ai ? '（试试关掉 AI 模糊）' : '') + '</div>';
     list.innerHTML = html;
   }
-  /* 弹层改成屏幕居中的一层（固定定位）：以前是贴着按钮 absolute 展开，
-     在搜索页正好盖住下面的「基本科目」筛选栏，怎么翻都可能挡住。 */
+  /* 弹层贴着自己的按钮展开（宽度随窗口），并且搬到 body 上、层级拉到最高：
+     列表页最底部那个「选择题库」以前被下面的卡片/浮层压住，点不到。 */
   function place() {
-    var w = Math.min(420, window.innerWidth - 24);
-    var h = Math.min(420, Math.round(window.innerHeight * .62));
+    var br = btn.getBoundingClientRect();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var w = Math.min(420, vw - 16);
+    var h = Math.min(420, Math.round(vh * .62));
+    var left = Math.min(Math.max(8, br.left), vw - w - 8);
+    var below = vh - br.bottom - 12;
+    var above = br.top - 12;
+    /* 优先往下展开；下面放不下、上面更宽裕就往上翻。高度按放得下多少缩（不硬顶出屏幕） */
+    var side = (below >= Math.min(h, 260) || below >= above) ? 'below' : 'above';
+    var avail = side === 'below' ? below : above;
+    h = Math.min(h, Math.max(180, avail));
+    var top = side === 'below' ? br.bottom + 6 : Math.max(8, br.top - h - 6);
     pop.style.position = 'fixed';
+    pop.style.zIndex = '2147483000';
     pop.style.width = w + 'px';
     pop.style.maxHeight = h + 'px';
-    pop.style.left = Math.round((window.innerWidth - w) / 2) + 'px';
-    pop.style.top = Math.round(Math.max(10, (window.innerHeight - h) / 2 - 20)) + 'px';
+    pop.style.left = Math.round(left) + 'px';
+    pop.style.top = Math.round(top) + 'px';
   }
   function open() {
+    if (pop.parentNode !== document.body) { pop.__home = box; document.body.appendChild(pop); }
     pop.hidden = false;
     box.classList.add('open');
     paintList();
     place();
     try { q.focus({ preventScroll: true }); } catch (e) {}
   }
-  function close() { pop.hidden = true; box.classList.remove('open'); }
+  function close() {
+    pop.hidden = true;
+    box.classList.remove('open');
+    if (pop.__home && pop.__home.isConnected && pop.parentNode === document.body) pop.__home.appendChild(pop);
+  }
   function apply(v, b) {
     st.value = v;
     btn.querySelector('.bpick-cur').textContent = v === 'all' ? (opt.allLabel || '全部题库') : (b ? b.title : v);
@@ -2932,7 +2952,7 @@ function bankPickerBind(root, id, onChange) {
     var b = bankPickerBanks(opt).filter(function (x) { return x.id === v; })[0] || null;
     apply(v, b);
   });
-  document.addEventListener('click', function (ev) { if (!box.contains(ev.target)) close(); });
+  document.addEventListener('click', function (ev) { if (!box.contains(ev.target) && !pop.contains(ev.target)) close(); });
 }
 window.bankPickerHtml = bankPickerHtml;
 window.bankPickerBind = bankPickerBind;
