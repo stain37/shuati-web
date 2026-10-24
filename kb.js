@@ -426,14 +426,47 @@ function kbChunkOf(id, d, ci) {
   }
   return idx._byDC[d + '#' + ci] || null;
 }
+/* A3 父段回填：同一篇资料里连续的多段合成一个「父段窗口」。
+   以前只取相邻一段的 260 字，遇到「定义隔了两段 / 结论在小标题后」就补不上；
+   现在沿 ci 往两侧连续扩，最多 4 段，直到预算用完。 */
+function kbSpan(id, d, ci, dir, budget) {
+  const parts = [];
+  let total = 0, c = ci;
+  for (let i = 0; i < 4; i++) {
+    c += dir;
+    if (c < 0) break;
+    const nx = kbChunkOf(id, d, c);
+    if (!nx) break;
+    const t = String(nx.t || '');
+    if (!t) break;
+    parts.push(t);
+    total += t.length + 1;
+    if (total >= budget) break;
+  }
+  let s = parts.join('\n');
+  s = dir < 0 ? s.slice(-budget) : s.slice(0, budget);
+  return s;
+}
+/* A4 句边界对齐（顺手做，成本为零）：别把半句话喂给模型 */
+function kbAlignHead(s) {
+  const m = String(s || '').match(/[。！？；\n]/g);
+  if (!m) return s;
+  const i = String(s).indexOf(m[0]);
+  return i >= 0 && i < String(s).length - 20 ? String(s).slice(i + 1) : s;
+}
+function kbAlignTail(s) {
+  const t = String(s || '');
+  const m = t.match(/[。！？；]/g);
+  if (!m) return t;
+  const i = t.lastIndexOf(m[m.length - 1]);
+  return i > 20 ? t.slice(0, i + 1) : t;
+}
 /* 把原始命中变成对外结构（带出处和摘要） */
 function kbDetail(hits, query) {
   return hits.map(h => {
     const d = (KB_MEM[h.id] && KB_MEM[h.id].docs || [])[h.ch.d] || {};
-    const pv = kbChunkOf(h.id, h.ch.d, h.ch.ci - 1);
-    const nx = kbChunkOf(h.id, h.ch.d, h.ch.ci + 1);
     return { id: h.id, key: h.id + '#' + h.ch.d + '#' + h.ch.ci,
-      pre: pv ? String(pv.t).slice(-260) : '', post: nx ? String(nx.t).slice(0, 260) : '',
+      pre: kbAlignHead(kbSpan(h.id, h.ch.d, h.ch.ci, -1, 620)), post: kbAlignTail(kbSpan(h.id, h.ch.d, h.ch.ci, +1, 520)),
       kb: kbName(h.id), doc: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file || '', full: d.text || '', head: h.ch.h || '', path: h.ch.hp || '', text: h.ch.t, score: h.score, snip: kbSnippet(h.ch.t, query, 200) };
   });
 }
@@ -512,7 +545,12 @@ async function kbRerank(question, hits, k, signal) {
     const by = Object.create(null);
     hits.forEach(h => { by[kk(h)] = h; });
     const out = [];
-    cached.forEach(x => { if (by[x] && out.indexOf(by[x]) < 0) out.push(by[x]); });
+    cached.forEach(x => {
+      const key = String(x).split('@')[0];
+      const rr = String(x).indexOf('@') >= 0 ? +String(x).split('@')[1] : null;
+      const h = by[key];
+      if (h && out.indexOf(h) < 0) { if (rr != null) h.rr = rr; out.push(h); }
+    });
     hits.forEach(h => { if (out.length < k && out.indexOf(h) < 0) out.push(h); });
     if (out.length) return out.slice(0, Math.max(1, k));
   }
@@ -521,16 +559,32 @@ async function kbRerank(question, hits, k, signal) {
   const list = hits.map((h, i) => '[' + (i + 1) + '] ' + (h.head ? '【' + h.head + '】' : '')
     + (h.path ? '〔' + h.path + '〕' : '') + String(h.text || '').replace(/\s+/g, ' ').slice(0, 300)).join('\n');
   const sys = '你是检索结果重排助手。用户给你一道题目和若干候选资料片段。'
-    + '请只输出与题目最相关的片段编号，按相关度从高到低，用逗号分隔；最多 ' + k + ' 个；完全无关的不要输出。'
-    + '只输出编号，不要任何解释。';
-  const txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: '【题目】\n' + String(question || '').slice(0, 800) + '\n\n【候选片段】\n' + list }], null, signal, { stream: false, maxTokens: 32, temp: 0 });
-  const nums = (String(txt || '').match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= hits.length);
+    + '请挑出与题目最相关的片段，每行（或逗号分隔）写成「编号:分数」，分数用 1-10 的整数表示相关度（10 = 直接答得出这道题，1 = 几乎无关）。'
+    + '按分数从高到低排；最多 ' + k + ' 个；完全无关的不要输出。不要任何解释。'
+    + '例：3:9, 1:6';
+  const txt = await aiChat([{ role: 'system', content: sys }, { role: 'user', content: '【题目】\n' + String(question || '').slice(0, 800) + '\n\n【候选片段】\n' + list }], null, signal, { stream: false, maxTokens: 48, temp: 0 });
+  /* E2：优先解析「编号:分数」；模型没给分数就退回只解析编号，行为与以前一致 */
+  const raw = String(txt || '');
+  const ranked = [];
+  const pairs = raw.match(/(\d{1,2})\s*[:：]\s*(\d{1,2}(?:\.\d)?)/g) || [];
+  pairs.forEach(p => {
+    const m = p.match(/(\d{1,2})\s*[:：]\s*(\d{1,2}(?:\.\d)?)/);
+    const n = +m[1], sc = +m[2];
+    if (n >= 1 && n <= hits.length) ranked.push({ n: n, s: sc });
+  });
+  if (ranked.length) {
+    ranked.sort((a, b) => b.s - a.s || a.n - b.n);
+    ranked.forEach(x => { if (x.s > 0) hits[x.n - 1].rr = x.s; });
+  }
+  const nums = ranked.length
+    ? ranked.map(x => x.n)
+    : (raw.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= hits.length);
   const out = [], seen = Object.create(null);
   nums.forEach(n => { if (!seen[n]) { seen[n] = 1; out.push(hits[n - 1]); } });
   hits.forEach(h => { if (out.length < k && out.indexOf(h) < 0) out.push(h); });    /* 剩下的按原顺序补齐 */
   const fin = out.slice(0, Math.max(1, k));
   try {
-    KB_RR_CACHE.set(ckey, fin.map(kk));
+    KB_RR_CACHE.set(ckey, fin.map(x => kk(x) + (x.rr != null ? '@' + x.rr : '')));
     while (KB_RR_CACHE.size > 200) KB_RR_CACHE.delete(KB_RR_CACHE.keys().next().value);
   } catch (e) {}
   return fin;

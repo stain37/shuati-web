@@ -384,7 +384,16 @@ async function aiContext(q, userQ) {
   /* ④ 低置信过滤：分数不到最高分 25% 的段落不要（AQBot 同思路，宁可空手也别喂无关内容）。
      被滤光时说清原因，别让用户以为「知识库里没有」。 */
   let dropped = 0;
-  if (hits.length > 1) {
+  let bridged = 0;                       /* 有几条参考真的衔上了前后文（提前声明，别在下面 TDZ 报错） */
+  /* E2：有重排分就用重排分做三态（10 分制），没有才退回 BM25 原始分（未知量纲，只能比相对值） */
+  const rrTop = hits.reduce((mx, h) => Math.max(mx, h.rr == null ? 0 : h.rr), 0);
+  if (rrTop > 0) {
+    const kept = hits.filter((h, i) => i === 0 || (h.rr == null ? 0 : h.rr) >= 3);
+    if (kept.length !== hits.length) { dropped = hits.length - kept.length; hits = kept; }
+    if (rrTop >= 7) note.push('资料与题目强相关（重排 ' + rrTop + '/10）');
+    else if (rrTop >= 4) note.push('资料只部分相关（重排 ' + rrTop + '/10），答案可能不全面');
+    else note.push('资料相关性弱（重排 ' + rrTop + '/10），请核对原文');
+  } else if (hits.length > 1) {
     const top = hits[0].score || 0;
     if (top > 0) {
       const kept = hits.filter((h, i) => i === 0 || (h.score || 0) >= top * 0.25);
@@ -403,7 +412,6 @@ async function aiContext(q, userQ) {
   const per = Math.max(400, Math.floor((+cfg.maxChars || 3500) / Math.max(1, hits.length)));
   const blocks = [];
   let used = 0;
-  let bridged = 0;                       /* 有几条参考真的衔上了前后文 */
   hits.forEach(h => {
     /* 邻段扩展：命中段前后各带一小截，补「定义在上一段 / 结论在下一段」的缺口。
        预算：正文 per 字，前后各最多 200 字。 */
