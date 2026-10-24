@@ -2931,8 +2931,16 @@ function bankPickerBind(root, id, onChange) {
   q.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') { close(); return; }
     if (ev.key === 'Enter') {
-      var first = list.querySelector('.bpick-i');
-      if (first) first.click();
+      /* 回车别让浏览器把它当成「提交表单 / 选第一条」：
+         AI 模糊下扩展词是异步回来的，回车时列表还是空的，选中第一条会把用户的词吞掉、弹层也关了。 */
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (st.ai) { paintList(); return; }
+      /* 有关键词时列表最上面是「全部题库」，回车别把它选掉；选第一条真题库 */
+      var kwNow = (q.value || '').trim();
+      var first = kwNow ? list.querySelector('.bpick-i:not([data-bp-v="all"])') : list.querySelector('.bpick-i');
+      if (first) { first.click(); return; }
+      paintList();
     }
   });
   ai.addEventListener('click', function (ev) {

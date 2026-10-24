@@ -1186,6 +1186,10 @@
       if (!arr.length) return { ok: false, err: '模型没挑出词表里的标签：' + String(txt || '').slice(0, 80) };
       /* 套卷里的题记到原题 key 上，标签行显示的就是这份数据（kk 已在上面算好） */
       var keepB = tagsOf(kk).filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; }).slice(0, 1);
+      /* 用户要求：AI 贴标签也要能把基本六科打上。
+         原来只保留「已有的」基本科，没分过的题就永远没有六科标签。
+         这里用 basicSubjectOf 判出来的科目补上；判不出就保持原样，不瞎猜。 */
+      if (!keepB.length && sub && BASIC_TAGS.indexOf(sub) >= 0) keepB = [sub];
       setTags(kk, keepB.concat(arr), false);
       save();
       /* 别在没写进去的时候也报「已打上」：以磁盘（localStorage）里真的存在为准 */

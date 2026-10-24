@@ -177,7 +177,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0 };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -472,6 +472,8 @@ function applyLook() {
   document.body.classList.toggle('reduce-motion', !!SET.reduceMotion);
   /* 面板磨砂（背景模糊）：默认开；关掉就是纯半透明，不看背景纹理 */
   document.body.classList.toggle('frost', SET.frost !== false);
+  /* 极简模式：关背景氛围 / 动效 / 引导卡，只留干活的界面（设置里随时开回） */
+  document.body.classList.toggle('minimal', !!SET.minimal);
   /* 正文颜色：只动阅读区（题干 / 选项 / 解析），不动按钮与标题 */
   const tc = ['auto', 'ink', 'blue', 'brown', 'green', 'custom'].indexOf(SET.textColor) >= 0 ? SET.textColor : 'auto';
   if (document.documentElement) {
@@ -1332,8 +1334,94 @@ function uiHomeNavInit() {
   setTimeout(sync, 60);
 }
 
+/* ============================================================
+   ⑤ 底栏可拖动 / 拉大小（用户要求：「答题界面底下的导航栏也能随意拽动变形」）
+   - 左侧 ⠿ 把手拖动整条底栏；右下角小把手拉宽 / 拉高（按钮自动换行、变大小）
+   - 双击把手回到底部原来的样子；几何存 qbank.bnavdock.v1，刷新后还记得
+   - 不挡点击：把手只有 16px 宽，按钮照常点
+   ============================================================ */
+const BNV_KEY = 'qbank.bnavdock.v1';
+function bnvState() { try { return JSON.parse(localStorage.getItem(BNV_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function bnvSave(st) { try { localStorage.setItem(BNV_KEY, JSON.stringify(st)); } catch (e) {} }
+function uiBottomNavDock() {
+  const nav = document.querySelector('.bnav');
+  if (!nav || nav.__dockReady) return;
+  nav.__dockReady = true;
+  const st = bnvState();
+  const apply = () => {
+    if (!st.float) {
+      nav.classList.remove('bnv-float');
+      nav.style.left = nav.style.top = nav.style.width = nav.style.height = '';
+      return;
+    }
+    nav.classList.add('bnv-float');
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = Math.min(Math.max(+st.w || 420, 220), vw - 16);
+    const h = Math.min(Math.max(+st.h || 64, 52), vh - 140);
+    st.w = w; st.h = h;
+    st.x = Math.min(Math.max(st.x == null ? 12 : +st.x, 6), Math.max(6, vw - w - 6));
+    st.y = Math.min(Math.max(st.y == null ? vh - h - 96 : +st.y, 64), Math.max(64, vh - h - 6));
+    nav.style.left = st.x + 'px'; nav.style.top = st.y + 'px';
+    nav.style.width = w + 'px'; nav.style.height = h + 'px';
+    nav.style.right = 'auto'; nav.style.bottom = 'auto';
+  };
+  apply();
+
+  const grip = document.createElement('button');
+  grip.type = 'button';
+  grip.className = 'bnv-grip';
+  grip.title = '拖动底栏换位置；双击回到底部';
+  grip.setAttribute('aria-label', '拖动底栏');
+  grip.textContent = '⠿';
+  nav.appendChild(grip);
+  const rz = document.createElement('i');
+  rz.className = 'bnv-rz';
+  rz.title = '拖动改底栏大小';
+  nav.appendChild(rz);
+
+  let drag = null;
+  grip.addEventListener('pointerdown', ev => {
+    if (!st.float) { st.float = true; const r = nav.getBoundingClientRect(); st.x = r.left; st.y = r.top; st.w = r.width; st.h = r.height; apply(); }
+    const r = nav.getBoundingClientRect();
+    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
+    try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  grip.addEventListener('pointermove', ev => {
+    if (!drag) return;
+    const w = nav.getBoundingClientRect().width, h = nav.getBoundingClientRect().height;
+    st.x = Math.max(4, Math.min(window.innerWidth - w - 4, ev.clientX - drag.dx));
+    st.y = Math.max(56, Math.min(window.innerHeight - h - 4, ev.clientY - drag.dy));
+    nav.style.left = st.x + 'px'; nav.style.top = st.y + 'px';
+  });
+  const endDrag = () => { if (!drag) return; drag = null; apply(); bnvSave(st); };
+  grip.addEventListener('pointerup', endDrag);
+  grip.addEventListener('pointercancel', endDrag);
+  grip.addEventListener('dblclick', ev => { ev.preventDefault(); st.float = false; apply(); bnvSave(st); });
+
+  let rs = null;
+  rz.addEventListener('pointerdown', ev => {
+    if (!st.float) { st.float = true; const r = nav.getBoundingClientRect(); st.x = r.left; st.y = r.top; st.w = r.width; st.h = r.height; apply(); }
+    const r = nav.getBoundingClientRect();
+    rs = { w: r.width, h: r.height, x: ev.clientX, y: ev.clientY };
+    try { rz.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault(); ev.stopPropagation();
+  });
+  rz.addEventListener('pointermove', ev => {
+    if (!rs) return;
+    st.w = Math.max(220, Math.min(window.innerWidth - st.x - 8, rs.w + ev.clientX - rs.x));
+    st.h = Math.max(52, Math.min(window.innerHeight - st.y - 8, rs.h + ev.clientY - rs.y));
+    nav.style.width = st.w + 'px'; nav.style.height = st.h + 'px';
+  });
+  const endRs = () => { if (!rs) return; rs = null; apply(); bnvSave(st); };
+  rz.addEventListener('pointerup', endRs);
+  rz.addEventListener('pointercancel', endRs);
+
+  window.addEventListener('resize', apply);
+}
 uiHomeNavInit();
 uiBottomNavInit();
+uiBottomNavDock();
 /* §3.6-P0① 专注模式：`body.focus` 由 applyLook() 统一加（设置里也能开关），这里只管切状态 + 提示。
    答题页的「⛶ 专注」按钮、右下角浮出的「退出专注」、Esc 都走这里。 */
 function uiSetFocus(on, quiet) {
@@ -2270,7 +2358,25 @@ function importAllData(e) {
 /* ============================================================
    答题页
    ============================================================ */
-const stemHtml = t => (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
+/* 题干 / 共用题干 / 选项的渲染：
+   以前只做「$公式$ → KaTeX」，markdown 的表格、```mermaid、思维导图在题干里全是原样文字。
+   现在按内容判断：看着像 markdown（有围栏 / 表格分隔行 / 提示框 / 标题）就走 mdToHtml，
+   否则维持老行为（转义 + 只渲公式），普通纯文本题干完全不受影响。 */
+const stemLooksMd = t => {
+  const s = String(t == null ? '' : t);
+  if (!s) return false;
+  if (/^\s*```/m.test(s)) return true;                 /* 代码围栏：mermaid / mindmap / diagram */
+  if (/^\s*\|.*\|\s*$/m.test(s) && /^\s*\|[\s:|-]+\|\s*$/m.test(s)) return true;   /* 表格（要有分隔行） */
+  if (/^\s*>\s*\[!(tip|warning|info|note|danger)\]/im.test(s)) return true;       /* 提示框 */
+  if (/^#{2,6}\s+\S/m.test(s)) return true;            /* 标题 */
+  return false;
+};
+const stemHtml = t => {
+  if (typeof mdToHtml === 'function' && stemLooksMd(t)) {
+    try { return mdToHtml(String(t == null ? '' : t)); } catch (e) {}
+  }
+  return (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
+};
 function renderQuiz(bankId) {
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
   const bank = bankById(bankId);
@@ -3996,6 +4102,7 @@ function openSettings() {
   if ($('setFocus')) $('setFocus').checked = !!SET.focus;
   if ($('setSpeedSec')) $('setSpeedSec').value = SET.speedSec || 0;
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
+  if ($('setMinimal')) $('setMinimal').checked = !!SET.minimal;
   if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setTextColor')) $('setTextColor').value = SET.textColor || 'auto';
@@ -4034,6 +4141,7 @@ on('setUiAlpha', e => {
   if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = e.target.value + '%';
 }, 'input');
 on('setFrost', e => { SET.frost = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
+on('setMinimal', e => { SET.minimal = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
 on('setBgClear', bgClearImage);
 on('setBgFile', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromFile(f); }, 'change');
 on('closeSet', closeAll);

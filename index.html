@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261106b">
+<link rel="stylesheet" href="style.css?v=20261106c">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -164,6 +164,7 @@
   </div>
   <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
   <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
+  <label class="chk"><input type="checkbox" id="setMinimal"> 极简模式（关掉背景氛围 / 动效 / 首页引导卡，只留刷题和管理的界面）</label>
   <label class="chk"><input type="checkbox" id="setReduceMotion"> 减少动态效果（关掉全站动画 / 过渡 / 彩带，和系统「减少动态效果」同效）</label>
   <div class="tools" style="margin-top:12px">
     <span class="tl">复习曲线</span>
@@ -227,7 +228,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261106b"></script>
+<script src="app.js?v=20261106c"></script>
 <script src="collection.js?v=20261106b"></script>
 <script src="diagram.js?v=20261031a"></script>
 <script src="exam.js?v=20261103a"></script>
@@ -238,7 +239,7 @@
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261106b"></script>
+<script src="cat.js?v=20261106c"></script>
 <script src="bf.js?v=20261017e"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
@@ -259,7 +260,7 @@
 <!-- 考点标签（tags.js，方案五）：考点词表可以由你批量导入（一行一个）或让 AI 起一份，
      然后让 AI 读每道题、从词表里挑标签贴上去；统计页的「按考点」只汇总这些贴好的标签。
      标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
-<script src="tags.js?v=20261106b"></script>
+<script src="tags.js?v=20261106c"></script>
 
 <!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
      让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->

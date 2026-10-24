@@ -2112,3 +2112,24 @@ body.dark .qn-h { background: #141b28; }
 /* ===== 正文颜色（设置里选，只作用于阅读区） ===== */
 html[data-tc] .stem, html[data-tc] .gstem, html[data-tc] .opts .opt .ot,
 html[data-tc] .exp-wrap .rich-edit, html[data-tc] .fb .expl, html[data-tc] .wi .stem { color: var(--read-c); }
+
+/* ===== ⑤ 底栏可拖动 / 拉大小（web166） ===== */
+.bnv-grip{position:absolute;left:2px;top:50%;transform:translateY(-50%);z-index:3;width:16px;height:66%;
+  border:0;border-radius:8px;background:color-mix(in srgb,var(--line) 60%,transparent);
+  color:var(--sub);font-size:11px;line-height:1;display:none;place-items:center;cursor:grab;padding:0}
+.bnv-float .bnv-grip{display:grid}
+.bnv-float{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;
+  flex-wrap:wrap!important;align-content:center;overflow:auto;box-shadow:0 16px 40px rgba(15,23,42,.22)!important}
+.bnv-float .btn{flex:1 1 28%;min-width:56px;min-height:auto}
+.bnv-float .btn .bn-ic{font-size:16px}
+.bnv-float .btn span{font-size:11px}
+.bnv-rz{position:absolute;right:1px;bottom:1px;z-index:3;width:16px;height:16px;display:none;cursor:nwse-resize;
+  border-radius:0 0 6px 0;background:linear-gradient(135deg,transparent 46%,color-mix(in srgb,var(--line) 85%,transparent) 47%)}
+.bnv-float .bnv-rz{display:block}
+.bnav{position:relative}
+
+/* ===== ⑥ 极简模式（web166） ===== */
+body.minimal #firstGuide,body.minimal #syncHomeCard{display:none!important}
+body.minimal .bg-media,body.minimal .bg-video,body.minimal .fx,body.minimal .motion{display:none!important}
+body.minimal *{animation:none!important;transition:none!important}
+body.minimal.frost{--frost-blur:0px}

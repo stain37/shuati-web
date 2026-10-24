@@ -1195,3 +1195,28 @@ ode --check 全过。
 
 版本：`sw.js` `shuati-v68-web164`，`index.html` 六个文件缓存戳 `?v=20261106b`，提交 `d21423b4`；线上逐文件二进制比对一致（collection.js 168618B、style.css 150474B、tags.js 175139B、sync.js 50765B、app.js 228246B、cat.js 156514B）。
 
+### 24.6 web165：题库选择器贴按钮 + 弹层最顶层 + SW 预缓存瘦身 + 浮块点回
+
+用户反馈（2026-10-24）：
+1. 题库选择器位置还是不好，「最好就放在旁边，并且在图层最顶层」，学习中心最底下那个选择题库「都按不到了」；
+2. 选择器里的搜索框 UI「有点丑，里面还有一个🔍」，去掉；
+3. 拖完浮块想点回正常排版，第一次点没反应。
+
+改法（`cat.js` / `style.css` / `app.js` / `sw.js`）：
+
+| 问题 | 根因 | 改法 |
+|---|---|---|
+| 弹层被容器/页面内容压住、底部按钮点不到 | `.bpick-pop` 原来是按钮的绝对定位子元素，会被外层 `overflow`、`position` 上下文和后面绘制的内容遮住 | 打开时 `document.body.appendChild(pop)` 并记 `pop.__home = box`，关闭时再搬回原位；`position: fixed`、`z-index: 2147483000`；位置按按钮矩形算 `below/above`，取较大空间并夹到视口内；每屏最多 420px 高 |
+| 学习中心最底部点不到 | 同上 + 旧 `place()` 没考虑「按钮贴近视口底」 | 重写 `place()`：`below = vh - br.bottom - 12`、`above = br.top - 12`，优先放空间大的一侧，`top` 夹在 8 与 `vh - h - 8` 之间 |
+| 搜索框里多一个🔍 | `style.css` 全局给 `input[type="search"]` 加了放大镜 SVG 背景 | `.bpick-q` 用 `background-image: none !important` 关掉；输入框只留 placeholder |
+| 选完要点一下才收 | 选中后只写隐藏 input | 选中后 `close()` 自动收起并触发 `onChange` |
+| 拖动后点回没反应 | `moved` 标记只由下一次 click 消耗，拖完那一下被吞 | `onUp` 里 420ms 后自动把 `moved` 复位（`onUp.__t`），拖手后的合成 click 仍被吞，稍后再点就能切回 |
+
+**SW 预缓存瘦身**：`sw.js` 的 `CORE` 清单原来含 `./知识库.js`（本地资料库，实测 6.11MB），而 CORE 合计 8.19MB——每次改 `VERSION`，每台设备都要重下这 8MB，是这轮流量飙升的主因（web148→web164 二十来次 × 三台设备）。已从 CORE 删掉，改为注释「网络优先、用到才下、下过就缓存」。`工作1/swcheck.py` 实测：CORE 56→55 条、体积 8.19MB→2.08MB（最大只剩 katex 0.26MB、app.js 0.22MB）。
+
+版本与验证：
+- 缓存戳 `cat.js` / `style.css` / `app.js` → `?v=20261106b`；`sw.js` `VERSION = 'shuati-v68-web165'`。
+- 线上核验：`sw.js` VERSION=web165、CORE 不再含知识库.js；`cat.js` 157562B、`style.css` 150509B、`app.js` 228450B、`collection.js` 168618B 与本地字节一致。
+- 探针：`picker2-probe.py` 23/0、`fix164-probe.py` 46/0、`search-bank-probe.py` 18/0、`batch2b-probe.py` 23/0（含「标签行回内联」「拖完再点能恢复排版」）。
+
+流量说明（回答用户「为什么流量跳了 8G」）：探针都打 `127.0.0.1` 不耗外网流量；真凶按大小排是 ① SW 每次升版本重下全部 CORE（已瘦身，单次从 8.19MB 降到 2.08MB）② `pdf/` 目录 476MB 按需拉取 ③ 云同步整份 JSON 来回 ④ 部署本身。约定：以后攒 3–4 项一起部署，探针脚本只连本地。
