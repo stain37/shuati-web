@@ -42,8 +42,14 @@ function kbIdbOpen() {
     let done = false;
     const t = setTimeout(() => { if (!done) { done = true; rej(new Error('timeout')); } }, 1200);
     try {
-      const rq = indexedDB.open('shuati-kb', 1);
-      rq.onupgradeneeded = () => { try { rq.result.createObjectStore('kb'); } catch (e) {} };
+      const rq = indexedDB.open('shuati-kb', 2);
+      rq.onupgradeneeded = () => {
+        try {
+          const db = rq.result;
+          if (!db.objectStoreNames.contains('kb')) db.createObjectStore('kb');
+          if (!db.objectStoreNames.contains('idx')) db.createObjectStore('idx');   /* 检索索引（结构化克隆，不转 JSON） */
+        } catch (e) {}
+      };
       rq.onsuccess = () => { if (done) return; done = true; clearTimeout(t); KB_DB = rq.result; res(rq.result); };
       rq.onerror = () => { if (done) return; done = true; clearTimeout(t); rej(rq.error || new Error('idb error')); };
       rq.onblocked = () => { if (done) return; done = true; clearTimeout(t); rej(new Error('blocked')); };
@@ -74,6 +80,47 @@ function kbStoreDel(id) {
   if (KB_DB) return new Promise(res => { try { const tx = KB_DB.transaction('kb', 'readwrite'); tx.objectStore('kb').delete(id); tx.oncomplete = () => res(true); tx.onerror = () => res(false); } catch (e) { res(false); } });
   try { localStorage.removeItem(KB_LS_DATA + id); } catch (e) {}
   return Promise.resolve(true);
+}
+/* ---------- 检索索引落盘（B2） ----------
+   361 万字每次刷新都要重切段 + 重算 BM25（kb.js 的 kbIndexAsync），冷启动一两秒到十几秒。
+   把建好的索引放进 IndexedDB 的 'idx' store（结构化克隆，不走 JSON.stringify）：
+   下次直接用，docs 变了（增删资料 / 正文变了）再用 sig 判定失效重建。 */
+function kbIdxSig(docs) {
+  let n = 0, len = 0;
+  (docs || []).forEach(d => { n++; len += String((d && d.text) || '').length; });
+  return n + ':' + len;
+}
+function kbIdxPut(id, idx, sig) {
+  if (!KB_DB) return Promise.resolve(false);       /* localStorage 放不下索引，直接不落盘 */
+  return new Promise(res => {
+    try {
+      const tx = KB_DB.transaction('idx', 'readwrite');
+      tx.objectStore('idx').put({ sig: sig, at: Date.now(), idx: idx }, id);
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => res(false);
+      tx.onabort = () => res(false);
+    } catch (e) { res(false); }
+  });
+}
+function kbIdxGet(id) {
+  if (!KB_DB) return Promise.resolve(null);
+  return new Promise(res => {
+    try {
+      const rq = KB_DB.transaction('idx').objectStore('idx').get(id);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+function kbIdxDel(id) {
+  if (!KB_DB) return Promise.resolve(true);
+  return new Promise(res => {
+    try {
+      const tx = KB_DB.transaction('idx', 'readwrite');
+      tx.objectStore('idx').delete(id);
+      tx.oncomplete = () => res(true); tx.onerror = () => res(false);
+    } catch (e) { res(false); }
+  });
 }
 /* 启动时探测一次：file:// 下有些浏览器不给用 IndexedDB，就退回 localStorage */
 kbIdbOpen().then(() => { if (route().name === 'kb') render(); }).catch(() => {});
@@ -337,9 +384,21 @@ async function kbEnsure(id) {
   if (!KB_MEM[id]) { const d = await kbStoreGet(id); if (!d) return false; KB_MEM[id] = d; }
   if (KB_BUILD[id]) return KB_BUILD[id];          /* 同一个库同时只建一次 */
   KB_BUILD[id] = (async () => {
+    const docs = KB_MEM[id].docs || [];
+    const sig = kbIdxSig(docs);
     try {
-      KB_IDX[id] = await kbIndexAsync(KB_MEM[id].docs || [], id);
+      /* 先看盘上有没有同签名的索引：命中就跳过重切段 */
+      const hit = await kbIdxGet(id);
+      if (hit && hit.idx && hit.sig === sig && Array.isArray(hit.idx.chunks) && hit.idx.chunks.length) {
+        KB_IDX[id] = hit.idx;
+        KB_RR_CACHE.clear();
+        window.__kbIdxHits = (window.__kbIdxHits || 0) + 1;
+        return true;
+      }
+      window.__kbIdxBuilds = (window.__kbIdxBuilds || 0) + 1;
+      KB_IDX[id] = await kbIndexAsync(docs, id);
       KB_RR_CACHE.clear();          /* 索引重建了：老的排序结果可能指向不存在的段，作废 */
+      kbIdxPut(id, KB_IDX[id], sig);   /* 落盘：下次刷新直接用（失败不影响本次） */
     } finally { delete KB_PROG[id]; delete KB_BUILD[id]; }
     return true;
   })();
@@ -513,6 +572,7 @@ async function kbCreate(name, docs, src) {
   KB_MEM[id] = data;
   KB_IDX[id] = kbIndex(data.docs);
   const ok = await kbStorePut(id, data);
+  if (ok) kbIdxDel(id);                          /* 正文变了：盘上索引失效 */
   if (!ok) { delete KB_MEM[id]; delete KB_IDX[id]; throw new Error('保存失败：浏览器存储放不下了（' + kbBackend() + '）。大资料请用 make-kb.py 生成 知识库.js'); }
   KB_LIST.push({ id: id, name: name || '知识库', src: src || 'local', addedAt: Date.now(), chars: st.chars, docs: st.docs, chunks: st.chunks });
   kbSaveList(); kbSetSel(id, true);
@@ -674,7 +734,9 @@ function kbTryHtml() {
   L.push('<div class="tools">');
   L.push('<input class="num grow" id="kbQ" placeholder="输入题干关键词，例如：善意取得的构成要件">');
   L.push('<button class="btn primary" id="kbSearchBtn">检索</button>');
+  L.push('<button class="btn" id="kbEvalBtn" title="从各库随机抽段，用段内一段原文当查询，看命中率（离线、不花 token）">检索自检</button>');
   L.push('</div>');
+  L.push('<div id="kbEvalOut"></div>');
   L.push('<div class="small muted">这里只用关键词检索（不联模型、不花 token，所以最快），看到的是「字面能对上」的下限。'
     + '同一个文件最多 2 段、同一段正文只出现一次。真正生成解析时，还会在①里那两个开关的帮助下先扩写题目、再重排结果，命中会比这里更好。</div>');
   L.push('<div id="kbHits"></div>');
@@ -749,6 +811,7 @@ function kbBind(host) {
   }, 'change');
   on('kbPasteAdd', () => kbImportPaste());
   on('kbSearchBtn', () => kbRunTest());
+  on('kbEvalBtn', () => kbRunEval());
   on('kbQ', e => { if (e.key === 'Enter') kbRunTest(); }, 'keydown');
 }
 async function kbImportFiles(files) {
@@ -802,6 +865,82 @@ async function kbRunTest() {
   }).join('');
 }
 
+/* ---------- 检索自检（H1 护栏） ----------
+   做法：从每个勾选库的索引进样本段，取段内一段「只在这一段出现」的 8 字原文当查询，
+   期望命中的就是这一段本身 —— 自动标注，不用维护标注集。
+   输出 Top1 / Recall@5 / MRR：以后改权重、改切段、加同义表，先看这三个数别掉。
+   纯本地、不调模型、不花 token。 */
+function kbEvalSet(n) {
+  n = n || 60;
+  const ids = kbSelected().filter(id => KB_IDX[id]);
+  const out = [];
+  if (!ids.length) return out;
+  const per = Math.max(1, Math.ceil(n / ids.length));
+  ids.forEach(id => {
+    const idx = KB_IDX[id];
+    if (!idx || !idx.chunks || !idx.chunks.length) return;
+    const step = Math.max(1, Math.floor(idx.chunks.length / per));
+    let got = 0;
+    for (let i = 0; i < idx.chunks.length && got < per; i += step) {
+      const c = idx.chunks[i];
+      const t = String(c.txt || '').replace(/\s+/g, '');
+      if (t.length < 60) continue;
+      const mid = Math.floor(t.length / 2);
+      let q = '';
+      for (const start of [mid, Math.max(0, mid - 120), Math.max(0, Math.floor(t.length / 3)), 20]) {
+        for (let off = 0; off + 8 <= 60 && start + off + 8 <= t.length; off += 6) {
+          const w = t.slice(start + off, start + off + 8);
+          if (!/^[\u4e00-\u9fff]{8}$/.test(w)) continue;
+          /* 必须「稀有」：它的二元组在本库里出现次数少，才配当标注查询 */
+          const df = kbTokens(w).reduce((m, tk) => Math.min(m, idx.df[tk] || idx.chunks.length), idx.chunks.length);
+          if (df <= Math.max(4, Math.floor(idx.chunks.length / 40))) { q = w; break; }
+        }
+        if (q) break;
+      }
+      if (!q) continue;
+      out.push({ id: id, q: q, d: c.d, ci: c.ci });
+      got++;
+    }
+  });
+  return out;
+}
+function kbEvalRun(n) {
+  const set = kbEvalSet(n || 60);
+  if (!set.length) return { ok: false, error: '没有可评测的资料库（先勾选并等索引建好）', n: 0, top1: 0, recall5: 0, mrr: 0, detail: [] };
+  let top1 = 0, rec5 = 0, mrr = 0;
+  const detail = [];
+  set.forEach(it => {
+    const hits = kbHits(it.q, [it.id]);
+    let rank = -1;
+    for (let i = 0; i < hits.length; i++) { const ch = hits[i].ch; if (ch && ch.d === it.d && ch.ci === it.ci) { rank = i; break; } }
+    if (rank === 0) top1++;
+    if (rank >= 0 && rank < 5) rec5++;
+    if (rank >= 0) mrr += 1 / (rank + 1);
+    detail.push({ q: it.q, kb: it.id, rank: rank });
+  });
+  return { ok: true, n: set.length, top1: top1 / set.length, recall5: rec5 / set.length, mrr: mrr / set.length, detail: detail };
+}
+const KB_EVAL_BASE = { top1: 0.841, recall5: 0.95, mrr: 0.87 };   /* 网格搜参时的基线（kb.js 注释里记的老数） */
+async function kbRunEval() {
+  const box = $('kbEvalOut');
+  if (box) box.innerHTML = '<div class="small muted">正在抽样本段并逐条检索…（只算分，不调模型）</div>';
+  const ids = kbSelected();
+  for (const id of ids) { try { if (KB_MEM[id] && !KB_IDX[id]) await kbEnsure(id); } catch (e) {} }
+  await kbYield();
+  const r = kbEvalRun(60);
+  if (!r.ok) { if (box) box.innerHTML = '<div class="small muted">' + esc(r.error) + '</div>'; return r; }
+  const pct = x => (x * 100).toFixed(1) + '%';
+  const drop = (k) => r[k] + 0.02 < KB_EVAL_BASE[k];
+  const rows = r.detail.slice(0, 8).map(d => '<div class="small">' + esc(d.q) + ' → 命中排位 ' + (d.rank < 0 ? '未命中' : '第 ' + (d.rank + 1) + ' 位') + ' · ' + esc(d.kb) + '</div>').join('');
+  if (box) {
+    box.innerHTML = '<div class="kbhit"><div class="kbhit-h"><b>检索自检</b>' + '<span class="spacer-grow"></span>'
+      + '<span class="small muted">样本 ' + r.n + ' 条</span></div>'
+      + '<div class="small">Top1 <b' + (drop('top1') ? ' style="color:#c0392b"' : '') + '>' + pct(r.top1) + '</b> · Recall@5 <b' + (drop('recall5') ? ' style="color:#c0392b"' : '') + '>' + pct(r.recall5) + '</b> · MRR <b' + (drop('mrr') ? ' style="color:#c0392b"' : '') + '>' + r.mrr.toFixed(3) + '</b></div>'
+      + '<div class="small muted">基线（当年网格搜参）：Top1 84.1% · Recall@5 95% · MRR 0.87；掉了 2 个点以上标红，说明这次改动伤到检索了</div>'
+      + rows + '</div>';
+  }
+  return r;
+}
 /* 导入别处导出的知识库 JSON */
 async function kbImportJson(files) {
   for (const f of files) {
@@ -839,6 +978,7 @@ function kbImportAll(o) {
     if (d) {
       KB_MEM[k.id] = d;
       delete KB_IDX[k.id];
+      kbIdxDel(k.id);
       kbStorePut(k.id, d);                       /* 存回浏览器（IndexedDB / localStorage） */
       const st = kbStats(d);
       k.chars = st.chars; k.docs = st.docs; k.chunks = st.chunks; k.auto = false;
@@ -851,6 +991,9 @@ function kbImportAll(o) {
   kbPreheatIndex();
   return n;
 }
+
+window.kbEval = kbEvalRun;
+window.kbEvalSet = kbEvalSet;
 
 /* ---------- 动态挂载 知识库.js（没有这个文件也没关系） ----------
    4.2 MB 的资料文件不该每次打开页面都拉一遍：等真正要用时（打开 AI 面板 / 检索 / 进 #/kb）
