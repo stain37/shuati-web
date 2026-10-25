@@ -198,6 +198,21 @@ async function aiChat(messages, onDelta, signal, opts) {
   return full;
 }
 /* ---------- 一键配置：读取 AI配置.js（chatbox-import.py 生成）+ 自动检测本机服务 ---------- */
+/* 向量：OpenAI 兼容 /embeddings（批量）。config 里给了模型才走远端；失败由调用方退回本地向量。 */
+async function aiEmbed(texts, opts) {
+  const cfg = aiCfg();
+  const model = String((opts && opts.model) || cfg.embModel || '').trim();
+  if (!model) return null;
+  const list = (texts || []).map(t => String(t == null ? '' : t).slice(0, 2000));
+  if (!list.length) return [];
+  const url = aiBase(cfg) + '/embeddings';
+  const r = await fetch(url, { method: 'POST', headers: aiHeaders(cfg), body: JSON.stringify({ model: model, input: list }) });
+  if (!r.ok) throw new Error('向量接口 HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  const j = await r.json();
+  const arr = (j.data || []).map(d => d && d.embedding).filter(a => Array.isArray(a) && a.length);
+  return arr.length === list.length ? arr : null;
+}
+window.aiEmbed = aiEmbed;
 function aiCfgFileName() { return 'AI配置.js'; }
 function aiApplyCfgFile(force) {
   const c = window.__AICFG__;
@@ -1590,6 +1605,7 @@ function aiConfigHtml() {
   L.push('<span class="tl" title="这些参考资料加起来最多送给模型多少字。要跟上面的片段数配套：片段数 × 620 字以内才不会被截断。">资料上限</span><input class="num" id="aiMaxChars" type="number" min="600" max="20000" step="200" style="width:92px">');
   L.push('<label class="chk"><input type="checkbox" id="aiStream"> 流式输出</label></div>');
   L.push('<div class="small muted" id="aiRagTip"></div>');
+  L.push('<div class="row" style="margin-top:6px"><span class="tl" title="填了就启用向量检索（知识库混合检索里的向量票）。要填服务端支持 /embeddings 的模型名，例如 text-embedding-3-small、bge-m3、nomic-embed-text。留空＝只用本地轻量字符向量（不联网、不花钱，但只能补词形相近）。">向量模型</span><input class="txt" id="aiEmbModel" placeholder="留空＝只用本地轻量向量" style="flex:1"></div>');
   L.push('<div class="tools"><label class="chk"><input type="checkbox" id="aiExpand"> 检索前让模型把题目扩写成几组检索词</label>'
     + '<label class="chk"><input type="checkbox" id="aiRerank"> 让模型给捞回来的段落重排</label></div>');
   L.push('<div class="small muted" id="aiSearchTip"></div>');
@@ -1652,6 +1668,7 @@ function aiReadForm() {
   if (v('aiTopK') != null) AIC.topK = Math.max(0, Math.min(12, +v('aiTopK') || 0));
   if (v('aiMaxChars') != null) AIC.maxChars = Math.max(600, Math.min(20000, +v('aiMaxChars') || 3500));
   if ($('aiStream')) AIC.stream = !!$('aiStream').checked;
+  if (v('aiEmbModel') != null) { writeLS('qbank.kb.embmodel.v1', String(v('aiEmbModel') || '').trim()); if (typeof kbEmbSetModel === 'function') kbEmbSetModel(v('aiEmbModel')); }
   if ($('aiExpand')) AIC.expand = !!$('aiExpand').checked;
   if ($('aiRerank')) AIC.rerank = !!$('aiRerank').checked;
   if ($('aiTmpl')) AIC.tmpl = !!$('aiTmpl').checked;
@@ -1691,6 +1708,7 @@ function aiPaintForm() {
   const set = (id, v) => { const el = $(id); if (el) el.value = v == null ? '' : v; };
   set('aiBase', AIC.base); set('aiModel', AIC.model); set('aiKey', AIC.key);
   set('aiTemp', AIC.temp); set('aiTopK', AIC.topK); set('aiMaxChars', AIC.maxChars); set('aiSys', AIC.sys || '');
+  set('aiEmbModel', readLS('qbank.kb.embmodel.v1', ''));
   aiPaintTempTip();
   if ($('aiTmpl')) $('aiTmpl').checked = !!AIC.tmpl;
   const ms = (AI_PRESETS[AIC.preset] || {}).models || [];
@@ -1758,7 +1776,7 @@ function aiBindConfig() {
     aiPaintForm();
     const st = $('aiState'); if (st) { st.textContent = '已清空本机配置'; st.className = 'aistate ok'; }
   });
-  ['aiBase', 'aiModel', 'aiKey', 'aiTemp', 'aiTopK', 'aiMaxChars', 'aiSys', 'aiExpand', 'aiRerank'].forEach(id => on(id, aiReadForm, 'change'));
+  ['aiBase', 'aiModel', 'aiKey', 'aiTemp', 'aiTopK', 'aiMaxChars', 'aiSys', 'aiExpand', 'aiRerank', 'aiEmbModel'].forEach(id => on(id, aiReadForm, 'change'));
   on('aiStream', aiReadForm, 'change');
   on('aiTestBtn', aiTest);
   on('aiDetectBtn', () => aiDetect(false));

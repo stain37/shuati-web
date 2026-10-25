@@ -42,12 +42,13 @@ function kbIdbOpen() {
     let done = false;
     const t = setTimeout(() => { if (!done) { done = true; rej(new Error('timeout')); } }, 1200);
     try {
-      const rq = indexedDB.open('shuati-kb', 2);
+      const rq = indexedDB.open('shuati-kb', 3);
       rq.onupgradeneeded = () => {
         try {
           const db = rq.result;
           if (!db.objectStoreNames.contains('kb')) db.createObjectStore('kb');
           if (!db.objectStoreNames.contains('idx')) db.createObjectStore('idx');   /* 检索索引（结构化克隆，不转 JSON） */
+          if (!db.objectStoreNames.contains('emb')) db.createObjectStore('emb');   /* 段落向量（A1，按 模型|库|段落哈希 存） */
         } catch (e) {}
       };
       rq.onsuccess = () => { if (done) return; done = true; clearTimeout(t); KB_DB = rq.result; res(rq.result); };
@@ -341,7 +342,7 @@ function kbHits(query, ids) {
   return hits;
 }
 function kbSearchSync(query, ids, topK) {
-  return kbPickDiverse(kbHits(query, ids), topK || 4);
+  return kbHybridSearchSync(query, ids, topK || 4);
 }
 /* 挑结果：
    ① 同一段正文只留一次（跨库重复的按内容指纹去重）；
@@ -379,6 +380,217 @@ function kbPickDiverse(hits, K) {
   for (let i = 0; i < spill.length && out.length < K; i++) out.push(spill[i]);   /* 来源不够时再补重复的 */
   return out;
 }
+/* ---------- A1：向量 / 混合检索（目标是 Top1） ----------
+   关键词 BM25F 只看「词对不对得上」；向量看「整段像不像」。两票用 RRF 合并成一份排序。
+   向量来源自动二选一（都失败就退回纯关键词，绝不挡住回答）：
+     ① 设置里填了「向量模型」→ OpenAI 兼容 /embeddings；每段向量按「库 + 段落内容哈希」存 IndexedDB，第二次不再花钱；
+     ② 没填 → 本地字符二元/三元组哈希向量（零网络、零费用），补的是词序、长短和局部重合。 */
+const KB_LS_EMBM = 'qbank.kb.embmodel.v1';
+let KB_VW = 0.5;                   /* 向量票在 RRF 里的权重：与关键词票 1:1 */
+const KB_VEC = {};                 /* 库id → {post:Map<hash, idx[]>, vecs:[{k,v}], n} */
+const KB_EMB = {};                 /* 库id → {段落内容哈希: Float32Array} 远端向量 */
+const KB_EMB_BAD = {};             /* 库id → true：这个库远端向量失败过，本次会话不再重试 */
+
+function kbVecWeight() { return KB_VW; }
+function kbVecSetWeight(w) { KB_VW = Math.max(0, Math.min(2, Number(w) || 0)); return KB_VW; }
+function kbEmbModel() { try { return String(readLS(KB_LS_EMBM, '') || '').trim(); } catch (e) { return ''; } }
+function kbEmbSetModel(m) {
+  writeLS(KB_LS_EMBM, String(m || '').trim());
+  Object.keys(KB_EMB).forEach(k => { delete KB_EMB[k]; });
+  Object.keys(KB_EMB_BAD).forEach(k => { delete KB_EMB_BAD[k]; });
+}
+/* 一段文本 → 稀疏向量（特征哈希 + 权重，L2 归一化） */
+function kbVecFeat(s) {
+  const txt = kbFlat(s), m = Object.create(null);
+  const add = (k, w) => { m[k] = (m[k] || 0) + w; };
+  for (let i = 0; i < txt.length - 1; i++) add(txt.slice(i, i + 2), 1);            /* 二元组 ≈ 半个词 */
+  for (let i = 0; i + 2 < txt.length; i += 2) add('3' + txt.slice(i, i + 3), 1.2); /* 隔字三元组 ≈ 短语 */
+  kbTokens(s).forEach(x => { if (x.length > 1) add('w' + x, 2); });               /* 整词额外加权 */
+  const keys = [], vals = [];
+  Object.keys(m).forEach(k => { keys.push(kbHash(k)); vals.push(m[k]); });
+  const ix = keys.map((k, i) => i).sort((a, b) => keys[a] - keys[b]);
+  const k2 = new Uint32Array(ix.length), v2 = new Float32Array(ix.length);
+  let norm = 0;
+  ix.forEach((src, i) => { k2[i] = keys[src]; v2[i] = vals[src]; norm += vals[src] * vals[src]; });
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < v2.length; i++) v2[i] /= norm;
+  return { k: k2, v: v2 };
+}
+/* 本地向量索引：特征 → 段落倒排（只对命中的特征累加，避免全量遍历） */
+function kbVecIndex(id) {
+  if (KB_VEC[id]) return KB_VEC[id];
+  const idx = KB_IDX[id];
+  if (!idx) return null;
+  const vecs = [], post = new Map();
+  idx.chunks.forEach((c, ci) => {
+    const f = kbVecFeat((c.hp ? c.hp + ' ' : '') + (c.h || '') + ' ' + c.t);
+    vecs.push(f);
+    for (let i = 0; i < f.k.length; i++) {
+      const key = f.k[i];
+      let arr = post.get(key);
+      if (!arr) { arr = []; post.set(key, arr); }
+      arr.push(ci);
+    }
+  });
+  KB_VEC[id] = { post: post, vecs: vecs, n: vecs.length };
+  return KB_VEC[id];
+}
+/* 本地向量打分：余弦 */
+function kbVecHits(query, ids, cap) {
+  const qv = kbVecFeat(query);
+  const hits = [];
+  (ids || []).forEach(id => {
+    const V = kbVecIndex(id);
+    if (!V) return;
+    const idx = KB_IDX[id];
+    const acc = new Map();
+    for (let i = 0; i < qv.k.length; i++) {
+      const arr = V.post.get(qv.k[i]);
+      if (!arr) continue;
+      const qw = qv.v[i];
+      for (let j = 0; j < arr.length; j++) acc.set(arr[j], (acc.get(arr[j]) || 0) + qw);
+    }
+    acc.forEach((s, ci) => {
+      const ch = idx.chunks[ci];
+      if (!ch || s <= 0) return;
+      hits.push({ id: id, score: s, ch: ch, via: 'vec' });
+    });
+  });
+  hits.sort((a, b) => b.score - a.score);
+  const mx = (hits[0] && hits[0].score) || 1;
+  hits.forEach(h => { h.ns = h.score / mx; });
+  return cap ? hits.slice(0, cap) : hits;
+}
+/* 混合排序：关键词票 + 向量票（RRF，k=60） */
+function kbHybridHits(query, ids, opt) {
+  opt = opt || {};
+  const kw = kbHits(query, ids);
+  const kwTop = kw.slice(0, opt.cap || 120);
+  let vec = opt.vec;
+  if (!vec) { try { vec = kbVecHits(query, ids, opt.cap || 120); } catch (e) { vec = []; } }
+  if (!vec || !vec.length) return kw;          /* 向量没捞到东西：保持原来的关键词排序，别把结果弄坏 */
+  const acc = new Map();
+  kwTop.forEach((h, i) => {
+    const key = h.id + '#' + h.ch.d + '#' + h.ch.ci;
+    const cur = acc.get(key) || { h: h, s: 0 };
+    cur.s += (opt.wkw == null ? 1 : opt.wkw) / (60 + i + 1);
+    acc.set(key, cur);
+  });
+  vec.forEach((h, i) => {
+    const key = h.id + '#' + h.ch.d + '#' + h.ch.ci;
+    const cur = acc.get(key) || { h: h, s: 0 };
+    cur.s += (opt.wvec == null ? KB_VW : opt.wvec) / (60 + i + 1);
+    acc.set(key, cur);
+  });
+  const arr = []; acc.forEach(v => arr.push(v));
+  arr.sort((a, b) => b.s - a.s);
+  return arr.map(x => x.h);
+}
+/* ---------- 远端向量（可选） ---------- */
+function kbEmbNorm(arr) {
+  const v = Float32Array.from(arr || []);
+  let n = 0;
+  for (let i = 0; i < v.length; i++) n += v[i] * v[i];
+  n = Math.sqrt(n) || 1;
+  for (let i = 0; i < v.length; i++) v[i] /= n;
+  return v;
+}
+function kbEmbPut(ck, vec) {
+  if (!KB_DB) return Promise.resolve(false);
+  return new Promise(res => {
+    try {
+      const tx = KB_DB.transaction('emb', 'readwrite');
+      tx.objectStore('emb').put(vec, ck);
+      tx.oncomplete = () => res(true); tx.onerror = () => res(false);
+    } catch (e) { res(false); }
+  });
+}
+function kbEmbStoreGet(ck) {
+  if (!KB_DB) return Promise.resolve(null);
+  return new Promise(res => {
+    try {
+      const rq = KB_DB.transaction('emb').objectStore('emb').get(ck);
+      rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+/* 建一个库的远端向量：先读盘上缓存，缺的才调接口（16 段一批） */
+async function kbEmbBuild(id) {
+  const model = kbEmbModel();
+  if (!model || typeof aiEmbed !== 'function' || KB_EMB_BAD[id]) return false;
+  if (KB_EMB[id] && KB_EMB[id].__done) return true;
+  const idx = KB_IDX[id];
+  if (!idx) return false;
+  const map = KB_EMB[id] = KB_EMB[id] || Object.create(null);
+  const todo = [];
+  for (const c of idx.chunks) {
+    const ck = model + '|' + id + '|' + c.ck;
+    if (map[ck]) continue;
+    const cached = await kbEmbStoreGet(ck);
+    if (cached) { map[ck] = Float32Array.from(cached); continue; }
+    todo.push(c);
+  }
+  try {
+    for (let i = 0; i < todo.length; i += 16) {
+      const batch = todo.slice(i, i + 16);
+      const vecs = await aiEmbed(batch.map(c => ((c.hp ? c.hp + ' ' : '') + (c.h || '') + ' ' + c.t).slice(0, 900)), { model: model });
+      if (!vecs || !vecs.length) throw new Error('embedding 返回空');
+      batch.forEach((c, j) => {
+        if (!vecs[j]) return;
+        const v = kbEmbNorm(vecs[j]);
+        map[model + '|' + id + '|' + c.ck] = v;
+        kbEmbPut(model + '|' + id + '|' + c.ck, v);
+      });
+      if (i % 160 === 0) await kbYield();
+    }
+    map.__done = true;
+    return true;
+  } catch (e) {
+    KB_EMB_BAD[id] = true;
+    return false;
+  }
+}
+async function kbEmbQueryVec(query) {
+  const model = kbEmbModel();
+  if (!model || typeof aiEmbed !== 'function') return null;
+  try {
+    const vecs = await aiEmbed([String(query || '').slice(0, 900)], { model: model });
+    return vecs && vecs[0] ? kbEmbNorm(vecs[0]) : null;
+  } catch (e) { return null; }
+}
+/* 远端向量打分（需要先 kbEmbBuild 过） */
+function kbEmbHits(queryVec, ids, cap) {
+  if (!queryVec) return [];
+  const hits = [];
+  (ids || []).forEach(id => {
+    const map = KB_EMB[id] || {};
+    const idx = KB_IDX[id];
+    if (!idx) return;
+    idx.chunks.forEach(c => {
+      const ck = kbEmbModel() + '|' + id + '|' + c.ck;
+      const v = map[ck];
+      if (!v) return;
+      let s = 0;
+      const n = Math.min(v.length, queryVec.length);
+      for (let i = 0; i < n; i++) s += v[i] * queryVec[i];
+      if (s > 0) hits.push({ id: id, score: s, ch: c, via: 'emb' });
+    });
+  });
+  hits.sort((a, b) => b.score - a.score);
+  return cap ? hits.slice(0, cap) : hits;
+}
+/* 对外：混合检索（同步版，本地向量；远端向量就绪时由异步入口替换） */
+function kbHybridSearchSync(query, ids, topK) {
+  const vecAll = kbVecHits(query, ids, 120);
+  const embModel = kbEmbModel();
+  let vec = vecAll;
+  if (embModel) {
+    const ready = (ids || []).some(id => KB_EMB[id] && KB_EMB[id].__done);
+    if (!ready) vec = vecAll;        /* 还没备好：先用本地向量顶着，备好后自动换成远端 */
+  }
+  return kbPickDiverse(kbHybridHits(query, ids, { vec: vec }), topK || 4);
+}
+
 async function kbEnsure(id) {
   if (KB_IDX[id]) return true;
   if (!KB_MEM[id]) { const d = await kbStoreGet(id); if (!d) return false; KB_MEM[id] = d; }
@@ -399,6 +611,7 @@ async function kbEnsure(id) {
       KB_IDX[id] = await kbIndexAsync(docs, id);
       KB_RR_CACHE.clear();          /* 索引重建了：老的排序结果可能指向不存在的段，作废 */
       kbIdxPut(id, KB_IDX[id], sig);   /* 落盘：下次刷新直接用（失败不影响本次） */
+      if (kbEmbModel() && typeof aiEmbed === 'function') { try { kbEmbBuild(id); } catch (e) {} }
     } finally { delete KB_PROG[id]; delete KB_BUILD[id]; }
     return true;
   })();
@@ -515,7 +728,7 @@ async function kbSearchMulti(queries, ids, topK, weights) {
   const K = topK || 4;
   /* 只有一份查询时不用绕 RRF，直接用原来的打分结果 */
   if (uniq.length === 1) return kbDetail(kbSearchSync(uniq[0], ids, K), uniq[0]);
-  const lists = uniq.map(q => kbHits(q, ids).slice(0, 60));
+  const lists = uniq.map(q => kbHybridHits(q, ids, { cap: 60 }).slice(0, 60));
   return kbDetail(kbFuse(lists, K, w), uniq[0]);
 }
 
@@ -961,18 +1174,27 @@ function kbEvalSet(n) {
 function kbEvalRun(n) {
   const set = kbEvalSet(n || 60);
   if (!set.length) return { ok: false, error: '没有可评测的资料库（先勾选并等索引建好）', n: 0, top1: 0, recall5: 0, mrr: 0, detail: [] };
-  let top1 = 0, rec5 = 0, mrr = 0;
-  const detail = [];
-  set.forEach(it => {
-    const hits = kbHits(it.q, [it.id]);
-    let rank = -1;
-    for (let i = 0; i < hits.length; i++) { const ch = hits[i].ch; if (ch && ch.d === it.d && ch.ci === it.ci) { rank = i; break; } }
-    if (rank === 0) top1++;
-    if (rank >= 0 && rank < 5) rec5++;
-    if (rank >= 0) mrr += 1 / (rank + 1);
-    detail.push({ q: it.q, kb: it.id, rank: rank });
-  });
-  return { ok: true, n: set.length, top1: top1 / set.length, recall5: rec5 / set.length, mrr: mrr / set.length, detail: detail };
+  const rankOf = (hits, it) => {
+    for (let i = 0; i < hits.length; i++) { const ch = hits[i].ch; if (ch && ch.d === it.d && ch.ci === it.ci) return i; }
+    return -1;
+  };
+  const tally = pick => {
+    let t1 = 0, r5 = 0, m = 0;
+    const det = [];
+    set.forEach(it => {
+      const rank = rankOf(pick(it), it);
+      if (rank === 0) t1++;
+      if (rank >= 0 && rank < 5) r5++;
+      if (rank >= 0) m += 1 / (rank + 1);
+      det.push({ q: it.q, kb: it.id, rank: rank });
+    });
+    const n2 = set.length || 1;
+    return { top1: t1 / n2, recall5: r5 / n2, mrr: m / n2, detail: det };
+  };
+  const kw = tally(it => kbHits(it.q, [it.id]));
+  const hy = tally(it => kbHybridHits(it.q, [it.id]));
+  return { ok: true, n: set.length, top1: hy.top1, recall5: hy.recall5, mrr: hy.mrr, detail: hy.detail,
+    kwTop1: kw.top1, kwRecall5: kw.recall5, kwMrr: kw.mrr, kwDetail: kw.detail };
 }
 const KB_EVAL_BASE = { top1: 0.841, recall5: 0.95, mrr: 0.87 };   /* 网格搜参时的基线（kb.js 注释里记的老数） */
 async function kbRunEval() {
@@ -989,7 +1211,8 @@ async function kbRunEval() {
   if (box) {
     box.innerHTML = '<div class="kbhit"><div class="kbhit-h"><b>检索自检</b>' + '<span class="spacer-grow"></span>'
       + '<span class="small muted">样本 ' + r.n + ' 条</span></div>'
-      + '<div class="small">Top1 <b' + (drop('top1') ? ' style="color:#c0392b"' : '') + '>' + pct(r.top1) + '</b> · Recall@5 <b' + (drop('recall5') ? ' style="color:#c0392b"' : '') + '>' + pct(r.recall5) + '</b> · MRR <b' + (drop('mrr') ? ' style="color:#c0392b"' : '') + '>' + r.mrr.toFixed(3) + '</b></div>'
+      + '<div class="small">混合检索（关键词 + 向量）：Top1 <b' + (drop('top1') ? ' style="color:#c0392b"' : '') + '>' + pct(r.top1) + '</b> · Recall@5 <b' + (drop('recall5') ? ' style="color:#c0392b"' : '') + '>' + pct(r.recall5) + '</b> · MRR <b' + (drop('mrr') ? ' style="color:#c0392b"' : '') + '>' + r.mrr.toFixed(3) + '</b></div>'
+      + (r.kwTop1 != null ? '<div class="small muted">同一批样本纯关键词：Top1 ' + pct(r.kwTop1) + ' · Recall@5 ' + pct(r.kwRecall5) + ' · MRR ' + r.kwMrr.toFixed(3) + '（差值 = 向量票的贡献）</div>' : '')
       + '<div class="small muted">基线（当年网格搜参）：Top1 84.1% · Recall@5 95% · MRR 0.87；掉了 2 个点以上标红，说明这次改动伤到检索了</div>'
       + rows + '</div>';
   }
@@ -1047,6 +1270,14 @@ function kbImportAll(o) {
 }
 
 window.kbEval = kbEvalRun;
+window.kbHybridHits = kbHybridHits;
+window.kbHybridSearchSync = kbHybridSearchSync;
+window.kbVecHits = kbVecHits;
+window.kbEmbModel = kbEmbModel;
+window.kbEmbSetModel = kbEmbSetModel;
+window.kbEmbBuild = kbEmbBuild;
+window.kbVecSetWeight = kbVecSetWeight;
+window.kbVecWeight = kbVecWeight;
 window.kbEvalSet = kbEvalSet;
 
 /* ---------- 动态挂载 知识库.js（没有这个文件也没关系） ----------

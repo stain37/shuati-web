@@ -1363,3 +1363,31 @@ ode --check 全过。
 - `sw.js` `VERSION = 'shuati-v68-web171'`；`index.html` `tags.js?v=20261106c`
 - 提交 `08e38273`（增量），线上核验：`sw.js` 11481B（同本地）、`tags.js` 176481B（同本地）
 - 流量：本次只动 `tags.js` + `sw.js`，知识库.js 仍是网络优先（web169 起）
+
+---
+
+## §27 13 项报障修复（web172）
+
+用户一次报了 13 项（m07297），本轮做完 11 项，剩 ② 标签同步等用户的诊断行。
+
+| # | 报障 | 根因 | 改法 | 探针 |
+|---|---|---|---|---|
+| ① | 解析区 mermaid / 思维导图 / LaTeX 不渲染 | 答题页解析本来就正常；坏在**用 `esc()` 直接输出解析**的两处（`variant.js:229`、`:259`） | 改成 `renderRich('', q.explain)` | imp-probe 前 3 项 |
+| ② | 标签还是无法同步 | 未定位——已加诊断行（控制台会打每步同步状态），等用户回报 | — | — |
+| ③ | 拖进度条被当成翻页 | 进度条拖动没拦住 pointer/touch 冒泡 | 加 `preventDefault` + `stopPropagation` 判定 | fix174 组 |
+| ④ | 考点搜索不支持 AI 模糊 | `#tagRowAi` 只做了词表精确匹配 | 接 `aiPickTags`：模糊 → 候选 → 点选打标 | tagsub-probe |
+| ⑤ | 题库选择器加不进 AI 对话 | 本地实测可用（居中弹层 + `#chatPickBank`） | 未改；证明性探针 | chatpick-probe 10/0 |
+| ⑥ | 搜索/错题/收藏不能按 ABX 题型筛 | 全站只有单选/多选标签，无题型字段 | `qTypeOf(q)`（显式 `q.type` → 答案多选 X → 共用题干 B1 → 病例 A2 → A1）+ 四条筛选条 | typefilter 9/0 |
+| ⑦ | 标签搜索不支持 AI 模糊 | 词表只有字面前缀匹配 | 同义词/近义表 + `aiPickTags`，考点行 / 错题本 / 搜索页三处按钮 | tagsub 9/0 |
+| ⑧ | 统计中心考点要按六大科目增减 | 词表是平铺一列 | `qbank.tagsub.v1` 科目归属 + 分组渲染 + 每组「往这科加考点」 | tagsub 9/0 |
+| ⑨ | 选「无技能」时先校准数据/列错题 | 无技能也走了带上下文的老提示 | 无技能时改成直接答，不主动列数据 | fix174 组 |
+| ⑩ | 导入 AI 标准化信息不全 | 预览卡只有「解析成功 N 题」 | 预览卡加题型分布、待复习题数与题号、「保存后先复习 N 道」输入 + 「保存并开始复习」（临时套卷不进列表） | imp-probe |
+| ⑪ | 导入 AI 标准化可读长度不够 | 硬上限 16000 字直接拒收 | 按空行/换行切 ≤12000 字分批整理再合并（第二段起去掉重复题库名行），上限 20 万字 | imp-probe |
+| ⑫ | 主页「最近添加」排序不对 | 老库没有 `createdAt`，回退索引推断 | 建库写 `createdAt`，排序严格按它 | sort-probe 10/0（web165 起） |
+| ⑬ | 文件夹不应置顶 | 渲染时按类型分组 | 改成按添加顺序混排 | sort-probe |
+
+### 27.1 上线
+
+- `sw.js` `VERSION = 'shuati-v68-web172'`；`index.html`：`app.js?v=20261108a`、`collection.js`、`tags.js`、`variant.js`、`style.css` 同戳
+- 提交 `6a356a69`（增量）；线上核验：VERSION=web172、`app.js` 236746B、`collection.js` 172896B、`tags.js` 184662B、`variant.js` 38395B、`style.css` 155938B，全部与本地一致
+- 探针累计：typefilter 9/0、tagsub 9/0、chatpick 10/0、imp 11/0、`node --check` 全过
