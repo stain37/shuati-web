@@ -226,7 +226,7 @@
         '</div>' +
         '<div class="vstem">' + esc(q.stem || '') + '</div>' +
         (opts ? '<div class="vopts">' + opts + '</div>' : '') +
-        (q.explain ? '<div class="vexp">' + esc(q.explain) + '</div>' : '') +
+        (q.explain ? '<div class="vexp">' + ((typeof renderRich === 'function') ? renderRich('', q.explain) : esc(q.explain)) + '</div>' : '') +
         '<div class="vfixhost"></div>' +
         '<div class="vsimbox"></div>' +
         '</div>');
@@ -256,7 +256,7 @@
         (q.group ? '<div class="gstem small"><b>共用题干：</b>' + hiShared(q.group, otherSet) + '</div>' : '') +
         '<div class="vstem">' + hiShared(q.stem, otherSet) + '</div>' +
         '<div class="vopts">' + (q.options || []).map(function (o, k) { return '<div class="vopt">' + ('ABCDEFGH'[k]) + '. ' + hiShared(o, otherSet) + '</div>'; }).join('') + '</div>' +
-        (q.explain ? '<div class="vexp small">' + hiShared(q.explain, otherSet) + '</div>' : '') +
+        (q.explain ? '<div class="vexp small">' + ((typeof renderRich === 'function') ? renderRich('', q.explain) : esc(q.explain)) + '</div>' : '') +
         '</div>';
     }
     return '<div class="vcmp">' +

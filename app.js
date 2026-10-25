@@ -563,6 +563,20 @@ function i2s() { return Math.random().toString(36).slice(2, 8); }
 
 const qType = (q, ans) => ((ans || q.answer || []).length > 1 ? 'X' : 'A');
 const typeLabel = (q, ans) => ((ans || q.answer || []).length > 1 ? '多选' : '单选');
+/* ⑥ 题型（ABX）：显式字段优先；否则按结构推断 ——
+   X：答案多于一个；B1：有共用题干（配伍题）；A2：题干像病例（患者/男，45 岁）；其余 A1。 */
+function qTypeOf(q) {
+  if (!q) return 'A1';
+  var t = String(q.type || '').toUpperCase().replace(/[^ABXC0-9]/g, '');
+  if (/^(A1|A2|B1|X|C)$/.test(t)) return t;
+  if ((q.answer || []).length > 1) return 'X';
+  if (q.group) return 'B1';
+  var s = String(q.stem || '');
+  if (/患者|病人|男[，,、]?\s*\d{1,2}\s*岁|女[，,、]?\s*\d{1,2}\s*岁|\d{1,2}\s*岁[男女]性/.test(s)) return 'A2';
+  return 'A1';
+}
+const TYPE_NAMES = { A1: 'A1 型（单选）', A2: 'A2 型（病例）', B1: 'B1 型（配伍）', X: 'X 型（多选）' };
+function qTypeName(t) { return TYPE_NAMES[t] || t || ''; }
 const key = (bankId, qid) => bankId + '#' + qid;
 const kOf = (bank, q) => key(bank.id, q.id);
 /* 西综真题分值：165 道，满分 300。按**题号（题目在卷子里的顺序）**算，不是按题型：
@@ -921,7 +935,10 @@ function uiBindSwipe(bank) {
     x0 = null;
     if (e.touches.length !== 1) return;
     const el = e.target;
-    if (el && el.closest && el.closest('input,select,textarea,button,.opts,.kbrow')) return;
+    /* 第 3 条：在解析里横向划（看宽表格 / 公式 / 长代码）以前被当成翻页。
+       解析区、可横向滚动的块、滑条一律不起手翻页。 */
+    if (el && el.closest && el.closest('input,select,textarea,button,.opts,.kbrow,.exp,.exp-wrap,.rich-edit,.rich-imgs,pre,.md-code,table,[data-noswipe]')) return;
+    if (el && el.closest && el.closest('.card') && el.closest('.card').scrollWidth > el.closest('.card').clientWidth + 4) return;   /* 卡片本身能横向滚就别抢手势 */
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); moved = false;
   }, { passive: true });
   card.addEventListener('touchmove', e => {
@@ -937,6 +954,7 @@ function uiBindSwipe(bank) {
     const dx = t.clientX - x1, dy = t.clientY - y0, dt = Date.now() - t0;
     if (!moved || dt > 900) return;
     if (Math.abs(dx) < 30 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (Math.abs(dy) > 40) return;   /* 手往上/下带了很多：那是滚动（第 3 条），不翻页 */
     if (typeof aiBusy === 'function' && aiBusy()) return;    /* 正在生成解析就别翻页 */
     try { e.preventDefault(); } catch (err) {}               /* 压掉紧随其后的 click */
     step(dx < 0 ? 1 : -1);
@@ -3587,8 +3605,8 @@ async function doAiFormat() {
     toast('还没配置 AI。先去「AI 与知识库」填接口和模型，再回来点这个按钮', 3600, 'warn');
     return;
   }
-  if (raw.length > 16000) {
-    toast('内容太长（' + raw.length + ' 字），先分两段整理，避免模型漏题', 3600, 'warn');
+  if (raw.length > 200000) {
+    toast('内容太长（' + raw.length + ' 字），一次最多 20 万字，先分两部分', 3600, 'warn');
     return;
   }
   const titleHint = $('bankTitle') ? $('bankTitle').value.trim() : '';
@@ -3620,19 +3638,57 @@ async function doAiFormat() {
   btn.disabled = true; btn.textContent = 'AI 整理中…';
   host.innerHTML = '<div class="note">正在调用 AI 整理格式；只改排版，不改答案。</div>';
   try {
-    const out = await aiChat(
-      [{ role: 'system', content: sys }, { role: 'user', content: user }],
-      null, null, { stream: false, temp: 0.1 }
-    );
-    let text = String(out || '').trim();
-    if (window.CHAT && typeof CHAT.normalizeBankText === 'function') text = CHAT.normalizeBankText(text);
-    text = text.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/```\s*$/, '').trim();
+    /* 第 ⑪ 条：长内容不再拒收——按题号/空行切成 ≤12000 字的几段，逐段整理再合并。
+       单段直接一次调用，行为跟以前一样。 */
+    const CHUNK = 12000;
+    const pieces = (function (s) {
+      if (s.length <= CHUNK) return [s];
+      const out = [];
+      let rest = s;
+      while (rest.length > CHUNK) {
+        let cut = rest.lastIndexOf('\n\n', CHUNK);
+        if (cut < CHUNK * 0.4) cut = rest.lastIndexOf('\n', CHUNK);
+        if (cut < CHUNK * 0.3) cut = CHUNK;
+        out.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+      }
+      if (rest.trim()) out.push(rest);
+      return out;
+    })(raw);
+    const askOne = async (body, idx, total) => {
+      const user = (titleHint ? '题库名提示：' + titleHint + '\n' : '')
+        + (total > 1 ? '这是整份内容的第 ' + idx + ' / ' + total + ' 段：只整理这一段，不要补上一段没有的题；'
+          + (idx > 1 ? '不要重复输出题库名这一行（只这一段除外）：\n' : '\n') : '')
+        + '\n【原始内容】\n' + body;
+      const out = await aiChat(
+        [{ role: 'system', content: sys }, { role: 'user', content: user }],
+        null, null, { stream: false, temp: 0.1 }
+      );
+      let t = String(out || '').trim();
+      if (window.CHAT && typeof CHAT.normalizeBankText === 'function') t = CHAT.normalizeBankText(t);
+      return t.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/```\s*$/, '').trim();
+    };
+    let text = '';
+    if (pieces.length === 1) {
+      text = await askOne(raw, 1, 1);
+    } else {
+      const got = [];
+      for (let i = 0; i < pieces.length; i++) {
+        btn.textContent = 'AI 整理中…(' + (i + 1) + '/' + pieces.length + ')';
+        host.innerHTML = '<div class="note">正在分段整理：第 ' + (i + 1) + ' / ' + pieces.length + ' 段（每段单独整理，最后拼起来）；只改排版，不改答案。</div>';
+        const one = await askOne(pieces[i], i + 1, pieces.length);
+        if (one) got.push(one);
+      }
+      if (!got.length) throw new Error('AI 每段都返回空内容');
+      /* 合并：第二段往后如果又带了一遍「# 题库名」，去掉它 */
+      text = got.map((g, i2) => i2 === 0 ? g : g.replace(/^#\s*[^\n]*\n+/, '')).join('\n\n');
+    }
     if (!text) throw new Error('AI 返回空内容');
     ta.value = text;
     doPreview();
     const r = parseInput(text, titleHint);
     if (r.error) toast('AI 整理完成，但还没解析成题库：' + r.error, 4200, 'warn');
-    else toast('AI 整理完成：' + r.bank.questions.length + ' 题，检查后保存', 2600, 'ok');
+    else toast('AI 整理完成：' + r.bank.questions.length + ' 题' + (pieces.length > 1 ? '（分 ' + pieces.length + ' 段整理）' : '') + '，检查后保存', 2600, 'ok');
   } catch (e) {
     host.innerHTML = '<div class="note err">AI 整理失败：' + esc((e && e.message) || String(e)) + '</div>';
     toast('AI 整理失败，原文已保留', 3000, 'bad');
@@ -3649,23 +3705,55 @@ function doPreview() {
   if (!$('bankTitle').value.trim()) $('bankTitle').value = r.bank.title;
   const single = qs.filter(q => q.answer.length === 1).length;
   const dup = dupCheck(qs, EDIT_ID);
+  /* 第 ⑩ 条：预览卡把信息给全——题型分布 + 待复习概况 + 可以先做几道 */
+  const tcount = { A1: 0, A2: 0, B1: 0, X: 0, C: 0 };
+  const typed = qs.map(q => { const t = (typeof qTypeOf === 'function') ? qTypeOf(q) : 'A1'; tcount[t] = (tcount[t] || 0) + 1; return t; });
+  const typedTxt = ['A1', 'A2', 'B1', 'X', 'C'].filter(t => tcount[t]).map(t => (TYPE_NAMES[t] || t) + ' ' + tcount[t]).join(' · ');
+  const dueN = qs.length;   /* 新入库的题都算「待复习」（SRS 里没有记录 = 到期） */
+  const defN = Math.min(10, dueN);
   host.innerHTML = `
     <div class="note ok">解析成功：<b>${qs.length}</b> 题（单选 ${single}，多选 ${qs.length - single}）</div>
+    ${typedTxt ? `<div class="small muted">题型：${esc(typedTxt)}</div>` : ''}
+    <div class="small muted">待复习：<b>${dueN}</b> 题（题号 ${qNo(qs[0], qs)}–${qNo(qs[qs.length - 1], qs)}，新入库默认全部待复习）</div>
+    <div class="tools" style="margin:8px 0 2px">
+      <span class="tl">保存后先复习</span>
+      <input class="num" id="impRevN" type="number" min="1" max="${dueN}" value="${defN}" style="width:76px">
+      <span class="tl">道</span>
+      <button class="btn primary" id="impRevGo">保存并开始复习</button>
+      <span class="small muted">只做成临时套卷，不进套卷列表</span>
+    </div>
     ${r.warns.length ? `<div class="note">${r.warns.map(esc).join('<br>')}</div>` : ''}
     ${dupHtml(dup)}
     <div class="sec-t">前 3 题预览</div>
     ${qs.slice(0, 3).map(q => `
       <div class="card" style="margin-bottom:10px">
-        <div class="qno small">第 ${qNo(q, qs)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}</div>
+        <div class="qno small">第 ${qNo(q, qs)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}${typed.length ? ' · ' + esc(TYPE_NAMES[typed[qs.indexOf(q)]] || typed[qs.indexOf(q)]) : ''}</div>
         ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
         <div style="margin:6px 0">${stemHtml(q.stem)}</div>
-        <div class="small">${q.options.map((o, i) => esc('ABCDEFGH'[i] + '. ' + o)).join('<br>')}</div>
+        <div class="small">${q.options.map((o, i) => esc('ABCDEFGH'[i] + '. ') + stemHtml(o)).join('<br>')}</div>
         <div class="small" style="margin-top:6px;color:var(--ok)">答案：${q.answer.join('')}</div>
-        ${q.explain ? `<div class="small muted" style="margin-top:4px">解析：${esc(q.explain)}</div>` : ''}
+        ${q.explain ? `<div class="small muted" style="margin-top:4px">解析：${renderRich('', q.explain)}</div>` : ''}
       </div>`).join('')}`;
+  const rv = $('impRevGo');
+  if (rv) rv.onclick = () => {
+    const n = Math.max(1, Math.min(dueN, +($('impRevN') && $('impRevN').value) || defN));
+    doSave({ reviewN: n });
+  };
 }
 
-function doSave() {
+/* 第 ⑩ 条：保存后可以直接开始复习前 N 道（临时套卷，不进套卷列表） */
+function startReviewOf(bank, n) {
+  try {
+    const qs = (bank && bank.questions) || [];
+    if (!qs.length) return false;
+    const k = Math.max(1, Math.min(qs.length, n || 10));
+    makePaper(bank.title + ' · 先复习 ' + k + ' 道', qs.slice(0, k).map(q => kOf(bank, q)), { transient: true });
+    return true;
+  } catch (e) { return false; }
+}
+
+function doSave(opts) {
+  opts = opts || {};
   const r = parseInput($('ta').value, $('bankTitle').value.trim());
   if (r.error) { $('preview').innerHTML = `<div class="note err">${esc(r.error)}</div>`; return; }
   const title = $('bankTitle').value.trim() || r.bank.title;
@@ -3680,7 +3768,7 @@ function doSave() {
       writeLS(LS.banks, LOCAL);
       applyBankTags(bank);
       toast('已更新：' + title);
-      go('#/bank/' + bank.id);
+      if (!(opts.reviewN > 0 && startReviewOf(bank, opts.reviewN))) go('#/bank/' + bank.id);
       return;
     }
   }
@@ -3693,7 +3781,7 @@ function doSave() {
   applyBankTags(bank);
   if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
   toast('已保存：' + title);
-  go('#/bank/' + bank.id);
+  if (!(opts.reviewN > 0 && startReviewOf(bank, opts.reviewN))) go('#/bank/' + bank.id);
 }
 
 /* 导入的题库若写了「标签：炎症,免疫应答」（parseText 认出来的），顺手落进考点标签，别让人再打一遍 */

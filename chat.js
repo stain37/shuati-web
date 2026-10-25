@@ -2113,11 +2113,14 @@
     var kb = await kbBlocks(text, (typeof aiCfg === 'function' ? (aiCfg().topK || 4) : 4));
     n.refs = hitRefs(kb.hits);
     var toolCat = SKILLS.toolCatalog();
+    var skNow = (window.SKILLS && SKILLS.active) ? SKILLS.active() : null;
     var sys = ((typeof aiSysText === 'function') ? aiSysText() : '你是我的私人刷题助教。')
       + '\n\n【本次任务】回答我的问题。你可以使用下面这些工具；需要数据时先调用工具，拿到结果再回答。'
       + '\n\n【可用工具】\n' + toolCat
       + '\n\n【工具调用格式】需要工具时，只输出一个 JSON 对象：{"tool":"工具名","args":{}}；'
       + '不要输出解释或代码块。不需要工具时直接用中文回答。一次只调用一个工具。'
+      /* 第 9 条：没选技能时别再「先校准数据 / 先查错题列表」绕一圈——直接答，真缺数据才调一次工具 */
+      + (skNow ? '' : '\n\n【注意】这次没选技能：请直接回答我的问题。只有当问题确实需要站内数据（某个题库/错题/标签/统计的具体数字）时才调用工具，最多 1 次；不要先写「我先校准数据」「我先查一下错题列表」这类过程说明，也不要为了凑格式重复问我已经问过的事。')
       + (window.SKILLS ? SKILLS.sysNote() : '');
     var msgs = [{ role: 'system', content: sys }];
     histMsgs(userOf(n), 6).forEach(function (m) { msgs.push(m); });

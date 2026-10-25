@@ -1645,7 +1645,7 @@ const SORTS = {
   id: { label: '题号', def: 1, cmp: (a, b) => String(a.bank.title).localeCompare(String(b.bank.title)) || String(a.q.id).localeCompare(String(b.q.id), 'zh', { numeric: true }) }
 };
 const ARROW = d => (d > 0 ? '↑' : '↓');
-const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '', base: '' });
+const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '', base: '', tf: '' });
 const LP = { wrong: mkState(), fav: mkState(), search: mkState() };
 let LP_KW_T = null;                                  /* 「找词」输入的防抖计时器 */
 let LP_COMPOSING = false;                             /* 拼音候选阶段：不重画，否则选字会退回拼音 */
@@ -2036,6 +2036,8 @@ function renderList(mode) {
   /* 候补池 G：按考点标签筛 + 列表里直接找词（都只作用于当前这个列表） */
   if (st.base) baseShown = baseShown.filter(it => tagListOf(it.k).indexOf(st.base) >= 0);
   if (st.tag) baseShown = baseShown.filter(it => tagListOf(it.k).indexOf(st.tag) >= 0);
+  /* ⑥ 题型筛选（A1/A2/B1/X） */
+  if (st.tf) baseShown = baseShown.filter(it => ((typeof qTypeOf === 'function') ? qTypeOf(it.q) : 'A1') === st.tf);
   const kwTerms = splitKw(st.kw);
   let localShown = baseShown;
   if (kwTerms.length) localShown = localShown.filter(it => {
@@ -2087,6 +2089,14 @@ function renderList(mode) {
         ${tagNames.map(t => `<button class="chip${st.tag === t ? ' on' : ''}" data-t="${esc(t)}">${esc(t)} ${tagCount[t]}</button>`).join('')}
       </div>` : '';
 
+  /* ⑥ 题型：A1 单选 / A2 病例 / B1 配伍 / X 多选（按题上的显式 type 或结构推断） */
+  const tCount = { A1: 0, A2: 0, B1: 0, X: 0 };
+  items.forEach(it => { const t = ((typeof qTypeOf === 'function') ? qTypeOf(it.q) : 'A1'); tCount[t] = (tCount[t] || 0) + 1; });
+  const typeChips = `<div class="chips-inline"><span class="tl" style="align-self:center">题型</span>
+        <button class="chip${st.tf ? '' : ' on'}" data-tf="">全部 ${items.length}</button>
+        ${['A1', 'A2', 'B1', 'X'].filter(t => tCount[t]).map(t => `<button class="chip${st.tf === t ? ' on' : ''}" data-tf="${t}" title="${esc((typeof qTypeName === 'function') ? qTypeName(t) : t)}">${t} ${tCount[t]}</button>`).join('')}
+      </div>`;
+
   $('view').innerHTML = `
     <div class="card" style="margin-bottom:14px">
       <div class="stats">
@@ -2105,10 +2115,12 @@ function renderList(mode) {
       </div>` : ''}
       ${bankChips}
       ${basicChips}
+      ${typeChips}
       ${(tagNames.length || st.tag) ? `<div class="tools tag-search-row">
         <span class="tl">标签</span>
         <input type="text" id="tagFind" class="num" list="tagFindList" style="min-width:160px;flex:1 1 160px" placeholder="输入标签查找，回车选定" value="${esc(st.tag || '')}">
         <datalist id="tagFindList">${tagNames.map(t => `<option value="${esc(t)}"></option>`).join('')}</datalist>
+        <button class="btn tiny" id="tagFindAi" title="AI 模糊：用口语描述标签，AI 从词表里挑最接近的">✨ AI 模糊</button>
         ${st.tag ? '<button class="btn tiny" id="tagFindClear">清除</button>' : ''}
       </div>` : ''}
 
@@ -2208,6 +2220,8 @@ function renderList(mode) {
   });
   /* 考点标签 chip（和题库 chip 分开绑：它们没有 data-b） */
   $('view').querySelectorAll('.chips-inline .chip[data-t]').forEach(c => c.onclick = () => { st.tag = c.dataset.t || ''; render(); });
+  /* ⑥ 题型 chip */
+  $('view').querySelectorAll('.chips-inline .chip[data-tf]').forEach(c => c.onclick = () => { st.tf = c.getAttribute('data-tf') || ''; render(); });
   const tagFind = $('tagFind');
   if (tagFind) {
     const applyTag = () => {
@@ -2226,6 +2240,19 @@ function renderList(mode) {
     tagFind.addEventListener('keydown', e => {
       if (e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Enter') { e.preventDefault(); applyTag(); }
+    });
+    /* 第 7 条：标签搜索的 AI 模糊。描述 → AI 从考点词表里挑最接近的 */
+    on('tagFindAi', () => {
+      const txt = String((tagFind.value || '')).trim();
+      if (txt.length < 2) { if (typeof toast === 'function') toast('先写一句描述，比如「和心脏有关的」', 2200); tagFind.focus(); return; }
+      if (typeof TAGS === 'undefined' || !TAGS.aiPickTags) { if (typeof toast === 'function') toast('AI 模块没加载', 1800, 'bad'); return; }
+      if (typeof toast === 'function') toast('问 AI 中…', 1200);
+      TAGS.aiPickTags(txt, tagNames, picks => {
+        if (!picks || !picks.length) { if (typeof toast === 'function') toast('AI 没找到接近的标签', 2200); return; }
+        st.tag = picks[0];
+        render();
+        if (typeof toast === 'function') toast('AI 选：' + picks.join(' / '), 2600, 'ok');
+      });
     });
   }
   on('tagFindClear', () => { st.tag = ''; render(); });
@@ -2796,7 +2823,12 @@ function renderSearch() {
             <span class="tl">标签</span>
             <input type="text" id="sqTag" class="num" list="sqTagList" style="min-width:160px;flex:1 1 160px" placeholder="输入标签查找，回车选定" value="${esc(st.tag || '')}">
             <datalist id="sqTagList">${tagVocabOptions(true)}</datalist>
+            <button class="btn tiny" id="sqTagAi" title="AI 模糊：用口语描述标签，AI 从词表里挑最接近的">✨ AI 模糊</button>
             <button class="btn tiny" id="sqTagClear" style="display:${st.tag ? '' : 'none'}">清除</button>
+          </div>
+          <div class="chips-inline" style="margin-top:6px"><span class="tl" style="align-self:center">题型</span>
+            <button class="chip${st.tf ? '' : ' on'}" data-tf="">全部</button>
+            ${['A1', 'A2', 'B1', 'X'].map(t => `<button class="chip${st.tf === t ? ' on' : ''}" data-tf="${t}">${t}</button>`).join('')}
           </div>
         </div>
         <div class="tools" id="shistRow" style="margin-top:8px"></div>
@@ -2852,6 +2884,11 @@ function renderSearch() {
       });
       paintSearch();
     });
+    $('sbar').querySelectorAll('[data-tf]').forEach(c => c.onclick = () => {
+      st.tf = c.getAttribute('data-tf') || '';
+      $('sbar').querySelectorAll('[data-tf]').forEach(b => b.classList.toggle('on', (b.getAttribute('data-tf') || '') === st.tf));
+      paintSearch(true);
+    });
     const sqTag = $('sqTag');
     if (sqTag) {
       const applyTag = () => {
@@ -2872,6 +2909,23 @@ function renderSearch() {
       const el2 = $('sqTag'); if (el2) el2.focus();
       paintSearch();
     });
+    /* 第 7 条：搜索页标签 AI 模糊 */
+    on('sqTagAi', () => {
+      const inp = $('sqTag');
+      const txt = String((inp && inp.value) || '').trim();
+      if (txt.length < 2) { if (typeof toast === 'function') toast('先写一句描述，比如「心脏相关的」', 2200); if (inp) inp.focus(); return; }
+      if (typeof TAGS === 'undefined' || !TAGS.aiPickTags) { if (typeof toast === 'function') toast('AI 模块没加载', 1800, 'bad'); return; }
+      const pool = (typeof TAGS.all === 'function') ? TAGS.all() : [];
+      if (typeof toast === 'function') toast('问 AI 中…', 1200);
+      TAGS.aiPickTags(txt, pool, picks => {
+        if (!picks || !picks.length) { if (typeof toast === 'function') toast('AI 没找到接近的标签', 2200); return; }
+        st.tag = picks[0];
+        const e2 = $('sqTag'); if (e2) e2.value = picks[0];
+        const c2 = $('sqTagClear'); if (c2) c2.style.display = '';
+        paintSearch(true);
+        if (typeof toast === 'function') toast('AI 选：' + picks.join(' / '), 2600, 'ok');
+      });
+    });
     setTimeout(() => { try { el.focus(); } catch (e) {} }, 40);
   }
   paintSearch();
@@ -2890,25 +2944,28 @@ function paintSearch(anim) {
     : scope === 'undone' ? !ANS[it.k] : true;
   const tagOK = it => !st.tag || tagListOf(it.k).indexOf(st.tag) >= 0;
   const baseOK = it => !st.base || tagListOf(it.k).indexOf(st.base) >= 0;
+  /* ⑥ 题型筛选 */
+  const typeOK = it => !st.tf || ((typeof qTypeOf === 'function' ? qTypeOf(it.q) : 'A1') === st.tf);
   /* 第 16 条：搜索支持按题库筛选（st.bank 早就存在 mkState 里，但一直没用上） */
   const bankOK = it => !st.bank || st.bank === 'all' || (it.bank && it.bank.id === st.bank);
-  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK) : [];
+  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK) : [];
   const aiCache = (QAI.on && kw.length >= 2) ? qaiCached(kw) : null;
   const aiTerms = (aiCache && aiCache.terms) || [];
-  const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK), aiTerms, 120) : [];
+  const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK), aiTerms, 120) : [];
   const aiKeys = new Set(aiHits.map(it => it.k));
   let items = [];
   if (kw) {
     items = aiHits.slice();
     items = items.concat(local.filter(it => !aiKeys.has(it.k)));
-  } else if (st.tag || st.base || (st.bank && st.bank !== 'all')) {
-    /* 只有标签 / 基本标签 / 题库、没有关键词：也把筛选下的题列出来 */
-    items = collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK);
+  } else if (st.tag || st.base || st.tf || (st.bank && st.bank !== 'all')) {
+    /* 只有标签 / 基本标签 / 题型 / 题库、没有关键词：也把筛选下的题列出来 */
+    items = collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK);
   }
   const total = items.length;
   const filterBits = [];
   if (st.tag) filterBits.push('标签「' + st.tag + '」');
   if (st.base) filterBits.push('基本「' + st.base + '」');
+  if (st.tf) filterBits.push('题型 ' + st.tf);
   const filterLabel = filterBits.join(' · ');
   const shown = items.slice(0, 300);
   st.shown = shown;

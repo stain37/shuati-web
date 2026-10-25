@@ -13,6 +13,9 @@
   /* 每道题标签的修改时间（qbank.tagts.v1）。云同步靠它判断「哪边是新的」：
      没有这一层时，手机上只要这道题本机有标签，pad 上传的就会被整条丢掉。 */
   var TAG_TS_KEY = 'qbank.tagts.v1';
+  /* 第 2 条：同步诊断（同步页显示）。记录上一次合并前后：云端标签题数 / 本机标签题数 /
+     补进几条 / 两边键重叠几个 —— 用来判断「标签没同步」是数据没合上，还是键对不上。 */
+  var TAG_LAST = null;
   var TAG_TS = (function () {
     try { return JSON.parse(localStorage.getItem(TAG_TS_KEY) || '{}') || {}; } catch (e) { return {}; }
   })();
@@ -30,6 +33,40 @@
   }
   var V_MIN = 15, V_MAX = 40;     /* 词表建议条数 */
   var BASIC_TAGS = ['生理', '生化', '病理', '内科', '外科', '人文'];   /* 固定六大基本标签：能挂题，不能改名 / 删除 */
+  /* 第 8 条：考点 → 六大科目 的归属，供统计中心「按科目分组增减考点」用。
+     贴标签时顺手学：一道题只挂一个基本标签时，它的考点就归这个科目。 */
+  var SUB_KEY = 'qbank.tagsub.v1';
+  var TAG_SUB = (function () { try { return JSON.parse(localStorage.getItem(SUB_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+  function subSave() { try { localStorage.setItem(SUB_KEY, JSON.stringify(TAG_SUB)); } catch (e) {} }
+  function subOf(t) { return TAG_SUB[t] || ''; }
+  function setSub(t, sub) {
+    if (!t) return;
+    if (sub && BASIC_TAGS.indexOf(sub) >= 0) TAG_SUB[t] = sub; else delete TAG_SUB[t];
+    subSave();
+  }
+  function learnSub(k) {
+    var ts = tagsOf(k), bs = ts.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
+    if (bs.length !== 1) return;
+    var dirty = false;
+    ts.forEach(function (t) { if (BASIC_TAGS.indexOf(t) < 0 && !TAG_SUB[t]) { TAG_SUB[t] = bs[0]; dirty = true; } });
+    if (dirty) subSave();
+  }
+  /* 第 8 条：全量学一遍归属（打开统计页时调一次，让词表分组有名字） */
+  function learnSubAll() { try { Object.keys(TAGD).forEach(learnSub); } catch (e) {} }
+  /* 第 8 条：往某个科目里加考点（统计中心「＋ 加考点」按钮）。
+     考点名用 prompt 问一句；同时记进词表 + 记下归属，并把它挂到该科目已有标签的题上是不做的（只加词表）。 */
+  function addVocabToSub(sub) {
+    var name = '';
+    try { name = (window.prompt('往「' + (sub || '未分类') + '」里加一个考点：', '') || '').trim(); } catch (e) { name = ''; }
+    if (!name) return;
+    if (BASIC_TAGS.indexOf(name) >= 0) { if (typeof toast === 'function') toast('这是六大基本标签，不能当考点加', 2200); return; }
+    rememberVocab([name]);
+    if (sub) { TAG_SUB[name] = sub; subSave(); }
+    saveVocab(); save();
+    if (typeof toast === 'function') toast('已加考点「' + name + '」' + (sub ? '（归属 ' + sub + '）' : ''), 2400, 'ok');
+    TAGS_STATS_CACHE = null;
+    if (typeof statsRerender === 'function') statsRerender(); else if (typeof render === 'function') render();
+  }
   /* 内置默认考点词表（tags-clean2.txt，167 个）：第一次用自动装进来；
      用户可加 / 删 / 换，词表页「恢复默认标签库」按这份恢复。 */
   var DEFAULT_VOCAB = [
@@ -319,6 +356,7 @@
     }
     save();
     if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} }
+    try { learnSub(k); } catch (e) {}
     if (!quiet) drawTags();
     return list;
   }
@@ -777,6 +815,7 @@
       + '<span class="mini-tag">已打标签的题 ' + st.tagged + '/' + st.total + '</span>'
       + (q ? '<span class="mini-tag">搜到 ' + showRows.length + ' 个</span>' : '')
       + '<span class="tag-rowsearch"><input class="inp" id="tagRowQ" type="text" placeholder="🔍 搜考点" value="' + esc(TAG_VIEW.q || '') + '"></span>'
+      + '<button class="btn tiny" id="tagRowAi" title="AI 模糊：用口语描述考点（比如「喘不上气那种」），AI 从词表里挑最接近的">✨ AI 模糊</button>'
       + '<span class="spacer-grow"></span>'
       + '<button class="btn tiny primary" data-act="tagweak"' + (weak.keys.length ? '' : ' disabled') + '>刷最弱的 3 个考点</button>'
       + '<button class="btn tiny" data-act="tagvocab">管理考点词表</button>'
@@ -789,15 +828,33 @@
       + '</div>' + vocabBoxHtml() + aiBoxHtml() + basicBoxHtml();
   }
   function vocabBoxHtml() {
+    try { if (typeof learnSubAll === 'function') learnSubAll(); } catch (e) {}
     var used = {};
     Object.keys(TAGD).forEach(function (k) { tagsOf(k).forEach(function (t) { used[t] = (used[t] || 0) + 1; }); });
     var userTags = TAGV.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
     var usedQ = Object.keys(TAGD).filter(function (k) {
       return tagsOf(k).some(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
     }).length;
-    var rows = userTags.map(function (t) {
-      return '<button class="vocab-chip' + (used[t] ? ' on' : '') + '" data-vocabdel="' + esc(t) + '" title="点一下从词表里删掉（同时会摘掉题上的这个标签）">'
-        + esc(t) + (used[t] ? ' <i>' + used[t] + '</i>' : '') + '</button>';
+    var chipOf = function (t) {
+      var sub = subOf(t);
+      return '<button class="vocab-chip' + (used[t] ? ' on' : '') + '" data-vocabdel="' + esc(t) + '" title="点一下从词表里删掉（同时会摘掉题上的这个标签）' + (sub ? '；归属：' + sub : '') + '">'
+        + esc(t) + (used[t] ? ' <i>' + used[t] + '</i>' : '') + (sub ? ' <em class="vocab-sub">' + esc(sub) + '</em>' : '') + '</button>';
+    };
+    /* 第 8 条：按六大科目分组，每组一个「＋」往该科目加考点；没归属的进「未分类」 */
+    var groups = [], seenG = {};
+    BASIC_TAGS.forEach(function (s) { groups.push({ sub: s, list: [] }); seenG[s] = 1; });
+    groups.push({ sub: '', list: [] });
+    userTags.forEach(function (t) {
+      var s = subOf(t);
+      var g = null;
+      for (var i = 0; i < groups.length; i++) if (groups[i].sub === s) { g = groups[i]; break; }
+      if (!g) g = groups[groups.length - 1];
+      g.list.push(t);
+    });
+    var rows = groups.map(function (g) {
+      return '<div class="vocab-group"><div class="vocab-ghead"><span class="tag-meta">' + (g.sub || '未分类') + ' <i>' + g.list.length + '</i></span>'
+        + '<button class="btn tiny" data-vocabaddsub="' + esc(g.sub) + '" title="往这个科目里加一个考点">＋ 加考点</button></div>'
+        + '<div class="vocab-gbody">' + (g.list.map(chipOf).join('') || '<span class="small muted">还没有</span>') + '</div></div>';
     }).join('');
     var basicRow = '<div class="vocab-basic"><span class="tag-meta">基本标签（固定）</span>'
       + BASIC_TAGS.map(function (t) {
@@ -858,6 +915,29 @@
         if (h) h.value = (v && v !== 'all') ? v : '';
       });
     });
+  }
+  /* 第 7 条：标签搜索支持 AI 模糊 —— 把口语描述交给 AI，从现有考点词表里挑 1–3 个最接近的。
+     只发描述 + 词表，不发题目内容。 */
+  function aiPickTags(text, pool, cb) {
+    var t = String(text || '').trim();
+    if (!t || t.length < 2 || !pool || !pool.length || typeof aiChat !== 'function') { cb([]); return; }
+    var list = pool.slice(0, 400).join('、');
+    var msg = [
+      { role: 'system', content: '你只输出一个 JSON 对象：{"picks":["考点名"]}。只能从候选里挑，挑 1–3 个最接近的；一个都不像就 {"picks":[]}。不要解释。' },
+      { role: 'user', content: '候选考点：' + list + '\n\n用户描述：' + t }
+    ];
+    var done = false;
+    var fin = function (arr) { if (done) return; done = true; cb(arr); };
+    try {
+      Promise.resolve(aiChat(msg, function () { })).then(function (out) {
+        var m = String(out || '').match(/\{[\s\S]*\}/);
+        if (!m) return fin([]);
+        var j;
+        try { j = JSON.parse(m[0]); } catch (e) { return fin([]); }
+        fin((j.picks || []).filter(function (x) { return pool.indexOf(x) >= 0; }).slice(0, 3));
+      }).catch(function () { fin([]); });
+    } catch (e) { fin([]); }
+    setTimeout(function () { fin([]); }, 20000);   /* 网络慢别一直转 */
   }
   function aiBoxHtml() {
     var banks = [];
@@ -1460,9 +1540,31 @@
       if (typeof toast === 'function') toast(n ? '已加进词表：' + v : '「' + v + '」已经在词表里');
       if (typeof render === 'function') { try { render(); } catch (e) {} }
     };
+    var addVocabToSub = function (sub) {
+      var done = function (v) {
+        v = String(v || '').trim();
+        if (!v) return;
+        var n = rememberVocab([v]);
+        if (sub) setSub(v, sub);
+        if (typeof toast === 'function') toast(n ? '已加进词表：' + v + (sub ? '（归 ' + sub + '）' : '') : '「' + v + '」已经在词表里');
+        if (typeof render === 'function') { try { render(); } catch (e) {} }
+      };
+      if (typeof ask !== 'function') { done(prompt('给「' + (sub || '未分类') + '」加一个考点')); return; }
+      ask({
+        title: '给「' + (sub || '未分类') + '」加考点',
+        html: '<input class="inp" id="tagSubInp" placeholder="考点名，例如：心衰" maxlength="32" style="width:100%">',
+        okText: '加进词表'
+      }).then(function (ok) {
+        if (!ok) return;
+        var el = document.getElementById('tagSubInp');
+        done(el ? el.value : '');
+      });
+    };
     if (box) {
       box.addEventListener('click', function (e) {
         if (e.target.closest('[data-vocabadd]')) { addVocabOne(); return; }
+        var gb = e.target.closest('[data-vocabaddsub]');
+        if (gb) { addVocabToSub(gb.getAttribute('data-vocabaddsub') || ''); return; }
         if (e.target.closest('[data-vocabai]')) { genVocab(); return; }
         if (e.target.closest('[data-vocabimport]')) {
           var all = [];
@@ -1598,6 +1700,28 @@
         if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') { e.preventDefault(); clearTimeout(TAG_Q_T); applyQ(); }
       });
+      /* 第 7 条：AI 模糊搜考点。点按钮 → 拿输入里的话去词表里找最接近的考点 */
+      var aiQBtn = host.querySelector('#tagRowAi');
+      if (aiQBtn) {
+        aiQBtn.addEventListener('click', function () {
+          var txt = String(qEl.value || '').trim();
+          if (txt.length < 2) { if (typeof toast === 'function') toast('先写一句描述，比如「喘不上气那种」', 2000); qEl.focus(); return; }
+          var pool = TAGV.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
+          aiQBtn.textContent = '✨ 问 AI…';
+          aiQBtn.disabled = true;
+          aiPickTags(txt, pool, function (picks) {
+            var b2 = document.getElementById('tagRowAi');
+            if (b2) { b2.textContent = '✨ AI 模糊'; b2.disabled = false; }
+            if (!picks || !picks.length) { if (typeof toast === 'function') toast('AI 没从词表里找到接近的考点，换个说法试试', 2400); return; }
+            TAG_VIEW.q = picks[0];
+            TAG_VIEW.tag = '';
+            TAG_VIEW.page = 1;
+            statsRerender();
+            var more = picks.slice(1);
+            if (typeof toast === 'function') toast('AI 选：' + picks[0] + (more.length ? '（还有：' + more.join('、') + '）' : ''), 3000);
+          });
+        });
+      }
     }
     var bc = host.querySelector('#tagBasicCard');
     if (bc) {
@@ -1683,6 +1807,7 @@
   window.dropTagsOfBank = dropTagsOfBank;
   window.TAGS = {
     of: tagsOf, set: setTags, add: addTags, del: delTag, all: function () { return TAGV.slice(); },
+    subOf: subOf, setSub: setSub, aiPickTags: aiPickTags,
     basic: function () { return BASIC_TAGS.slice(); },
     vocab: function () { return TAGV.slice(); }, rememberVocab: rememberVocab,
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
@@ -1695,11 +1820,15 @@
     clearApplied: clearAppliedTags, askClearApplied: askClearApplied,
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,
     tagTs: function () { return TAG_TS; },
+    lastMerge: function () { return TAG_LAST; },
     /* 云同步用：云端那份标签并进来。
        规则（有逐题时间戳 qbank.tagts.v1 时）：云端这道题比本机新 → 用云端的（pad 上改的能传到手机）；
        本机更新 → 留着本机的；本机没有 → 补上。没有时间戳的老云端数据 → 并集合并，至少不会丢。 */
     mergeIn: function (cloudTags, cloudVocab, cloudTs, cloudTagTs) {
       var n = 0;
+      var ck = (cloudTags && typeof cloudTags === 'object') ? Object.keys(cloudTags) : [];
+      var overlap = 0;
+      ck.forEach(function (k) { if (TAGD[k] && TAGD[k].length) overlap++; });
       try {
         var T = (typeof TOMB === 'object' && TOMB) ? TOMB : {};
         var tomb = T.tag || {};
@@ -1736,6 +1865,11 @@
           usableVocab = cloudVocab.filter(function (t) { return !vTomb[t]; });
         }
         if (usableVocab.length) rememberVocab(usableVocab);
+        TAG_LAST = {
+          at: Date.now(), cloudN: ck.length, localN: Object.keys(TAGD).length,
+          overlap: overlap, added: n, cloudTs: +cloudTs || 0,
+          cloudHasTs: !!(cloudTagTs && Object.keys(cloudTagTs).length)
+        };
         if (n) { save(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }
       } catch (e) {}
       return n;

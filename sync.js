@@ -483,7 +483,7 @@ function syncFp() {
   /* 考点标签：贴标签会写墓碑（TOMB_KEY 变），但**只改词表不贴题**时不会 —— 词表也要算进指纹，
      否则「加/删一个考点词」不会触发自动同步，得等别的数据变了才顺带过去。 */
   try {
-    ['qbank.tags.v1', 'qbank.tagvocab.v1'].forEach(k => { s += '|' + k + '=' + (localStorage.getItem(k) || ''); });
+    ['qbank.tags.v1', 'qbank.tagvocab.v1', 'qbank.tagts.v1'].forEach(k => { s += '|' + k + '=' + (localStorage.getItem(k) || ''); });
   } catch (e) {}
   return s;
 }
@@ -534,6 +534,24 @@ function syncStatusHtml() {
   if (!SYC.lastAt) return '<span class="aistate">已配置，还没同步过</span>';
   return '<span class="aistate ok">上次同步 ' + esc(syncAgo(SYC.lastAt)) + '（' + esc(syncTime(SYC.lastAt)) + '）</span>';
 }
+/* 第 2 条：标签同步诊断。显示本机标签题数 / 上一次合并看到的云端题数 / 两边键重叠数。
+   重叠为 0 而两边都有标签 = 两台的题库 id 不一样（各自导入的同一份题库），标签键对不上，
+   这种才是真「同步不了」；重叠不为 0 就是时间戳判新旧的问题。 */
+function syncTagDiagHtml() {
+  try {
+    if (typeof TAGS === 'undefined') return '';
+    var lm = (TAGS.lastMerge && TAGS.lastMerge()) || null;
+    var mine = 0;
+    try { mine = Object.keys(TAGS.data() || {}).length; } catch (e) { mine = 0; }
+    var s = '本机 ' + mine + ' 道题有标签';
+    if (!lm) return '<span class="muted">' + s + '；还没同步过，同步一次后这里会显示云端情况</span>';
+    s += '；云端 ' + lm.cloudN + ' 道题（重叠 ' + lm.overlap + '）· 上次补进 ' + lm.added + ' 条';
+    if (lm.cloudN && mine && !lm.overlap) s += ' ⚠️ 两边标签键完全对不上：两台设备的同一题库不是同一个 id（各自导入的），标签无法合并';
+    else if (lm.cloudN && mine && lm.cloudHasTs) s += ' · 逐题时间戳：谁新用谁';
+    else if (lm.cloudN && mine) s += ' · 云端没有时间戳，按并集合并';
+    return s;
+  } catch (e) { return ''; }
+}
 function syncCardHtml() {
   const L = [];
   L.push('<div class="card kbcard">');
@@ -556,6 +574,7 @@ function syncCardHtml() {
     + '<span class="tl">每隔</span><input class="num" id="syncAutoMin" style="width:60px" value="' + esc(String(SYC.autoMin)) + '"><span class="tl">分钟传一次</span>'
     + '<span class="small muted">0–120；填 0 = 只手动点。改动仍然随时会记，只是攒够这个间隔再一起传。</span></div>');
   L.push('<div class="tools">' + SYNC_SCOPES.map(x => '<label class="chk" title="' + esc(x.tip) + '"><input type="checkbox" class="syncScope" data-k="' + x.k + '"' + (SYC.scope[x.k] ? ' checked' : '') + '> ' + esc(x.label) + '</label>').join('') + '</div>');
+  L.push('<div class="tools"><span class="tl">标签</span><span class="small">' + syncTagDiagHtml() + '</span></div>');
   L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'

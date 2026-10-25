@@ -2147,3 +2147,12 @@ body.minimal .toolbar.main,body.minimal .toolbar.sub{gap:6px!important}
 body.minimal .tools{margin-top:4px!important}
 body.minimal .bnav{background:var(--card)!important;border:1px solid var(--line)!important}
 body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!important;color:var(--text)!important;border:1px solid var(--line)!important}
+
+/* ---- 第 8 条：考点词表按六大科目分组 ---- */
+.vocab-group{margin:8px 0 2px}
+.vocab-ghead{display:flex;align-items:center;gap:8px;margin:0 0 5px}
+.vocab-ghead .tag-meta{font-weight:600}
+.vocab-ghead .tag-meta i{font-style:normal;color:var(--sub);font-size:12px;margin-left:2px}
+.vocab-gbody{display:flex;flex-wrap:wrap;gap:6px}
+.vocab-chip em.vocab-sub{font-style:normal;font-size:11px;color:var(--sub);margin-left:4px;opacity:.85}
+#tagRowAi,#tagFindAi,#sqTagAi{white-space:nowrap}

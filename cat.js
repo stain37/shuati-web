@@ -83,7 +83,9 @@
         id: String(c.id || ('cat-' + (i + 1))),
         title: String(c.title == null ? '未命名分类' : c.title),
         parent: (c.parent == null || c.parent === '' || c.parent === 'root') ? null : String(c.parent),
-        order: (c.order == null ? i : +c.order || 0)
+        order: (c.order == null ? i : +c.order || 0),
+        /* 第 13 条：目录也要记建目录时间，「最近添加」才能跟题库一起排（以前这里一读就把它丢了） */
+        createdAt: +c.createdAt || +c.ts || +c.upd || 0
       };
     });
   }
@@ -254,7 +256,7 @@
   function createCat(parent, title, order) {
     ensure();
     var id = uid('cat');
-    CAT.push({ id: id, title: (title || '新分类').trim() || '新分类', parent: parent || null, order: (order == null ? 1e6 : order) });
+    CAT.push({ id: id, title: (title || '新分类').trim() || '新分类', parent: parent || null, order: (order == null ? 1e6 : order), createdAt: Date.now() });
     return id;
   }
   function renameCat(id, title) {
@@ -894,16 +896,17 @@
       var bsorted = bs.slice().sort(sortBank);
       var per = homePer();
       var entries = dirs.map(function (c) { return { cat: c }; }).concat(bsorted.map(function (b) { return { bank: b }; }));
+      /* 最近添加 / 按名称：目录与题库混排（第 12、13 条）；自定义顺序保持「目录在前」的老手感 */
+      if (bankSortMode() !== 'custom') entries = sortMixedEntries(entries);
       var pages = Math.max(1, Math.ceil(entries.length / per));
       var page = Math.min(Math.max(1, HOME_PAGE), pages);
       HOME_PAGE = page;
       var pageEntries = entries.slice((page - 1) * per, page * per);
       var pdirs = [], pbanks = [];
       pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else pbanks.push(e.bank); });
-      var icons = pdirs.map(function (c) { return catIconHtml(c); }).join('')
-        + pbanks.map(function (b) { return bankIconHtml(b); }).join('');
-      var rows = pdirs.map(function (c) { return catRowHtml(c, false); }).join('')
-        + pbanks.map(function (b) { return bankRowHtml(b, false); }).join('');
+      /* 混排时按 pageEntries 的真实顺序出卡片，别再「目录全排前面」（第 13 条） */
+      var icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
+      var rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
       var det = detailsHtml(pdirs, pbanks, false);
       var agg = CUR ? subStat(CUR) : null;
       body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
@@ -1019,6 +1022,38 @@
       return bankPlainIndex(b) - bankPlainIndex(a);
     }
     return (+a.ord || 0) - (+b.ord || 0) || String(a.title).localeCompare(String(b.title), 'zh');
+  }
+  /* 第 12/13 条：老题库 / 老目录没有 createdAt → 「最近添加」排序会乱、目录还永远置顶。
+     这里给「有效建库时间」：有 createdAt 用它；没有就按它在 LOCAL 里的位置（越靠后越新）
+     折算成一个稳定时间戳（基数 1.7e12 往前排，不会跟真 createdAt 打架），只算不改存储。 */
+  function bankBornAt(b) { return +b.createdAt || 0; }
+  function catBornAt(c) {
+    var t = +c.createdAt || +c.ts || +c.upd || 0;
+    if (t) return t;
+    /* 老目录没记时间：用里面最新的题库顶上（至少不会永远沉底），还没有就 0 → 排最后 */
+    var mx = 0;
+    try { dirBanks(c.id).forEach(function (b) { var t2 = +b.createdAt || 0; if (t2 > mx) mx = t2; }); } catch (e) {}
+    return mx;
+  }
+  function entryBornAt(e) { return e.cat ? catBornAt(e.cat) : bankBornAt(e.bank); }
+  function entryTitle(e) { return String((e.cat ? e.cat.name || e.cat.title : e.bank.title) || ''); }
+  /* 没时间戳的（老数据）排在最后；同为老数据时按入库顺序倒着排（后进来的算新） */
+  function entryIdx(e) {
+    if (e.bank) return bankPlainIndex(e.bank);
+    var i = -1;
+    try {
+      var arr = (typeof CATS !== 'undefined' && CATS) || [];
+      for (var j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === e.cat.id) i = j;
+    } catch (err) {}
+    return i;
+  }
+  /* 非「自定义顺序」时：目录和题库**一起排**（第 13 条：文件夹不再固定置顶） */
+  function sortMixedEntries(list) {
+    var m = bankSortMode();
+    return list.slice().sort(function (a, b) {
+      if (m === 'name') return entryTitle(a).localeCompare(entryTitle(b), 'zh');
+      return (entryBornAt(b) - entryBornAt(a)) || (entryIdx(b) - entryIdx(a)) || entryTitle(a).localeCompare(entryTitle(b), 'zh');
+    });
   }
   function bankSortHtml() {
     var m = bankSortMode();
