@@ -669,9 +669,23 @@ function aiPanelBind(host) {
     paintAiChipsIn(box);                                      /* 本框就地切 class，不重建 DOM */
   });
 }
+/* 网络是不是「不心疼」：开了省流量 / 2G-3G 就当贵，别自动拉几 MB 的资料库 */
+function aiNetCheap() {
+  try {
+    const c = navigator.connection || {};
+    if (c.saveData) return false;
+    const t = String(c.effectiveType || '');
+    if (/^(slow-2g|2g|3g)$/.test(t)) return false;
+  } catch (e) {}
+  return true;
+}
 function aiOpenPanel(host, k, q, onUse) {
   if (!host) return;
-  if (typeof kbEnsureFilesLoaded === 'function') kbEnsureFilesLoaded().then(() => { try { paintAiChips(); } catch (e) {} });
+  /* 省流量：资料库（知识库.js）可能有几 MB，只在网络不贵时自动挂；手机流量/省流量模式先不挂，
+     用户真要查资料时进「AI 与知识库」页面会挂上（那里必然会用到）。 */
+  if (typeof kbEnsureFilesLoaded === 'function' && aiNetCheap()) {
+    kbEnsureFilesLoaded().then(() => { try { paintAiChips(); } catch (e) {} });
+  }
   if (!host.dataset.aiid) {
     /* 这一格刚被整页重画过、会话还活着 → 挂回来（别新开一个空面板，看起来就像「生成被中断了」） */
     if (!aiReopenFor(host, k)) {

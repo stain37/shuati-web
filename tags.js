@@ -1832,7 +1832,7 @@
       var overlap = 0;
       ck.forEach(function (k) { if (TAGD[k] && TAGD[k].length) overlap++; });
       /* 键重映射：mapKey(云端键) → 本机键（或 ''=这题本机找不到，跳过） */
-      var mapped = 0, missed = 0;
+      var mapped = 0, missed = 0, tombBlocked = 0, tombSample = [], stale = 0;
       function mapKey(k) {
         if (!bankMap || !bankMap.map) return k;
         var i = String(k).indexOf('#');
@@ -1860,12 +1860,32 @@
           var bs = v.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
           var us = v.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
           v = bs.slice(0, 1).concat(us).slice(0, MAX_PER_Q);   /* 六科最多一科 */
-          if (!v.length || tomb[k]) return;
+          if (!v.length) return;
+          /* 墓碑只在「云端这份没比删除更新」时才拦。老代码无条件拦，导致本机删过一次的题
+             永远收不到另一台后来重打的标签（用户报「标签还是同步不了」的真凶之一）。 */
+          var ct0 = (C && +C[ck0]) || 0;
+          var tt = +tomb[k] || 0;
+          if (tt && ct0 <= tt) {
+            tombBlocked++;
+            if (tombSample.length < 3) tombSample.push(k + '（删于 ' + new Date(tt).toLocaleString() + '）');
+            return;
+          }
           var mine = tagsOf(k);
-          if (!mine.length) { TAGD[k] = v; TAG_TS[k] = (C && +C[ck0]) || (+cloudTs || Date.now()); n++; return; }
+          if (!mine.length) {
+            TAGD[k] = v; TAG_TS[k] = (C && +C[ck0]) || (+cloudTs || Date.now()); n++;
+            if (typeof tombDel === 'function') { try { tombDel('tag', k); } catch (e) {} }   /* 云端比删除新：撤掉墓碑，否则 mergeWrite 写不进 */
+            return;
+          }
           if (C && +C[ck0]) {
             /* 有逐题时间戳：谁新听谁的 */
-            if ((+C[ck0]) > (+TAG_TS[k] || 0)) { TAGD[k] = v; TAG_TS[k] = +C[ck0]; n++; }
+            if ((+C[ck0]) > (+TAG_TS[k] || 0)) {
+              TAGD[k] = v; TAG_TS[k] = +C[ck0]; n++;
+              if (typeof tombDel === 'function') { try { tombDel('tag', k); } catch (e) {} }
+            }
+            else {
+              /* 数值不同但云端更旧：保持本机（诊断行会说明有多少条是这种情况） */
+              if (v.join('|') !== mine.join('|')) stale++;
+            }
             return;
           }
           /* 老格式云端数据（没有逐题时间戳）：并集，本机的六科优先 */
@@ -1887,7 +1907,7 @@
         TAG_LAST = {
           at: Date.now(), cloudN: ck.length, localN: Object.keys(TAGD).length,
           overlap: overlap, added: n, cloudTs: +cloudTs || 0,
-          mapped: mapped, missed: missed,
+          mapped: mapped, missed: missed, tombBlocked: tombBlocked, tombSample: tombSample, stale: stale,
           cloudHasTs: !!(cloudTagTs && Object.keys(cloudTagTs).length)
         };
         if (n) { save(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }

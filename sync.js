@@ -583,6 +583,8 @@ function syncTagDiagHtml() {
     s += '；云端 ' + lm.cloudN + ' 道题（重叠 ' + lm.overlap + '）· 上次补进 ' + lm.added + ' 条';
     if (lm.mapped) s += '，按题库名重映射 ' + lm.mapped + ' 条';
     if (lm.missed) s += '，' + lm.missed + ' 条本机找不到对应题';
+    if (lm.tombBlocked) s += '，' + lm.tombBlocked + ' 条被本机更早的删除记录挡住（云端那份比删除新就会自动恢复；示例 ' + String((lm.tombSample || []).join('、')).replace(/</g, '') + '）';
+    if (lm.stale) s += '，' + lm.stale + ' 条云端比本机旧（保持本机版本）';
     if (lm.cloudN && mine && !lm.overlap) {
       if (lm.mapped) s += '（两边题库 id 不同，已按题库名+题号对上，下次同步会补进来）';
       else if (lm.missed) s += ' ⚠️ ' + lm.missed + ' 条云端标签的题库/题本机没有，且题库名也没匹配上（改名过？），这部分合并不了';
@@ -590,6 +592,26 @@ function syncTagDiagHtml() {
     } else if (lm.cloudN && mine && lm.cloudHasTs) s += ' · 逐题时间戳：谁新用谁';
     else if (lm.cloudN && mine) s += ' · 云端没有时间戳，按并集合并';
     return s;
+  } catch (e) { return ''; }
+}
+/* 本次打开一共下载了多少（含被缓存命中的会显示 0）：手机上流量掉得快时先看这一行，
+   大头通常是「资料库（知识库.js）」或 PDF。 */
+function syncNetHtml() {
+  try {
+    if (!window.performance || !performance.getEntriesByType) return '<span class="muted">这台浏览器不提供流量统计</span>';
+    const rs = performance.getEntriesByType('resource') || [];
+    let all = 0, kb = 0, n = 0;
+    rs.forEach(r => {
+      const b = +r.transferSize || 0;
+      if (!b) return;
+      all += b; n++;
+      if (/知识库\.js|\.pdf($|\?)/i.test(r.name)) kb += b;
+    });
+    const mb = x => (x / 1048576).toFixed(2) + ' MB';
+    const conn = (() => { try { return (navigator.connection || {}); } catch (e) { return {}; } })();
+    const nt = (conn.saveData ? '省流量模式已开 · ' : '') + (conn.effectiveType ? ('网络 ' + conn.effectiveType) : '');
+    if (!all) return '<span class="muted">这次打开还没下载什么（都是缓存）</span>' + (nt ? ' · ' + nt : '');
+    return '本次打开已下载 ' + mb(all) + '（' + n + ' 个文件）' + (kb ? '，其中资料库/PDF ' + mb(kb) : '') + (nt ? ' · ' + nt : '');
   } catch (e) { return ''; }
 }
 function syncCardHtml() {
@@ -615,6 +637,7 @@ function syncCardHtml() {
     + '<span class="small muted">0–120；填 0 = 只手动点。改动仍然随时会记，只是攒够这个间隔再一起传。</span></div>');
   L.push('<div class="tools">' + SYNC_SCOPES.map(x => '<label class="chk" title="' + esc(x.tip) + '"><input type="checkbox" class="syncScope" data-k="' + x.k + '"' + (SYC.scope[x.k] ? ' checked' : '') + '> ' + esc(x.label) + '</label>').join('') + '</div>');
   L.push('<div class="tools"><span class="tl">标签</span><span class="small">' + syncTagDiagHtml() + '</span></div>');
+  L.push('<div class="tools"><span class="tl">流量</span><span class="small">' + syncNetHtml() + '</span></div>');
   L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
