@@ -593,6 +593,7 @@ function kbHybridSearchSync(query, ids, topK) {
 
 async function kbEnsure(id) {
   if (KB_IDX[id]) return true;
+  if (!KB_MEM[id] && KB_LAZY[id]) { try { await kbLoadShard(id); } catch (e) { console.warn('[kb] 分片没加载上', id, e); } }
   if (!KB_MEM[id]) { const d = await kbStoreGet(id); if (!d) return false; KB_MEM[id] = d; }
   if (KB_BUILD[id]) return KB_BUILD[id];          /* 同一个库同时只建一次 */
   KB_BUILD[id] = (async () => {
@@ -805,7 +806,34 @@ async function kbRerank(question, hits, k, signal) {
 
 /* ---------- 文件知识库（make-kb.py 生成 知识库.js 时自动挂载） ---------- */
 let KB_FILES_DONE = false;
+/* 分片：file:<id> → 'kb/m3.js'。目录（kb/manifest.js）里只有书名和字数，
+   正文要等你真的用到这个库才下载 —— 原来 6.4 MB 一次拉完，手机流量扛不住。 */
+var KB_LAZY = {};
+function kbLoadShard(id) {
+  const url = KB_LAZY[id];
+  if (!url) return Promise.resolve(false);
+  if (KB_LAZY['#p:' + url]) return KB_LAZY['#p:' + url];
+  const p = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.async = true;
+    s.onload = () => { try { kbIngestFiles(true); } catch (e) {} res(!!KB_MEM[id]); };
+    s.onerror = () => rej(new Error('资料分片没加载上（离线，或 kb/ 下的文件没传上去）：' + url));
+    document.head.appendChild(s);
+  });
+  KB_LAZY['#p:' + url] = p;
+  return p;
+}
 function kbIngestFiles(force) {
+  const meta = window.__KBM__ || [];
+  if (meta.length) {
+    meta.forEach((b, i) => {
+      const id = 'file:' + (b.id || ('m' + i));
+      if (b.url) KB_LAZY[id] = b.url;
+      if (kbIsSkipped(id)) return;
+      if (KB_LIST.some(x => x.id === id)) return;
+      KB_LIST.push({ id: id, name: b.name || ('资料 ' + (i + 1)), src: 'file', addedAt: Date.now(), auto: true, lazy: b.url || '', chars: +b.chars || 0, docs: +b.docs || 0, chunks: +b.chunks || 0 });
+    });
+  }
   const arr = window.__KBS__ || [];
   if (!arr.length) return 0;                      /* 知识库.js 还没加载 */
   if (KB_FILES_DONE && !force) return 0;          /* 已经挂载过了，不必每次开 AI 面板都遍历一遍 */
@@ -814,11 +842,13 @@ function kbIngestFiles(force) {
   arr.forEach((b, i) => {
     const id = 'file:' + (b.id || i);
     if (kbIsSkipped(id)) return;              /* 你删掉的库：不再自动挂载 */
-    if (KB_LIST.some(x => x.id === id)) return;
+    const exists = KB_LIST.find(x => x.id === id);
+    if (exists && KB_MEM[id]) return;         /* 已经挂过正文了 */
     const docs = (b.docs || []).map(d => ({ name: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file, text: d.text || '', chunks: Array.isArray(d.chunks) ? d.chunks : kbChunk(d.text || '') }));
     KB_MEM[id] = { docs: docs };
     const st = kbStats({ docs: docs });
-    KB_LIST.push({ id: id, name: b.name || ('资料 ' + (i + 1)), src: 'file', addedAt: Date.now(), auto: true, chars: st.chars, docs: st.docs, chunks: st.chunks });
+    if (exists) { exists.chars = st.chars; exists.docs = st.docs; exists.chunks = st.chunks; exists.lazy = ''; }
+    else KB_LIST.push({ id: id, name: b.name || ('资料 ' + (i + 1)), src: 'file', addedAt: Date.now(), auto: true, chars: st.chars, docs: st.docs, chunks: st.chunks });
     added++;
   });
   return added;

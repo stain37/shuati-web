@@ -33,6 +33,7 @@
 """
 import os
 import sys
+import time
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')   # Windows 控制台里中文才不乱码
@@ -461,7 +462,6 @@ def main():
         print('')
         print('没有生成内容。把 .txt / .md / .docx / .pdf 放进 资料\\ 文件夹，再双击一次 转知识库.bat。')
         return
-    payload = json.dumps(out_libs, ensure_ascii=False).replace('</', '<\\/')
     total = sum(len(d['text']) for kb in out_libs for d in kb['docs'])
     ndoc = sum(len(kb['docs']) for kb in out_libs)
     print('')
@@ -470,9 +470,33 @@ def main():
     if DRY:
         print('（--dry：只统计不写文件）')
         return
+    # 分片写：每本库一个 kb/mN.js，另写一份 kb/manifest.js 目录（只有书名和字数）。
+    # 这样打开页面只要几百字节，哪本库真被用到才下哪一本 —— 原来是 6.4 MB 一次拉完。
+    kbd = os.path.join(ROOT, 'kb')
+    if not os.path.isdir(kbd):
+        os.makedirs(kbd)
+    meta = []
+    for n, kb in enumerate(out_libs, 1):
+        url = 'kb/m%d.js' % n
+        chars = sum(len(d['text']) for d in kb['docs'])
+        body = ('/* 资料库分片：%s（%d 篇 / %d 字）。由 转知识库.bat 拆分，别手改。 */\n'
+                % (kb['name'], len(kb['docs']), chars))
+        body += ('window.__KBS__ = (window.__KBS__ || []).concat('
+                 + json.dumps([kb], ensure_ascii=False).replace('</', '<\\/') + ');\n')
+        with io.open(os.path.join(ROOT, url), 'w', encoding='utf-8') as f:
+            f.write(body)
+        meta.append({'id': kb['id'], 'name': kb['name'], 'docs': len(kb['docs']),
+                     'chars': chars, 'chunks': max(1, int(round(chars / 320.0))), 'url': url})
+    with io.open(os.path.join(kbd, 'manifest.js'), 'w', encoding='utf-8') as f:
+        f.write('/* 资料库目录（只有书名与字数，正文在 kb/m*.js 里按需加载）。由 转知识库.bat 生成。 */\n')
+        f.write('window.__KBM__ = (window.__KBM__ || []).concat('
+                + json.dumps(meta, ensure_ascii=False) + ');\n')
     with io.open(OUT, 'w', encoding='utf-8') as f:
-        f.write('/* 由「转知识库.bat」自动生成。合并模式：重跑会按库 id 替换、保留其它库；别手改。 */\n')
-        f.write('window.__KBS__ = (window.__KBS__ || []).concat(' + payload + ');\n')
+        f.write('/* 由「转知识库.bat」自动生成（2026-10-25 起改为按库分片）。\n')
+        f.write('   这里只挂「目录」，正文分片在 kb/m1.js…，用到哪个库才下载哪个。 */\n')
+        f.write('(function () {\n  var s = document.createElement(\'script\');\n')
+        f.write('  s.src = \'kb/manifest.js?v=' + str(int(time.time())) + '\';\n')
+        f.write('  s.async = true;\n  document.head.appendChild(s);\n})();\n')
     save_manifest(manifest)
     print('生成：' + OUT)
     if not OVERWRITE:
