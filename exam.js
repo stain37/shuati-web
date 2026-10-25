@@ -94,7 +94,7 @@ function paintExamQuestion(bank) {
 
   const opts = q.options.map((t, j) => {
     const K = 'ABCDEFGH'[j];
-    return `<button class="opt${sel.includes(K) ? ' sel' : ''}" data-k="${K}"><span class="k">${K}</span><span>${esc(t)}</span></button>`;
+    return `<button class="opt${sel.includes(K) ? ' sel' : ''}" data-k="${K}"><span class="k">${K}</span><span>${(typeof stemHtml === 'function') ? stemHtml(optText(t, K)) : esc(t)}</span></button>`;
   }).join('');
 
   $('view').innerHTML = `
@@ -113,8 +113,8 @@ function paintExamQuestion(bank) {
         ${q.groupTitle ? `<span class="tag g">${esc(q.groupTitle)}</span>` : ''}
         <span class="tag exam-tag">模拟考试</span>
       </div>
-      ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
-      <div class="stem">${esc(q.stem)}</div>
+      ${q.group ? `<div class="gstem"><b>共用题干：</b>${(typeof stemHtml === 'function') ? stemHtml(q.group) : esc(q.group)}</div>` : ''}
+      <div class="stem">${(typeof stemHtml === 'function') ? stemHtml(q.stem) : esc(q.stem)}</div>
       <div class="opts">${opts}</div>
       <div class="actions">
         <button class="btn" id="exPrev" ${i === 0 ? 'disabled' : ''}>上一题</button>
@@ -224,11 +224,11 @@ function paintExamResult(bank) {
           <span class="wmeta">正确答案：${ansOf(fk, q).join('')}${hasFix(fk) ? ' <span class="mini-tag">已修正</span>' : ''}　我的选择：${(r.sel || []).join('') || '—'}</span>
         </div>
         <div class="wi-body" style="margin-top:8px;border-top:none;padding-top:0">
-          ${q.group ? `<div class="gstem"><b>共用题干：</b>${esc(q.group)}</div>` : ''}
-          <div class="stem-sm">${esc(q.stem)}</div>
+          ${q.group ? `<div class="gstem"><b>共用题干：</b>${(typeof stemHtml === 'function') ? stemHtml(q.group) : esc(q.group)}</div>` : ''}
+          <div class="stem-sm">${(typeof stemHtml === 'function') ? stemHtml(q.stem) : esc(q.stem)}</div>
           <div class="opts-sm">${q.options.map((o, j) => {
             const K = 'ABCDEFGH'[j], right = ansOf(fk, q).includes(K), mine = (r.sel || []).includes(K);
-            return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${esc(o)}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
+            return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${(typeof stemHtml === 'function') ? stemHtml(o) : esc(o)}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
           }).join('')}</div>
           <div class="exp">${renderRich(fk, explainOf(fk, q))}</div>
           <div class="wi-acts">

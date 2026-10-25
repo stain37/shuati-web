@@ -2491,6 +2491,15 @@ function hl(s) {
   if (!parts.length) return t;
   try { return t.replace(new RegExp('(' + parts.join('|') + ')', 'gi'), '<mark>$1</mark>'); } catch (e) { return t; }
 }
+/* 列表里的题干/选项：含公式就交给 stemHtml 渲染（高亮会破坏 $..$ 的定界符），
+   否则仍走高亮，保证搜索词照样标黄。 */
+function hlRich(s) {
+  const t = String(s == null ? '' : s);
+  if (/\$|\\\(|\\\[/.test(t) && typeof stemHtml === 'function') {
+    try { return stemHtml(t); } catch (e) {}
+  }
+  return hl(t);
+}
 
 /* 关键词不在题干里时，抠一小段带关键词的原文出来（搜索列表里不用展开就能看到命中处） */
 function hitSnippet(it) {
@@ -2540,17 +2549,17 @@ function itemHtml(it, mode, aiHit) {
       <button class="btn tiny" data-act="fav">${fav ? '★' : '☆'}</button>
       ${(mode === 'wrong' || mode === 'fav') ? `<button class="btn tiny danger" data-act="${mode === 'wrong' ? 'drop' : 'unfav'}" title="${mode === 'wrong' ? '移除这条记录' : '取消收藏'}">×</button>` : ''}
     </div>
-    ${open ? '' : `<div class="wi-stem">${hl(stem)}</div>`}
+    ${open ? '' : `<div class="wi-stem">${hlRich(stem)}</div>`}
     ${(open || !snippet) ? '' : `<div class="wi-hit"><b>${esc(snippet.label)}</b>${hl(snippet.text)}</div>`}
     ${open ? `
     <div class="wi-body">
-      ${q.group ? `<div class="gstem"><b>共用题干：</b>${hl(q.group)}</div>` : ''}
-      <div class="stem-sm">${hl(q.stem)}</div>
+      ${q.group ? `<div class="gstem"><b>共用题干：</b>${hlRich(q.group)}</div>` : ''}
+      <div class="stem-sm">${hlRich(q.stem)}</div>
       <div class="opts-sm">${q.options.map((o, i) => {
         const K = 'ABCDEFGH'[i];
         const right = ansOf(k, q).includes(K);
         const mine = (rec.sel || []).includes(K);
-        return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hl(optText(o, K))}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
+        return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hlRich(optText(o, K))}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
       }).join('')}</div>
       <div class="small" style="margin:6px 0">我的选择：<b>${(rec.sel || []).join('') || '—'}</b>${rec.ts ? `　最近作答：${fmtTime(rec.ts)}` : ''}　错 ${rec.wrong || 0} 次 / 作答 ${rec.tries || 0} 次${custom ? '　<span class="mini-tag">已自定义解析</span>' : ''}</div>
       ${richBox(k, explainOf(k, q), custom, '解析')}
@@ -2709,13 +2718,13 @@ function buildHtml(title, items, o) {
   const body = items.map((it, i) => {
     const opts = it.q.options.map((t, j) => {
       const K = 'ABCDEFGH'[j], right = ansOf(it.k, it.q).includes(K), mine = (it.rec.sel || []).includes(K);
-      return `<div class="o${right ? ' r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b> ${esc(t)}${right ? '<span class="t ok">正确</span>' : ''}${mine && !right ? '<span class="t bad">我选的</span>' : ''}</div>`;
+      return `<div class="o${right ? ' r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b> ${(typeof stemHtml === 'function') ? stemHtml(t) : esc(t)}${right ? '<span class="t ok">正确</span>' : ''}${mine && !right ? '<span class="t bad">我选的</span>' : ''}</div>`;
     }).join('');
     const imgs = o.withImg ? ((noteOf(it.k) || {}).imgs || []) : [];
     return `<section class="q">
       <h2>${i + 1}. ${esc(it.bank.title)} · ${esc(qLabel(it))}</h2>
-      ${it.q.group ? `<div class="g"><b>共用题干：</b>${esc(it.q.group)}</div>` : ''}
-      <div class="stem">${esc(it.q.stem)}</div>
+      ${it.q.group ? `<div class="g"><b>共用题干：</b>${(typeof stemHtml === 'function') ? stemHtml(it.q.group) : esc(it.q.group)}</div>` : ''}
+      <div class="stem">${(typeof stemHtml === 'function') ? stemHtml(it.q.stem) : esc(it.q.stem)}</div>
       <div class="opts">${opts}</div>
       <div class="meta">${metaLineHtml(it, o)}</div>
       ${o.withExp ? `<div class="exp"><b>解析</b>${mdToHtml(explainOf(it.k, it.q))}${imgs.map(im => `<img src="${im.src}" alt="">`).join('')}</div>` : ''}

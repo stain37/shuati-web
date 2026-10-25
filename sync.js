@@ -316,8 +316,14 @@ function syncMergeCloud(cloud) {
   /* 5) 知识库：自己导入的资料库按 id 补进来；云端删掉的按时间戳在本机也删掉 */
   if (s.kb) added += syncKbMerge(d.kb, cloud.kbDrop);
 
-  /* 6) 考点标签：同一道题以本机为准，本机没有的补进来；词表取并集 */
-  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) { try { added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0, d.tagTs) || 0); } catch (e) {} }
+  /* 6) 考点标签：同一道题以本机为准，本机没有的补进来；词表取并集。
+     标签键是 bankId#qid，两台设备各自导入同一份题库时 id 不一样，先按题库名+题号建映射再合并。 */
+  if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) {
+    try {
+      const bmap = syncTagBankMap(Array.isArray(d.banks) ? d.banks : null);
+      added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0, d.tagTs, { map: bmap }) || 0);
+    } catch (e) {}
+  }
 
   migrate(); invalidateBanks();
   return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
@@ -537,6 +543,35 @@ function syncStatusHtml() {
 /* 第 2 条：标签同步诊断。显示本机标签题数 / 上一次合并看到的云端题数 / 两边键重叠数。
    重叠为 0 而两边都有标签 = 两台的题库 id 不一样（各自导入的同一份题库），标签键对不上，
    这种才是真「同步不了」；重叠不为 0 就是时间戳判新旧的问题。 */
+/* 标签键是 bankId#qid：两台设备各自导入同一份题库时 id 不同，直接合并一条都合不上。
+   这里按「题库名 + 题号顺序 / 题干前 40 字」把云端题库 id、题 id 映射到本机。 */
+function syncTagBankMap(cloudBanks) {
+  const map = {};
+  const norm = s => String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
+  (cloudBanks || []).forEach(cb => {
+    if (!cb || !cb.id) return;
+    if (LOCAL.some(x => x && x.id === cb.id)) { map[cb.id] = { id: cb.id }; return; }
+    const t = norm(cb.title);
+    if (!t) return;
+    const hit = LOCAL.find(x => x && norm(x.title) === t);
+    if (!hit) return;
+    const qmap = {};
+    const cq = cb.questions || [], lq = hit.questions || [];
+    if (cq.length === lq.length) {
+      cq.forEach((q, i) => { if (q && q.id && lq[i] && lq[i].id) qmap[q.id] = lq[i].id; });
+    } else {
+      cq.forEach(q => {
+        if (!q || !q.id) return;
+        const s2 = norm(q.stem).slice(0, 40);
+        if (!s2) return;
+        const j = lq.findIndex(x => x && norm(x.stem).slice(0, 40) === s2);
+        if (j >= 0 && lq[j].id) qmap[q.id] = lq[j].id;
+      });
+    }
+    map[cb.id] = { id: hit.id, qmap: qmap };
+  });
+  return map;
+}
 function syncTagDiagHtml() {
   try {
     if (typeof TAGS === 'undefined') return '';
@@ -546,8 +581,13 @@ function syncTagDiagHtml() {
     var s = '本机 ' + mine + ' 道题有标签';
     if (!lm) return '<span class="muted">' + s + '；还没同步过，同步一次后这里会显示云端情况</span>';
     s += '；云端 ' + lm.cloudN + ' 道题（重叠 ' + lm.overlap + '）· 上次补进 ' + lm.added + ' 条';
-    if (lm.cloudN && mine && !lm.overlap) s += ' ⚠️ 两边标签键完全对不上：两台设备的同一题库不是同一个 id（各自导入的），标签无法合并';
-    else if (lm.cloudN && mine && lm.cloudHasTs) s += ' · 逐题时间戳：谁新用谁';
+    if (lm.mapped) s += '，按题库名重映射 ' + lm.mapped + ' 条';
+    if (lm.missed) s += '，' + lm.missed + ' 条本机找不到对应题';
+    if (lm.cloudN && mine && !lm.overlap) {
+      if (lm.mapped) s += '（两边题库 id 不同，已按题库名+题号对上，下次同步会补进来）';
+      else if (lm.missed) s += ' ⚠️ ' + lm.missed + ' 条云端标签的题库/题本机没有，且题库名也没匹配上（改名过？），这部分合并不了';
+      else s += ' · 键能对上（题库 id 一致），只是之前没有重叠标签，已按云端补进 ' + lm.added + ' 条';
+    } else if (lm.cloudN && mine && lm.cloudHasTs) s += ' · 逐题时间戳：谁新用谁';
     else if (lm.cloudN && mine) s += ' · 云端没有时间戳，按并集合并';
     return s;
   } catch (e) { return ''; }

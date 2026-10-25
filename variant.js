@@ -111,7 +111,7 @@
     return '<div class="vsrc">' +
       '<div class="vsrc-tag">源题</div>' +
       (q.group ? '<div class="gstem"><b>共用题干：</b>' + esc(q.group) + '</div>' : '') +
-      '<div class="vsrc-stem">' + esc(q.stem || '') + '</div>' +
+      '<div class="vsrc-stem">' + ((typeof stemHtml === 'function') ? stemHtml(q.stem || '') : esc(q.stem || '')) + '</div>' +
       (opts ? '<div class="vsrc-opts">' + opts + '</div>' : '') +
       '<div class="small muted">答案 <b>' + (ans.join('') || '—') + '</b>' +
       (rec ? '　我的作答 <b>' + ((rec.sel || []).join('') || '—') + '</b>　错 ' + (rec.wrong || 0) + ' 次 / 作答 ' + (rec.tries || 0) + ' 次' : '　还没做过这道题') +
@@ -224,7 +224,7 @@
         '<button class="btn tiny vfix" type="button">改答案</button>' +
         '<button class="btn tiny vsim" type="button" data-i="' + i + '">相似的已有题' + (sims.length ? ' (' + sims.length + ')' : '') + '</button>' +
         '</div>' +
-        '<div class="vstem">' + esc(q.stem || '') + '</div>' +
+        '<div class="vstem">' + ((typeof stemHtml === 'function') ? stemHtml(q.stem || '') : esc(q.stem || '')) + '</div>' +
         (opts ? '<div class="vopts">' + opts + '</div>' : '') +
         (q.explain ? '<div class="vexp">' + ((typeof renderRich === 'function') ? renderRich('', q.explain) : esc(q.explain)) + '</div>' : '') +
         '<div class="vfixhost"></div>' +

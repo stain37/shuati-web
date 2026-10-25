@@ -1823,12 +1823,29 @@
     lastMerge: function () { return TAG_LAST; },
     /* 云同步用：云端那份标签并进来。
        规则（有逐题时间戳 qbank.tagts.v1 时）：云端这道题比本机新 → 用云端的（pad 上改的能传到手机）；
-       本机更新 → 留着本机的；本机没有 → 补上。没有时间戳的老云端数据 → 并集合并，至少不会丢。 */
-    mergeIn: function (cloudTags, cloudVocab, cloudTs, cloudTagTs) {
+       本机更新 → 留着本机的；本机没有 → 补上。没有时间戳的老云端数据 → 并集合并，至少不会丢。
+       bankMap（第 5 个参数）：云端题库 id → 本机题库 id 的重映射表。两台设备各自导入同一份题库时
+       id 不一样，标签键 bankId#qid 对不上，光靠并集永远合并不了 —— 由 sync.js 按题库名 + 题号顺序建表传进来。 */
+    mergeIn: function (cloudTags, cloudVocab, cloudTs, cloudTagTs, bankMap) {
       var n = 0;
       var ck = (cloudTags && typeof cloudTags === 'object') ? Object.keys(cloudTags) : [];
       var overlap = 0;
       ck.forEach(function (k) { if (TAGD[k] && TAGD[k].length) overlap++; });
+      /* 键重映射：mapKey(云端键) → 本机键（或 ''=这题本机找不到，跳过） */
+      var mapped = 0, missed = 0;
+      function mapKey(k) {
+        if (!bankMap || !bankMap.map) return k;
+        var i = String(k).indexOf('#');
+        if (i < 0) return k;
+        var bk = String(k).slice(0, i), qid = String(k).slice(i + 1);
+        var m = bankMap.map[bk];
+        if (!m) return k;                                 /* 表里没这条题库：按原键试（可能 id 本来就一样） */
+        if (m.id === bk) return k;
+        var nq = (m.qmap && m.qmap[qid]) || '';
+        if (!nq) { missed++; return ''; }
+        mapped++;
+        return m.id + '#' + nq;
+      }
       try {
         var T = (typeof TOMB === 'object' && TOMB) ? TOMB : {};
         var tomb = T.tag || {};
@@ -1836,17 +1853,19 @@
         /* 本机整表清空比云端这份新：不从云端补标签 */
         if (wipeTag && (!cloudTs || cloudTs <= wipeTag)) return 0;
         var C = (cloudTagTs && typeof cloudTagTs === 'object') ? cloudTagTs : null;
-        Object.keys(cloudTags || {}).forEach(function (k) {
-          var v = norm(cloudTags[k]);
+        Object.keys(cloudTags || {}).forEach(function (ck0) {
+          var k = mapKey(ck0);
+          if (!k) return;                                   /* 这道题本机没有对应键：跳过（计入 missed） */
+          var v = norm(cloudTags[ck0]);
           var bs = v.filter(function (t) { return BASIC_TAGS.indexOf(t) >= 0; });
           var us = v.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
           v = bs.slice(0, 1).concat(us).slice(0, MAX_PER_Q);   /* 六科最多一科 */
           if (!v.length || tomb[k]) return;
           var mine = tagsOf(k);
-          if (!mine.length) { TAGD[k] = v; TAG_TS[k] = (C && +C[k]) || (+cloudTs || Date.now()); n++; return; }
-          if (C && +C[k]) {
+          if (!mine.length) { TAGD[k] = v; TAG_TS[k] = (C && +C[ck0]) || (+cloudTs || Date.now()); n++; return; }
+          if (C && +C[ck0]) {
             /* 有逐题时间戳：谁新听谁的 */
-            if ((+C[k]) > (+TAG_TS[k] || 0)) { TAGD[k] = v; TAG_TS[k] = +C[k]; n++; }
+            if ((+C[ck0]) > (+TAG_TS[k] || 0)) { TAGD[k] = v; TAG_TS[k] = +C[ck0]; n++; }
             return;
           }
           /* 老格式云端数据（没有逐题时间戳）：并集，本机的六科优先 */
@@ -1868,6 +1887,7 @@
         TAG_LAST = {
           at: Date.now(), cloudN: ck.length, localN: Object.keys(TAGD).length,
           overlap: overlap, added: n, cloudTs: +cloudTs || 0,
+          mapped: mapped, missed: missed,
           cloudHasTs: !!(cloudTagTs && Object.keys(cloudTagTs).length)
         };
         if (n) { save(); if (typeof bumpHay === 'function') { try { bumpHay(); } catch (e) {} } }

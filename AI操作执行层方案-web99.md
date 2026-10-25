@@ -1373,7 +1373,7 @@ ode --check 全过。
 | # | 报障 | 根因 | 改法 | 探针 |
 |---|---|---|---|---|
 | ① | 解析区 mermaid / 思维导图 / LaTeX 不渲染 | 答题页解析本来就正常；坏在**用 `esc()` 直接输出解析**的两处（`variant.js:229`、`:259`） | 改成 `renderRich('', q.explain)` | imp-probe 前 3 项 |
-| ② | 标签还是无法同步 | 未定位——已加诊断行（控制台会打每步同步状态），等用户回报 | — | — |
+| ② | 标签还是无法同步 | **两台设备各自导入同一份题库 → 题库 id 不同 → 标签键 `bankId#qid` 对不上**，并集永远 0 条 | 同步时按「题库名 + 题号顺序」把云端 id/题 id 重映射到本机（`sync.js syncTagBankMap`），`TAGS.mergeIn` 增第 5 参 `{map}`；诊断行拆开讲「重映射 N 条 / N 条本机没有」 | tagsync2 10/0 |
 | ③ | 拖进度条被当成翻页 | 进度条拖动没拦住 pointer/touch 冒泡 | 加 `preventDefault` + `stopPropagation` 判定 | fix174 组 |
 | ④ | 考点搜索不支持 AI 模糊 | `#tagRowAi` 只做了词表精确匹配 | 接 `aiPickTags`：模糊 → 候选 → 点选打标 | tagsub-probe |
 | ⑤ | 题库选择器加不进 AI 对话 | 本地实测可用（居中弹层 + `#chatPickBank`） | 未改；证明性探针 | chatpick-probe 10/0 |
@@ -1391,3 +1391,12 @@ ode --check 全过。
 - `sw.js` `VERSION = 'shuati-v68-web172'`；`index.html`：`app.js?v=20261108a`、`collection.js`、`tags.js`、`variant.js`、`style.css` 同戳
 - 提交 `6a356a69`（增量）；线上核验：VERSION=web172、`app.js` 236746B、`collection.js` 172896B、`tags.js` 184662B、`variant.js` 38395B、`style.css` 155938B，全部与本地一致
 - 探针累计：typefilter 9/0、tagsub 9/0、chatpick 10/0、imp 11/0、`node --check` 全过
+
+### 27.2 第二轮补（未上线，攒批）
+
+| 项 | 改法 | 探针 |
+|---|---|---|
+| ① 剩余渲染面 | 题干/共用题干/选项吃 `$..$` 与行内 markdown：`collection.js` 新增 `hlRich`（含公式就走 `stemHtml` 再高亮），错题/收藏/搜索卡片与题库题卡、`exam.js` 模考卷与回顾、`variant.js` 变式题干全部换 `stemHtml` | rich2 11/0 |
+| ② 根因 | 见上表；另修 `mergeIn` 在「表里没这条题库」时按原键试，避免 `d.banks` 未启用时误丢全部云端标签 | tagsync2 10/0 |
+| RAG 改写评测 | `kbEvalSet` 每样本带 `txt`；`kbEvalRunPara(n)` 让模型把段落改写成「学生会怎么问」，再比混合 vs 纯关键词（向量票贡献 = 差值）；结果缓存 `qbank.kb.evalpara.v1` | para-eval 13/0（stub 模型） |
+| 版本 | 本轮未部署（省流量模式攒批），下次统一升 web174 | — |

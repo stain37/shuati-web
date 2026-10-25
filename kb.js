@@ -1165,7 +1165,7 @@ function kbEvalSet(n) {
         if (q) break;
       }
       if (!q) continue;
-      out.push({ id: id, q: q, d: c.d, ci: c.ci });
+      out.push({ id: id, q: q, d: c.d, ci: c.ci, txt: t });
       got++;
     }
   });
@@ -1197,6 +1197,71 @@ function kbEvalRun(n) {
     kwTop1: kw.top1, kwRecall5: kw.recall5, kwMrr: kw.mrr, kwDetail: kw.detail };
 }
 const KB_EVAL_BASE = { top1: 0.841, recall5: 0.95, mrr: 0.87 };   /* 网格搜参时的基线（kb.js 注释里记的老数） */
+
+/* 改写问句评测：上面那批样本的查询是「原文里掐出来的 8 个字」，逐字命中，
+   关键词检索本来就必中 —— 拿它测向量票永远是 0.0 个点，测不出语义收益。
+   这里换成模型改写的「学生会问的那句话」：不照抄原句，只有懂意思才找得到。
+   改写结果按段+长度缓存在 localStorage（第二次跑不调模型；探针可以直接种缓存离线跑）。 */
+const KB_LS_EVALP = 'qbank.kb.evalpara.v1';
+const KB_EVALP = readLS(KB_LS_EVALP, {}) || {};
+const KB_EVALP_MAX = 500;
+function kbParaKey(it) { return kbHash(String(it.d) + '|' + String(it.txt).slice(0, 120) + '|' + String(it.txt).length); }
+function kbParaPrompt(txt) {
+  return '把下面这段教材原文，改写成一句医学生复习时真会问老师的问题：'
+    + '只保留必要的专业名词，不要照抄原句，30 字以内，只输出问题本身，不要引号、不要解释。\n\n' + String(txt).slice(0, 400);
+}
+async function kbParaOf(it) {
+  const key = kbParaKey(it);
+  let q = KB_EVALP[key];
+  if (q) return q;
+  if (typeof aiChat !== 'function') return '';
+  try {
+    q = await aiChat([{ role: 'system', content: '你是医学生，正在复习教材。' }, { role: 'user', content: kbParaPrompt(it.txt) }],
+      null, null, { stream: false, temp: 0.3, maxTokens: 120 });
+  } catch (e) { return ''; }
+  q = String(q || '').trim().replace(/^["“「『\s]+|["”」』\s]+$/g, '').replace(/\s+/g, '').slice(0, 60);
+  if (q) {
+    KB_EVALP[key] = q;
+    const ks = Object.keys(KB_EVALP);
+    if (ks.length > KB_EVALP_MAX) ks.slice(0, ks.length - KB_EVALP_MAX).forEach(k => { delete KB_EVALP[k]; });
+  }
+  return q;
+}
+function kbTally(set, pick) {
+  let t1 = 0, r5 = 0, m = 0;
+  const det = [];
+  set.forEach(it => {
+    let rank = -1;
+    const hits = pick(it);
+    for (let i = 0; i < hits.length; i++) { const ch = hits[i].ch; if (ch && ch.d === it.d && ch.ci === it.ci) { rank = i; break; } }
+    if (rank === 0) t1++;
+    if (rank >= 0 && rank < 5) r5++;
+    if (rank >= 0) m += 1 / (rank + 1);
+    det.push({ q: it.q, kb: it.id, rank: rank });
+  });
+  const n2 = set.length || 1;
+  return { top1: t1 / n2, recall5: r5 / n2, mrr: m / n2, detail: det };
+}
+/* 跑改写问句评测：只统计拿到改写句的样本；没配 AI 或一条都没改写成功就返回 ok:false */
+async function kbEvalRunPara(n, onStep) {
+  const raw = kbEvalSet(n || 30);
+  if (!raw.length) return { ok: false, error: '没有可评测的资料库（先勾选并等索引建好）', n: 0 };
+  const set = [];
+  for (let i = 0; i < raw.length; i++) {
+    const it = raw[i];
+    const q = await kbParaOf(it);
+    if (q) set.push({ q: q, d: it.d, ci: it.ci, id: it.id, txt: it.txt, raw: it.q });
+    if (onStep) onStep(i + 1, raw.length);
+    if (i % 5 === 4) await kbYield();
+  }
+  writeLS(KB_LS_EVALP, KB_EVALP);
+  if (!set.length) return { ok: false, error: '改写问句没生成出来（先在上面填好 AI 服务与模型）', n: 0 };
+  const hy = kbTally(set, it => kbHybridHits(it.q, [it.id]));
+  const kw = kbTally(set, it => kbHits(it.q, [it.id]));
+  return { ok: true, n: set.length, total: raw.length,
+    top1: hy.top1, recall5: hy.recall5, mrr: hy.mrr, detail: hy.detail,
+    kwTop1: kw.top1, kwRecall5: kw.recall5, kwMrr: kw.mrr, kwDetail: kw.detail };
+}
 async function kbRunEval() {
   const box = $('kbEvalOut');
   if (box) box.innerHTML = '<div class="small muted">正在抽样本段并逐条检索…（只算分，不调模型）</div>';
@@ -1214,8 +1279,39 @@ async function kbRunEval() {
       + '<div class="small">混合检索（关键词 + 向量）：Top1 <b' + (drop('top1') ? ' style="color:#c0392b"' : '') + '>' + pct(r.top1) + '</b> · Recall@5 <b' + (drop('recall5') ? ' style="color:#c0392b"' : '') + '>' + pct(r.recall5) + '</b> · MRR <b' + (drop('mrr') ? ' style="color:#c0392b"' : '') + '>' + r.mrr.toFixed(3) + '</b></div>'
       + (r.kwTop1 != null ? '<div class="small muted">同一批样本纯关键词：Top1 ' + pct(r.kwTop1) + ' · Recall@5 ' + pct(r.kwRecall5) + ' · MRR ' + r.kwMrr.toFixed(3) + '（差值 = 向量票的贡献）</div>' : '')
       + '<div class="small muted">基线（当年网格搜参）：Top1 84.1% · Recall@5 95% · MRR 0.87；掉了 2 个点以上标红，说明这次改动伤到检索了</div>'
-      + rows + '</div>';
+      + rows
+      + '<div class="small" style="margin-top:6px"><button class="btn small" id="kbEvalPara">跑改写问句评测（测语义）</button>'
+      + '<span class="small muted"> 上面那批是原文 8 字，逐字命中；只有改写成「学生会问的话」才测得出向量票的语义价值（要调模型，按样本条数计）</span></div>'
+      + '</div>';
+    const pb = box.querySelector('#kbEvalPara');
+    if (pb) pb.onclick = () => kbEvalParaFlow(r.n);
   }
+  return r;
+}
+/* 改写问句评测的交互：跑 → 出对照表 */
+async function kbEvalParaFlow(n) {
+  const box = $('kbEvalOut');
+  const btn = box && box.querySelector('#kbEvalPara');
+  if (btn) { btn.disabled = true; btn.textContent = '正在改写并检索…'; }
+  const r = await kbEvalRunPara(Math.min(30, n || 30), (i, t) => {
+    const b2 = box && box.querySelector('#kbEvalPara');
+    if (b2) b2.textContent = '改写中 ' + i + '/' + t + '…';
+  });
+  if (!r.ok) { toast(r.error); if (btn) { btn.disabled = false; btn.textContent = '跑改写问句评测（测语义）'; } return r; }
+  const pct = x => (x * 100).toFixed(1) + '%';
+  const gain = (r.top1 - r.kwTop1) * 100;
+  const rows = (r.detail || []).slice(0, 8).map(d => '<div class="small">' + esc(d.q) + ' → ' + (d.rank < 0 ? '未命中' : '第 ' + (d.rank + 1) + ' 位') + '</div>').join('');
+  if (box) {
+    const host = box.querySelector('.kbhit') || box;
+    host.insertAdjacentHTML('beforeend', '<div class="kbhit" style="margin-top:6px"><div class="kbhit-h"><b>改写问句评测</b><span class="spacer-grow"></span>'
+      + '<span class="small muted">样本 ' + r.n + ' / ' + r.total + ' 条</span></div>'
+      + '<div class="small">混合检索：Top1 <b>' + pct(r.top1) + '</b> · Recall@5 <b>' + pct(r.recall5) + '</b> · MRR <b>' + r.mrr.toFixed(3) + '</b></div>'
+      + '<div class="small muted">同一批改写问句纯关键词：Top1 ' + pct(r.kwTop1) + ' · Recall@5 ' + pct(r.kwRecall5) + ' · MRR ' + r.kwMrr.toFixed(3)
+      + '（向量票 ' + (gain >= 0 ? '+' : '') + gain.toFixed(1) + ' 个点）</div>'
+      + rows + '</div>');
+  }
+  const btn2 = box && box.querySelector('#kbEvalPara');
+  if (btn2) { btn2.disabled = false; btn2.textContent = '重跑改写问句评测'; }
   return r;
 }
 /* 导入别处导出的知识库 JSON */
@@ -1270,6 +1366,7 @@ function kbImportAll(o) {
 }
 
 window.kbEval = kbEvalRun;
+window.kbEvalRunPara = kbEvalRunPara;
 window.kbHybridHits = kbHybridHits;
 window.kbHybridSearchSync = kbHybridSearchSync;
 window.kbVecHits = kbVecHits;
