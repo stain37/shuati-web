@@ -707,6 +707,9 @@ body.dark .srsline{background:var(--card);border-color:var(--line)}
 .aipanel .grow{flex:1;min-width:180px}
 .aipanel .btn.tiny{padding:2px 8px;font-size:12px;min-height:26px}
 .aiout{margin-top:6px;padding:9px 11px;background:var(--card);border:1px dashed var(--line);border-radius:var(--r-s);line-height:1.8;max-height:460px;overflow:auto;word-break:break-word}
+/* AI 面板只读：文字不参与选中（要复制走「复制」按钮），也绝不可编辑 */
+.aipanel .aiout,.aiout[data-readonly],.aiout .katex,.aisrc,.aisrc-text,.aichip{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.aiout[contenteditable="true"]{user-select:text;-webkit-user-select:text}
 .aiout:empty{display:none;padding:0;border:0}
 .aiout h1,.aiout h2,.aiout h3{font-size:14.5px;margin:8px 0 4px}
 .aiout p{margin:5px 0}
@@ -2156,3 +2159,58 @@ body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!import
 .vocab-gbody{display:flex;flex-wrap:wrap;gap:6px}
 .vocab-chip em.vocab-sub{font-style:normal;font-size:11px;color:var(--sub);margin-left:4px;opacity:.85}
 #tagRowAi,#tagFindAi,#sqTagAi{white-space:nowrap}
+
+/* 口诀 / 思路便签：有内容就右上角点一个红点（web177 第 ⑧ 条） */
+.btn.qn-open{position:relative}
+.btn.qn-open.has-qn::after{content:"";position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#e5484d;box-shadow:0 0 0 2px var(--card,#fff)}
+
+/* 参考资料：小钮贴在「更多」旁边；列表本身改成单行横滑，不再把正文往下顶（web177 第 ⑦ 条） */
+.srcjump{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub);cursor:pointer;user-select:none}
+.srcjump:hover{color:var(--primary);border-color:var(--primary)}
+.aisrc{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;max-height:26px;scrollbar-width:none}
+.aisrc::-webkit-scrollbar{height:0}
+.aisrc.flash{box-shadow:0 0 0 2px rgba(229,72,77,.35);border-radius:8px}
+
+/* AI 面板只读（web177 第 ③ 条）：输出区文字不许选中、不许编辑，避免误改题目数据；
+   想复制用面板上的「复制」按钮。输入框（提问 / 追问）不在此列，仍然可用。 */
+.aipanel .aiout,.aipanel .aisrc,.aipanel .aifollow,.aipanel .aihist{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.aipanel .aiout *,.aipanel .aisrc *,.aipanel .aifollow *{user-select:none;-webkit-user-select:none}
+.aipanel .aiout:read-only,.aipanel [contenteditable="true"]:not(.ai-askq){pointer-events:auto}
+
+/* 题目附件：答题卡左侧一列（窄屏改成题目下面一行横滑）——web177 第 ①-1 条 */
+.qcard{position:relative}
+.attrail{position:absolute;left:-48px;top:6px;width:38px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.att-add{width:34px;height:34px;border:1px dashed var(--line);background:var(--card,#fff);border-radius:10px;font-size:15px;cursor:pointer;color:var(--sub)}
+.att-add:hover{border-color:var(--primary);color:var(--primary)}
+.att-items{display:flex;flex-direction:column;gap:6px;align-items:center}
+.att-chip{position:relative;display:flex;align-items:center;gap:4px;max-width:34px;overflow:hidden;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--card,#fff);cursor:pointer;font-size:15px}
+.att-chip b{display:none}
+.att-chip:hover{max-width:none;background:var(--bg2,#f6f7fb);z-index:5}
+.att-chip:hover b{display:inline;font-weight:500;font-size:12px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.att-x{position:absolute;top:-6px;right:-6px;width:14px;height:14px;line-height:12px;text-align:center;border-radius:50%;background:#e5484d;color:#fff;font-size:11px;font-style:normal;opacity:0;transition:opacity .12s}
+.att-chip:hover .att-x{opacity:1}
+@media (max-width: 860px){
+  .attrail{position:static;width:auto;flex-direction:row;align-items:center;gap:8px;margin:0 0 8px}
+  .att-items{flex-direction:row;overflow-x:auto;max-width:100%}
+  .att-chip{max-width:none}
+  .att-chip b{display:inline;font-weight:500;font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* 合并题库弹层里的勾选列表（web177 第 ② 条） */
+.mkList{max-height:52vh;overflow:auto;margin:8px 0 12px;border:1px solid var(--line);border-radius:10px}
+.mkRow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.mkRow:last-child{border-bottom:0}
+.mkRow:hover{background:var(--bg2,#f6f7fb)}
+.mkRow input{width:16px;height:16px}
+.mkRow .mkT{flex:1;font-size:14px}
+.mkRow .mkN{font-size:12px;color:var(--sub)}
+
+/* 正文里的图片（第 ⑥ 条）：一个块，可选中 / 可删；不再有独立的图片区 */
+.rich-edit .rich-img,.exp .rich-img{display:inline-block;position:relative;max-width:100%;vertical-align:middle;margin:4px 0}
+.rich-edit .rich-img img,.exp .rich-img img{display:block;max-width:100%;border-radius:8px}
+.rich-edit .rich-img{width:auto}
+.rich-x{position:absolute;top:-8px;right:-8px;width:18px;height:18px;line-height:16px;text-align:center;border-radius:50%;background:#e5484d;color:#fff;font-size:13px;font-style:normal;cursor:pointer;opacity:0;transition:opacity .12s;z-index:3}
+.rich-img:hover .rich-x{opacity:1}
+.rich-edit .rich-img:hover{outline:2px solid rgba(64,158,255,.45);outline-offset:2px;border-radius:10px}
+body.rz-drag{cursor:ew-resize;user-select:none}
+.rich-imgs{display:none}

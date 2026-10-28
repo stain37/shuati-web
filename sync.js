@@ -476,11 +476,16 @@ async function syncCreateRepo() {
 }
 
 /* ---------- 自动同步 ---------- */
+/* 指纹统一走 __fpRaw：笔记/题库已经搬进 IndexedDB，localStorage 里读不到它们了 */
+function syncRaw(k) {
+  try { if (typeof window.__fpRaw === 'function') { const v = window.__fpRaw(k); return v == null ? '' : v; } } catch (e) {}
+  try { return localStorage.getItem(k) || ''; } catch (e) { return ''; }
+}
 function syncFp() {
   let s = '';
-  [LS.ans, LS.fav, LS.note, LS.qtn, LS.fix, LS.paper, LS.cat, LS.srs, TOMB_KEY, 'qbank.aisrc.v1'].forEach(k => { s += k + '=' + (localStorage.getItem(k) || '') + '|'; });
-  try { if (typeof AI_LS === 'string') s += AI_LS + '=' + (localStorage.getItem(AI_LS) || '') + '|'; } catch (e) {}
-  const b = localStorage.getItem(LS.banks);            // 自建题库可能几 MB，只看长度
+  [LS.ans, LS.fav, LS.note, LS.qtn, LS.fix, LS.paper, LS.cat, LS.srs, TOMB_KEY, 'qbank.aisrc.v1'].forEach(k => { s += k + '=' + syncRaw(k) + '|'; });
+  try { if (typeof AI_LS === 'string') s += AI_LS + '=' + syncRaw(AI_LS) + '|'; } catch (e) {}
+  const b = syncRaw(LS.banks);            // 自建题库可能几 MB，只看长度
   s += LS.banks + '=' + (b ? b.length : 0);
   /* 知识库：正文在 IndexedDB 里，指纹看不进去；目录 + 删除名单 + 删除账本变了就够触发了 */
   try {

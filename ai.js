@@ -328,7 +328,7 @@ function aiUserText(q, ctxText, userQ, k) {
   if (q) {
     if (q.group) parts.push('【共用题干】' + q.group);
     parts.push('【题目】' + q.stem);
-    if (q.options && q.options.length) parts.push('【选项】\n' + q.options.map((o, i) => 'ABCDEFGH'[i] + '. ' + o).join('\n'));
+    if (q.options && q.options.length) parts.push('【选项】\n' + q.options.map((o, i) => 'ABCDEFGHIJKL'[i] + '. ' + o).join('\n'));
     const ans = (typeof ansOf === 'function') ? ansOf(k || '', q) : (q.answer || []);   /* k：这道题的键（套卷题是原题键），别再往 q 上挂 __k */
     if (ans && ans.length) parts.push('【题库答案】' + ans.join(''));
     if (q.explain) parts.push('【题库自带解析】' + String(q.explain).slice(0, 600));
@@ -571,7 +571,7 @@ function aiPanelHtml(host) {
   L.push('<span class="aistate small"></span>');
   L.push('</div>');
   L.push('<div class="aihist" hidden></div>');                 /* 候补池 D：追问的历史折叠在这里 */
-  L.push('<div class="aiout small"></div>');
+  L.push('<div class="aiout small" data-readonly="1" title="只读：AI 输出的文字不能选中也不能改，要复制请点上面的「复制」"></div>');
   L.push('<div class="aisrc small muted"></div>');   /* 参考资料：紧跟解析正文下面（挪上来过，别又放回末尾） */
   L.push('<div class="aifollow" hidden></div>');               /* §3.6-P1⑤：生成完给三个快捷追问 */
   L.push('</div>');
@@ -1265,6 +1265,29 @@ function aiSrcSig(hits) {
   return (hits || []).map(h => String(h.file || h.doc || '') + '#' + (h.pdfp || h.page || '') + '#' + String(h.head || '')).join('|');
 }
 function aiSrcAnyOpen() { try { return !!document.querySelector('.aisrc-full'); } catch (e) { return false; } }
+/* 「更多」旁边那个空位：本次 AI 解析用了几条资料，就显示一个小小的「📎 资料 3」。
+   点它 → 滚到参考资料那一行并闪一下（以前参考资料整块堆在正文下面，占高度还会上下滑）。 */
+function aiSrcJump(n, names) {
+  let el = null;
+  try { el = document.getElementById('srcJump'); } catch (e) {}
+  if (!el) return;
+  if (!n) { el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = '📎 资料 ' + n;
+  el.title = '这次解析引用了 ' + n + ' 条资料' + (names ? '：' + names : '') + '（点一下看原文）';
+  if (!el.__bound) {
+    el.__bound = 1;
+    el.addEventListener('click', function () {
+      const box = document.querySelector('.aisrc');
+      if (!box) return;
+      try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { box.scrollIntoView(); }
+      box.classList.add('flash');
+      setTimeout(function () { box.classList.remove('flash'); }, 900);
+      const t = box.querySelector('.aitag');
+      if (t) t.click();
+    });
+  }
+}
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
@@ -1273,9 +1296,11 @@ function aiPaintSrc(host, ctx) {
     box.innerHTML = (typeof kbList === 'function' && kbList().length)
       ? '<span class="small muted">本次没用知识库（没勾选，或没命中相关内容）</span>'
       : '';
+    aiSrcJump(0, '');
     return;
   }
   const sig = aiSrcSig(ctx.hits);
+  aiSrcJump(ctx.hits.length, ctx.hits.map(h => aiSrcName(h)).slice(0, 4).join('、'));
   box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => {
     const pg = h.page ? ' 第 ' + h.page + ' 页' : '';
     const tip = (h.head ? h.head + '　' : '') + (h.snip || '');

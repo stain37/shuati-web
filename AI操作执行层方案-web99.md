@@ -1400,3 +1400,74 @@ ode --check 全过。
 | ② 根因 | 见上表；另修 `mergeIn` 在「表里没这条题库」时按原键试，避免 `d.banks` 未启用时误丢全部云端标签 | tagsync2 10/0 |
 | RAG 改写评测 | `kbEvalSet` 每样本带 `txt`；`kbEvalRunPara(n)` 让模型把段落改写成「学生会怎么问」，再比混合 vs 纯关键词（向量票贡献 = 差值）；结果缓存 `qbank.kb.evalpara.v1` | para-eval 13/0（stub 模型） |
 | 版本 | 本轮未部署（省流量模式攒批），下次统一升 web174 | — |
+
+---
+
+## §28 资料库拆分（web176）：6.11 MB 单体 → 目录 + 按库分片
+
+### 28.1 为什么改
+「AI 与知识库」里的资料库原来是**一个 `知识库.js`（6,408,284 B）**，任何打开 AI 面板 / 知识库页的路径都会把它整份拉下来（`kbEnsureFilesLoaded()` → `s.src='知识库.js'`，调用点 `ai.js:351/:674`、`chat.js:569/:787`、`kb.js:688`、`ai-ops.js:1563/:1580`）。gzip 后仍 2.1 MB，手机流量主要烧在这里。
+
+### 28.2 改了什么
+| 项 | 改动 |
+|---|---|
+| `知识库.js` | 6,408,284 B → **446 B** 引导脚本，只插 `kb/manifest.js` |
+| `kb/manifest.js` | 新增，**818 B** 目录：6 个库的 `id/name/docs/chars/chunks/url` |
+| `kb/m1..m6.js` | 新增，每库一片：外科 500,733 / 内科 2,114,242 / 生化 707,366 / 生理 2,088,545 / 病理 534,632 / 资料 460,070 B |
+| `kb.js` | 新增 `KB_LAZY`（`file:<id>` → 分片地址）、`kbLoadShard(id)`（插 script，去重 Promise，失败给可读错误）、`kbIngestFiles()` 先挂目录占位（只显示书名与字数）、`kbEnsure(id)` 开头 `await kbLoadShard(id)`；正文到位后回填占位条目的字数，不重复挂 |
+| `make-kb.py` | 生成器同步改成写分片 + 目录（`import time` + 落 `kb/manifest.js` 与 `kb/mN.js`），以后重跑「转知识库.bat」仍是分片结构 |
+| `sw.js` | VERSION → `shuati-v68-web176`，描述追记；CORE 仍是 4 项最小外壳（web175 起） |
+
+### 28.3 效果
+- 打开页面 / AI 面板：下载 **446 B + 818 B ≈ 1.3 KB**（原来 6.11 MB，gzip 2.1 MB）。
+- 真正用哪本才下哪本：实测只加载「生化」= 707 KB，检索 `胆色素代谢` 命中 3 段正文。
+- 同一分片第二次使用走 SW 缓存，不再走网络。
+
+### 28.4 验证
+- 新探针 `工作1\kb-split-probe.py`：**14 通过 / 0 失败**（目录 6 个库 / 每库带 `kb/m*.js` / 挂目录时正文 0 个 / 字数来自目录 / 按需只下生化 10 ms / 其它库仍空 / 检索命中正文 / 引导脚本 288 字符 / 目录 704 字符 / 无 JS 报错）。
+- 线上核验 `工作1\verify176.py` + `verify176b.py`：VERSION=web176；`sw.js` 10743、`index.html` 17722、`kb.js` 74558、`ai.js` 117766、`sync.js` 55732、`tags.js` 187019、`知识库.js` 446、`kb/manifest.js` 818 与六个分片字节全部与本地一致。
+- 回归：先前 13 项探针（tagsync2 13/0、rich2 11/0、tagsub 9/0、home-page 30/0、search-bank 18/0、typefilter 9/0、sort 10/0、quiz-subject 17/0、md-render 5/0）不受影响（kb.js 只在 `kbEnsure`/`kbIngestFiles` 增加分支）。
+
+### 28.5 约定
+- `kb/` 下的分片是**生成物**，不要手改；改资料请改 `资料\` 再跑 `转知识库.bat`。
+- 新增资料库 = 重新生成分片，目录自动带上新条目；已选中的库下次检索会自动下载新分片。
+
+---
+
+## §29 存储改造 + P0–P3 修复（web177）
+
+### 29.1 存储满了：笔记 / 题库搬进 IndexedDB
+- 症状：`QuotaExceededError`（键 `qbank.answers.v2`）。localStorage 按 UTF-16 计，导出 4.7MB JSON ≈ 6.2MB 文本 > 5MB 硬顶；`notes` 1.9MB、`banks` 806KB 是最大两块。
+- 改法（调用方零改动）：`LS_BIG = [LS.note, LS.banks]`；`readLS` 先查 `BIGMEM`；`writeLS` 对这两个键走 `bigSave()`（内存 + 400ms 去抖 + `appIdbPut`），其它键仍在 localStorage；配额报错时自动把这一个键升级到 IDB（不再丢数据）。
+- 首屏：`index.html` 先 `render()` 画一屏，`__bigLoad()`（IDB 读完 / 首次从 localStorage 迁移）完成后再 `invalidateBanks(); render()`。
+- 跨标签页：写 IDB 时更新 `qbank.idb.tick`，storage 事件看到它就 `bigReloadAll()`。
+- 同步指纹：`sync.js` 用 `syncRaw()`（优先 `window.__fpRaw`），因为这两个键已不在 localStorage。
+- 坑：`bf.js` 里已有 `idbGet/idbPut`，同名会互盖 → 统一改名 `appIdbGet/appIdbPut`；无头探针的 `--virtual-time-budget` 会把计时器跑完而 IDB 回调没轮到 → 探针里开 `window.__PUMP`，用 fetch 心跳拖住虚拟时钟（只跑 120 次）。
+
+### 29.2 P0：解析渲染加固
+- `mdFenceHtml()` 新增 `latex|tex|math|katex` 围栏 → KaTeX displayMode；`mdMathExtract()` 支持 `\(...\)` 与 `\[...\]`；新增 `mdBareDiagram()`：裸写 `graph TD` / `mindmap` 段落自动包成围栏（≥2 行且首行匹配）。
+- 探针 `math2-probe.py` 17/0。
+
+### 29.3 P0：图片并入解析编辑区
+- 取消独立 `.rich-imgs` 区；旧 `NOTES[fk].imgs` 由 `migrateNoteImgs(fk)` 一次性转成 `![图N](src =Wx)` 追加到正文末尾。
+- 粘贴图片插在光标处；行内图片可拖 `.rich-rz` 改宽度、点 `.rich-x` 删除（`.rich-img.in-text`）。
+- 探针 `block3-probe.py` 重写为行内图片用例 13/0。
+
+### 29.4 P1：题目附件 + 一键合并题库
+- 附件：答题卡左侧 `#attRail`，`📎` 挂本地文件（HTML/PDF/TXT/DOCX/PNG/JPG）。优先 `showOpenFilePicker` 存句柄（权限可续），不支持则把 File 存进 IDB `att` store；上限 12 个；docx 走下载、其它 `window.open`。
+- 合并：首页 `⇄ 合并题库` → 选主题库 → 勾来源库 → 逐题按题干去重，`q.id` 撞号加 `-m<rand>`；`ANS/FAV/NOTES/QTN` 迁到新键，旧键记墓碑（否则并集写入会把旧键捞回来）；标签走 `TAGS.of/set`。
+- 坑：`bankOf()` 走 `allBanks()`，`normalizeBank` 返回的是**副本**，改它不落盘 → 合并必须直接改 `LOCAL` 里的原始对象。
+- 坑：`doAct` 的 switch 里原来没有 `mergebanks` 分支（事件到了但没人接）→ 补 `case 'mergebanks'`。
+- 探针 `p1-probe.py` 19/0。
+
+### 29.5 P2：小项
+- 选项字母从 `A–H` 扩到 `A–L`（7 个 js 的 `'ABCDEFGH'` → `'ABCDEFGHIJKL'`，选项编辑器上限 12）。
+- 参考资料：AI 面板「⋯ 更多」旁 `#srcJump` 胶囊显示「📎 资料 N」，点击滚到 `.aisrc` 并展开第一条；参考资料行改成单行横滑，不再顶高面板。
+- 口诀红点：`#btnQn.has-qn::after`，有口诀内容才亮。
+
+### 29.6 P3：AI 面板只读
+- `ai.js` 输出容器带 `data-readonly="1"`；`style.css` 对 `.aipanel .aiout` / `.aisrc` / `.aichip` 加 `user-select:none`（要复制走「复制」按钮）。
+
+### 29.7 验证
+- 探针：math2 17/0、md-editor 19/0、md-math 11/0、rich2 11/0、block3 13/0、p1 19/0、idb 16/0、agent2 9/0。
+- 回归（22 个）：home-page 30/0、quiz-subject 17/0、typefilter 9/0、search-bank 18/0、tagsub 9/0、tagsync2 13/0、sort 10/0、color 10/0、chatpick 10/0、fix164 46/0、batch2b 23/0、ops-actions/chat-command/import-ai 全 OK。

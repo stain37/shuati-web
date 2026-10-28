@@ -72,6 +72,12 @@ function mdFenceHtml(lang, body) {
       if (r && r.html) return r.html;
     } catch (e) {}
   }
+  /* ```latex / ```tex / ```math —— AI 很爱这么写公式；以前只当普通代码块，公式是死字 */
+  if (window.katex && typeof window.katex.renderToString === 'function' && (l === 'latex' || l === 'tex' || l === 'math' || l === 'katex')) {
+    try {
+      return '<div class="md-mathblock">' + window.katex.renderToString(String(body || '').trim(), { displayMode: true, throwOnError: false, strict: 'ignore' }) + '</div>';
+    } catch (e) {}
+  }
   mdCopyInitOnce();
   const name = MD_LANG_NAME[l] || (l ? l : '代码');
   return '<div class="md-code" data-lang="' + l + '">' +
@@ -127,6 +133,9 @@ function mdMathExtract(md) {
   const store = [];
   const put = (tex, display) => { store.push({ tex: tex, display: display }); return '\u0003M' + (store.length - 1) + '\u0003'; };
   let s = String(md).replace(/\$\$([\s\S]+?)\$\$/g, (m, t) => put(t, true));
+  /* LaTeX 原生定界符：\[ … \] 独立公式、\( … \) 行内（AI 输出里非常常见，以前完全不认） */
+  s = s.replace(/\\\[([\s\S]+?)\\\]/g, (m, t) => put(t, true));
+  s = s.replace(/\\\(([\s\S]+?)\\\)/g, (m, t) => put(t, false));
   s = s.replace(/(^|[^\\$\u0003])\$([^\n$]+?)\$(?!\d)/g, (m, pre, t) => pre + put(t, false));
   return store.length ? { txt: s, store: store } : null;
 }
@@ -169,8 +178,35 @@ function mdListHtml(items) {
   }
   return html + '</' + type + '>';
 }
+/* 有些 AI / 教材会把图直接裸写成：
+     graph TD
+     A[缺氧] --> B[肺收缩]
+   或者
+     mindmap
+       病因
+   没有 ``` 围栏，以前就只是几行普通文字。这里把这种整块自动加围栏，
+   交给 diagram.js 画出来（只在整块都以图语法开头时才认，避免误伤正文）。 */
+function mdBareDiagram(md) {
+  const src = String(md == null ? '' : md);
+  if (src.indexOf('```') >= 0 && !/^[ \t]*(graph|flowchart|mindmap)\b/im.test(src)) return src;
+  const blocks = src.split(/\n[ \t]*\n/);
+  let hit = 0;
+  const out = blocks.map(b => {
+    const lines = b.split('\n');
+    const first = (lines[0] || '').trim();
+    const isFlow = /^(graph|flowchart)\b\s*(TD|TB|LR|RL|BT)?\s*$/i.test(first) || /^(graph|flowchart)\b\s*(TD|TB|LR|RL|BT)\b/i.test(first);
+    const isMind = /^mindmap\s*$/i.test(first);
+    if (!(isFlow || isMind)) return b;
+    if (lines.length < 2) return b;
+    if (/^```/.test(first)) return b;
+    hit++;
+    return '```' + (isMind ? 'mindmap' : 'diagram') + '\n' + b.replace(/^\s+/, '') + '\n```';
+  });
+  return hit ? out.join('\n\n') : src;
+}
 function mdToHtml(md) {
   if (!md) return '';
+  md = mdBareDiagram(md);
   const F = mdFences(md);
   md = F.txt;
   md = mdTidy(md);
@@ -860,19 +896,101 @@ function expFoldToggle(fk) {
     if (b) b.textContent = on ? '▸ 展开' : '▾ 收起';
   });
 }
+/* 老数据的图片（NOTES[fk].imgs 数组）搬进正文末尾，只搬一次；搬完把 imgs 清掉。
+   之后就只有一个地方存图片：Markdown 正文里的 ![](…) —— 用户要求的「不要独立图片区」。 */
+function migrateNoteImgs(fk) {
+  try {
+    const n = NOTES[fk];
+    if (!n || !Array.isArray(n.imgs) || !n.imgs.length) return;
+    const lines = n.imgs.map((im, i) => '![图' + (i + 1) + '](' + im.src + (im.w ? ' =' + Math.round(im.w) + 'x' : '') + ')');
+    const txt = String(n.text || '').replace(/\s+$/, '');
+    NOTES[fk] = { text: (txt ? txt + '\n\n' : '') + lines.join('\n\n'), ts: Date.now(), ai: n.ai || false };
+    if (typeof saveNotes === 'function') saveNotes();
+  } catch (e) {}
+}
 function richBox(fk, text, custom, label) {
+  migrateNoteImgs(fk);
   const n = (typeof noteOf === 'function') ? noteOf(fk) : null;
-  const imgs = (n && n.imgs) || [];
-  const imgsHtml = imgs.length
-    ? '<div class="rich-imgs">' + imgs.map((im, i) => `<span class="rich-img" data-imgi="${i}"${im.w ? ' style="width:' + im.w + 'px"' : ''}><img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy"><i class="rich-rz" title="拖动改图片宽度"></i><i class="rich-mv" title="拖动调整图片先后顺序">⠿</i></span>`).join('') + '</div>'
-    : '';
-  const body = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text || '');
+  /* 第 ⑥ 条（2026-10-28）：不再有独立的图片区 —— 图片就是正文里的一个块，
+     插在哪就显示在哪，粘贴时插在光标处，点图片可以直接删。老数据的 imgs 由 migrateNoteImgs() 搬进正文。 */
+  const srcText = (n && typeof n.text === 'string') ? n.text : text;
+  const body = (typeof mdToHtml === 'function') ? mdToHtml(srcText) : esc(srcText || '');
   return `<div class="exp-wrap${EXPFOLD[fk] ? ' collapsed' : ''}" data-note-for="${esc(fk)}">
       <div class="exp lb-row"><span class="lb">${esc(label || '解析')}${custom ? '（自定义）' : ''}：</span><span class="exp-state small muted" aria-live="polite"></span><button class="btn tiny exp-fold" data-fold="${esc(fk)}" title="把解析收起来，只留标题行；再点一次展开">${EXPFOLD[fk] ? '▸ 展开' : '▾ 收起'}</button><button class="btn tiny blk-toggle" data-blk="${esc(fk)}" title="块排序：打开后把鼠标放到某一块左边的小把手上拖动，段落 / 表格 / 图片整块换位置（第 19 条第一轮）">⠿ 块排序</button></div>
-      <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，改完点一下别处自动保存">${body}</div>
-      ${imgsHtml}
+      <div class="exp rich-edit" contenteditable="true" spellcheck="false" data-note-for="${esc(fk)}" title="点进来就能改：选中文字会弹出小工具栏，Ctrl+V 可以直接粘截图；改完点一下别处自动保存">${body}</div>
       <div class="aisrc-saved" data-aisrc="${esc(fk)}"></div>
     </div>`;
+}
+/* 行内图片的交互（第 ⑥ 条）：点一下选中（再按 Delete 就删掉）、右上角 × 直接删、
+   右下角手柄拖动改宽度（宽度写回 Markdown 的 =宽x 里，刷新还在）。 */
+function richImgWrap(img) {
+  if (!img || !img.parentNode) return null;
+  if (img.parentNode.classList && img.parentNode.classList.contains('rich-img')) return img.parentNode;
+  const sp = document.createElement('span');
+  sp.className = 'rich-img in-text';
+  img.parentNode.insertBefore(sp, img);
+  sp.appendChild(img);
+  const h = document.createElement('i'); h.className = 'rich-rz'; h.title = '拖动改图片宽度';
+  const x = document.createElement('i'); x.className = 'rich-x'; x.title = '删掉这张图片（正文里的原图一起删）'; x.textContent = '×';
+  sp.appendChild(h); sp.appendChild(x);
+  return sp;
+}
+function richWrapAllImgs(el) {
+  if (!el) return;
+  Array.prototype.slice.call(el.querySelectorAll('img')).forEach(im => {
+    if (im.closest && im.closest('.rich-img')) return;
+    richImgWrap(im);
+  });
+}
+function richImgInitOnce() {
+  if (window.__richImgInit) return;
+  window.__richImgInit = 1;
+  document.addEventListener('mousedown', function (e) {
+    const img = e.target && e.target.closest ? e.target.closest('.rich-edit img') : null;
+    if (!img) return;
+    const sp = img.closest('.rich-img');
+    e.preventDefault();
+    try {
+      const r = document.createRange(); r.selectNode(sp || img);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    } catch (err) {}
+  });
+  document.addEventListener('click', function (e) {
+    const x = e.target && e.target.closest ? e.target.closest('.rich-x') : null;
+    if (!x) return;
+    const sp = x.closest('.rich-img');
+    const ed = x.closest('.rich-edit');
+    e.preventDefault(); e.stopPropagation();
+    if (sp) sp.remove();
+    if (ed) { ed.dispatchEvent(new Event('input', { bubbles: true })); ed.focus(); }
+  });
+  /* 宽度手柄：按下拖动，span 与 img 同时改宽，松手触发 input 让它保存 */
+  let drag = null;
+  document.addEventListener('mousedown', function (e) {
+    const h = e.target && e.target.closest ? e.target.closest('.rich-rz') : null;
+    if (!h) return;
+    const sp = h.closest('.rich-img');
+    const img = sp && sp.querySelector('img');
+    if (!img) return;
+    e.preventDefault();
+    const r = sp.getBoundingClientRect();
+    drag = { sp: sp, img: img, x0: e.clientX, w0: r.width, max: Math.max(200, (sp.closest('.rich-edit') || document.body).clientWidth - 24) };
+    document.body.classList.add('rz-drag');
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!drag) return;
+    const w = Math.max(60, Math.min(drag.max, drag.w0 + (e.clientX - drag.x0)));
+    drag.sp.style.width = w + 'px';
+    drag.img.style.width = '100%';
+    drag.img.setAttribute('width', String(Math.round(w)));
+  });
+  document.addEventListener('mouseup', function () {
+    if (!drag) return;
+    const ed = drag.sp.closest('.rich-edit');
+    document.body.classList.remove('rz-drag');
+    drag = null;
+    if (ed) ed.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 }
 function richInsertImgAtRange(el, rng, src, alt) {
   const x = document.createElement('img');
@@ -1019,6 +1137,7 @@ function richBind(el, fk) {
     richState(el, '已保存');
   };
   RICH = { el: el, fk: fk, save: save };
+  try { richImgInitOnce(); richWrapAllImgs(el); } catch (e) {}
   el.addEventListener('input', () => { undoSnap(el); richState(el, el.innerHTML === before ? '' : '未保存…', true); });
   el.addEventListener('blur', save, true);
   el.addEventListener('paste', ev => {              // 从网页 / Word 粘进来的一律只留纯文字
@@ -1026,12 +1145,18 @@ function richBind(el, fk) {
     const imgs0 = cb0 && cb0.items ? Array.prototype.slice.call(cb0.items).filter(it => /^image\//.test(it.type || '')) : [];
     if (imgs0.length) {                              // 第 9 条：Ctrl+V 直接把截图粘进正文
       ev.preventDefault();
+      const rng0 = (() => {                         /* 记住光标位置：图就插在你正在写的那一段后面 */
+        try { const sel = window.getSelection(); return sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null; } catch (e) { return null; }
+      })();
       (async () => {
+        let at = rng0;
         for (const it of imgs0) {
           const f = it.getAsFile();
           if (!f) continue;
-          try { richInsertImgAtRange(el, null, await compressImage(f), f.name || '粘贴的图片'); }
-          catch (err) { toast('图片粘贴失败：' + (f.name || '剪贴板图片')); }
+          try {
+            const sp = richInsertImgAtRange(el, at, await compressImage(f), f.name || '粘贴的图片');
+            if (sp) { const r = document.createRange(); r.setStartAfter(sp); r.collapse(true); at = r; }
+          } catch (err) { toast('图片粘贴失败：' + (f.name || '剪贴板图片')); }
         }
         richState(el, '未保存…', true);
       })();
@@ -2515,7 +2640,7 @@ function hitSnippet(it) {
     return { label: label, text: (from > 0 ? '…' : '') + t.slice(from, to) + (to < t.length ? '…' : '') };
   };
   if (low(q.stem).indexOf(terms[0]) >= 0) return null;        // 题干里就有，不用另抠
-  const opts = (q.options || []).map((o, i) => pick('选项 ' + 'ABCDEFGH'[i], optText(o, 'ABCDEFGH'[i]))).filter(Boolean);
+  const opts = (q.options || []).map((o, i) => pick('选项 ' + 'ABCDEFGHIJKL'[i], optText(o, 'ABCDEFGHIJKL'[i]))).filter(Boolean);
   return opts[0] || pick('解析', explainOf(it.k, q)) || pick('题库名', b && b.title) || pick('题干补充', q.group);
 }
 
@@ -2556,7 +2681,7 @@ function itemHtml(it, mode, aiHit) {
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${hlRich(q.group)}</div>` : ''}
       <div class="stem-sm">${hlRich(q.stem)}</div>
       <div class="opts-sm">${q.options.map((o, i) => {
-        const K = 'ABCDEFGH'[i];
+        const K = 'ABCDEFGHIJKL'[i];
         const right = ansOf(k, q).includes(K);
         const mine = (rec.sel || []).includes(K);
         return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${hlRich(optText(o, K))}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
@@ -2701,7 +2826,7 @@ function buildMd(title, items, o) {
     if (it.q.group) { L.push('> **共用题干**：' + it.q.group); L.push(''); }
     L.push(it.q.stem);
     L.push('');
-    it.q.options.forEach((opt, j) => L.push('ABCDEFGH'[j] + '. ' + opt));
+    it.q.options.forEach((opt, j) => L.push('ABCDEFGHIJKL'[j] + '. ' + opt));
     L.push('');
     L.push(metaLine(it, o));
     L.push('');
@@ -2717,7 +2842,7 @@ function buildMd(title, items, o) {
 function buildHtml(title, items, o) {
   const body = items.map((it, i) => {
     const opts = it.q.options.map((t, j) => {
-      const K = 'ABCDEFGH'[j], right = ansOf(it.k, it.q).includes(K), mine = (it.rec.sel || []).includes(K);
+      const K = 'ABCDEFGHIJKL'[j], right = ansOf(it.k, it.q).includes(K), mine = (it.rec.sel || []).includes(K);
       return `<div class="o${right ? ' r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b> ${(typeof stemHtml === 'function') ? stemHtml(t) : esc(t)}${right ? '<span class="t ok">正确</span>' : ''}${mine && !right ? '<span class="t bad">我选的</span>' : ''}</div>`;
     }).join('');
     const imgs = o.withImg ? ((noteOf(it.k) || {}).imgs || []) : [];

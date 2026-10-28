@@ -104,7 +104,7 @@
     var ans = (typeof ansOf === 'function') ? (ansOf(st.k, q) || []) : (q.answer || []);
     var rec = (typeof recOf === 'function') ? recOf(st.k) : null;
     var opts = (q.options || []).map(function (o, i) {
-      var K = 'ABCDEFGH'[i];
+      var K = 'ABCDEFGHIJKL'[i];
       var mine = rec && (rec.sel || []).indexOf(K) >= 0;
       return '<div class="vso' + (mine && ans.indexOf(K) < 0 ? ' w' : '') + '"><b>' + K + '</b>' + esc(typeof optText === 'function' ? optText(o, K) : o) + '</div>';
     }).join('');
@@ -211,7 +211,7 @@
     st.parsed.forEach(function (q, i) {
       var ans = (q.answer && q.answer.length) ? q.answer : [(q.answer || '')];
       var opts = (q.options || []).map(function (o, j) {
-        var K = 'ABCDEFGH'[j];
+        var K = 'ABCDEFGHIJKL'[j];
         var right = ans.indexOf(K) >= 0;
         return '<div class="vopt' + (right ? ' r' : '') + '"><b>' + K + '</b>' + esc(typeof optText === 'function' ? optText(o, K) : o) +
           (right ? '<span class="mini-tag ok">正确</span>' : '') + '</div>';
@@ -255,7 +255,7 @@
       return '<div class="vcmp-side"><div class="vcmp-t">' + esc(title) + (mine ? ' <span class="mini-tag ok">答案 ' + (mine.join('') || '—') + '</span>' : '') + '</div>' +
         (q.group ? '<div class="gstem small"><b>共用题干：</b>' + hiShared(q.group, otherSet) + '</div>' : '') +
         '<div class="vstem">' + hiShared(q.stem, otherSet) + '</div>' +
-        '<div class="vopts">' + (q.options || []).map(function (o, k) { return '<div class="vopt">' + ('ABCDEFGH'[k]) + '. ' + hiShared(o, otherSet) + '</div>'; }).join('') + '</div>' +
+        '<div class="vopts">' + (q.options || []).map(function (o, k) { return '<div class="vopt">' + ('ABCDEFGHIJKL'[k]) + '. ' + hiShared(o, otherSet) + '</div>'; }).join('') + '</div>' +
         (q.explain ? '<div class="vexp small">' + ((typeof renderRich === 'function') ? renderRich('', q.explain) : esc(q.explain)) + '</div>' : '') +
         '</div>';
     }
@@ -626,7 +626,7 @@
     if (open >= 0 && list[open]) {
       var v = list[open], key = k + '#' + open, mine = VPICK[key] || [], r = v.r;
       var opts = (v.o || []).map(function (txt, j) {
-        var K = 'ABCDEFGH'[j], cls = 'opt';
+        var K = 'ABCDEFGHIJKL'[j], cls = 'opt';
         if (r) { if ((v.a || []).indexOf(K) >= 0) cls += ' right'; else if (mine.indexOf(K) >= 0) cls += ' wrong'; }
         else if (mine.indexOf(K) >= 0) cls += ' sel';
         return '<button class="' + cls + '" data-vpick="' + K + '"' + (r ? ' disabled' : '') + '><span class="k">' + K + '</span><span>' + esc(optText(txt, K)) + '</span></button>';

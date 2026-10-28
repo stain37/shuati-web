@@ -28,7 +28,237 @@ const LS = {
   report: 'qbank.report.v1',       /* AI 学情诊断的历史报告（report.js） */
   qtn: 'qbank.qtn.v1'              /* 答题页右侧的「口诀 / 思路」小便签（跟解析分开存） */
 };
-const readLS = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+/* ---------- 大件数据改存 IndexedDB（localStorage 只有约 5MB） ----------
+   现实：自定义解析（qbank.notes.v2）+ 自建题库（qbank.local.v2）轻松 3~5MB，
+   而 localStorage 按 UTF-16 算还要 ×2，一满就整份写入失败（QuotaExceededError），
+   表现就是「数据没存进浏览器」。IndexedDB 没有 5MB 硬顶（配额按磁盘算，通常几百 MB）。
+   做法：这两个键的值在内存里是权威副本（BIGMEM），写入先进内存再异步落 IndexedDB，
+   读取直接读内存 —— 调用方一行都不用改，仍然是同步 API。
+   注意：bf.js 里也有 idbGet / idbPut（同名会互相覆盖，踩过一次），所以这里一律加 app 前缀。 */
+const LS_BIG = [LS.note, LS.banks];
+const BIGMEM = Object.create(null);
+let APP_IDB = null;
+function appIdbOpen() {
+  if (APP_IDB) return Promise.resolve(APP_IDB);
+  if (!window.indexedDB) return Promise.reject(new Error('这台浏览器没有 IndexedDB'));
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('shuati-store', 2);
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if (!db.objectStoreNames.contains('att')) db.createObjectStore('att');   /* 题目附件（本地引用，不上传） */
+    };
+    rq.onsuccess = () => { APP_IDB = rq.result; res(APP_IDB); };
+    rq.onerror = () => rej(rq.error || new Error('IndexedDB 打不开'));
+  });
+}
+function appIdbGet(k) {
+  return appIdbOpen().then(db => new Promise(res => {
+    try {
+      const q = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+      q.onsuccess = () => res(q.result == null ? null : q.result);
+      q.onerror = () => res(null);
+    } catch (e) { res(null); }
+  })).catch(() => null);
+}
+function appIdbPut(k, v) {
+  return appIdbOpen().then(db => new Promise(res => {
+    try {
+      const t = db.transaction('kv', 'readwrite');
+      t.objectStore('kv').put(v, k);
+      t.oncomplete = () => res(true);
+      t.onerror = () => res(false);
+    } catch (e) { res(false); }
+  })).catch(() => false);
+}
+const IDB_TICK = 'qbank.idb.tick';
+const _bigPend = Object.create(null);
+let _bigTimer = 0;
+function bigFlush() {
+  if (_bigTimer) { clearTimeout(_bigTimer); _bigTimer = 0; }
+  Object.keys(_bigPend).forEach(k => { const v = _bigPend[k]; delete _bigPend[k]; appIdbPut(k, v); });
+}
+function bigSave(k, v) {
+  BIGMEM[k] = v;
+  _bigPend[k] = v;
+  if (!_bigTimer) _bigTimer = setTimeout(() => { _bigTimer = 0; bigFlush(); }, 400);
+  try { localStorage.setItem(IDB_TICK, k + '|' + Date.now()); } catch (e) {}   // 让别的标签页收到通知
+  return true;
+}
+/* 把两个大键搬进 IndexedDB（首次运行从 localStorage 迁移并删掉旧副本），完成后再把
+   内存里的 NOTES / LOCAL 换成索引里的最新值。 */
+async function bigLoad() {
+  try { await appIdbOpen(); } catch (e) { return false; }
+  for (const k of LS_BIG) {
+    let v = null;
+    try { v = await appIdbGet(k); } catch (e) {}
+    if (v == null) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw != null) { v = JSON.parse(raw); await appIdbPut(k, v); localStorage.removeItem(k); }
+      } catch (e) {}
+    }
+    if (v != null) BIGMEM[k] = v;
+  }
+  try { NOTES = readLS(LS.note, {}); } catch (e) {}
+  try { LOCAL = readLS(LS.banks, []); if (typeof invalidateBanks === 'function') invalidateBanks(); } catch (e) {}
+  return true;
+}
+function bigReloadAll() {            // 别的标签页改了大键 → 重读
+  (async () => {
+    for (const k of LS_BIG) { const v = await appIdbGet(k); if (v != null) BIGMEM[k] = v; }
+    try { NOTES = readLS(LS.note, {}); } catch (e) {}
+    try { LOCAL = readLS(LS.banks, []); invalidateBanks(); } catch (e) {}
+    try { render(); } catch (e) {}
+  })();
+}
+window.__bigLoad = bigLoad;
+window.__bigFlush = bigFlush;
+/* 给别处（同步指纹、存储用量统计）用的原始值 */
+window.__fpRaw = k => (k in BIGMEM) ? JSON.stringify(BIGMEM[k]) : localStorage.getItem(k);
+window.__bigKeys = LS_BIG.slice();
+
+/* ===== 题目附件（第 ①-1 条）：答题区左侧的本地「快捷方式」 =====
+   文件不上传、不进云同步：优先存 File System Access 的句柄（点开就是原文件，改了也能看到最新），
+   浏览器不支持就退一步把副本放进 IndexedDB 的 att store。一个题目一条，键是 fk。 */
+const ATT_TYPES = [
+  { description: '文档 / 图片', accept: { 'text/html': ['.html', '.htm'], 'application/pdf': ['.pdf'], 'text/plain': ['.txt'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] } }
+];
+const ATT_MEM = Object.create(null);
+function attIcon(name) {
+  const e = String(name || '').toLowerCase().split('.').pop();
+  return e === 'pdf' ? '📕' : e === 'html' || e === 'htm' ? '🌐' : e === 'txt' ? '📄'
+    : e === 'docx' ? '📘' : (e === 'png' || e === 'jpg' || e === 'jpeg') ? '🖼' : '📎';
+}
+function attKindOk(name) { return /\.(html?|pdf|txt|docx|png|jpe?g)$/i.test(String(name || '')); }
+function attLoad(fk) {
+  if (ATT_MEM[fk]) return Promise.resolve(ATT_MEM[fk]);
+  return appIdbGet('att:' + fk).then(v => { ATT_MEM[fk] = Array.isArray(v) ? v : []; return ATT_MEM[fk]; },
+    () => { ATT_MEM[fk] = []; return ATT_MEM[fk]; });
+}
+function attSet(fk, list) {
+  ATT_MEM[fk] = list || [];
+  return appIdbPut('att:' + fk, ATT_MEM[fk]).catch(() => {});
+}
+function attRailHtml(fk) {
+  const list = ATT_MEM[fk] || [];
+  return '<div class="attrail" id="attRail" data-fk="' + esc(fk) + '">' +
+    '<button class="att-add" id="attAdd" title="给这道题挂一个本地文件（PDF / HTML / TXT / DOCX / PNG）。只在你这台设备上做个快捷方式，不上传、不同步">📎</button>' +
+    (list.length ? '<div class="att-items">' + list.map((it, i) =>
+      '<span class="att-chip" data-att="' + i + '" title="' + esc(it.name + (it.kind === 'handle' ? '（本地原文件）' : '（本机副本）')) + '">' +
+      attIcon(it.name) + '<b>' + esc(it.name) + '</b><i class="att-x" data-attx="' + i + '" title="移除这个附件（不会删你电脑上的原文件）">×</i></span>').join('') + '</div>' : '') +
+    '</div>';
+}
+function attPaint(fk) {
+  attLoad(fk).then(list => {
+    const old = document.getElementById('attRail');
+    if (!old || old.dataset.fk !== String(fk)) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = attRailHtml(fk);
+    old.replaceWith(tmp.firstChild);
+    attBind(fk);
+  });
+}
+function attOpenUrl(url, name, revoke) {
+  const e = String(name || '').toLowerCase().split('.').pop();
+  if (e === 'docx') {                     /* 浏览器不会渲染 docx：给个下载，让它用本机 Word 打开 */
+    const a = document.createElement('a');
+    a.href = url; a.download = name || 'document.docx';
+    document.body.appendChild(a); a.click(); a.remove();
+  } else {
+    const w = window.open(url, '_blank');
+    if (!w) toast('被浏览器拦了新窗口，允许弹窗后再点一次', 2600, 'warn');
+  }
+  if (revoke) setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+}
+function attBind(fk) {
+  const rail = document.getElementById('attRail');
+  if (!rail) return;
+  const add = rail.querySelector('#attAdd');
+  if (add) add.onclick = () => attAdd(fk);
+  rail.querySelectorAll('[data-att]').forEach(chip => {
+    chip.onclick = ev => { if (ev.target.closest('[data-attx]')) return; attOpenItem(fk, +chip.dataset.att); };
+  });
+  rail.querySelectorAll('[data-attx]').forEach(x => {
+    x.onclick = ev => {
+      ev.stopPropagation();
+      const i = +x.dataset.attx;
+      attLoad(fk).then(list => {
+        const it = list[i];
+        if (!it) return;
+        if (!confirm('移除附件「' + it.name + '」？只是去掉这个快捷方式，你电脑上的原文件不会动。')) return;
+        list.splice(i, 1);
+        attSet(fk, list).then(() => attPaint(fk));
+      });
+    };
+  });
+}
+async function attAdd(fk) {
+  const list = (await attLoad(fk)).slice();
+  if (list.length >= 12) { toast('一道题最多挂 12 个附件', 2200, 'warn'); return; }
+  /* 首选：系统文件选择器（能给到可持久保存的句柄） */
+  if (window.showOpenFilePicker) {
+    let handles = null;
+    try { handles = await window.showOpenFilePicker({ multiple: true, types: ATT_TYPES, excludeAcceptAllOption: false }); }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+    if (handles && handles.length) {
+      for (const h of handles) {
+        const f = await h.getFile();
+        if (!attKindOk(f.name)) { toast('只支持 HTML / PDF / TXT / DOCX / PNG / JPG', 2600, 'warn'); continue; }
+        list.push({ id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), name: f.name, size: f.size, type: f.type, kind: 'handle', handle: h, ts: Date.now() });
+      }
+      await attSet(fk, list);
+      attPaint(fk);
+      return;
+    }
+  }
+  /* 退路：普通 input，把文件副本存进 IndexedDB（同样不上传） */
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.html,.htm,.pdf,.txt,.docx,.png,.jpg,.jpeg';
+  inp.multiple = true;
+  inp.onchange = async () => {
+    for (const f of Array.from(inp.files || [])) {
+      if (!attKindOk(f.name)) { toast('只支持 HTML / PDF / TXT / DOCX / PNG / JPG', 2600, 'warn'); continue; }
+      list.push({ id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), name: f.name, size: f.size, type: f.type, kind: 'blob', blob: f, ts: Date.now() });
+    }
+    await attSet(fk, list);
+    attPaint(fk);
+  };
+  inp.click();
+}
+async function attOpenItem(fk, i) {
+  const list = await attLoad(fk);
+  const it = list[i];
+  if (!it) return;
+  try {
+    if (it.kind === 'handle' && it.handle) {
+      const perm = it.handle.queryPermission ? await it.handle.queryPermission({ mode: 'read' }) : 'granted';
+      if (perm !== 'granted') {
+        const ask = it.handle.requestPermission ? await it.handle.requestPermission({ mode: 'read' }) : 'denied';
+        if (ask !== 'granted') { toast('没有权限读这个文件，重新挂一次附件吧', 2600, 'warn'); return; }
+      }
+      const f = await it.handle.getFile();
+      attOpenUrl(URL.createObjectURL(f), it.name, true);
+    } else if (it.blob) {
+      attOpenUrl(URL.createObjectURL(it.blob), it.name, true);
+    } else {
+      toast('这个附件只剩名字了（文件是你电脑上的，浏览器读不到），重新挂一次吧', 3200, 'warn');
+    }
+  } catch (e) {
+    toast('打不开：' + (e && e.message ? e.message : '可能原文件被移走了'), 3000, 'warn');
+  }
+}
+window.attRailHtml = attRailHtml;
+window.attBind = attBind;
+window.attPaint = attPaint;
+window.__attLoad = attLoad;
+window.addEventListener('pagehide', bigFlush);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') bigFlush(); });
+const readLS = (k, d) => {
+  if (k in BIGMEM) { const v = BIGMEM[k]; return v == null ? d : v; }
+  try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; }
+};
 /* 写不进去要吵醒用户：localStorage 满了 / 被禁用时悄悄丢数据是最坑的 */
 let _saveWarned = false;
 function saveWarn(key, err) {
@@ -43,8 +273,15 @@ function saveWarn(key, err) {
   } catch (e) {}
 }
 const writeLS = (k, v) => {
+  /* 笔记/题库（以及任何已经被迫搬进 IndexedDB 的键）都走内存 + IDB，别再挤 localStorage */
+  if (LS_BIG.indexOf(k) >= 0 || (k in BIGMEM)) return bigSave(k, v);
   try { localStorage.setItem(k, JSON.stringify(v)); }
-  catch (e) { if (String(k).indexOf("qbank.") === 0) saveWarn(k, e); return false; }
+  catch (e) {
+    /* 配额满了：把这个键转去 IndexedDB 存，别让用户丢数据 */
+    if (String(k).indexOf("qbank.") === 0) { if (LS_BIG.indexOf(k) < 0) LS_BIG.push(k); return bigSave(k, v); }
+    saveWarn(k, e);
+    return false;
+  }
   return true;
 };
 
@@ -127,6 +364,7 @@ let _syncT = 0, _syncNeed = false;
 window.addEventListener('storage', e => {
   if (!e || !e.key) return;
   const k = e.key;
+  if (k === IDB_TICK) { bigReloadAll(); return; }   /* 别的标签页改了大键（笔记/题库） */
   if (k === LS.ans) ANS = readLS(LS.ans, {});
   else if (k === LS.fav) FAV = readLS(LS.fav, {});
   else if (k === LS.note) NOTES = readLS(LS.note, {});
@@ -546,7 +784,7 @@ function normalizeBank(b, source) {
 function normalizeQ(q, fallbackId) {
   const opts = (q.options || []).map(String);
   let ans = q.answer == null ? [] : (Array.isArray(q.answer) ? q.answer : String(q.answer).replace(/[^A-Ha-h]/g, '').split(''));
-  ans = Array.from(new Set(ans.map(a => String(a).toUpperCase()))).filter(a => 'ABCDEFGH'.includes(a)).sort();
+  ans = Array.from(new Set(ans.map(a => String(a).toUpperCase()))).filter(a => 'ABCDEFGHIJKL'.includes(a)).sort();
   const o = {
     id: (q.id == null ? fallbackId : q.id),
     stem: String(q.stem || ''),
@@ -740,7 +978,7 @@ function fixOf(k) { const f = FIX[k]; return (Array.isArray(f) && f.length) ? f.
 function hasFix(k) { return !!fixOf(k); }
 function ansOf(k, q) { return fixOf(k) || ((q && q.answer) ? q.answer : []); }
 function setFix(k, letters) {
-  letters = Array.from(new Set((letters || []).map(x => String(x).toUpperCase()).filter(a => 'ABCDEFGH'.includes(a)))).sort();
+  letters = Array.from(new Set((letters || []).map(x => String(x).toUpperCase()).filter(a => 'ABCDEFGHIJKL'.includes(a)))).sort();
   if (letters.length) {
     FIX[k] = letters;
     /* 删题时会给 FIX 记过墓碑；7 天内又把这道题（重新导入后）修了答案的话，
@@ -772,7 +1010,7 @@ function openAnsEditor(host, k, q, done) {
   if (!host) return;
   const cur = ansOf(k, q), orig = (q && q.answer) || [];
   const n = Math.min(8, Math.max(2, (q && q.options && q.options.length) || 4));
-  const letters = 'ABCDEFGH'.slice(0, n).split('');
+  const letters = 'ABCDEFGHIJKL'.slice(0, n).split('');
   const fixed = hasFix(k);
   host.innerHTML =
     '<div class="fixbox">' +
@@ -2124,12 +2362,12 @@ function openQEditor(host, fk, q, target, done) {
   if (!host || !q || !target) return;
   const opts = (q.options || []).slice();
   const ans = (ansOf(fk, q) || []).slice();
-  const letters = 'ABCDEFGH'.split('');
+  const letters = 'ABCDEFGHIJKL'.split('');
   host.innerHTML =
     '<div class="fixbox qeditbox">' +
     '<div class="small muted">改题库里的这道题（题干 / 选项 / 答案 / 解析）。保存后会写回题库，同步时会一起同步出去。</div>' +
     '<label class="small">题干</label><textarea id="qeStem" rows="3" spellcheck="false">' + esc(q.stem || '') + '</textarea>' +
-    '<label class="small">选项（每行一个，最多 8 个；空行会去掉，字母自动重排）</label>' +
+    '<label class="small">选项（每行一个，最多 12 个＝A–L；空行会去掉，字母自动重排）</label>' +
     opts.map((o, i) => '<div class="qe-opt"><span class="k">' + letters[i] + '</span><input data-qeo="' + i + '" value="' + esc(String(o == null ? '' : o)) + '"></div>').join('') +
     '<div class="actions"><button class="btn" id="qeAdd">＋ 加一个选项</button></div>' +
     '<label class="small">正确答案</label>' +
@@ -2140,7 +2378,7 @@ function openQEditor(host, fk, q, target, done) {
   const addOpt = host.querySelector('#qeAdd');
   if (addOpt) addOpt.onclick = () => {
     const inputs = host.querySelectorAll('[data-qeo]');
-    if (inputs.length >= 8) { toast('最多 8 个选项'); return; }
+    if (inputs.length >= 12) { toast('最多 12 个选项（A–L）'); return; }
     const i = inputs.length, L = letters[i];
     const row = document.createElement('div');
     row.className = 'qe-opt';
@@ -2170,6 +2408,13 @@ window.openQEditor = openQEditor;
 function storageBytes() {
   let n = 0;
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += (k || '').length + (localStorage.getItem(k) || '').length; } } catch (e) {}
+  /* 笔记/题库已经搬到 IndexedDB，这里补回去，否则用量会显示成「才用了 1MB」骗人 */
+  try {
+    (window.__bigKeys || []).forEach(k => {
+      const raw = window.__fpRaw ? window.__fpRaw(k) : null;
+      if (raw) n += k.length + raw.length;
+    });
+  } catch (e) {}
   return n * 2;
 }
 /* 真实占用要问浏览器：知识库存在 IndexedDB 里，localStorage 根本数不出来 */
@@ -2365,7 +2610,7 @@ function renderQuiz(bankId) {
   const delT = delTargetOf(bank, q);              /* 这道题能不能删、删的是哪个题库里的哪道（内置题库不能删） */
 
   const opts = q.options.map((t, i) => {
-    const K = 'ABCDEFGH'[i];
+    const K = 'ABCDEFGHIJKL'[i];
     let cls = 'opt';
     if (recite) {
       /* 背题模式：选项只读，正确答案直接高亮（点一下只给提示，不判分、不写记录） */
@@ -2381,7 +2626,8 @@ function renderQuiz(bankId) {
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
   $('view').innerHTML = `
-    <div class="card">
+    <div class="card qcard">
+      ${attRailHtml(fk)}
       <div class="qmode" role="tablist" aria-label="刷题模式">
         ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
           mk === 'normal' ? '普通模式：点选项判分，看解析' :
@@ -2399,7 +2645,7 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
-        <button class="btn qn-open" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
+        <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
         <button class="btn qd-grip" id="qdGrip" title="拖动题目区块（右下角可拉大小）；再点一下回到正常排版">⠿</button>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
@@ -2416,6 +2662,7 @@ function renderQuiz(bankId) {
       <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
         ${speed ? '' : `<button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>`}
+        <span class="srcjump" id="srcJump" hidden></span>
       </div>
       ${speed ? '' : `<div class="qsheet" id="qSheet" hidden>
         <div class="qsheet-scrim" data-qsheet="0"></div>
@@ -2537,6 +2784,8 @@ function renderQuiz(bankId) {
   });
   /* 方案十一：题目下面那排「变式 1 / 2 / 3」——生成过就直接画出来 */
   if (typeof varqBind === 'function') varqBind($('vStrip'), fk);
+  /* 左侧附件快捷方式：先按缓存画一遍，再去 IndexedDB 补真数据（同步读取，不卡首屏） */
+  try { attBind(fk); attPaint(fk); } catch (e) {}
   on('btnFav', () => toggleFav(fk, document.getElementById('btnFav')));
   (() => {                                   /* 右侧小便签：输入防抖自动存，失焦再存一次 */
     const ta = document.getElementById('qnTa');
@@ -2548,6 +2797,8 @@ function renderQuiz(bankId) {
       if (v) QTN[fk] = { text: v, ts: Date.now() };
       else { delete QTN[fk]; tombAdd('qtn', fk); }   /* 清空即删除：记一笔墓碑，免得被别的标签页 / 云端的旧副本复活 */
       saveQtn();
+      const qb = document.getElementById('btnQn');
+      if (qb) qb.classList.toggle('has-qn', !!v);      /* 右上角小红点：这条题有没有口诀 / 思路 */
       if (st) { st.textContent = v ? '已存' : ''; setTimeout(() => { if (st) st.textContent = ''; }, 1200); }
     };
     ta.addEventListener('input', () => { if (st) st.textContent = '…'; clearTimeout(timer); timer = setTimeout(save, 700); });
@@ -3356,12 +3607,11 @@ function showFb(bank, q) {
 }
 
 function renderRich(k, text) {
+  /* 第 ⑥ 条：不再往解析末尾拼独立的图片区；老数据由 collection.js 的 migrateNoteImgs() 搬进正文 */
+  if (typeof migrateNoteImgs === 'function') { try { migrateNoteImgs(k); } catch (e) {} }
   const n = noteOf(k);
-  let html = (typeof mdToHtml === 'function') ? mdToHtml(text) : esc(text);
-  if (n && n.imgs && n.imgs.length) {
-    html += '<div class="rich-imgs">' + n.imgs.map(im => `<img src="${im.src}" alt="${esc(im.name || '')}" loading="lazy">`).join('') + '</div>';
-  }
-  return html;
+  const body = (n && n.text) ? n.text : text;
+  return (typeof mdToHtml === 'function') ? mdToHtml(body) : esc(body);
 }
 
 function step(d) {
@@ -3553,7 +3803,7 @@ function parseText(text, nameHint) {
     if (!cur.stem) { cur = null; return; }
     if (cur.options.length < 2) warns.push(`「${cur.stem.slice(0, 14)}…」选项少于2个`);
     if (!cur.answer.length) warns.push(`「${cur.stem.slice(0, 14)}…」没有答案，已跳过`);
-    const bad = cur.answer.some(a => 'ABCDEFGH'.indexOf(a) >= cur.options.length);
+    const bad = cur.answer.some(a => 'ABCDEFGHIJKL'.indexOf(a) >= cur.options.length);
     if (bad) warns.push(`「${cur.stem.slice(0, 14)}…」答案超出选项范围`);
     if (cur.stem && cur.options.length >= 2 && cur.answer.length && !bad) {
       out.push({ id: out.length + 1, stem: cur.stem, options: cur.options, answer: cur.answer, explain: cur.explain, group: cur.group, groupTitle: cur.groupTitle, tags: cur.tags || [] });
@@ -3578,7 +3828,7 @@ function parseText(text, nameHint) {
     const mExp = s.match(RE_EXP);
     if (mExp && cur) { cur.explain = mExp[1] || ''; cur.mode = 'explain'; continue; }
     const mOpt = s.match(RE_OPT);
-    if (mOpt && cur && !cur.answer.length && cur.options.length < 8) { cur.options.push(mOpt[2].trim()); cur.mode = 'opt'; continue; }
+    if (mOpt && cur && !cur.answer.length && cur.options.length < 12) { cur.options.push(mOpt[2].trim()); cur.mode = 'opt'; continue; }
     const mNum = s.match(RE_NUM);
     if (mNum && mNum[2] && mNum[2].trim().length > 1) {
       if (!cur) { cur = newQ(mNum[2].trim(), group); continue; }
@@ -3730,7 +3980,7 @@ function doPreview() {
         <div class="qno small">第 ${qNo(q, qs)} 题 · ${q.answer.length > 1 ? '多选' : '单选'}${typed.length ? ' · ' + esc(TYPE_NAMES[typed[qs.indexOf(q)]] || typed[qs.indexOf(q)]) : ''}</div>
         ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
         <div style="margin:6px 0">${stemHtml(q.stem)}</div>
-        <div class="small">${q.options.map((o, i) => esc('ABCDEFGH'[i] + '. ') + stemHtml(o)).join('<br>')}</div>
+        <div class="small">${q.options.map((o, i) => esc('ABCDEFGHIJKL'[i] + '. ') + stemHtml(o)).join('<br>')}</div>
         <div class="small" style="margin-top:6px;color:var(--ok)">答案：${q.answer.join('')}</div>
         ${q.explain ? `<div class="small muted" style="margin-top:4px">解析：${renderRich('', q.explain)}</div>` : ''}
       </div>`).join('')}`;
@@ -4374,7 +4624,7 @@ document.addEventListener('keydown', e => {
   if (typeof aiBusy === 'function' && aiBusy()) return;
   const k = e.key.toUpperCase();
   if (/^[A-H]$/.test(k) || /^[1-8]$/.test(k)) {
-    const K = /^[A-H]$/.test(k) ? k : 'ABCDEFGH'[+k - 1];
+    const K = /^[A-H]$/.test(k) ? k : 'ABCDEFGHIJKL'[+k - 1];
     const o = document.querySelector(`.opt[data-k="${K}"]`);
     if (o && !o.disabled) o.click();
     e.preventDefault(); return;

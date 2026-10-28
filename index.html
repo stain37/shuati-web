@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261110b">
+<link rel="stylesheet" href="style.css?v=20261111a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -228,25 +228,25 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261110b"></script>
-<script src="collection.js?v=20261110b"></script>
+<script src="app.js?v=20261111a"></script>
+<script src="collection.js?v=20261111a"></script>
 <script src="diagram.js?v=20261031a"></script>
 <script src="exam.js?v=20261110b"></script>
 <script src="kb.js?v=20261110b"></script>
-<script src="ai.js?v=20261110b"></script>
+<script src="ai.js?v=20261111a"></script>
 
 <!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261110b"></script>
+<script src="cat.js?v=20261111a"></script>
 <script src="bf.js?v=20261017e"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
 
 <!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
      它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
-<script src="sync.js?v=20261110b"></script>
+<script src="sync.js?v=20261111a"></script>
 
 <!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
      4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->
@@ -274,8 +274,37 @@
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。
      以前这行在 collection.js 末尾，那时 exam.js / kb.js 还没加载，
-     直接打开 #/exam/... 或 #/kb 会空白。 */
-  render();
+     直接打开 #/exam/... 或 #/kb 会空白。
+
+     笔记与自建题库现在存在 IndexedDB 里（localStorage 只有 5MB，装不下），
+     所以要等它们读进内存再画第一屏，否则会先闪一下空题库/空解析。 */
+  /* 探针/自动化环境：用连续的 204 请求把虚拟时钟拖住，否则无头浏览器的
+     virtual-time 会把计时器一次性跑完，IndexedDB 的回调还没轮到就被判定超时。
+     只在 window.__PUMP 被显式打开时启用，真实用户完全不受影响。 */
+  if (window.__PUMP) {
+    (function pump() {
+      var n = 0;
+      (function step() {
+        if (n++ > 120) return;   /* 只在前 ~2.4s 虚拟时间里拖住时钟，够 IndexedDB 开库即可 */
+        fetch('__pump').catch(function () {}).finally(function () { setTimeout(step, 20); });
+      })();
+    })();
+  }
+
+  (function boot() {
+    /* 先画一屏（本地数据本来就在内存里），IndexedDB 读完再补画一次。
+       刻意不设「最多等 1.5 秒」那种定时器：无头/虚拟时钟下定时器会抢跑，
+       真实用户那边又没必要为一次读盘拖住首屏。 */
+    try { render(); } catch (e) { console.log('[boot] 首屏失败', e); }
+    if (typeof window.__bigLoad !== 'function') { window.__bootBl = 'no-idb'; return; }
+    window.__bigLoad().then(function (r) {
+      window.__bootBl = r;
+      try { if (typeof invalidateBanks === 'function') invalidateBanks(); } catch (e) {}
+      try { render(); } catch (e) { console.log('[boot] 二次渲染失败', e); }
+    }, function (e) {
+      window.__bootBl = 'ERR ' + ((e && e.message) || e);
+    });
+  })();
 
   /* PWA：只在 http(s) 下注册（双击本地打开时浏览器不支持 Service Worker） */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

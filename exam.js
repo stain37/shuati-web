@@ -93,7 +93,7 @@ function paintExamQuestion(bank) {
   const timed = (EX.duration || 0) > 0;
 
   const opts = q.options.map((t, j) => {
-    const K = 'ABCDEFGH'[j];
+    const K = 'ABCDEFGHIJKL'[j];
     return `<button class="opt${sel.includes(K) ? ' sel' : ''}" data-k="${K}"><span class="k">${K}</span><span>${(typeof stemHtml === 'function') ? stemHtml(optText(t, K)) : esc(t)}</span></button>`;
   }).join('');
 
@@ -227,7 +227,7 @@ function paintExamResult(bank) {
           ${q.group ? `<div class="gstem"><b>共用题干：</b>${(typeof stemHtml === 'function') ? stemHtml(q.group) : esc(q.group)}</div>` : ''}
           <div class="stem-sm">${(typeof stemHtml === 'function') ? stemHtml(q.stem) : esc(q.stem)}</div>
           <div class="opts-sm">${q.options.map((o, j) => {
-            const K = 'ABCDEFGH'[j], right = ansOf(fk, q).includes(K), mine = (r.sel || []).includes(K);
+            const K = 'ABCDEFGHIJKL'[j], right = ansOf(fk, q).includes(K), mine = (r.sel || []).includes(K);
             return `<div class="o ${right ? 'r' : ''}${mine && !right ? ' w' : ''}"><b>${K}</b>${(typeof stemHtml === 'function') ? stemHtml(o) : esc(o)}${right ? '<span class="mini-tag ok">正确</span>' : ''}${mine && !right ? '<span class="mini-tag bad">我选的</span>' : ''}</div>`;
           }).join('')}</div>
           <div class="exp">${renderRich(fk, explainOf(fk, q))}</div>

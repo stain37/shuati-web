@@ -27,7 +27,7 @@
   var TAG_CONC = 3;               /* 一键贴标签：同时跑几批（2–4 合适；更大容易被服务商限流） */
   /* 贴标签用的题目行：比 qLine 瘦一半 token，选项截 30 字、题干截 260 字，答案保留 */
   function qTagLine(q, i) {
-    var o = (q.options || []).map(function (x, j) { return 'ABCDEFGH'[j] + '.' + String(x || '').slice(0, 30); }).join(' ');
+    var o = (q.options || []).map(function (x, j) { return 'ABCDEFGHIJKL'[j] + '.' + String(x || '').slice(0, 30); }).join(' ');
     var ans = (q.answer || []).join('');
     return (i + 1) + '. ' + String(q.stem || '').slice(0, 260) + (o ? ' ' + o : '') + (ans ? ' 答' + ans : '');
   }
@@ -1130,7 +1130,7 @@
     return null;
   }
   function qLine(q, i) {
-    var o = (q.options || []).map(function (x, j) { return 'ABCDEFGH'[j] + '. ' + x; }).join(' ');
+    var o = (q.options || []).map(function (x, j) { return 'ABCDEFGHIJKL'[j] + '. ' + x; }).join(' ');
     var ans = (q.answer || []).join('');
     return (i + 1) + '. ' + String(q.stem || '') + (o ? ' ' + o : '') + (ans ? ' 答案：' + ans : '');
   }
