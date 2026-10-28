@@ -514,11 +514,25 @@ function kbEmbStoreGet(ck) {
     } catch (e) { res(null); }
   });
 }
-/* 建一个库的远端向量：先读盘上缓存，缺的才调接口（16 段一批） */
-async function kbEmbBuild(id) {
+/* 建一个库的远端向量：先读盘上缓存，缺的才调接口（16 段一批）。
+   onProg(id, {done,total}) 用来给「② 知识库 → 一键建向量」刷进度。 */
+const KB_EMB_PROG = {};        /* 库id → {done,total} */
+const KB_EMB_RUN = Object.create(null);   /* 同一库同时只建一份，避免和 kbEnsure 里的自动建重复调接口 */
+function kbEmbBuild(id, onProg) {
+  if (KB_EMB_RUN[id]) {
+    if (typeof onProg === 'function') { try { onProg(id, KB_EMB_PROG[id] || { done: kbEmbDoneN(id), total: kbEmbCount(id) }); } catch (e) {} }
+    return KB_EMB_RUN[id];
+  }
+  const p = kbEmbBuildDo(id, onProg);
+  KB_EMB_RUN[id] = p;
+  const done = () => { delete KB_EMB_RUN[id]; };
+  p.then(done, done);
+  return p;
+}
+async function kbEmbBuildDo(id, onProg) {
   const model = kbEmbModel();
   if (!model || typeof aiEmbed !== 'function' || KB_EMB_BAD[id]) return false;
-  if (KB_EMB[id] && KB_EMB[id].__done) return true;
+  if (KB_EMB[id] && KB_EMB[id].__done) { KB_EMB_PROG[id] = { done: (KB_IDX[id] || { chunks: [] }).chunks.length || 0, total: (KB_IDX[id] || { chunks: [] }).chunks.length || 0 }; return true; }
   const idx = KB_IDX[id];
   if (!idx) return false;
   const map = KB_EMB[id] = KB_EMB[id] || Object.create(null);
@@ -530,6 +544,14 @@ async function kbEmbBuild(id) {
     if (cached) { map[ck] = Float32Array.from(cached); continue; }
     todo.push(c);
   }
+  const total = idx.chunks.length;
+  let n = 0;
+  idx.chunks.forEach(c => { if (map[model + '|' + id + '|' + c.ck]) n++; });
+  const rep = () => {
+    KB_EMB_PROG[id] = { done: Math.min(total, n), total: total };
+    if (typeof onProg === 'function') { try { onProg(id, KB_EMB_PROG[id]); } catch (e) {} }
+  };
+  rep();
   try {
     for (let i = 0; i < todo.length; i += 16) {
       const batch = todo.slice(i, i + 16);
@@ -539,16 +561,129 @@ async function kbEmbBuild(id) {
         if (!vecs[j]) return;
         const v = kbEmbNorm(vecs[j]);
         map[model + '|' + id + '|' + c.ck] = v;
+        n++;
         kbEmbPut(model + '|' + id + '|' + c.ck, v);
       });
+      rep();
       if (i % 160 === 0) await kbYield();
     }
     map.__done = true;
+    n = total;
+    rep();
     return true;
   } catch (e) {
     KB_EMB_BAD[id] = true;
     return false;
   }
+}
+/* ---------- 傻瓜式：一键把勾选（没勾＝全部）的库都建好向量 ---------- */
+let KB_EMB_RUNNING = false;
+function kbEmbCount(id) {
+  const idx = KB_IDX[id];
+  if (idx && idx.chunks && idx.chunks.length) return idx.chunks.length;
+  const k = KB_LIST.find(x => x.id === id) || {};
+  return +k.chunks || 0;
+}
+function kbEmbDoneN(id) {
+  const model = kbEmbModel();
+  const map = KB_EMB[id];
+  if (!map || !model) return 0;
+  if (map.__done) return kbEmbCount(id);
+  const idx = KB_IDX[id];
+  if (!idx || !idx.chunks) return 0;
+  let n = 0;
+  idx.chunks.forEach(c => { if (map[model + '|' + id + '|' + c.ck]) n++; });
+  return n;
+}
+function kbEmbSummary() {
+  const ids = KB_LIST.map(k => k.id);
+  let total = 0, done = 0, libs = 0, ready = 0;
+  ids.forEach(id => {
+    const t = kbEmbCount(id);
+    if (!t) return;
+    libs++;
+    total += t;
+    const d = kbEmbDoneN(id);
+    done += d;
+    if (d >= t) ready++;
+  });
+  return { libs: libs, ready: ready, total: total, done: done };
+}
+/* 进度条：0-100 */
+function kbEmbSetBar(pct) {
+  const f = $('kbEmbFill');
+  if (!f) return;
+  const p = Math.max(0, Math.min(100, +pct || 0));
+  f.style.width = p.toFixed(1) + '%';
+  f.style.background = p >= 100 ? '#12b886' : '#4c8dff';
+}
+/* 对外就这一个：先把文案刷好，再按总进度画条 */
+function kbEmbPaint() {
+  try { kbEmbPaint_(); } catch (e) {}
+  const s = kbEmbSummary();
+  kbEmbSetBar(s.total ? (s.done * 100 / s.total) : 0);
+}
+function kbEmbPaint_() {
+  const st = $('kbEmbState'), tip = $('kbEmbTip'), btn = $('kbEmbAll');
+  if (!st) return;
+  const model = kbEmbModel();
+  const base = (typeof AIC === 'object' && AIC && AIC.embBase) ? String(AIC.embBase) : '';
+  const s = kbEmbSummary();
+  if (!model) {
+    st.innerHTML = '<b style="color:#c0392b">还没配向量模型</b>：先去 <b>① AI 服务</b> 把「向量模型」和「向量接口地址」填上';
+    if (btn) { btn.disabled = true; btn.textContent = '一键建向量'; }
+    if (tip) tip.innerHTML = '填好之后回到这里，点一下这个按钮就行：它会自动切段、逐段调本机向量服务、存进浏览器（下次刷新不用重来）。';
+    return;
+  }
+  if (KB_EMB_RUNNING) {
+    st.innerHTML = '正在建：<b>' + s.done.toLocaleString() + ' / ' + s.total.toLocaleString() + '</b> 段（' + s.ready + '/' + s.libs + ' 本已完成）';
+    if (btn) { btn.disabled = true; btn.textContent = '正在建…'; }
+    if (tip) tip.textContent = '可以先去别的页面，建完会提示；本机服务在跑的话每批 16 段约 50 毫秒。';
+    return;
+  }
+  if (!s.libs) {
+    st.textContent = '目录里还没有资料库（下面先导入书 / 生成 知识库.js）';
+    if (btn) { btn.disabled = true; btn.textContent = '一键建向量'; }
+    return;
+  }
+  if (s.done >= s.total) {
+    st.innerHTML = '✅ <b>' + s.libs + ' 本资料库都建好了</b>：共 ' + s.done.toLocaleString() + ' 段 · 模型 ' + esc(model);
+    if (btn) { btn.disabled = false; btn.textContent = '全部重建'; }
+    if (tip) tip.textContent = '换模型（比如从 bge-small 换成 bge-m3）或加了新资料后，再点一次就只补缺的那些段。';
+    return;
+  }
+  st.innerHTML = '已建 ' + s.done.toLocaleString() + ' / ' + s.total.toLocaleString() + ' 段 · ' + s.ready + '/' + s.libs + ' 本完成 · 模型 ' + esc(model);
+  if (btn) { btn.disabled = false; btn.textContent = '一键建向量（还差 ' + (s.total - s.done).toLocaleString() + ' 段）'; }
+  if (tip) tip.textContent = '点一下会自动把勾选的库（一个都没勾就＝全部）切段、逐段建向量并存进浏览器；走的地址：' + esc(base || (AIC.base || '（同聊天接口地址）'));
+}
+async function kbEmbRunAll() {
+  if (KB_EMB_RUNNING) return;
+  if (!kbEmbModel()) { toast('先在 ① AI 服务 里填「向量模型」和「向量接口地址」'); return; }
+  if (typeof aiEmbed !== 'function') { toast('AI 模块没加载好，刷新一下再试'); return; }
+  const sel = kbSelected();
+  const ids = (sel && sel.length ? sel : KB_LIST.map(k => k.id)).filter(id => kbEmbCount(id) > 0);
+  if (!ids.length) { toast('没有可建的资料库'); return; }
+  const left = ids.filter(id => kbEmbDoneN(id) < kbEmbCount(id));
+  const run = left.length ? left : ids;      /* 都建好了再点＝全部重建（会先清缓存标记） */
+  KB_EMB_RUNNING = true;
+  kbEmbPaint();
+  let okN = 0, badN = 0;
+  try {
+    for (const id of run) {
+      try { await kbEnsure(id); } catch (e) {}
+      if (!KB_IDX[id]) { badN++; continue; }
+      if (!left.length) { delete KB_EMB[id]; delete KB_EMB_PROG[id]; }   /* 重建：丢掉内存映射，缓存还在 IndexedDB 里会自动命中 */
+      const r = await kbEmbBuild(id, () => kbEmbPaint());
+      if (r) okN++; else badN++;
+      try { await kbYield(); } catch (e) {}
+    }
+  } finally {
+    KB_EMB_RUNNING = false;
+    kbEmbPaint();
+  }
+  toast(badN
+    ? ('建好了 ' + okN + ' 本，失败 ' + badN + ' 本（确认本机向量服务在跑，日志 工作1\\local-embed.log）')
+    : ('向量建完了：' + okN + ' 本'), 4600);
 }
 async function kbEmbQueryVec(query) {
   const model = kbEmbModel();
@@ -972,6 +1107,17 @@ function kbRowHtml(k) {
     + '<label class="kbchk"><input type="checkbox" data-kbsel="' + k.id + '"' + (on ? ' checked' : '') + '><span>' + esc(k.name) + '</span></label>'
     + '<span class="mini-tag' + (k.src === 'file' ? ' ok' : '') + '">' + (k.src === 'file' ? '文件' : '网页导入') + '</span>'
     + '<span class="kbinfo small muted">' + (k.docs || 0) + ' 篇 · ' + (k.chars || 0).toLocaleString() + ' 字 · ' + (k.chunks || 0) + ' 段</span>'
+    + (function () {
+      let em = '';
+      try { em = (typeof kbEmbModel === 'function') ? kbEmbModel() : ''; } catch (e) {}
+      if (!em) return '';
+      let t = 0, d = 0;
+      try { t = kbEmbCount(k.id); d = kbEmbDoneN(k.id); } catch (e) {}
+      if (!t) return '';
+      const ok = d >= t;
+      return '<span class="mini-tag' + (ok ? ' ok' : '') + '" title="语义向量：' + (ok ? '已建好' : '还没建完，点上面「一键建向量」') + '">'
+        + (ok ? '向量 ✓' : '向量 ' + Math.round(d * 100 / t) + '%') + '</span>';
+    })()
     + '<span class="spacer-grow"></span>'
     + '<button class="btn tiny" data-kbact="open">' + (open ? '收起' : '明细') + '</button>'
     + '<button class="btn tiny" data-kbact="rename">改名</button>'
@@ -998,6 +1144,17 @@ function kbLibHtml() {
   L.push('<div class="card kbcard">');
   L.push('<div class="kbhead">② 知识库 <span class="small muted" id="kbUsage">' + esc(kbUsageText()) + '</span></div>');
   L.push('<div class="hint">资料只存在本机浏览器里。<b>大资料</b>更推荐把文件放进站点的 <code>资料/</code> 文件夹，双击 <code>转知识库.bat</code> 生成 <code>知识库.js</code>，本站会自动挂载（不受浏览器 5 MB 限制）。</div>');
+  /* 一键建向量（傻瓜式）：状态 + 按钮 + 进度条，配置和分段全自动 */
+  L.push('<div id="kbEmbBox" style="margin:12px 0;padding:10px 12px;border:1px solid #dbe4f0;border-radius:10px;background:#f7fafd">'
+    + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    + '<b style="flex:0 0 auto">向量检索</b>'
+    + '<div class="small" id="kbEmbState" style="flex:1 1 240px;min-width:180px">正在读状态…</div>'
+    + '<button class="btn primary" id="kbEmbAll">一键建向量</button>'
+    + '</div>'
+    + '<div id="kbEmbBarTrack" style="height:6px;background:#e6edf7;border-radius:3px;margin-top:8px;overflow:hidden">'
+    + '<i id="kbEmbFill" style="display:block;height:100%;width:0;background:#4c8dff;border-radius:3px;transition:width .25s"></i></div>'
+    + '<div class="small muted" id="kbEmbTip" style="margin-top:6px">点上面的按钮就行：自动分段、自动调本机向量服务、自动存进浏览器；中途关掉也不怕，下次接着建剩下的。</div>'
+    + '</div>');
   L.push('<div class="kbList" id="kbRows">' + rows + '</div>');
   if (KB_SKIP.length) {
     L.push('<div class="kbSkipped small muted" id="kbSkipped" style="margin-top:10px">已删掉、刷新也不再自动挂载：'
@@ -1107,6 +1264,8 @@ function kbBind(host) {
     if (files.length) await kbImportFiles(files);
   }, 'change');
   on('kbPasteAdd', () => kbImportPaste());
+  on('kbEmbAll', () => { kbEmbRunAll(); });
+  try { kbEmbPaint(); } catch (e) {}
   on('kbSearchBtn', () => kbRunTest());
   on('kbEvalBtn', () => kbRunEval());
   on('kbQ', e => { if (e.key === 'Enter') kbRunTest(); }, 'keydown');
