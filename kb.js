@@ -1417,10 +1417,30 @@ window.kbEvalSet = kbEvalSet;
    所以要单独一个「挂过一次就算数」的标记。 */
 let KB_FILES_TRIED = false;
 let KB_FILES_PROMISE = null;
+/* 引导脚本 知识库.js 是「异步再挂 kb/manifest.js」的：它的 onload 早于目录到达，
+   这时 kbIngestFiles() 还看不到 __KBM__，书单就是空的（表现＝原来的书全没了）。
+   所以挂完要盯一眼目录，到了就补进 KB_LIST 并重画一次。 */
+function kbFilesWatch() {
+  if (window.__KBM_WATCH) return;
+  if (window.__KBM__ && window.__KBM__.length) return;
+  let n = 0;
+  window.__KBM_WATCH = setInterval(function () {
+    n++;
+    if (window.__KBM__ && window.__KBM__.length) {
+      clearInterval(window.__KBM_WATCH); delete window.__KBM_WATCH;
+      try { kbIngestFiles(); } catch (e) {}
+      try { if (typeof route === 'function' && route().name === 'kb') render(); } catch (e) {}
+    } else if (n > 100) {                       /* 10 秒还没来：放弃，别一直空转 */
+      clearInterval(window.__KBM_WATCH); delete window.__KBM_WATCH;
+    }
+  }, 100);
+}
 function kbEnsureFilesLoaded(force) {
-  if (KB_FILES_DONE || (window.__KBS__ && window.__KBS__.length)) return Promise.resolve({ ok: true, added: kbIngestFiles() });
+  if (KB_FILES_DONE || (window.__KBS__ && window.__KBS__.length)
+    || (window.__KBM__ && window.__KBM__.length)) return Promise.resolve({ ok: true, added: kbIngestFiles() });
   if (KB_FILES_PROMISE) return KB_FILES_PROMISE;
   if (KB_FILES_TRIED && !force) return Promise.resolve({ ok: false, added: 0, skipped: true });
+  kbFilesWatch();
   KB_FILES_LOADING = true;
   KB_FILES_PROMISE = new Promise(resolve => {
     const s = document.createElement('script');
@@ -1433,6 +1453,7 @@ function kbEnsureFilesLoaded(force) {
          没挂上就留个机会，下次进这页再试一次 —— 但失败时绝不重画，
          否则「重画 → 挂脚本 → 重画」还是会自己叫自己。 */
       KB_FILES_TRIED = !!ok;
+      kbFilesWatch();                       /* 目录可能还没到：盯一眼，到了再补书单 */
       const added = kbIngestFiles();
       kbPreheatIndex();
       if (ok && route().name === 'kb') { try { render(); } catch (e) {} }
