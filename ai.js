@@ -22,7 +22,7 @@ const AI_PRESETS = {
   custom:  { label: '自定义（任意 OpenAI 兼容接口）', base: '', model: '', models: [],
              tip: '填类似 https://xxx/v1 的地址；本地服务一般不需要 Key。' }
 };
-const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true, models: null, tempFix: null };
+const AI_DEF = { preset: 'ollama', base: AI_PRESETS.ollama.base, model: 'qwen2.5:7b', key: '', temp: 0.3, topK: 4, maxChars: 3500, stream: true, sys: '', tmpl: false, expand: true, rerank: true, models: null, tempFix: null, embBase: '' };
 let AIC = readLS(AI_LS, null) || {};
 Object.keys(AI_DEF).forEach(k => { if (AIC[k] == null) AIC[k] = AI_DEF[k]; });
 function aiSave() { writeLS(AI_LS, AIC); }
@@ -205,7 +205,10 @@ async function aiEmbed(texts, opts) {
   if (!model) return null;
   const list = (texts || []).map(t => String(t == null ? '' : t).slice(0, 2000));
   if (!list.length) return [];
-  const url = aiBase(cfg) + '/embeddings';
+  /* 向量接口可以单独一个地址（比如聊天走云端、向量走本机 127.0.0.1:8099）；
+     留空就沿用上面的接口地址。 */
+  const embBase = String(cfg.embBase || '').trim() || cfg.base;
+  const url = aiBase({ base: embBase }) + '/embeddings';
   const r = await fetch(url, { method: 'POST', headers: aiHeaders(cfg), body: JSON.stringify({ model: model, input: list }) });
   if (!r.ok) throw new Error('向量接口 HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
   const j = await r.json();
@@ -1723,7 +1726,8 @@ function aiConfigHtml() {
   L.push('<span class="tl" title="这些参考资料加起来最多送给模型多少字。要跟上面的片段数配套：片段数 × 620 字以内才不会被截断。">资料上限</span><input class="num" id="aiMaxChars" type="number" min="600" max="20000" step="200" style="width:92px">');
   L.push('<label class="chk"><input type="checkbox" id="aiStream"> 流式输出</label></div>');
   L.push('<div class="small muted" id="aiRagTip"></div>');
-  L.push('<div class="row" style="margin-top:6px"><span class="tl" title="填了就启用向量检索（知识库混合检索里的向量票）。要填服务端支持 /embeddings 的模型名，例如 text-embedding-3-small、bge-m3、nomic-embed-text。留空＝只用本地轻量字符向量（不联网、不花钱，但只能补词形相近）。">向量模型</span><input class="txt" id="aiEmbModel" placeholder="留空＝只用本地轻量向量" style="flex:1"></div>');
+  L.push('<div class="row" style="margin-top:6px"><span class="tl" title="填了就启用向量检索（知识库混合检索里的向量票）。要填服务端支持 /embeddings 的模型名，例如 text-embedding-3-small、bge-m3、nomic-embed-text。本机自建的向量服务填 bge-small-zh-v1.5。留空＝只用本地轻量字符向量（不联网、不花钱，但只能补词形相近）。">向量模型</span><input class="txt" id="aiEmbModel" placeholder="留空＝只用本地轻量向量" style="flex:1"></div>');
+  L.push('<div class="row" style="margin-top:6px"><span class="tl" title="只想让向量走本机、聊天还走云端时填这里，例如 http://127.0.0.1:8099（会自动补 /v1）。留空＝和上面的接口地址同一个，API Key 也沿用上面的。">向量接口地址</span><input class="txt" id="aiEmbBase" placeholder="留空＝同上面的接口地址" style="flex:1"></div>');
   L.push('<div class="tools"><label class="chk"><input type="checkbox" id="aiExpand"> 检索前让模型把题目扩写成几组检索词</label>'
     + '<label class="chk"><input type="checkbox" id="aiRerank"> 让模型给捞回来的段落重排</label></div>');
   L.push('<div class="small muted" id="aiSearchTip"></div>');
@@ -1787,6 +1791,7 @@ function aiReadForm() {
   if (v('aiMaxChars') != null) AIC.maxChars = Math.max(600, Math.min(20000, +v('aiMaxChars') || 3500));
   if ($('aiStream')) AIC.stream = !!$('aiStream').checked;
   if (v('aiEmbModel') != null) { writeLS('qbank.kb.embmodel.v1', String(v('aiEmbModel') || '').trim()); if (typeof kbEmbSetModel === 'function') kbEmbSetModel(v('aiEmbModel')); }
+  if (v('aiEmbBase') != null) AIC.embBase = String(v('aiEmbBase') || '').trim();
   if ($('aiExpand')) AIC.expand = !!$('aiExpand').checked;
   if ($('aiRerank')) AIC.rerank = !!$('aiRerank').checked;
   if ($('aiTmpl')) AIC.tmpl = !!$('aiTmpl').checked;
@@ -1827,6 +1832,7 @@ function aiPaintForm() {
   set('aiBase', AIC.base); set('aiModel', AIC.model); set('aiKey', AIC.key);
   set('aiTemp', AIC.temp); set('aiTopK', AIC.topK); set('aiMaxChars', AIC.maxChars); set('aiSys', AIC.sys || '');
   set('aiEmbModel', readLS('qbank.kb.embmodel.v1', ''));
+  set('aiEmbBase', AIC.embBase || '');
   aiPaintTempTip();
   if ($('aiTmpl')) $('aiTmpl').checked = !!AIC.tmpl;
   const ms = (AI_PRESETS[AIC.preset] || {}).models || [];
@@ -1894,7 +1900,7 @@ function aiBindConfig() {
     aiPaintForm();
     const st = $('aiState'); if (st) { st.textContent = '已清空本机配置'; st.className = 'aistate ok'; }
   });
-  ['aiBase', 'aiModel', 'aiKey', 'aiTemp', 'aiTopK', 'aiMaxChars', 'aiSys', 'aiExpand', 'aiRerank', 'aiEmbModel'].forEach(id => on(id, aiReadForm, 'change'));
+  ['aiBase', 'aiModel', 'aiKey', 'aiTemp', 'aiTopK', 'aiMaxChars', 'aiSys', 'aiExpand', 'aiRerank', 'aiEmbModel', 'aiEmbBase'].forEach(id => on(id, aiReadForm, 'change'));
   on('aiStream', aiReadForm, 'change');
   on('aiTestBtn', aiTest);
   on('aiDetectBtn', () => aiDetect(false));
