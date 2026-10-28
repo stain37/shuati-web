@@ -136,10 +136,35 @@
      ============================================================ */
   function stripShape(t) {
     var n = 0;
-    while (n < 2 && /^[\(\[]/.test(t) && /[\)\]]$/.test(t) && t.length > 2) {
+    while (n < 3 && /^[\(\[]/.test(t) && /[\)\]]$/.test(t) && t.length > 2) {
       t = t.slice(1, -1).trim(); n++;
     }
     return t;
+  }
+  /* mermaid 的节点写法：root((文字)) / A[文字] / B{判断} —— 以前只剥括号不剥 id，
+     「root(("合成酶"))」整串被当成标签画进框里（用户报「思维导图变成源码」）。 */
+  function mindLabel(t) {
+    var s = String(t == null ? '' : t).trim();
+    var P = '(?:[A-Za-z_][\\w\\-]*)?\\s*';
+    var forms = [
+      new RegExp('^' + P + '\\(\\(([\\s\\S]*)\\)\\)$'),
+      new RegExp('^' + P + '\\[\\[([\\s\\S]*)\\]\\]$'),
+      new RegExp('^' + P + '\\[\\(' + '([\\s\\S]*)\\)\\]$'),
+      new RegExp('^' + P + '\\{\\{([\\s\\S]*)\\}\\}$'),
+      new RegExp('^' + P + '\\[([\\s\\S]*)\\]$'),
+      new RegExp('^' + P + '\\(([\\s\\S]*)\\)$'),
+      new RegExp('^' + P + '\\{([\\s\\S]*)\\}$')
+    ];
+    for (var k = 0; k < 3; k++) {
+      var done = false;
+      for (var j = 0; j < forms.length; j++) {
+        var m = forms[j].exec(s);
+        if (m && m[1] && m[1].trim()) { s = m[1].trim(); done = true; break; }
+      }
+      if (!done) break;
+    }
+    s = s.replace(/^["'“”]+/, '').replace(/["'“”]+$/, '').trim();
+    return stripShape(s);
   }
 
   function parseMindRows(src) {
@@ -155,7 +180,7 @@
       var hm = /^(#+)\s*(.+)$/.exec(t);
       if (hm) { t = hm[2]; indent = (hm[1].length - 1) * 2; }
       t = t.replace(/^[-*+]\s+/, '').replace(/^\d+[.)]\s+/, '');
-      t = stripShape(t);
+      t = mindLabel(t);
       if (!t) continue;
       rows.push({ indent: indent, text: t });
     }

@@ -1266,7 +1266,8 @@ function aiSrcSig(hits) {
 }
 function aiSrcAnyOpen() { try { return !!document.querySelector('.aisrc-full'); } catch (e) { return false; } }
 /* 「更多」旁边那个空位：本次 AI 解析用了几条资料，就显示一个小小的「📎 资料 3」。
-   点它 → 滚到参考资料那一行并闪一下（以前参考资料整块堆在正文下面，占高度还会上下滑）。 */
+   点它 → 直接在按钮旁边摊开列表，点某条就地看原文（web178 第 ⑦ 条：不再只是把你滚过去）。 */
+let AI_SRC_HITS = [];
 function aiSrcJump(n, names) {
   let el = null;
   try { el = document.getElementById('srcJump'); } catch (e) {}
@@ -1274,20 +1275,78 @@ function aiSrcJump(n, names) {
   if (!n) { el.hidden = true; el.textContent = ''; return; }
   el.hidden = false;
   el.textContent = '📎 资料 ' + n;
-  el.title = '这次解析引用了 ' + n + ' 条资料' + (names ? '：' + names : '') + '（点一下看原文）';
+  el.title = '这次解析引用了 ' + n + ' 条资料' + (names ? '：' + names : '') + '（点一下直接看原文）';
   if (!el.__bound) {
     el.__bound = 1;
-    el.addEventListener('click', function () {
-      const box = document.querySelector('.aisrc');
-      if (!box) return;
-      try { box.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { box.scrollIntoView(); }
-      box.classList.add('flash');
-      setTimeout(function () { box.classList.remove('flash'); }, 900);
-      const t = box.querySelector('.aitag');
-      if (t) t.click();
+    el.addEventListener('click', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      aiSrcPanel(el);
     });
   }
 }
+let AI_SRC_PANEL = null;
+function aiSrcPanel(anchor) {
+  const close = () => { if (AI_SRC_PANEL) { AI_SRC_PANEL.remove(); AI_SRC_PANEL = null; } };
+  if (AI_SRC_PANEL) { close(); return; }
+  const hits = AI_SRC_HITS || [];
+  if (!hits.length) return;
+  const box = document.createElement('div');
+  box.className = 'srcpop';
+  box.innerHTML = '<div class="srcpop-h">参考资料 · ' + hits.length + ' 条<span class="srcpop-x" title="关掉">✕</span></div>'
+    + hits.map(function (h, i) {
+      return '<button type="button" class="srcpop-i" data-i="' + i + '">'
+        + '<b>[' + (i + 1) + '] ' + esc(aiSrcName(h)) + (h.page ? ' 第 ' + h.page + ' 页' : '') + '</b>'
+        + '<span>' + esc(String(h.head || h.snip || '').slice(0, 90)) + '</span></button>';
+    }).join('');
+  document.body.appendChild(box);
+  AI_SRC_PANEL = box;
+  const r = anchor.getBoundingClientRect(), br = box.getBoundingClientRect();
+  let x = Math.min(r.left, window.innerWidth - br.width - 8);
+  let y = r.bottom + 6;
+  if (y + br.height > window.innerHeight - 8) y = Math.max(8, r.top - br.height - 6);
+  box.style.left = Math.max(8, x) + 'px';
+  box.style.top = y + 'px';
+  box.querySelector('.srcpop-x').onclick = close;
+  Array.prototype.forEach.call(box.querySelectorAll('.srcpop-i'), function (b) {
+    b.onclick = function () {
+      const h = hits[+b.getAttribute('data-i')];
+      if (!h) return;
+      close();
+      aiSrcModal(h);
+    };
+  });
+  setTimeout(function () {
+    document.addEventListener('click', function onDoc(e) {
+      if (!AI_SRC_PANEL) { document.removeEventListener('click', onDoc, true); return; }
+      if (AI_SRC_PANEL.contains(e.target)) return;
+      close(); document.removeEventListener('click', onDoc, true);
+    }, true);
+  }, 0);
+}
+/* 原文弹窗：整节正文，可滚动 */
+function aiSrcModal(h) {
+  const old = document.getElementById('srcModal');
+  if (old) old.remove();
+  const full = String(h.full || h.text || h.snip || '');
+  const m = document.createElement('div');
+  m.className = 'mask show srcmodal';
+  m.id = 'srcModal';
+  m.innerHTML = '<div class="sheet srcsheet"><div class="srcsheet-h">《' + esc(aiSrcName(h)) + '》'
+    + (h.page ? '第 ' + h.page + ' 页' : '') + (h.head ? '　·　' + esc(h.head) : '')
+    + '<span class="srcsheet-x" title="关掉">✕</span></div><div class="srcsheet-b">' + aiPdfBlockHtml(h, full) + '</div></div>';
+  document.body.appendChild(m);
+  aiBindPdfInline(m);
+  const close = function () { m.remove(); };
+  m.querySelector('.srcsheet-x').onclick = close;
+  m.addEventListener('click', function (ev) { if (ev.target === m) close(); });
+  document.addEventListener('keydown', function esc2(ev) {
+    if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc2, true); }
+  }, true);
+}
+window.aiSrcPanel = aiSrcPanel;
+window.aiSrcModal = aiSrcModal;
+/* 调试/探针用：直接塞一批 hits，看资料面板长什么样 */
+window.aiSrcHits = function (h) { AI_SRC_HITS = (h || []).slice(); };
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;
@@ -1296,10 +1355,12 @@ function aiPaintSrc(host, ctx) {
     box.innerHTML = (typeof kbList === 'function' && kbList().length)
       ? '<span class="small muted">本次没用知识库（没勾选，或没命中相关内容）</span>'
       : '';
+    AI_SRC_HITS = [];
     aiSrcJump(0, '');
     return;
   }
   const sig = aiSrcSig(ctx.hits);
+  AI_SRC_HITS = ctx.hits.slice();
   aiSrcJump(ctx.hits.length, ctx.hits.map(h => aiSrcName(h)).slice(0, 4).join('、'));
   box.innerHTML = '参考资料：' + ctx.hits.map((h, i) => {
     const pg = h.page ? ' 第 ' + h.page + ' 页' : '';

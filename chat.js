@@ -667,8 +667,12 @@
     var t = String(text || '');
     var hasBank = (atts || []).some(function (a) { return a.kind === 'bank' || a.kind === 'cat' || a.kind === 'file-bank'; });
     var quiz = /出.{0,10}题|出题|生成.{0,10}题|出几道|来几道|出几题|来几题|来.{0,6}[0-9一二三四五六七八九十两几]{1,3}\s*(道|题)|(出|给|来|弄).{0,10}[0-9一二三四五六七八九十两几]{1,3}\s*(道|题)|考我|考考我|做题|组.{0,4}(套卷|卷子)|做.{0,3}(套卷|卷子)|做成.{0,6}题库|建.{0,6}题库/.test(t);
+    /* 「根据知识点出题」「按考点出几道」以前会被「知识点/考点」这几个词拐去分析题库，
+       用户要的是题目。所以分析只在出现「真的在分析」的词时才压过出题（web178 第 ⑩ 条）。 */
+    var analyzeHard = /分析|总结|归纳|梳理|为什么|错在哪|薄弱|易错|复习计划|复习建议|统计|正确率|错误率|得分率/.test(t);
     var analyze = /分析|总结|归纳|梳理|易错|薄弱|错题|知识点|考点|统计|复习计划|复习建议/.test(t);
-    if (quiz && !analyze) return 'quiz';
+    if (quiz && !analyzeHard) return 'quiz';
+    if (analyzeHard) return 'analyze';
     if (analyze) return 'analyze';
     if (hasBank) return 'analyze';
     return 'qa';

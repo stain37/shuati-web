@@ -75,7 +75,7 @@ function mdFenceHtml(lang, body) {
   /* ```latex / ```tex / ```math —— AI 很爱这么写公式；以前只当普通代码块，公式是死字 */
   if (window.katex && typeof window.katex.renderToString === 'function' && (l === 'latex' || l === 'tex' || l === 'math' || l === 'katex')) {
     try {
-      return '<div class="md-mathblock">' + window.katex.renderToString(String(body || '').trim(), { displayMode: true, throwOnError: false, strict: 'ignore' }) + '</div>';
+      return '<div class="md-mathblock">' + window.katex.renderToString(mdTexFix(String(body || '').trim()), { displayMode: true, throwOnError: false, strict: 'ignore' }) + '</div>';
     } catch (e) {}
   }
   mdCopyInitOnce();
@@ -139,13 +139,22 @@ function mdMathExtract(md) {
   s = s.replace(/(^|[^\\$\u0003])\$([^\n$]+?)\$(?!\d)/g, (m, pre, t) => pre + put(t, false));
   return store.length ? { txt: s, store: store } : null;
 }
+/* 有的来源（AI 回复被复制、JSON 转义过）会把 LaTeX 写成 \\mathrm{...} 双反斜杠：
+   KaTeX 认不出这种命令，会把整段当普通文字画出来 —— 用户看到「公式变成源码」多半是这个。
+   只把「双反斜杠 + 字母」合并成单反斜杠，公式里真正的换行 \\ 后面一般不跟字母，不受影响。 */
+function mdTexFix(tex) {
+  let t = String(tex == null ? '' : tex).replace(/\r/g, '');
+  if (/\\\\[A-Za-z]/.test(t)) t = t.replace(/\\\\(?=[A-Za-z])/g, '\\');
+  return t;
+}
 function mdMathBack(html, M) {
   if (!M) return html;
   return String(html).replace(/\u0003M(\d+)\u0003/g, (m, i) => {
     const it = M.store[+i];
     if (!it) return '';
-    try { return window.katex.renderToString(it.tex, { displayMode: it.display, throwOnError: false, strict: 'ignore' }); }
-    catch (e) { return esc(it.display ? '$$' + it.tex + '$$' : '$' + it.tex + '$'); }
+    const tex = mdTexFix(it.tex);
+    try { return window.katex.renderToString(tex, { displayMode: it.display, throwOnError: false, strict: 'ignore' }); }
+    catch (e) { return esc(it.display ? '$$' + tex + '$$' : '$' + tex + '$'); }
   });
 }
 /* 题干 / 选项不走 markdown，但公式要能渲染：只把 $…$ / $$…$$ 换成 KaTeX，其余按纯文本转义（第 11 条覆盖到题干） */
@@ -699,6 +708,10 @@ function mdFromHtml(root) {
   }
   function inlineEl(n, inCode) {
     const tag = n.tagName.toLowerCase();
+    /* 编辑器自己的小把手 / 删除钮 / 勾选框不进 Markdown（以前「解析里的图」保存后会多出 *×* 这种垃圾） */
+    if (n.classList && (n.classList.contains('rich-rz') || n.classList.contains('rich-x') ||
+      n.classList.contains('md-chk') || n.classList.contains('blk-grip') ||
+      n.classList.contains('md-code-bar') || n.classList.contains('rich-drop'))) return '';
     if (tag === 'br') return '\n';
     if (tag === 'strong' || tag === 'b') return '**' + inlineOf(n, inCode) + '**';
     if (tag === 'em' || tag === 'i') return '*' + inlineOf(n, inCode) + '*';
@@ -928,6 +941,8 @@ function richImgWrap(img) {
   if (img.parentNode.classList && img.parentNode.classList.contains('rich-img')) return img.parentNode;
   const sp = document.createElement('span');
   sp.className = 'rich-img in-text';
+  sp.draggable = true;                                 /* 第 ② 条：图片可以拖到别处换个位置 */
+  sp.title = '按住图片拖到别的段落，就能换位置（松手就按新位置保存）';
   img.parentNode.insertBefore(sp, img);
   sp.appendChild(img);
   const h = document.createElement('i'); h.className = 'rich-rz'; h.title = '拖动改图片宽度';
@@ -991,12 +1006,133 @@ function richImgInitOnce() {
     drag = null;
     if (ed) ed.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  /* 第 ② 条（2026-10-28）：图片拖动换位置 —— 以前正文里的图只能删了重贴，
+     现在按住图拖到想放的地方松手就行，落点用 caretRangeFromPoint 算，保存时就是新顺序。 */
+  let imgDrag = null;
+  document.addEventListener('dragstart', function (e) {
+    const sp = e.target && e.target.closest ? e.target.closest('.rich-edit .rich-img') : null;
+    if (!sp) return;
+    imgDrag = sp;
+    sp.classList.add('dragging');
+    try {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', 'img-move');
+    } catch (err) {}
+  });
+  document.addEventListener('dragend', function () {
+    if (imgDrag) imgDrag.classList.remove('dragging');
+    imgDrag = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.rich-drop'), function (x) { x.remove(); });
+  });
+  document.addEventListener('dragover', function (e) {
+    if (!imgDrag) return;
+    const ed = e.target && e.target.closest ? e.target.closest('.rich-edit') : null;
+    if (!ed) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+    Array.prototype.forEach.call(document.querySelectorAll('.rich-drop'), function (x) { x.remove(); });
+    const rng = caretAt(e.clientX, e.clientY, ed);
+    if (!rng) return;
+    const mk = document.createElement('span');
+    mk.className = 'rich-drop';
+    try { rng.insertNode(mk); } catch (err) { return; }
+  });
+  document.addEventListener('drop', function (e) {
+    if (!imgDrag) return;
+    const ed = e.target && e.target.closest ? e.target.closest('.rich-edit') : null;
+    if (!ed) return;
+    e.preventDefault();
+    Array.prototype.forEach.call(document.querySelectorAll('.rich-drop'), function (x) { x.remove(); });
+    const sp = imgDrag;
+    imgDrag = null;
+    const rng = caretAt(e.clientX, e.clientY, ed);
+    Array.prototype.forEach.call(document.querySelectorAll('.rich-img.dragging'), function (x) { x.classList.remove('dragging'); });
+    if (!rng) { ed.appendChild(sp); }
+    else {
+      rng.deleteContents();
+      rng.insertNode(sp);
+      const after = document.createRange();
+      after.setStartAfter(sp); after.collapse(true);
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(after); }
+    }
+    ed.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+/* 光标落点：优先 caretRangeFromPoint，Firefox 用 caretPositionFromPoint 兜底 */function caretAt(x, y, ed) {
+  try {
+    if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(x, y);
+      if (r && ed.contains(r.startContainer)) return r;
+      return null;
+    }
+    if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(x, y);
+      if (!p || !ed.contains(p.offsetNode)) return null;
+      const r = document.createRange();
+      r.setStart(p.offsetNode, p.offset);
+      r.collapse(true);
+      return r;
+    }
+  } catch (e) {}
+  return null;
+}
+/* ---- 列表键位小工具（第 ④ 条）：Tab 缩进 / Shift+Tab 退层 / 空项 Enter 退出列表 ---- */
+function liOf(el) {
+  try {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    let n = sel.anchorNode;
+    if (!n) return null;
+    if (n.nodeType === 3) n = n.parentNode;
+    const li = n && n.closest ? n.closest('li') : null;
+    return li && el.contains(li) ? li : null;
+  } catch (e) { return null; }
+}
+function listIndent(li) {
+  const prev = li.previousElementSibling;
+  if (!prev) return false;                              /* 第一项没有「上一项」可挂 */
+  let sub = prev.querySelector(':scope > ul, :scope > ol');
+  if (!sub) {
+    sub = document.createElement(prev.parentNode.tagName.toLowerCase() === 'ol' ? 'ol' : 'ul');
+    prev.appendChild(sub);
+  }
+  sub.appendChild(li);
+  return true;
+}
+function listOutdent(li) {
+  const list = li.parentNode;
+  const grand = list && list.parentNode;
+  if (!grand || !/^li$/i.test(grand.tagName || '')) return false;
+  const outer = grand.parentNode;
+  if (!outer) return false;
+  outer.insertBefore(li, grand.nextSibling);
+  /* 里面的子列表跟着往外挪一层 */
+  if (!list.children.length) list.remove();
+  return true;
+}
+function liExit(li) {
+  const list = li.parentNode;
+  const p = document.createElement('p');
+  p.innerHTML = '<br>';
+  if (list && list.parentNode) list.parentNode.insertBefore(p, list.nextSibling);
+  else return false;
+  li.remove();
+  if (list && !list.children.length) list.remove();
+  try {
+    const r = document.createRange();
+    r.setStart(p, 0); r.collapse(true);
+    const sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(r); }
+  } catch (e) {}
+  return true;
 }
 function richInsertImgAtRange(el, rng, src, alt) {
   const x = document.createElement('img');
   x.src = src; x.alt = alt || ''; x.loading = 'lazy';
   const sp = document.createElement('span');
   sp.className = 'rich-img in-text';
+  sp.draggable = true;
   sp.appendChild(x);
   const h = document.createElement('i');
   h.className = 'rich-rz'; h.title = '拖动改图片宽度';
@@ -1188,6 +1324,24 @@ function richBind(el, fk) {
     }
     if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === 'y') {
       ev.preventDefault(); undoStep(el, 1); return;
+    }
+    /* 第 ④ 条：列表里 Tab / Shift+Tab 调层级；空列表项按 Enter 退回普通段落（Notion / AFFiNE 的肌肉记忆） */
+    if (ev.key === 'Tab' || ev.key === 'Enter') {
+      const li = liOf(el);
+      if (li) {
+        if (ev.key === 'Tab' && !ev.ctrlKey && !ev.metaKey) {
+          ev.preventDefault();
+          if (ev.shiftKey) listOutdent(li); else listIndent(li);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
+        if (ev.key === 'Enter' && !ev.shiftKey && !li.textContent.trim() && !li.querySelector('img,table,pre')) {
+          ev.preventDefault();
+          liExit(li);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
+      }
     }
     if (ev.key === 'Escape') {
       if (SLASH) { slashClose(); ev.stopPropagation(); return; }   // 先关菜单，别一按就直接收起编辑
@@ -1535,9 +1689,15 @@ function blkAct(act) {
     } catch (e) {}
     toast('下面插了一个空段落');
   } else if (act === 'del') {
-    if (kids.length <= 1) { toast('这是唯一一块，删了就空了'); return; }
-    node.remove();
-    toast('已删除这一块（存盘后生效）');
+    /* 唯一一块也要能删：删成空段落，编辑区不会塌（以前直接拦住，用户很不满） */
+    if (kids.length <= 1) {
+      node.innerHTML = '<br>';
+      try { el.focus(); } catch (e) {}
+      toast('已清空最后一块');
+    } else {
+      node.remove();
+      toast('已删除这一块（存盘后生效）');
+    }
   }
   el.dispatchEvent(new Event('input', { bubbles: true }));
   richState(el, '未保存…', true);
@@ -3170,6 +3330,7 @@ function paintHist() {
    解析块上给块操作 + 行内格式 + 转成；题目卡片上给收藏 / 错题 / 复制。 */
 var CTX_SEP = { sep: true };
 var CTX_MENU = null;
+var CTX_ANCHOR = null;   /* 右键落点：{el, dx, dy}，滚动时用来跟着走 */
 var CTX_LP = { t: 0, x: 0, y: 0, el: null };
 
 function ctxEsc(s) {
@@ -3194,11 +3355,31 @@ function ctxEl() {
     if (!CTX_MENU || CTX_MENU.hidden) return;
     if (ev.key === 'Escape') { ev.preventDefault(); ctxClose(); }
   }, true);
-  window.addEventListener('scroll', function () { ctxClose(); }, true);
+  /* 滚动时不再直接关掉菜单（以前滚轮一滑、编辑区内部一滚就消失，很难用）：
+     改成跟着右键落点那个元素走；那个元素被重画掉了才关。 */
+  window.addEventListener('scroll', function () {
+    if (!CTX_MENU || CTX_MENU.hidden) return;
+    var a = CTX_ANCHOR;
+    if (a && a.el && document.body.contains(a.el)) {
+      var r2 = a.el.getBoundingClientRect();
+      ctxPlace(r2.left + a.dx, r2.top + a.dy);
+    } else {
+      ctxClose();
+    }
+  }, true);
   return CTX_MENU;
 }
 function ctxClose() {
   if (CTX_MENU) CTX_MENU.hidden = true;
+}
+/* 把菜单摆到 (x,y)：超出视口就往回缩 */
+function ctxPlace(x, y) {
+  var box = CTX_MENU; if (!box || box.hidden) return;
+  var r = box.getBoundingClientRect();
+  var left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8));
+  var top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8));
+  box.style.left = left + 'px';
+  box.style.top = top + 'px';
 }
 /* items: [{t, d, icon, danger, run}] 或 CTX_SEP */
 function ctxOpen(items, x, y) {
@@ -3215,11 +3396,13 @@ function ctxOpen(items, x, y) {
   box.innerHTML = html;
   box.hidden = false;
   box.style.left = '0px'; box.style.top = '0px';
-  var r = box.getBoundingClientRect();
-  var left = Math.max(4, Math.min(x, window.innerWidth - r.width - 8));
-  var top = Math.max(4, Math.min(y, window.innerHeight - r.height - 8));
-  box.style.left = left + 'px';
-  box.style.top = top + 'px';
+  /* 记住右键落点相对它所在元素的位置：滚动时靠这个把菜单跟着走 */
+  try {
+    var hit = document.elementFromPoint(x, y);
+    var hr = hit ? hit.getBoundingClientRect() : null;
+    CTX_ANCHOR = { el: hit, dx: hr ? x - hr.left : 0, dy: hr ? y - hr.top : 0 };
+  } catch (e) { CTX_ANCHOR = null; }
+  ctxPlace(x, y);
   box.querySelectorAll('.ctx-item').forEach(function (b) {
     b.onclick = function () {
       var it = items[+b.getAttribute('data-ci')];

@@ -1,0 +1,3 @@
+﻿import io
+L=io.open("app.js",encoding="utf-8").read().splitlines()
+io.open(r"C:\Users\chen\Desktop\工作1\_l.txt","w",encoding="utf-8").write("\n".join("%d: %s"%(k+1,L[k].rstrip()) for k in range(4600,4665)))

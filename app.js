@@ -178,6 +178,9 @@ function attBind(fk) {
   if (add) add.onclick = () => attAdd(fk);
   rail.querySelectorAll('[data-att]').forEach(chip => {
     chip.onclick = ev => { if (ev.target.closest('[data-attx]')) return; attOpenItem(fk, +chip.dataset.att); };
+    /* 悬停预览（第 ⑨ 条）：鼠标飘上去先看一眼，和 B 站封面一个手感 */
+    chip.addEventListener('mouseenter', () => attPvShow(chip, fk, +chip.dataset.att));
+    chip.addEventListener('mouseleave', attPvHideSoon);
   });
   rail.querySelectorAll('[data-attx]').forEach(x => {
     x.onclick = ev => {
@@ -253,6 +256,66 @@ window.attRailHtml = attRailHtml;
 window.attBind = attBind;
 window.attPaint = attPaint;
 window.__attLoad = attLoad;
+
+/* 附件悬停预览：图片直接出图，文本类给前几百字，PDF/DOCX 给名字和大小（第 ⑨ 条） */
+let ATTPV = null, ATTPV_T = 0;
+function attPvHide() {
+  clearTimeout(ATTPV_T);
+  if (ATTPV) { ATTPV.remove(); ATTPV = null; }
+}
+function attPvHideSoon() { clearTimeout(ATTPV_T); ATTPV_T = setTimeout(attPvHide, 160); }
+function attPvShow(chip, fk, idx) {
+  clearTimeout(ATTPV_T);
+  attPvHide();
+  attLoad(fk).then(async list => {
+    const it = list && list[idx];
+    if (!it || !chip.isConnected) return;
+    const ext = String(it.name || '').toLowerCase().split('.').pop();
+    const kind = (ext === 'png' || ext === 'jpg' || ext === 'jpeg') ? 'img'
+      : (ext === 'txt' || ext === 'md') ? 'text'
+        : (ext === 'html' || ext === 'htm') ? 'html' : 'other';
+    let file = null;
+    try {
+      if (it.blob) file = it.blob;
+      else if (it.handle && it.handle.getFile) {
+        const perm = it.handle.queryPermission ? await it.handle.queryPermission({ mode: 'read' }) : 'granted';
+        if (perm === 'granted') file = await it.handle.getFile();   /* 没授权就不弹权限框，只显示名字 */
+      }
+    } catch (e) {}
+    const mb = file && file.size ? (file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(file.size / 1024)) + ' KB') : '';
+    const pv = document.createElement('div');
+    pv.className = 'attpv';
+    let inner = '<div class="attpv-t">' + esc(it.name) + (mb ? '　·　' + mb : '') + '</div>';
+    if (kind === 'img' && file) {
+      const u = URL.createObjectURL(file);
+      inner += '<img src="' + u + '" alt="">';
+      setTimeout(() => { try { URL.revokeObjectURL(u); } catch (e) {} }, 60000);
+    } else if (kind === 'text' && file) {
+      let t = '';
+      try { t = await file.slice(0, 4000).text(); } catch (e) {}
+      inner += '<pre>' + esc(t.slice(0, 800)) + (t.length > 800 ? '\n…' : '') + '</pre>';
+    } else if (kind === 'html' && file) {
+      let t = '';
+      try { t = await file.slice(0, 8000).text(); } catch (e) {}
+      t = t.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      inner += '<pre>' + esc(t.slice(0, 600)) + (t.length > 600 ? '…' : '') + '</pre>';
+    } else {
+      inner += '<div class="small muted">' + (ext ? ext.toUpperCase() + ' 文件' : '本地文件') + '：点一下用系统程序打开' + (file ? '' : '（原文件权限没给，悬停只能看名字）') + '</div>';
+    }
+    pv.innerHTML = inner;
+    pv.addEventListener('mouseenter', () => clearTimeout(ATTPV_T));
+    pv.addEventListener('mouseleave', attPvHideSoon);
+    document.body.appendChild(pv);
+    ATTPV = pv;
+    const r = chip.getBoundingClientRect(), pr = pv.getBoundingClientRect();
+    let x = Math.min(r.left, window.innerWidth - pr.width - 8);
+    let y = r.bottom + 8;
+    if (y + pr.height > window.innerHeight - 8) y = Math.max(8, r.top - pr.height - 8);
+    pv.style.left = Math.max(8, x) + 'px';
+    pv.style.top = y + 'px';
+  });
+}
+window.attPvShow = attPvShow;
 window.addEventListener('pagehide', bigFlush);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') bigFlush(); });
 const readLS = (k, d) => {
@@ -1009,7 +1072,7 @@ function rejudgeAll() {
 function openAnsEditor(host, k, q, done) {
   if (!host) return;
   const cur = ansOf(k, q), orig = (q && q.answer) || [];
-  const n = Math.min(8, Math.max(2, (q && q.options && q.options.length) || 4));
+  const n = Math.min(12, Math.max(2, (q && q.options && q.options.length) || 4));
   const letters = 'ABCDEFGHIJKL'.slice(0, n).split('');
   const fixed = hasFix(k);
   host.innerHTML =
@@ -2938,6 +3001,8 @@ function uiQnPanel(fk) {
   const hd = panel.querySelector('.qn-h');
   let dg = null;
   hd.addEventListener('pointerdown', ev => {
+    /* 点 ✕ 关窗口时不能进拖拽分支：preventDefault 会把后面的 click 吃掉，叉叉就点不动 */
+    if (ev.target && ev.target.closest && ev.target.closest('button, .qn-x')) return;
     const r = panel.getBoundingClientRect();
     dg = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
     try { hd.setPointerCapture(ev.pointerId); } catch (e) {}
@@ -4623,20 +4688,30 @@ document.addEventListener('keydown', e => {
   /* AI 正在流式生成：答题快捷键全部让路（敲 A–H / Enter / ←→ / S / K 都不会再把面板冲掉） */
   if (typeof aiBusy === 'function' && aiBusy()) return;
   const k = e.key.toUpperCase();
-  if (/^[A-H]$/.test(k) || /^[1-8]$/.test(k)) {
-    const K = /^[A-H]$/.test(k) ? k : 'ABCDEFGHIJKL'[+k - 1];
-    const o = document.querySelector(`.opt[data-k="${K}"]`);
-    if (o && !o.disabled) o.click();
-    e.preventDefault(); return;
-  }
   if (rn === 'exam') {
+    /* 模考里选项字母先认（A–H / 1–8），J/K 与 Enter 留给翻页 */
+    if (/^[A-H]$/.test(k) || /^[1-8]$/.test(k)) {
+      const K0 = /^[A-H]$/.test(k) ? k : 'ABCDEFGHIJKL'[+k - 1];
+      const o0 = document.querySelector(`.opt[data-k="${K0}"]`);
+      if (o0 && !o0.disabled) o0.click();
+      e.preventDefault(); return;
+    }
     if (e.key === 'Enter' || e.key === 'ArrowRight' || k === 'J') { if (typeof examStep === 'function') examStep(1); e.preventDefault(); return; }
     if (e.key === 'ArrowLeft' || k === 'K') { if (typeof examStep === 'function') examStep(-1); e.preventDefault(); return; }
     return;
   }
   const bank = bankById(QZ.bankId);
   const q = bank && bank.questions.find(x => String(x.id) === String(QZ.cur));
-  /* S 收藏本题、O 打开答题卡（原本是 K，让给 Vim 的「上一题」）—— 不用去够鼠标（A–H 留给选项） */
+  /* 选项字母按这一题实际的选项个数认（A–L）：题目有 10 个选项时 J/K 就是选项，不再当翻页；
+     选项不足 9 个时 J/K 仍是上/下一题。 */
+  const nOpt = q && Array.isArray(q.options) ? q.options.length : 0;
+  const li = 'ABCDEFGHIJKL'.indexOf(k);
+  if ((li >= 0 && li < Math.max(nOpt, 8)) || (/^[1-9]$/.test(k) && +k <= Math.max(nOpt, 8))) {
+    const K = li >= 0 ? k : 'ABCDEFGHIJKL'[+k - 1];
+    const o = document.querySelector(`.opt[data-k="${K}"]`);
+    if (o && !o.disabled) { o.click(); e.preventDefault(); return; }
+  }
+  /* S 收藏本题、O 打开答题卡（原本是 K，让给 Vim 的「上一题」）—— 不用去够鼠标 */
   if (k === 'S' && bank && q) { toggleFav(favKey(bank, q)); e.preventDefault(); return; }
   if (k === 'O') { renderGrid(); const gm = $('gridMask'); if (gm) gm.classList.add('show'); e.preventDefault(); return; }
   /* §3.6-P2⑦：j 下一题 / k 上一题（Vim 那套，跟 ←→ 等价） */

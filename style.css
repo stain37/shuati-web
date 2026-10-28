@@ -2167,7 +2167,23 @@ body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!import
 /* 参考资料：小钮贴在「更多」旁边；列表本身改成单行横滑，不再把正文往下顶（web177 第 ⑦ 条） */
 .srcjump{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub);cursor:pointer;user-select:none}
 .srcjump:hover{color:var(--primary);border-color:var(--primary)}
-.aisrc{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;max-height:26px;scrollbar-width:none}
+.aisrc{display:flex;flex-wrap:wrap;align-items:center;gap:6px;overflow:visible;max-height:none}
+/* 参考资料那一行以前被压成单行横滑、字被切掉，看着像坏了（web178 第 ⑧ 条）；现在正常换行 */
+.aisrc .aitag{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 「📎 资料 N」点开的浮层（第 ⑦ 条） */
+.srcpop{position:fixed;z-index:9992;width:340px;max-height:60vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 36px rgba(16,24,40,.2);padding:6px}
+.srcpop-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--sub);padding:6px 8px 8px}
+.srcpop-x{cursor:pointer;padding:0 4px;font-size:13px;color:var(--sub)}
+.srcpop-x:hover{color:var(--text)}
+.srcpop-i{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:8px;cursor:pointer;color:var(--text)}
+.srcpop-i:hover{background:var(--bg2,#f6f7fb)}
+.srcpop-i b{display:block;font-size:12.5px;font-weight:600;margin-bottom:2px;color:var(--primary)}
+.srcpop-i span{display:block;font-size:12px;color:var(--sub);line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.srcsheet{max-width:760px;width:calc(100vw - 32px);max-height:82vh;display:flex;flex-direction:column}
+.srcsheet-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line)}
+.srcsheet-x{margin-left:auto;cursor:pointer;color:var(--sub);font-size:15px;padding:0 4px}
+.srcsheet-x:hover{color:var(--text)}
+.srcsheet-b{padding:12px 14px;overflow:auto;line-height:1.8}
 .aisrc::-webkit-scrollbar{height:0}
 .aisrc.flash{box-shadow:0 0 0 2px rgba(229,72,77,.35);border-radius:8px}
 
@@ -2177,23 +2193,24 @@ body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!import
 .aipanel .aiout *,.aipanel .aisrc *,.aipanel .aifollow *{user-select:none;-webkit-user-select:none}
 .aipanel .aiout:read-only,.aipanel [contenteditable="true"]:not(.ai-askq){pointer-events:auto}
 
-/* 题目附件：答题卡左侧一列（窄屏改成题目下面一行横滑）——web177 第 ①-1 条 */
+/* 题目附件：题目上方一行（名字 + 叉叉一直看得见，点叉就删；悬停出预览）——web178 第 ⑥⑨ 条 */
 .qcard{position:relative}
-.attrail{position:absolute;left:-48px;top:6px;width:38px;display:flex;flex-direction:column;align-items:center;gap:6px}
-.att-add{width:34px;height:34px;border:1px dashed var(--line);background:var(--card,#fff);border-radius:10px;font-size:15px;cursor:pointer;color:var(--sub)}
+.attrail{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
+.att-add{min-width:34px;height:34px;padding:0 8px;border:1px dashed var(--line);background:var(--card,#fff);border-radius:10px;font-size:15px;cursor:pointer;color:var(--sub)}
 .att-add:hover{border-color:var(--primary);color:var(--primary)}
-.att-items{display:flex;flex-direction:column;gap:6px;align-items:center}
-.att-chip{position:relative;display:flex;align-items:center;gap:4px;max-width:34px;overflow:hidden;border:1px solid var(--line);border-radius:10px;padding:4px;background:var(--card,#fff);cursor:pointer;font-size:15px}
-.att-chip b{display:none}
-.att-chip:hover{max-width:none;background:var(--bg2,#f6f7fb);z-index:5}
-.att-chip:hover b{display:inline;font-weight:500;font-size:12px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
-.att-x{position:absolute;top:-6px;right:-6px;width:14px;height:14px;line-height:12px;text-align:center;border-radius:50%;background:#e5484d;color:#fff;font-size:11px;font-style:normal;opacity:0;transition:opacity .12s}
-.att-chip:hover .att-x{opacity:1}
+.att-items{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.att-chip{position:relative;display:inline-flex;align-items:center;gap:6px;max-width:260px;border:1px solid var(--line);border-radius:10px;padding:5px 22px 5px 8px;background:var(--card,#fff);cursor:pointer;font-size:14px;line-height:1.3}
+.att-chip:hover{background:var(--bg2,#f6f7fb);border-color:var(--primary-line,#c9d6ff)}
+.att-chip b{font-weight:500;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.att-x{position:absolute;top:50%;right:4px;transform:translateY(-50%);width:16px;height:16px;line-height:15px;text-align:center;border-radius:50%;background:#e5484d;color:#fff;font-size:12px;font-style:normal;opacity:.75;transition:opacity .12s}
+.att-x:hover{opacity:1;transform:translateY(-50%) scale(1.1)}
+/* 附件悬停预览（像 B 站封面那样飘上去看一眼） */
+.attpv{position:fixed;z-index:9990;max-width:320px;max-height:300px;overflow:auto;background:var(--card,#fff);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(16,24,40,.18);padding:10px}
+.attpv img{display:block;max-width:300px;max-height:220px;border-radius:8px;margin-bottom:6px}
+.attpv .attpv-t{font-size:12px;color:var(--sub);word-break:break-all;margin-bottom:4px}
+.attpv pre{white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.6;max-height:200px;overflow:auto;margin:0;color:var(--text)}
 @media (max-width: 860px){
-  .attrail{position:static;width:auto;flex-direction:row;align-items:center;gap:8px;margin:0 0 8px}
-  .att-items{flex-direction:row;overflow-x:auto;max-width:100%}
-  .att-chip{max-width:none}
-  .att-chip b{display:inline;font-weight:500;font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .att-wrap{display:none}
 }
 
 /* 合并题库弹层里的勾选列表（web177 第 ② 条） */
