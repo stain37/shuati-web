@@ -1345,8 +1345,12 @@ function aiSrcModal(h) {
 }
 window.aiSrcPanel = aiSrcPanel;
 window.aiSrcModal = aiSrcModal;
-/* 调试/探针用：直接塞一批 hits，看资料面板长什么样 */
-window.aiSrcHits = function (h) { AI_SRC_HITS = (h || []).slice(); };
+/* 调试/探针用：直接塞一批 hits，看资料面板长什么样。
+   ⚠️ 千万不要再叫 window.aiSrcHits —— 下面那个同名函数（aiSrcHits(v)，把 {hits,ts} / 裸数组都认成数组）
+   才是 aiSrcNorm / aiSrcMergeIn / aiSrcFor 依赖的真身；顶层函数声明在全局对象上是可写的，
+   在这里给它赋值会把它整个顶掉，于是 {hits,ts} 被当成数组去 .slice()，
+   报错原文「(h || []).slice is not a function」，云同步整条跟着失败（web178 踩过）。 */
+window.aiSrcDebugHits = function (h) { AI_SRC_HITS = Array.isArray(h) ? h.slice() : []; };
 function aiPaintSrc(host, ctx) {
   const box = host.querySelector('.aisrc');
   if (!box) return;

@@ -1471,3 +1471,33 @@ ode --check 全过。
 ### 29.7 验证
 - 探针：math2 17/0、md-editor 19/0、md-math 11/0、rich2 11/0、block3 13/0、p1 19/0、idb 16/0、agent2 9/0。
 - 回归（22 个）：home-page 30/0、quiz-subject 17/0、typefilter 9/0、search-bank 18/0、tagsub 9/0、tagsync2 13/0、sort 10/0、color 10/0、chatpick 10/0、fix164 46/0、batch2b 23/0、ops-actions/chat-command/import-ai 全 OK。
+
+## §30 web178：10 项报障收口 + 编辑器键位与图片拖动
+
+### 30.1 逐条对应
+
+| # | 你报的 | 改法 | 落点 |
+|---|---|---|---|
+| 1 | 「改答案」字母只到 H | 改答案面板 8→12（A–L），键盘 A–L 也能选 | app.js openAnsEditor / 键盘分支 |
+| 2 | 图片块排序 | 图片可拖动换位置（拖到想放的地方松手，落点用 caretRangeFromPoint），并修掉保存时把 `.rich-x/.rich-rz` 写进 Markdown 的问题 | collection.js richImgWrap / dragstart·dragover·drop / inlineEl 跳过把手 |
+| 3 | 最后一块删不掉 | 唯一一块也能删：清空成空段落 | collection.js blkAct('del') |
+| 4 | 编辑器不好用 | 列表 Tab 缩进、Shift+Tab 退层、空项 Enter 退出列表 | collection.js liOf/listIndent/listOutdent/liExit |
+| 5 | 滚轮下滑菜单跳掉 | 右键菜单跟随锚点重定位（元素没了才关），不再一滚就关 | collection.js ctxPlace / scroll 监听 |
+| 6 | 附件要能删 | `.attrail` 改成题目上方一行，名字与 × 常显 | app.js attRailHtml + style.css |
+| 7 | 「资料 3」要能点开 | 点开浮层列来源，再点一条出原文弹窗（Esc 关） | ai.js aiSrcPanel / aiSrcModal |
+| 8 | 参考资料 UI 变形 | `.aisrc` 恢复换行、单条省略号，不再单行压扁 | style.css |
+| 9 | 附件悬停预览 | 图直接出缩略图，txt/md 出前 800 字，html 去标签，pdf/docx 出名字大小 | app.js attPvShow |
+| 10 | 无技能「根据知识点出题」跑偏 | 判意图时「知识点/考点」不再算分析，只有真分析词才走分析 | chat.js guessMode |
+| 附 | 口诀浮窗 × 点不动 | 拖拽头 `pointerdown` 不再吞掉按钮的 click | app.js qn-h 拖拽处理 |
+
+### 30.2 公式与思维导图的真因（你贴的那段）
+
+- **公式漏出源码**：笔记里的 LaTeX 是**双反斜杠**（`\\mathrm{...}`，AI 回复被转义过），KaTeX 认不出就整段当文字画出来。新增 `mdTexFix()`：只把「双反斜杠 + 字母」合并成单反斜杠，公式里的换行 `\\` 不跟字母，不受影响。
+- **思维导图变源码**：mermaid 的 `root(("氨基酰-tRNA合成酶"))` 以前只剥括号不剥 id，整串被画进框里。新增 `mindLabel()`：剥 `id((…)) / id[…] / id{…}` 三层 + 引号。
+- 表格：`mdToHtml` 的表格解析本身没问题（探针 4 行 2 列、前后空行都通过）；你那段是每个词单独一行，属于粘贴时竖线丢了，不是渲染器的问题。
+
+### 30.3 探针与上线
+
+- 新探针：`render3-probe.py` 16/0（行内/独占公式、双反斜杠、表格 4×2、思维导图围栏与裸写）、`img-order-probe.py` 15/0（图片位置往返、拖动换位、Tab 缩进、空项 Enter 退出）、`uifix178-probe.py` 18/0（口诀×、最后一块删除、附件 chip/×/预览、资料浮层/弹窗/Esc、出题 tag）。
+- 回归：md-render 5/0、block3 13/0、rich2 11/0、math2 17/0、md-editor 19/0、home-page 30/0、typefilter 9/0、p1 19/0、quiz-subject 17/0、search-bank 18/0、chatpick 10/0、sort 10/0、color 10/0。
+- 上线：`shuati-v68-web178`，提交 `6a24befe`，线上逐文件核字节全等（sw.js 11222 / app.js 258042 / collection.js 187862 / diagram.js 23408 / ai.js 123840 / chat.js 147943 / style.css 162718 / index.html 19315）。

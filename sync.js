@@ -240,8 +240,12 @@ async function syncPayload() {
   const s = SYC.scope, d = {};
   if (s.ans) { d.answers = ANS; d.favs = FAV; }
   if (s.note) { d.notes = NOTES; d.fixes = FIX; }
-  /* AI 解析引用到的参考资料清单（qbank.aisrc.v1）：跟着解析走，不单独一项 */
-  if (s.note && typeof aiSrcNorm === 'function') { const m = aiSrcNorm(); if (Object.keys(m).length) d.aisrc = m; }
+  /* AI 解析引用到的参考资料清单（qbank.aisrc.v1）：跟着解析走，不单独一项。
+     这项只是解析的附注，读挂了也不能把整次同步带走（web178 就曾因为函数重名把它读崩、同步全灭） */
+  if (s.note && typeof aiSrcNorm === 'function') {
+    try { const m = aiSrcNorm(); if (Object.keys(m).length) d.aisrc = m; }
+    catch (e) { syncLog('参考资料清单读不出来，这次不传它：' + (e.message || e), true); }
+  }
   if (s.qtn) d.qtn = QTN;
   if (s.paper) d.papers = PAPERS;
   if (s.var) { try { d.var = JSON.parse(localStorage.getItem('qbank.var.v1') || '{}'); } catch (e) { d.var = {}; } }
@@ -285,7 +289,11 @@ function syncMergeCloud(cloud) {
   };
   if (s.ans) { put(ANS, d.answers); saveAns(); put(FAV, d.favs); saveFav(); }
   if (s.note) { put(NOTES, d.notes); saveNotes(); put(FIX, d.fixes); saveFix(); }
-  if (s.note && d.aisrc && typeof aiSrcMergeIn === 'function') added += aiSrcMergeIn(d.aisrc);   /* 参考资料：同一条按 ts 新的为准（mergeWrite 会顺带看墓碑） */
+  /* 参考资料：同一条按 ts 新的为准（mergeWrite 会顺带看墓碑）；并挂了也只丢这一项，不拦整次同步 */
+  if (s.note && d.aisrc && typeof aiSrcMergeIn === 'function') {
+    try { added += aiSrcMergeIn(d.aisrc); }
+    catch (e) { syncLog('参考资料清单合并失败（其它数据照常）：' + (e.message || e), true); }
+  }
   if (s.qtn) { put(QTN, d.qtn); if (typeof saveQtn === 'function') saveQtn(); }   /* 便签同一条按时间戳新的为准（mergeWrite 会顺带看墓碑） */
 
   /* 3) 数组类：同 id 以本机为准（本机的可能更新），云端独有的补进来 */
@@ -406,7 +414,8 @@ async function syncNow(silent) {
     syncLog(tip + '　' + (merged ? '云端来自 ' + merged.device : ''));
     syncBusy(false); syncState('已同步 · ' + syncAgo(SYC.lastAt), 'ok');
     if (!silent) toast(tip, 4200);
-    syncSafeRender();
+    /* 数据已经落云端了，重画页面只是收尾：这里万一抛错也不能算「同步失败」（web178 的假警报就是这么来的） */
+    try { syncSafeRender(); } catch (e) { syncLog('同步已完成，只是重画页面出错：' + (e.message || e), true); }
     return { ok: true, added: merged ? merged.added : 0 };
   } catch (e) {
     SYC.lastErr = e.message || String(e); syncSave();
