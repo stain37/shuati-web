@@ -228,13 +228,27 @@ function aiApplyCfgFile(force) {
   if (typeof aiPaintForm === 'function' && route().name === 'kb') aiPaintForm();
   return true;
 }
-function aiLoadCfgFile() {
-  if (window.__AICFG__) { aiApplyCfgFile(false); return; }
-  const s = document.createElement('script');
-  s.src = aiCfgFileName();
-  s.onload = () => { if (window.__AICFG__ && aiApplyCfgFile(false)) { if (route().name === 'kb') aiPaintForm(); } };
-  s.onerror = () => {};
-  document.head.appendChild(s);
+/* 站点目录里没放 AI配置.js 时，这个标记保证只试一次。
+   原来 renderKb() 每次重画都调一次 aiLoadCfgFile()，而重画会被「知识库.js 挂完 → render()」
+   反复触发，于是 AI配置.js 被连着请求几百上千次（线上还每次走一遍网络），页面跟着卡死。 */
+let AIC_CFG_TRIED = false;
+function aiLoadCfgFile(force) {
+  if (window.__AICFG__) { aiApplyCfgFile(false); return Promise.resolve(true); }
+  if (AIC_CFG_TRIED && !force) return Promise.resolve(false);
+  AIC_CFG_TRIED = true;
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = aiCfgFileName();
+    let done = false;
+    const fin = ok => { if (done) return; done = true; resolve(ok); };
+    s.onload = () => {
+      const ok = !!(window.__AICFG__ && aiApplyCfgFile(false));
+      if (ok && route().name === 'kb') { try { aiPaintForm(); } catch (e) {} }
+      fin(ok);
+    };
+    s.onerror = () => fin(false);
+    document.head.appendChild(s);
+  });
 }
 /* 本机常见的 OpenAI 兼容服务，挨个探一遍，谁先回话就用谁 */
 const AI_LOCAL_PROBES = [
@@ -1885,10 +1899,13 @@ function aiBindConfig() {
   on('aiTestBtn', aiTest);
   on('aiDetectBtn', () => aiDetect(false));
   on('aiReloadCfg', () => {
-    aiLoadCfgFile();
-    const c = window.__AICFG__;
-    if (c) { aiApplyCfgFile(true); const st = $('aiState'); if (st) { st.textContent = '已从 AI配置.js 读入（' + (c.at || '') + '）'; st.className = 'aistate ok'; } }
-    else { const st = $('aiState'); if (st) { st.textContent = '站点目录里没有 AI配置.js：在①里填一次就行（会记住），或用 AI配置.示例.js / 从Chatbox导入.bat。'; st.className = 'aistate bad'; } }
+    const st0 = $('aiState');
+    if (st0) { st0.textContent = '正在读 AI配置.js…'; st0.className = 'aistate'; }
+    aiLoadCfgFile(true).then(() => {
+      const c = window.__AICFG__;
+      if (c) { aiApplyCfgFile(true); const st = $('aiState'); if (st) { st.textContent = '已从 AI配置.js 读入（' + (c.at || '') + '）'; st.className = 'aistate ok'; } }
+      else { const st = $('aiState'); if (st) { st.textContent = '站点目录里没有 AI配置.js：在①里填一次就行（会记住），或用 AI配置.示例.js / 从Chatbox导入.bat。'; st.className = 'aistate bad'; } }
+    });
   });
   on('aiGetModels', async () => {
     aiReadForm();

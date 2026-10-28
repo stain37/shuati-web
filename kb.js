@@ -1409,11 +1409,18 @@ window.kbEvalSet = kbEvalSet;
 
 /* ---------- 动态挂载 知识库.js（没有这个文件也没关系） ----------
    4.2 MB 的资料文件不该每次打开页面都拉一遍：等真正要用时（打开 AI 面板 / 检索 / 进 #/kb）
-   再挂载。挂载过就记在 KB_FILES_DONE，之后直接返回。 */
+   再挂载。挂载过就记在 KB_FILES_DONE，之后直接返回。
+   ⚠ KB_FILES_TRIED：web176 把知识库拆成「引导脚本 + 分片」后，引导脚本只填 __KBM__（目录），
+   __KBS__ 一直是空的、kbIngestFiles() 也会提前 return，KB_FILES_DONE 永远设不上。
+   于是每次重画知识库页都会重新挂一遍 知识库.js，而挂完的 fin() 又调 render()——
+   render → 挂脚本 → render 自己叫自己，页面直接卡死（点不动、打不了字、复制不了）。
+   所以要单独一个「挂过一次就算数」的标记。 */
+let KB_FILES_TRIED = false;
 let KB_FILES_PROMISE = null;
-function kbEnsureFilesLoaded() {
+function kbEnsureFilesLoaded(force) {
   if (KB_FILES_DONE || (window.__KBS__ && window.__KBS__.length)) return Promise.resolve({ ok: true, added: kbIngestFiles() });
   if (KB_FILES_PROMISE) return KB_FILES_PROMISE;
+  if (KB_FILES_TRIED && !force) return Promise.resolve({ ok: false, added: 0, skipped: true });
   KB_FILES_LOADING = true;
   KB_FILES_PROMISE = new Promise(resolve => {
     const s = document.createElement('script');
@@ -1422,9 +1429,13 @@ function kbEnsureFilesLoaded() {
     const fin = ok => {
       if (done) return;
       done = true; KB_FILES_PROMISE = null; KB_FILES_LOADING = false;
+      /* 挂上了就记死（引导脚本只填 __KBM__，别指望 KB_FILES_DONE）；
+         没挂上就留个机会，下次进这页再试一次 —— 但失败时绝不重画，
+         否则「重画 → 挂脚本 → 重画」还是会自己叫自己。 */
+      KB_FILES_TRIED = !!ok;
       const added = kbIngestFiles();
       kbPreheatIndex();
-      if (route().name === 'kb') { try { render(); } catch (e) {} }
+      if (ok && route().name === 'kb') { try { render(); } catch (e) {} }
       resolve({ ok: ok, added: added });
     };
     s.onload = () => fin(true);
