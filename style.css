@@ -2472,3 +2472,196 @@ html[data-style="mag"] .bnav{border-radius:4px}
 html[data-style="mag"] .bnav-ind{border-radius:3px}
 html[data-style="mag"] .btn{border-radius:4px}
 html[data-style="flat"] .bnav{border-radius:12px}
+
+/* ================= §11 更多界面风格（web186） =================
+   跟 §10 一样：变量同时铺在 html[data-style=…] 与 …body 上，深色另写 body.dark。 */
+
+/* ---------- 7) Y2K：亮面渐变 + 胶囊按钮 + 冷光晕 ---------- */
+html[data-style="y2k"],
+html[data-style="y2k"] body{
+  --radius:18px; --r-card:18px; --r-s:12px; --r-m:999px; --r-l:22px;
+  --bg:#eef3ff; --card:rgba(255,255,255,.86); --card2:#f4f7ff; --line:rgba(96,132,255,.30);
+  --sh-1:0 1px 2px rgba(70,110,255,.14);
+  --sh-card:0 8px 24px rgba(86,126,255,.16), inset 0 1px 0 #fff;
+  --bg-wash:radial-gradient(1200px 800px at 10% -10%,#dbe6ff 0%,transparent 62%),
+            radial-gradient(900px 700px at 100% 0%,#ffe3f4 0%,transparent 58%);
+}
+html[data-style="y2k"] body.dark{
+  --bg:#0a1020; --card:rgba(20,30,54,.74); --card2:#16203a; --line:rgba(120,160,255,.34);
+  --sh-card:0 10px 30px rgba(0,0,0,.5), inset 0 1px 0 rgba(150,190,255,.25);
+}
+html[data-style="y2k"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="y2k"] .card,html[data-style="y2k"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="y2k"] .btn{border-radius:999px;background:linear-gradient(180deg,#fff,#eaf0ff);border:1px solid var(--line);box-shadow:0 2px 6px rgba(80,120,255,.16)}
+html[data-style="y2k"] body.dark .btn{background:linear-gradient(180deg,#22305a,#182347)}
+html[data-style="y2k"] .bnav{border-radius:22px}
+
+/* ---------- 8) 孟菲斯：粗描边 + 彩色圆点 + 硬投影 ---------- */
+html[data-style="memphis"],
+html[data-style="memphis"] body{
+  --radius:12px; --r-card:12px; --r-s:6px; --r-m:10px; --r-l:16px;
+  --bg:#fffaf3; --card:#fff; --line:#121212;
+  --sh-1:3px 3px 0 #121212; --sh-card:5px 5px 0 #121212;
+  --bg-wash:radial-gradient(circle at 12px 12px, rgba(255,90,120,.22) 3px, transparent 3.5px),
+            radial-gradient(circle at 40px 32px, rgba(59,130,246,.20) 3px, transparent 3.5px);
+}
+html[data-style="memphis"] body.dark{--bg:#12100f;--card:#1b1815;--line:#f3efe6;--sh-card:5px 5px 0 #f3efe6;--sh-1:3px 3px 0 #f3efe6}
+html[data-style="memphis"] body{background-image:var(--bg-wash);background-size:56px 56px;background-attachment:fixed}
+html[data-style="memphis"] .card,html[data-style="memphis"] .vb-card{border:2.5px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="memphis"] .btn{border:2.5px solid var(--line);box-shadow:3px 3px 0 var(--line);font-weight:800;border-radius:10px}
+html[data-style="memphis"] .btn:active:not(:disabled){transform:translate(2px,2px);box-shadow:1px 1px 0 var(--line)}
+html[data-style="memphis"] h2.sec::before{border-radius:0;transform:rotate(-6deg);box-shadow:2px 2px 0 var(--line)}
+html[data-style="memphis"] .vb-q-i,html[data-style="memphis"] .hm-c{border-radius:4px}
+html[data-style="memphis"] .bnav{border-radius:12px}
+
+/* ---------- 9) 包豪斯：三原色 + 粗黑线 + 全大写 ---------- */
+html[data-style="bauhaus"],
+html[data-style="bauhaus"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --b-red:#d21f1f; --b-blue:#1f4fd2; --b-yellow:#f2c012;
+  --bg:#f4f1ea; --card:#fff; --line:#111;
+  --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="bauhaus"] body.dark{--bg:#111;--card:#1a1a1a;--line:#faf7ef;--b-red:#ff4d4d;--b-blue:#7aa0ff}
+html[data-style="bauhaus"] .card,html[data-style="bauhaus"] .vb-card{border:3px solid var(--line)}
+html[data-style="bauhaus"] .btn{border:2px solid var(--line);font-weight:800;letter-spacing:.04em}
+html[data-style="bauhaus"] h2.sec{font-weight:900;letter-spacing:.06em;border-bottom:4px solid var(--b-red);padding-bottom:4px}
+html[data-style="bauhaus"] h2.sec::before{display:none}
+html[data-style="bauhaus"] .vb-q-i,html[data-style="bauhaus"] .hm-c,html[data-style="bauhaus"] .cal-d{border-radius:50%}
+html[data-style="bauhaus"] .hm-c,html[data-style="bauhaus"] .cal-d{border-radius:50%}
+html[data-style="bauhaus"] .bnav,html[data-style="bauhaus"] .bnav-ind{border-radius:0}
+
+/* ---------- 10) Risograph：奶油纸 + 双色套印 + 错位影 ---------- */
+html[data-style="riso"],
+html[data-style="riso"] body{
+  --radius:6px; --r-card:6px; --r-s:3px; --r-m:6px; --r-l:10px;
+  --bg:#fdf7ea; --card:#fffdf6; --line:rgba(40,30,60,.28);
+  --sh-1:2px 2px 0 rgba(43,108,255,.22);
+  --sh-card:4px 4px 0 rgba(255,79,123,.28);
+  --bg-wash:none;
+}
+html[data-style="riso"] body.dark{--bg:#141019;--card:#1d1726;--line:rgba(255,255,255,.22);--sh-card:4px 4px 0 rgba(255,79,123,.45);--sh-1:2px 2px 0 rgba(122,162,255,.4)}
+html[data-style="riso"] .card,html[data-style="riso"] .vb-card{border:1.5px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="riso"] .btn{border:1.5px solid var(--line);box-shadow:2px 2px 0 rgba(43,108,255,.30)}
+html[data-style="riso"] h1,html[data-style="riso"] h2.sec{letter-spacing:.02em}
+html[data-style="riso"] h2.sec::before{background:#2b6cff;border-radius:2px;box-shadow:2px 2px 0 rgba(255,79,123,.6)}
+html[data-style="riso"] .bnav{border-radius:6px}
+
+/* ---------- 11) 复古怀旧：米黄纸 + 双线框 + 衬线 ---------- */
+html[data-style="retro"],
+html[data-style="retro"] body{
+  --radius:3px; --r-card:3px; --r-s:2px; --r-m:3px; --r-l:5px;
+  --bg:#f3e9d2; --card:#fbf3df; --line:rgba(84,58,32,.45);
+  --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="retro"] body.dark{--bg:#191309;--card:#221a0e;--line:rgba(226,196,140,.42)}
+html[data-style="retro"] .card,html[data-style="retro"] .vb-card{border:2px double var(--line)}
+html[data-style="retro"] .btn{background:transparent;border:2px double var(--line);font-weight:600}
+html[data-style="retro"] h1,html[data-style="retro"] h2.sec,html[data-style="retro"] .vb-cap,html[data-style="retro"] .cal-month{font-family:var(--serif)}
+html[data-style="retro"] h2.sec{border-bottom:2px double var(--line);padding-bottom:5px}
+html[data-style="retro"] h2.sec::before{display:none}
+html[data-style="retro"] .bnav{border-radius:3px}
+
+/* ---------- 12) 赛博霓虹：发光描边 + 等宽大写 ---------- */
+html[data-style="cyber"],
+html[data-style="cyber"] body{
+  --radius:8px; --r-card:8px; --r-s:4px; --r-m:6px; --r-l:12px;
+  --line:rgba(34,211,238,.50);
+  --sh-1:0 0 6px rgba(34,211,238,.28);
+  --sh-card:0 0 0 1px rgba(34,211,238,.28), 0 8px 26px rgba(34,211,238,.18);
+  --bg-wash:radial-gradient(900px 600px at 18% 0%, rgba(34,211,238,.12), transparent 62%),
+            radial-gradient(700px 520px at 100% 6%, rgba(168,85,247,.12), transparent 58%);
+}
+html[data-style="cyber"] body.dark{
+  --card:rgba(8,14,26,.82); --card2:#0d1729; --line:rgba(34,211,238,.58);
+  --sh-card:0 0 0 1px rgba(34,211,238,.42), 0 0 24px rgba(34,211,238,.24);
+}
+html[data-style="cyber"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="cyber"] .card,html[data-style="cyber"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="cyber"] .btn{border:1px solid var(--line);box-shadow:0 0 10px rgba(34,211,238,.22);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;font-size:11.5px}
+html[data-style="cyber"] h1,html[data-style="cyber"] h2.sec,html[data-style="cyber"] .vb-cap{font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase}
+html[data-style="cyber"] h2.sec::before{box-shadow:0 0 10px currentColor}
+html[data-style="cyber"] .bnav{border-radius:8px}
+
+/* ---------- 13) 铅笔手绘：纸底 + 虚线框 + 手写体 ---------- */
+html[data-style="pencil"],
+html[data-style="pencil"] body{
+  --hand:"Segoe Print","Bradley Hand","Comic Sans MS","KaiTi","楷体",var(--serif);
+  --radius:8px; --r-card:8px; --r-s:4px; --r-m:8px; --r-l:12px;
+  --bg:#faf6ec; --card:#fffdf7; --line:rgba(70,58,45,.50);
+  --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="pencil"] body.dark{--bg:#1b1712;--card:#241f18;--line:rgba(235,222,200,.45)}
+html[data-style="pencil"] .card,html[data-style="pencil"] .vb-card{border:1.5px dashed var(--line)}
+html[data-style="pencil"] .btn{border:1.5px dashed var(--line);background:transparent}
+html[data-style="pencil"] h1,html[data-style="pencil"] h2.sec,html[data-style="pencil"] .vb-cap{font-family:var(--hand);font-weight:600}
+html[data-style="pencil"] h2.sec::before{background:rgba(70,58,45,.55);border-radius:40% 60% 55% 45%}
+html[data-style="pencil"] .bnav{border-radius:12px}
+
+/* ---------- 14) 水彩：多层晕染 + 半透明卡片 ---------- */
+html[data-style="water"],
+html[data-style="water"] body{
+  --radius:20px; --r-card:20px; --r-s:12px; --r-m:999px; --r-l:24px;
+  --bg:#f7fbfa; --card:rgba(255,255,255,.74); --line:rgba(120,160,160,.28);
+  --sh-1:0 2px 8px rgba(80,130,140,.10);
+  --sh-card:0 10px 26px rgba(90,150,150,.14);
+  --bg-wash:radial-gradient(700px 500px at 8% 0%, rgba(120,200,190,.30), transparent 62%),
+            radial-gradient(600px 520px at 95% 8%, rgba(255,190,150,.26), transparent 62%),
+            radial-gradient(700px 600px at 60% 100%, rgba(180,170,255,.22), transparent 62%);
+}
+html[data-style="water"] body.dark{--bg:#0b1416;--card:rgba(16,30,32,.72);--line:rgba(140,200,200,.28)}
+html[data-style="water"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="water"] .card,html[data-style="water"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="water"] .btn{border:1px solid var(--line);background:rgba(255,255,255,.55);border-radius:999px}
+html[data-style="water"] body.dark .btn{background:rgba(140,200,200,.12)}
+html[data-style="water"] .bnav{border-radius:22px}
+
+/* ---------- 15) 哥特：暗底金饰 + 衬线（这套自带深色底，浅色主题下也是暗的） ---------- */
+html[data-style="gothic"],
+html[data-style="gothic"] body{
+  --radius:2px; --r-card:2px; --r-s:2px; --r-m:2px; --r-l:4px;
+  --bg:#0f0d0b; --card:#17130f; --card2:#1d1813; --line:rgba(212,175,55,.42);
+  --text:#efe6d4; --sub:#b9a98c;
+  --sh-1:0 0 0 1px rgba(212,175,55,.16);
+  --sh-card:0 0 0 1px rgba(212,175,55,.22), 0 12px 28px rgba(0,0,0,.45);
+  --bg-wash:radial-gradient(800px 620px at 50% 0%, rgba(212,175,55,.10), transparent 66%);
+}
+html[data-style="gothic"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="gothic"] .card,html[data-style="gothic"] .vb-card{border:1px solid var(--line)}
+html[data-style="gothic"] h1,html[data-style="gothic"] h2.sec{font-family:var(--serif);letter-spacing:.08em;font-weight:600}
+html[data-style="gothic"] h2.sec::before{background:linear-gradient(180deg,#e7c873,#9a7b32);width:3px}
+html[data-style="gothic"] .btn{border:1px solid var(--line);background:transparent;color:#efe6d4;letter-spacing:.06em}
+html[data-style="gothic"] .bnav,html[data-style="gothic"] .bnav-ind{border-radius:2px}
+
+/* ---------- 16) 酸性平面：荧光黄绿 + 纯黑粗框 + 大写重字 ---------- */
+html[data-style="acid"],
+html[data-style="acid"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --acid:#c8ff00;
+  --bg:#f2f2ef; --card:#fff; --line:#0a0a0a;
+  --sh-1:none; --sh-card:6px 6px 0 var(--line); --bg-wash:none;
+}
+html[data-style="acid"] body.dark{--bg:#0a0a0a;--card:#141414;--line:#f2f2ef}
+html[data-style="acid"] .card,html[data-style="acid"] .vb-card{border:2.5px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="acid"] .btn{background:var(--acid);color:#0a0a0a;border:2px solid #0a0a0a;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+html[data-style="acid"] .btn:hover:not(:disabled){transform:translate(-1px,-1px);box-shadow:3px 3px 0 #0a0a0a}
+html[data-style="acid"] h1,html[data-style="acid"] h2.sec{font-weight:900;text-transform:uppercase}
+html[data-style="acid"] h2.sec::before{background:var(--acid);box-shadow:3px 3px 0 #0a0a0a;border-radius:0}
+html[data-style="acid"] .bnav,html[data-style="acid"] .bnav-ind{border-radius:0}
+
+/* ---------- 设置面板里的风格缩略图卡（web186） ---------- */
+.stylegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin:10px 0 4px}
+.sty-card{display:flex;flex-direction:column;gap:6px;align-items:stretch;cursor:pointer;
+  padding:6px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);
+  font-size:11.5px;text-align:center;transition:border-color .15s,box-shadow .15s,transform .06s}
+.sty-card:hover{border-color:var(--primary)}
+.sty-card:active{transform:scale(.985)}
+.sty-card.on{border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 30%,transparent)}
+.sty-card b{font-weight:600;line-height:1.2}
+.sty-mini{display:block;height:52px;border-radius:6px;padding:5px;box-sizing:border-box;overflow:hidden}
+.sty-mini i{display:block}
+.sty-mini .sty-bar{height:6px;border-radius:2px;margin-bottom:4px}
+.sty-mini .sty-line{height:4px;border-radius:2px;margin-bottom:3px;opacity:.75}
+.sty-mini .sty-line.s{width:62%}
+.sty-mini .sty-btn{width:44%;height:12px;border-radius:3px;margin-top:5px}
+@media (max-width:560px){ .stylegrid{grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px} }

@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261113a">
+<link rel="stylesheet" href="style.css?v=20261114a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -140,8 +140,7 @@
       <option value="custom">自定义图片…</option>
       <option value="video">视频背景…</option>
     </select>
-    <span class="tl">界面风格</span>
-    <select class="num" id="setStyle" title="整站的皮肤：边框 / 圆角 / 阴影 / 字体气质；和主题色、深浅色、背景可以随便搭">
+    <select class="num" id="setStyle" title="整站的皮肤：边框 / 圆角 / 阴影 / 字体气质；和主题色、深浅色、背景可以随便搭" style="display:none">
       <option value="default">清爽（默认）</option>
       <option value="neo">新野兽派</option>
       <option value="glass">毛玻璃</option>
@@ -149,6 +148,16 @@
       <option value="mag">编辑杂志</option>
       <option value="pixel">像素 8-bit</option>
       <option value="flat">极简扁平</option>
+      <option value="y2k">Y2K 千禧</option>
+      <option value="memphis">孟菲斯</option>
+      <option value="bauhaus">包豪斯</option>
+      <option value="riso">Risograph</option>
+      <option value="retro">复古怀旧</option>
+      <option value="cyber">赛博霓虹</option>
+      <option value="pencil">铅笔手绘</option>
+      <option value="water">水彩晕染</option>
+      <option value="gothic">哥特</option>
+      <option value="acid">酸性平面</option>
     </select>
     <button class="btn small" id="setBgPick" title="选一张本机图片当整页背景">选图</button>
     <button class="btn small" id="setBgVideoPick" title="选一段视频（mp4 / webm）当动态背景">选视频</button>
@@ -156,7 +165,10 @@
     <input type="file" id="setBgFile" accept="image/*" style="display:none">
     <input type="file" id="setBgVideo" accept="video/*" style="display:none">
   </div>
-  <div class="hint" id="styleHint" style="margin-top:6px"></div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（17 套，缩略图就是这套的边框／圆角／阴影／字色气质）：</div>
+  <div class="stylegrid" id="styleGrid"></div>
+  <div class="hint" id="styleHint" style="margin-top:2px"></div>
+  <label class="chk"><input type="checkbox" id="setStyleAuto" checked> 换风格时自动配一套主推主题色（不勾就一直用你选的颜色）</label>
   <div class="tools" style="margin-top:8px">
     <span class="tl">面板不透明度</span>
     <input type="range" id="setUiAlpha" min="30" max="100" step="5" value="100" style="width:120px;vertical-align:middle">
@@ -240,7 +252,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261113a"></script>
+<script src="app.js?v=20261114a"></script>
 <script src="collection.js?v=20261111b"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>

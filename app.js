@@ -478,7 +478,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', styleAuto: true, uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -538,8 +538,12 @@ const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'pape
 const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片', video: '视频背景' };
 /* 界面风格（web185）：换的是「皮肤」—— 边框、圆角、阴影、字体气质，跟主题色 / 深色 / 背景互不干扰。
    实现全在 style.css 的 §10：<html data-style="…"> 覆盖变量 + 少量组件，default 就是原来的样子。 */
-const UI_STYLES = ['default', 'neo', 'glass', 'clay', 'mag', 'pixel', 'flat'];
-const UI_STYLE_NAME = { default: '清爽（默认）', neo: '新野兽派', glass: '毛玻璃', clay: '粘土拟态', mag: '编辑杂志', pixel: '像素 8-bit', flat: '极简扁平' };
+const UI_STYLES = ['default', 'neo', 'glass', 'clay', 'mag', 'pixel', 'flat', 'y2k', 'memphis', 'bauhaus', 'riso', 'retro', 'cyber', 'pencil', 'water', 'gothic', 'acid'];
+const UI_STYLE_NAME = {
+  default: '清爽（默认）', neo: '新野兽派', glass: '毛玻璃', clay: '粘土拟态', mag: '编辑杂志', pixel: '像素 8-bit', flat: '极简扁平',
+  y2k: 'Y2K 千禧', memphis: '孟菲斯', bauhaus: '包豪斯', riso: 'Risograph', retro: '复古怀旧',
+  cyber: '赛博霓虹', pencil: '铅笔手绘', water: '水彩晕染', gothic: '哥特', acid: '酸性平面'
+};
 const UI_STYLE_DESC = {
   default: '现在这套：白卡片、圆角、轻阴影，干净耐看。',
   neo: '粗黑边 + 实心投影 + 直角，像印刷海报；字更粗，按钮按下去会有位移。',
@@ -547,7 +551,44 @@ const UI_STYLE_DESC = {
   clay: '超大圆角 + 内外两层柔影，像捏出来的软陶块，按钮鼓一点。',
   mag: '衬线标题 + 细线分隔 + 去掉阴影，暖纸底，像翻杂志。',
   pixel: '零圆角 + 等宽字 + 硬边像素框，复古 8-bit。',
-  flat: '去掉所有阴影和渐变，只留细边框和色块，最安静。'
+  flat: '去掉所有阴影和渐变，只留细边框和色块，最安静。',
+  y2k: '亮面渐变 + 胶囊按钮 + 冷蓝粉光晕，千禧年数码味。',
+  memphis: '粗黑描边 + 硬投影 + 彩色圆点底纹，80 年代孟菲斯设计。',
+  bauhaus: '红黄蓝原色 + 粗直线 + 全大写，包豪斯几何。',
+  riso: '奶油纸底 + 玫红/蓝双色套印 + 错位投影，像丝网印刷。',
+  retro: '米黄纸 + 双线框 + 衬线字，旧书刊味道。',
+  cyber: '霓虹发光描边 + 等宽大写，赛博朋克；深色模式下最带感。',
+  pencil: '纸底 + 虚线框 + 手写体，像随手画的草图。',
+  water: '多层水彩晕染 + 半透明卡片 + 胶囊按钮，柔和通透。',
+  gothic: '暗底金边 + 衬线字，教堂彩窗感（这套自带深色，浅色主题下也是暗的）。',
+  acid: '荧光黄绿 + 纯黑粗框 + 大写重字，酸性平面／反设计。'
+};
+/* 每套皮肤主推一个主题色（THEME_COLORS 里的 key）：换风格时自动配一套，
+   设置里可以关（#setStyleAuto）。只是推荐，用户随后照样能自己改主题色。 */
+const UI_STYLE_TC = {
+  default: 'teal', neo: 'amber', glass: 'indigo', clay: 'rose', mag: 'graphite', pixel: 'emerald', flat: 'teal',
+  y2k: 'candy', memphis: 'candy', bauhaus: 'rose', riso: 'warm', retro: 'amber',
+  cyber: 'ocean', pencil: 'graphite', water: 'teal', gothic: 'graphite', acid: 'violet'
+};
+/* 设置面板缩略图用的迷你外观（值要和 style.css 里的皮肤对得上；探针会抽查几个） */
+const UI_STYLE_SWATCH = {
+  default: { r: '8px', bd: '1px solid #cbd5e1', sh: '0 2px 8px rgba(15,23,42,.10)', bg: '#f6f8fb', cd: '#ffffff', ac: '#0d9488' },
+  neo: { r: '0', bd: '2px solid #0b1220', sh: '3px 3px 0 #0b1220', bg: '#f4f1e8', cd: '#fffdf4', ac: '#0b1220' },
+  glass: { r: '14px', bd: '1px solid rgba(255,255,255,.7)', sh: '0 6px 18px rgba(60,120,180,.18)', bg: 'linear-gradient(135deg,#d8f3ff,#e8e0ff)', cd: 'rgba(255,255,255,.55)', ac: '#4f8df5' },
+  clay: { r: '16px', bd: '0', sh: '0 4px 10px rgba(84,100,160,.18), inset 0 1px 0 #fff', bg: '#eef1fb', cd: '#f7f9ff', ac: '#6b7cff' },
+  mag: { r: '3px', bd: '1px solid rgba(58,44,28,.28)', sh: 'none', bg: '#faf7f0', cd: '#fffdf8', ac: '#7c5a33' },
+  pixel: { r: '0', bd: '2px solid #16203a', sh: '3px 3px 0 #16203a', bg: '#e8eef8', cd: '#ffffff', ac: '#16203a' },
+  flat: { r: '7px', bd: '1.5px solid rgba(13,23,42,.2)', sh: 'none', bg: '#f7f8fa', cd: '#ffffff', ac: '#0f766e' },
+  y2k: { r: '12px', bd: '1px solid rgba(96,132,255,.45)', sh: '0 6px 16px rgba(86,126,255,.22)', bg: 'linear-gradient(135deg,#e6efff,#ffe9f6)', cd: 'rgba(255,255,255,.9)', ac: '#4f7cff' },
+  memphis: { r: '8px', bd: '2.5px solid #121212', sh: '4px 4px 0 #121212', bg: '#fffaf3', cd: '#ffffff', ac: '#ff5a78' },
+  bauhaus: { r: '0', bd: '3px solid #111', sh: 'none', bg: '#f4f1ea', cd: '#ffffff', ac: '#d21f1f' },
+  riso: { r: '4px', bd: '1.5px solid rgba(40,30,60,.3)', sh: '4px 4px 0 rgba(255,79,123,.35)', bg: '#fdf7ea', cd: '#fffdf6', ac: '#2b6cff' },
+  retro: { r: '2px', bd: '2px double rgba(84,58,32,.5)', sh: 'none', bg: '#f3e9d2', cd: '#fbf3df', ac: '#7a5a34' },
+  cyber: { r: '6px', bd: '1px solid rgba(34,211,238,.6)', sh: '0 0 12px rgba(34,211,238,.35)', bg: 'linear-gradient(135deg,#0a0f1c,#122036)', cd: 'rgba(10,18,32,.85)', ac: '#22d3ee' },
+  pencil: { r: '6px', bd: '1.5px dashed rgba(70,58,45,.55)', sh: 'none', bg: '#faf6ec', cd: '#fffdf7', ac: '#6b5a45' },
+  water: { r: '14px', bd: '1px solid rgba(120,160,160,.35)', sh: '0 8px 20px rgba(90,150,150,.18)', bg: 'linear-gradient(135deg,#e9f7f4,#fff2e8)', cd: 'rgba(255,255,255,.8)', ac: '#2f8f86' },
+  gothic: { r: '2px', bd: '1px solid rgba(212,175,55,.55)', sh: 'none', bg: '#0f0d0b', cd: '#17130f', ac: '#d4af37' },
+  acid: { r: '0', bd: '2.5px solid #0a0a0a', sh: '5px 5px 0 #0a0a0a', bg: '#f2f2ef', cd: '#ffffff', ac: '#a8d600' }
 };
 
 /* ---------- 自定义背景图（本机） ----------
@@ -4727,6 +4768,38 @@ function paintStyleEls() {
   if (sel && sel.value !== st) sel.value = st;
   const box = $('styleHint');
   if (box) box.textContent = UI_STYLE_DESC[st] || UI_STYLE_DESC.default;
+  if ($('setStyleAuto')) $('setStyleAuto').checked = SET.styleAuto !== false;
+  paintStyleGrid();
+}
+/* 风格缩略图卡：点一下就切（等价于下拉框 change），选中的加 .on */
+function paintStyleGrid() {
+  const host = $('styleGrid');
+  if (!host) return;
+  const cur = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+  if (!host.__built) {
+    host.innerHTML = UI_STYLES.map(id => {
+      const sw = UI_STYLE_SWATCH[id] || UI_STYLE_SWATCH.default;
+      return '<button type="button" class="sty-card" data-style-v="' + id + '" title="' + (UI_STYLE_DESC[id] || '') + '">' +
+        '<span class="sty-mini" style="border-radius:' + sw.r + ';border:' + sw.bd + ';box-shadow:' + sw.sh + ';background:' + sw.bg + '">' +
+        '<i class="sty-bar" style="background:' + sw.ac + ';border-radius:' + sw.r + '"></i>' +
+        '<i class="sty-line" style="background:' + sw.ac + '"></i>' +
+        '<i class="sty-line s" style="background:' + sw.ac + '"></i>' +
+        '<i class="sty-btn" style="background:' + sw.cd + ';border:1px solid ' + sw.ac + '"></i>' +
+        '</span><b>' + (UI_STYLE_NAME[id] || id) + '</b></button>';
+    }).join('');
+    host.__built = true;
+    host.addEventListener('click', e => {
+      const card = e.target.closest && e.target.closest('[data-style-v]');
+      if (!card) return;
+      const sel = $('setStyle');
+      if (!sel) return;
+      sel.value = card.getAttribute('data-style-v');
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+  Array.prototype.forEach.call(host.querySelectorAll('[data-style-v]'), el => {
+    el.classList.toggle('on', el.getAttribute('data-style-v') === cur);
+  });
 }
 function openSettings() {
   $('setExpOnOk').checked = SET.expOnOk;
@@ -4764,8 +4837,33 @@ on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom
 on('setStyle', e => {
   const v = UI_STYLES.indexOf(e.target.value) >= 0 ? e.target.value : 'default';
   setLook('style', v);
+  /* 换风格时按 UI_STYLE_TC 自动配一套主题色（设置里可以关掉） */
+  let extra = '';
+  const tc = UI_STYLE_TC[v];
+  if (SET.styleAuto !== false && tc && THEME_COLORS.indexOf(tc) >= 0 && SET.color !== tc) {
+    setLook('color', tc);
+    if ($('setColor')) $('setColor').value = tc;
+    if (typeof paintThemeBtn === 'function') paintThemeBtn();
+    extra = '，主题色一起换成「' + (THEME_NAME[tc] || '冷静青') + '」';
+  }
   paintStyleEls();
-  toast('界面风格换成「' + (UI_STYLE_NAME[v] || '清爽') + '」', 1600, 'ok');
+  toast('界面风格换成「' + (UI_STYLE_NAME[v] || '清爽') + '」' + extra, 1800, 'ok');
+}, 'change');
+on('setStyleAuto', e => {
+  SET.styleAuto = !!e.target.checked;
+  writeLS(LS.set, SET);
+  if (SET.styleAuto) {
+    const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+    const tc = UI_STYLE_TC[st];
+    if (tc && THEME_COLORS.indexOf(tc) >= 0) {
+      setLook('color', tc);
+      if ($('setColor')) $('setColor').value = tc;
+      if (typeof paintThemeBtn === 'function') paintThemeBtn();
+      toast('以后换风格会顺手配一套主题色（当前「' + (THEME_NAME[tc] || '') + '」）', 1800, 'ok');
+    }
+  } else {
+    toast('换风格不再自动改主题色', 1400, 'ok');
+  }
 }, 'change');
 on('setBgPick', bgPick);
 on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
