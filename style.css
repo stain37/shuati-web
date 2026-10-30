@@ -2274,3 +2274,201 @@ body.rz-drag{cursor:ew-resize;user-select:none}
   .cal-n,.cal-due{font-size:9px}
   .cal-row{font-size:12.5px}
 }
+
+/* ============================================================
+   §10 界面风格（web185）—— 换的是「皮肤」，跟主题色、深色模式、背景正交
+   - JS 侧：app.js 的 UI_STYLES / SET.style → <html data-style="…">
+   - 这里只覆盖变量 + 少量组件，切回 default 时全部还原
+   - 1) neo 新野兽派 2) glass 毛玻璃 3) clay 粘土拟态
+   - 4) mag 编辑杂志 5) pixel 像素 8-bit 6) flat 极简扁平
+   ============================================================ */
+:root{
+  --hard:#0b1220;
+  --serif:"Songti SC","Source Han Serif SC","Noto Serif SC","STSong",Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,"Cascadia Mono","Sarasa Mono SC","Noto Sans Mono CJK SC",Consolas,monospace;
+}
+body.dark{ --hard:rgba(236,242,255,.78); }
+
+/* ---------- 1) 新野兽派：硬边 + 实心投影 + 零圆角 ---------- */
+/* 变量同时铺在 html 和 body 上：深色模式的 body.dark 也会改这些变量，
+   只写在 html 上会被 body 盖掉（body 更近），所以两个选择器一起写。 */
+html[data-style="neo"],
+html[data-style="neo"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0; --r-pill:6px;
+  --bg:#f4f1e8; --bg2:#eae5d6; --card:#fffdf4; --card2:#f6f1e2; --card3:#eee7d3;
+  --line:#0b1220; --line2:#0b1220;
+  --sh-1:2px 2px 0 var(--hard); --sh-card:5px 5px 0 var(--hard);
+  --sh-2:7px 7px 0 var(--hard); --sh-pop:0 -5px 0 var(--hard);
+  --bg-wash:none;
+}
+html[data-style="neo"] body.dark{
+  --bg:#12161f; --bg2:#171c27; --card:#1b2130; --card2:#202838; --card3:#26303f;
+  --line:#dbe4f5; --line2:#dbe4f5;
+}
+html[data-style="neo"] .card,
+html[data-style="neo"] .vb-card,
+html[data-style="neo"] .sheet,
+html[data-style="neo"] .opt,
+html[data-style="neo"] .graderow{border-width:2px;border-radius:0}
+html[data-style="neo"] .btn{border-width:2px;border-radius:0;font-weight:700;box-shadow:2px 2px 0 var(--hard)}
+html[data-style="neo"] .btn:hover:not(:disabled){transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--hard)}
+html[data-style="neo"] .btn:active:not(:disabled){transform:translate(1px,1px);box-shadow:1px 1px 0 var(--hard)}
+html[data-style="neo"] h2.sec{font-weight:900;letter-spacing:.02em}
+html[data-style="neo"] h2.sec::before{width:8px;height:18px;border-radius:0;background:var(--primary)}
+html[data-style="neo"] .hero{border-radius:0}
+html[data-style="neo"] .nav,html[data-style="neo"] .bnav{border-radius:0}
+html[data-style="neo"] .inp,html[data-style="neo"] .num,html[data-style="neo"] input[type=text],
+html[data-style="neo"] select,html[data-style="neo"] textarea{border:2px solid var(--line);border-radius:0}
+html[data-style="neo"] .cal-c,html[data-style="neo"] .hm-c,
+html[data-style="neo"] .vb-q-i,html[data-style="neo"] .cal-d,html[data-style="neo"] .gbtn{border-radius:0}
+
+/* ---------- 2) 毛玻璃：半透明面板 + 背景模糊 + 大圆角 ---------- */
+html[data-style="glass"],
+html[data-style="glass"] body{
+  --radius:26px; --r-card:26px; --r-m:14px; --r-l:22px;
+  --card:rgba(255,255,255,.46); --card2:rgba(255,255,255,.32); --card3:rgba(255,255,255,.20);
+  --line:rgba(255,255,255,.62); --line2:rgba(255,255,255,.42);
+  --bg:#dfe7f5; --bg2:#d5dff0;
+  --sh-1:0 8px 26px rgba(23,37,84,.10); --sh-card:0 12px 36px rgba(23,37,84,.13);
+  --sh-2:0 18px 46px rgba(23,37,84,.18); --sh-pop:0 -10px 36px rgba(23,37,84,.18);
+  --bg-wash:
+    radial-gradient(760px 520px at 8% 4%,rgba(56,189,248,.55),transparent 62%),
+    radial-gradient(680px 480px at 96% 8%,rgba(167,139,250,.52),transparent 60%),
+    radial-gradient(900px 600px at 60% 100%,rgba(45,212,191,.42),transparent 62%);
+}
+html[data-style="glass"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="glass"] body.dark{
+  --card:rgba(22,30,46,.58); --card2:rgba(28,38,56,.46); --card3:rgba(32,44,64,.34);
+  --line:rgba(255,255,255,.14); --line2:rgba(255,255,255,.08);
+  --bg:#070b13; --bg2:#0b111c;
+  --bg-wash:
+    radial-gradient(760px 520px at 8% 4%,rgba(14,165,233,.32),transparent 62%),
+    radial-gradient(680px 480px at 96% 8%,rgba(139,92,246,.30),transparent 60%),
+    radial-gradient(900px 600px at 60% 100%,rgba(45,212,191,.22),transparent 62%);
+}
+html[data-style="glass"] body.dark{background-image:var(--bg-wash)}
+html[data-style="glass"] .card,
+html[data-style="glass"] .vb-card,
+html[data-style="glass"] .opt,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .cal-c,
+html[data-style="glass"] .graderow,
+html[data-style="glass"] .vb-q{
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  backdrop-filter:blur(16px) saturate(140%);
+}
+html[data-style="glass"] .btn{-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+
+/* ---------- 3) 粘土拟态：超大圆角 + 内外双层柔影 ---------- */
+html[data-style="clay"],
+html[data-style="clay"] body{
+  --radius:30px; --r-card:30px; --r-m:16px; --r-l:24px;
+  --bg:#eef1fb; --bg2:#e5e9f7; --card:#f8faff; --card2:#eef1fb; --card3:#e4e9f7;
+  --line:rgba(255,255,255,.92); --line2:rgba(255,255,255,.72);
+  --sh-1:0 10px 22px rgba(74,88,140,.13),inset 0 3px 8px rgba(255,255,255,.90),inset 0 -5px 12px rgba(84,100,160,.10);
+  --sh-card:0 14px 30px rgba(74,88,140,.15),inset 0 4px 10px rgba(255,255,255,.95),inset 0 -6px 14px rgba(84,100,160,.12);
+  --sh-2:0 20px 40px rgba(74,88,140,.20);
+  --sh-pop:0 -14px 36px rgba(74,88,140,.22);
+}
+html[data-style="clay"] body.dark{
+  --bg:#10131c; --bg2:#141927; --card:#1a2030; --card2:#202738; --card3:#252d40;
+  --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.06);
+}
+html[data-style="clay"] .card,
+html[data-style="clay"] .vb-card,
+html[data-style="clay"] .sheet{border:0}
+html[data-style="clay"] .btn{
+  border:0;border-radius:16px;font-weight:600;
+  box-shadow:0 5px 12px rgba(74,88,140,.16),inset 0 2px 4px rgba(255,255,255,.85),inset 0 -3px 7px rgba(84,100,160,.12);
+}
+html[data-style="clay"] .btn:active:not(:disabled){transform:none;box-shadow:inset 0 3px 8px rgba(84,100,160,.20)}
+html[data-style="clay"] .opt{border:0;box-shadow:var(--sh-1)}
+html[data-style="clay"] .hm-c,html[data-style="clay"] .cal-d{border-radius:6px}
+
+/* ---------- 4) 编辑杂志：衬线标题 + 细线 + 无阴影 + 暖纸底 ---------- */
+html[data-style="mag"],
+html[data-style="mag"] body{
+  --radius:4px; --r-card:4px; --r-s:3px; --r-m:4px; --r-l:6px;
+  --bg:#faf7f0; --bg2:#f2ecdf; --card:#fffdf8; --card2:#f7f1e4; --card3:#efe7d6;
+  --line:rgba(58,44,28,.22); --line2:rgba(58,44,28,.12);
+  --sh-1:none; --sh-card:none; --sh-2:none; --sh-pop:0 -1px 0 rgba(58,44,28,.18);
+  --bg-wash:none;
+}
+html[data-style="mag"] body.dark{
+  --bg:#12100d; --bg2:#171410; --card:#1b1713; --card2:#221d17; --card3:#2a231b;
+  --line:rgba(240,226,200,.18); --line2:rgba(240,226,200,.10);
+}
+html[data-style="mag"] h1,
+html[data-style="mag"] h2,
+html[data-style="mag"] h3,
+html[data-style="mag"] .vb-cap,
+html[data-style="mag"] .cal-month{font-family:var(--serif);letter-spacing:.01em}
+html[data-style="mag"] h2.sec{font-weight:600;padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:14px}
+html[data-style="mag"] h2.sec::before{display:none}
+html[data-style="mag"] .card,
+html[data-style="mag"] .vb-card{border:1px solid var(--line);box-shadow:none}
+html[data-style="mag"] .btn{background:transparent;border:1px solid var(--line);box-shadow:none}
+html[data-style="mag"] .btn:hover:not(:disabled){background:var(--card2);border-color:var(--text)}
+html[data-style="mag"] .hero{box-shadow:none}
+html[data-style="mag"] .hero h1{font-family:var(--serif);letter-spacing:.02em}
+
+/* ---------- 5) 像素 8-bit：零圆角 + 等宽字 + 硬边 ---------- */
+html[data-style="pixel"],
+html[data-style="pixel"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0; --r-pill:0;
+  --bg:#e8eef8; --bg2:#dde6f4; --card:#f7faff; --card2:#e9f0fb; --card3:#dae4f3;
+  --line:#16203a; --line2:#16203a;
+  --sh-1:2px 2px 0 var(--hard); --sh-card:4px 4px 0 var(--hard);
+  --sh-2:6px 6px 0 var(--hard); --sh-pop:0 -4px 0 var(--hard);
+  --bg-wash:none;
+}
+html[data-style="pixel"] body.dark{
+  --bg:#0b0f18; --bg2:#101623; --card:#161d2c; --card2:#1b2333; --card3:#202a3c;
+  --line:#c8d6f0; --line2:#c8d6f0;
+}
+html[data-style="pixel"] body{font-family:var(--mono);letter-spacing:.02em}
+html[data-style="pixel"] .card,
+html[data-style="pixel"] .vb-card,
+html[data-style="pixel"] .opt,
+html[data-style="pixel"] .sheet,
+html[data-style="pixel"] .inp,
+html[data-style="pixel"] .num,
+html[data-style="pixel"] input[type=text],
+html[data-style="pixel"] select,
+html[data-style="pixel"] textarea{border-width:2px;border-radius:0}
+html[data-style="pixel"] .btn{border-width:2px;border-radius:0;font-weight:700;box-shadow:2px 2px 0 var(--hard)}
+html[data-style="pixel"] .btn:active:not(:disabled){transform:translate(1px,1px);box-shadow:1px 1px 0 var(--hard)}
+html[data-style="pixel"] .hm-c,
+html[data-style="pixel"] .cal-d,
+html[data-style="pixel"] .vb-q-i,
+html[data-style="pixel"] .gbtn{border-radius:0}
+html[data-style="pixel"] h2.sec{font-family:var(--mono);font-size:16px;letter-spacing:.08em}
+html[data-style="pixel"] h2.sec::before{width:10px;height:16px;border-radius:0;box-shadow:2px 2px 0 var(--hard)}
+
+/* ---------- 6) 极简扁平：无阴影无渐变 + 细边框 ---------- */
+html[data-style="flat"],
+html[data-style="flat"] body{
+  --radius:10px; --r-card:10px; --r-s:6px; --r-m:8px; --r-l:12px;
+  --card:#fff; --card2:#f3f5f9; --card3:#e9edf4;
+  --line:rgba(13,23,42,.16); --line2:rgba(13,23,42,.09);
+  --sh-1:none; --sh-card:none; --sh-2:none; --sh-pop:none;
+  --bg-wash:none;
+}
+html[data-style="flat"] body.dark{--card:#151b27;--card2:#1b2331;--line:rgba(255,255,255,.14)}
+html[data-style="flat"] .card,
+html[data-style="flat"] .vb-card{border:1.5px solid var(--line)}
+html[data-style="flat"] .btn{border:1.5px solid var(--line);box-shadow:none}
+html[data-style="flat"] .btn:hover:not(:disabled){border-color:var(--text);background:var(--card2)}
+html[data-style="flat"] .hero{box-shadow:none}
+html[data-style="flat"] .cal-c,html[data-style="flat"] .hm-c,html[data-style="flat"] .vb-q-i{border-radius:6px}
+
+/* 容器级圆角（底栏 / 指示器有写死的 20px / 15px，跟着皮肤一起改） */
+html[data-style="neo"] .bnav,
+html[data-style="neo"] .bnav-ind,
+html[data-style="pixel"] .bnav,
+html[data-style="pixel"] .bnav-ind{border-radius:0}
+html[data-style="pixel"] .bnav{border-width:2px}
+html[data-style="mag"] .bnav{border-radius:4px}
+html[data-style="mag"] .bnav-ind{border-radius:3px}
+html[data-style="mag"] .btn{border-radius:4px}
+html[data-style="flat"] .bnav{border-radius:12px}

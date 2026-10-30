@@ -478,7 +478,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -536,6 +536,19 @@ const THEME_NAME = { teal: '冷静青', indigo: '靛蓝', warm: '蓝 + 暖橙', 
 /* 背景氛围：只换 body 的底图（style.css 末尾 html[data-bg=…]），不碰布局 */
 const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'paper', 'plain', 'custom', 'video'];
 const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片', video: '视频背景' };
+/* 界面风格（web185）：换的是「皮肤」—— 边框、圆角、阴影、字体气质，跟主题色 / 深色 / 背景互不干扰。
+   实现全在 style.css 的 §10：<html data-style="…"> 覆盖变量 + 少量组件，default 就是原来的样子。 */
+const UI_STYLES = ['default', 'neo', 'glass', 'clay', 'mag', 'pixel', 'flat'];
+const UI_STYLE_NAME = { default: '清爽（默认）', neo: '新野兽派', glass: '毛玻璃', clay: '粘土拟态', mag: '编辑杂志', pixel: '像素 8-bit', flat: '极简扁平' };
+const UI_STYLE_DESC = {
+  default: '现在这套：白卡片、圆角、轻阴影，干净耐看。',
+  neo: '粗黑边 + 实心投影 + 直角，像印刷海报；字更粗，按钮按下去会有位移。',
+  glass: '面板半透明 + 背景模糊，彩色光晕透上来；圆角更大。',
+  clay: '超大圆角 + 内外两层柔影，像捏出来的软陶块，按钮鼓一点。',
+  mag: '衬线标题 + 细线分隔 + 去掉阴影，暖纸底，像翻杂志。',
+  pixel: '零圆角 + 等宽字 + 硬边像素框，复古 8-bit。',
+  flat: '去掉所有阴影和渐变，只留细边框和色块，最安静。'
+};
 
 /* ---------- 自定义背景图（本机） ----------
    选图 → canvas 压到最长边 1800px → 存 IndexedDB（不占题库的 localStorage 配额，
@@ -755,6 +768,9 @@ function applyLook() {
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const bg = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-bg', bg);
+  /* 界面风格（皮肤层）：只打一个属性，样式全在 style.css §10；不认识的值一律落回 default */
+  const style = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+  if (document.documentElement) document.documentElement.setAttribute('data-style', style);
   /* 面板不透明度：卡片 / 底部弹层 / 首页目录卡片都读 --ui-pct */
   const ua = Math.max(0.3, Math.min(1, isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1));
   if (document.documentElement) {
@@ -4704,6 +4720,14 @@ function srsRepaint() {
   if ($('srsPreview')) $('srsPreview').textContent = srsPreviewText(c);
   const sel = $('srsMode'); if (sel && sel.value !== c.mode) sel.value = c.mode;
 }
+/* 设置里「界面风格」的选中项与一句说明（皮肤只管观感，不碰任何数据） */
+function paintStyleEls() {
+  const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+  const sel = $('setStyle');
+  if (sel && sel.value !== st) sel.value = st;
+  const box = $('styleHint');
+  if (box) box.textContent = UI_STYLE_DESC[st] || UI_STYLE_DESC.default;
+}
 function openSettings() {
   $('setExpOnOk').checked = SET.expOnOk;
   $('setAutoNext').checked = SET.autoNext;
@@ -4720,6 +4744,7 @@ function openSettings() {
   if ($('setTextColorPick')) $('setTextColorPick').value = SET.textColorPick || '#334155';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if ($('setBg')) $('setBg').value = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
+  paintStyleEls();
   const uiA = Math.round((isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1) * 100);
   if ($('setUiAlpha')) { $('setUiAlpha').value = uiA; if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = uiA + '%'; }
   const fpx = isFinite(+SET.frostPx) && SET.frostPx != null ? +SET.frostPx : 14;
@@ -4736,6 +4761,12 @@ on('setTextColor', e => setLook('textColor', e.target.value), 'change');
 on('setTextColorPick', e => { SET.textColorPick = e.target.value; setLook('textColor', 'custom'); }, 'input');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
 on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
+on('setStyle', e => {
+  const v = UI_STYLES.indexOf(e.target.value) >= 0 ? e.target.value : 'default';
+  setLook('style', v);
+  paintStyleEls();
+  toast('界面风格换成「' + (UI_STYLE_NAME[v] || '清爽') + '」', 1600, 'ok');
+}, 'change');
 on('setBgPick', bgPick);
 on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
 on('setBgVideo', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromVideo(f); }, 'change');
