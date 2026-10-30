@@ -2231,3 +2231,46 @@ body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!import
 .rich-edit .rich-img:hover{outline:2px solid rgba(64,158,255,.45);outline-offset:2px;border-radius:10px}
 body.rz-drag{cursor:ew-resize;user-select:none}
 .rich-imgs{display:none}
+
+
+/* ============================================================
+   §9 复习日历 + 三档反馈（web184）
+   - 日历：7 列月视图，今天描边、选中加外框、超出 30 天淡出
+   - 三档反馈：答题反馈区那排「认识 / 模糊 / 忘记」
+   ============================================================ */
+.graderow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 2px;padding:8px 10px;border-radius:12px;background:var(--card2);border:1px solid var(--line2)}
+.gbtn{font-size:12.5px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+.gbtn:hover{border-color:var(--primary-line)}
+.gbtn.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary);font-weight:600}
+.cal-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cal-month{font-size:15px}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 5px;text-align:center;font-size:11px;color:var(--sub)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal-c{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;min-height:54px;padding:4px 2px;border:1px solid var(--line2);border-radius:10px;background:var(--card2);cursor:pointer;font:inherit;color:var(--text);transition:transform .12s,border-color .12s}
+.cal-c:hover{border-color:var(--primary-line)}
+.cal-c:active{transform:scale(.97)}
+.cal-c.out{border:0;background:transparent;cursor:default;pointer-events:none}
+.cal-c.far{opacity:.4;cursor:default}
+.cal-c.today{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.cal-c.sel{outline:2px solid var(--primary);outline-offset:1px}
+.cal-d{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:12px;line-height:1}
+.cal-d[data-l="1"]{background:var(--primary-soft)}
+.cal-d[data-l="2"]{background:var(--primary-soft);color:var(--primary);font-weight:600}
+.cal-d[data-l="3"]{background:var(--primary);color:#fff;font-weight:600}
+.cal-d[data-l="4"]{background:var(--primary);color:#fff;font-weight:700;box-shadow:0 0 0 2px var(--primary-line)}
+.cal-due{position:absolute;top:3px;right:4px;font-size:10px;line-height:1;color:var(--bad);font-weight:600}
+.cal-n{font-size:10px;line-height:1;color:var(--sub)}
+.cal-foot{margin-top:8px}
+.cal-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.cal-dayhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600}
+.cal-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line2);font-size:13px}
+.cal-row:last-child{border-bottom:0}
+.cal-b{flex:0 0 auto;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub);font-size:12px}
+.cal-q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini-tag.ok{background:var(--okbg);color:var(--ok);border-color:var(--ok-line)}
+.mini-tag.bad{background:var(--badbg);color:var(--bad);border-color:var(--bad-line)}
+@media (max-width:560px){
+  .cal-c{min-height:46px}
+  .cal-n,.cal-due{font-size:9px}
+  .cal-row{font-size:12.5px}
+}

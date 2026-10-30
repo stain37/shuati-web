@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261111b">
+<link rel="stylesheet" href="style.css?v=20261112a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -201,6 +201,7 @@
           <label>每日复习上限<input type="number" id="srsDaily" min="0" max="999" step="1"></label>
         </div>
         <label class="chk"><input type="checkbox" id="srsWrongToday"> 答错的题当天继续排进复习（不勾就按上面的「答错后间隔」）</label>
+        <label class="chk"><input type="checkbox" id="srsPile"> 逾期卡片堆到当天（不勾：逾期的不自动进今日复习，只在「复习日历」里标出来）</label>
         <div class="actions" style="margin-top:10px">
           <button class="btn small" id="srsReset">填回推荐值</button>
           <button class="btn small" id="srsSyncEase">统一易度</button>
@@ -228,7 +229,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261111b"></script>
+<script src="app.js?v=20261112a"></script>
 <script src="collection.js?v=20261111b"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>
@@ -239,7 +240,7 @@
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261111a"></script>
+<script src="cat.js?v=20261112b"></script>
 <script src="bf.js?v=20261017e"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>

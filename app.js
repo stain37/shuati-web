@@ -1339,14 +1339,8 @@ function markTop(name) {
 /* §3.6-P0③ 待复习角标：数一遍「做错过且今天到期」的题，把数字挂到底部导航的「错题」上。
    纯读 ANS（`wrong > 0` + `due <= now`，和 isDue 同一套判据），不新增任何记录、不改数据层。 */
 function uiDueCount() {
-  const now = Date.now();
   let n = 0;
-  for (const k in ANS) {
-    const a = ANS[k];
-    if (!a || !(a.wrong > 0)) continue;
-    const d = (a.due == null ? (a.ts || 0) : a.due);
-    if (d <= now) n++;
-  }
+  for (const k in ANS) { if (isDueToday(k)) n++; }   /* web184：和「今日复习」同一套判据（含逾期堆叠 / 提前复习） */
   return n;
 }
 function uiPaintBadge() {
@@ -1744,6 +1738,7 @@ function route() {
   if (parts[0] === 'kb') return { name: 'kb' };
   if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
+  if (parts[0] === 'cal') return { name: 'cal' };             /* 复习日历（web184）：按月翻页看哪天到期 */
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
   if (parts[0] === 'chat') return { name: 'chat' };                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
@@ -1858,6 +1853,7 @@ function renderInner() {
   else if (r.name === 'fav') { if (typeof renderFav === 'function') renderFav(); }
   else if (r.name === 'search') { if (typeof renderSearch === 'function') renderSearch(); }
   else if (r.name === 'stats') renderStats();
+  else if (r.name === 'cal') renderCal();
   else if (r.name === 'report') { if (typeof renderReport === 'function') renderReport(); }
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
@@ -2041,7 +2037,7 @@ function renderHome() {
     const k = kOf(b, q), a = ANS[k];
     if (a && !a.redo) { totalDone++; if (a.ok) totalOk++; }
     if (a && (a.wrong || 0) > 0) wrongN++;
-    if (isDue(k)) dueN++;
+    if (isDueToday(k)) dueN++;
   }));
   const srsCap = +srsCfg().daily || 0;
   const favN = Object.keys(FAV).filter(k => FAV[k]).length;
@@ -3454,6 +3450,74 @@ function srsUpdate(rec, ok, now) {
   rec.due = ok ? dayAdd(now, r.ivl) : (c.wrongToday ? now : dayAdd(now, r.ivl));
 }
 
+/* ============================================================
+   三档反馈（web184）：认识 / 模糊 / 忘记
+   做完题后自己选；做对默认「认识」，做错默认「忘记」，随时能改。
+   用户 2026-10-30 锁定的两条规则：
+     ① 模糊 / 忘记 → 当天最多重入队列 1 次，重入排到队列后方（不连排）；
+     ② 同一张卡当天再改反馈，只影响「今天还上不上」，不再改长期间隔。
+   ============================================================ */
+const SRS_GRADES = ['认识', '模糊', '忘记'];
+function srsDayKey(ts) { const d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function srsGradeOf(k) { const a = ANS[k]; return (a && a.grade) || null; }
+function srsDayStart(ts) { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+/* 把一次反馈写进记录（rec），返回 { requeue, ivl, ease, due } */
+function srsApplyGrade(rec, grade, now) {
+  now = now || Date.now();
+  const c = srsCfg();
+  const today = srsDayKey(now);
+  const firstToday = rec.gday !== today || rec.ivl == null;   // 今天第一次给反馈：算长期
+  const prevIvl = (rec.ivl == null ? 0 : rec.ivl);
+  const prevEase = (rec.ease == null ? (+c.ease0 || 2.5) : rec.ease);
+  let ivl = prevIvl, ease = prevEase;
+  if (firstToday) {
+    if (grade === '认识') {
+      const r = srsNext(prevIvl, prevEase, true, c); ivl = r.ivl; ease = r.ease;
+    } else if (grade === '模糊') {
+      /* 蒙对 / 半懂：这一档不长间隔（停在当前档），易度略降 —— 「按错、压缩间隔」 */
+      ivl = Math.max(1, Math.min(prevIvl > 0 ? prevIvl : (+c.first || 1), +c.maxIvl || 365));
+      ease = Math.max(+c.minEase || 1.3, Math.round((prevEase - Math.max(0.1, +c.easeDown || 0.1)) * 100) / 100);
+    } else {
+      const r = srsNext(prevIvl, prevEase, false, c); ivl = r.ivl; ease = r.ease;
+    }
+  }
+  rec.grade = grade;
+  rec.gts = now;
+  rec.ivl = ivl;
+  rec.ease = ease;
+  let requeue = false;
+  if (grade === '认识') {
+    rec.due = dayAdd(now, Math.max(1, ivl));
+  } else {
+    const rq = (rec.rq && rec.rq.d === today) ? rec.rq : { d: today, n: 0 };
+    const canToday = (c.wrongToday !== false) && (rq.n < 1);     // 锁定①：当天最多重入 1 次
+    if (canToday) {
+      requeue = true;
+      rq.n = 1;
+      rec.due = now + 60 * 1000;          // 排到后面：下次「今日复习」才会再出现，不连排
+    } else {
+      rec.due = dayAdd(now, Math.max(1, ivl));
+    }
+    rec.rq = rq;
+  }
+  if (firstToday) rec.gday = today;
+  return { requeue: requeue, ivl: ivl, ease: ease, due: rec.due };
+}
+
+/* 用户点了另一个档位：改这条记录的排期 + 落盘；重入时让今天那份复习卷失效（下次组卷会带上它） */
+function srsGradeSet(k, grade, bank) {
+  const rec = ANS[k];
+  if (!rec || SRS_GRADES.indexOf(grade) < 0) return null;
+  const r = srsApplyGrade(rec, grade, Date.now());
+  saveAns();
+  if (r.requeue) {
+    try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  }
+  if (bank) { try { invalidateBanks(); } catch (e) {} }
+  return r;
+}
+
 /* 写一条作答记录（含 SRS），返回是否答对 */
 function commitAnswer(k, sel, answer) {
   const ok = sameAns(sel, answer);
@@ -3466,7 +3530,8 @@ function commitAnswer(k, sel, answer) {
     ease: (prev.ease == null ? (+srsCfg().ease0 || 2.5) : prev.ease),
     ivl: (prev.ivl == null ? 0 : prev.ivl)
   };
-  srsUpdate(rec, ok);
+  /* 做完先按默认档位排期：答对＝认识，答错＝忘记（做完可以在反馈里改成别的档） */
+  srsApplyGrade(rec, ok ? '认识' : '忘记', Date.now());
   ANS[k] = rec;
   return ok;
 }
@@ -3658,10 +3723,22 @@ function showFb(bank, q) {
     extra = `<div class="small muted" style="margin-bottom:6px">原题累计：作答 ${s.tries || 0} 次 · 错 ${s.wrong || 0} 次 · 正确率 ${rateOf(s)}%</div>`;
   }
   fb.className = 'fb show ' + (st.ok ? 'ok' : 'bad');
+  const gradeNow = st.grade || (st.ok ? '认识' : '忘记');
+  const gIcon = { '认识': '🙂', '模糊': '🤔', '忘记': '😵' };
+  const gTitle = {
+    '认识': '真会：按正常间隔往后排',
+    '模糊': '蒙对 / 半懂：间隔不长，今天还会再出现一次',
+    '忘记': '不会：按答错算，今天还会再出现一次'
+  };
   fb.innerHTML = `
     <div class="res">${st.ok ? '✅ 回答正确' : '❌ 回答错误'}</div>
     <div class="ans">正确答案：<b>${ansOf(fk, q).join('') || '—'}</b>${hasFix(fk) ? ' <span class="mini-tag" title="这是你手动修正过的答案">已修正</span>' : ''}　你的选择：<b>${(st.sel || []).join('') || '—'}</b>　
       <span class="muted">累计作答 ${st.tries || 1} 次 · 错 ${st.wrong || 0} 次 · 正确率 ${rateOf(st)}%</span></div>
+    <div class="graderow" id="gradeRow">
+      <span class="small muted">这题记得怎么样？</span>
+      ${SRS_GRADES.map(g => `<button class="btn gbtn${g === gradeNow ? ' on' : ''}" data-grade="${g}" title="${gTitle[g]}">${gIcon[g]} ${g}</button>`).join('')}
+      <span class="small muted" id="gradeHint"></span>
+    </div>
     ${extra}
     ${showExp
       ? richBox(fk, explainOf(fk, q), custom, '解析')
@@ -3669,6 +3746,23 @@ function showFb(bank, q) {
     <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
   if (showExp && typeof richBindAll === 'function') richBindAll(fb);   // 方案十：解析块就地可改
   uiOptLink(fb);                                                       // §3.6-P1⑤：解析里的 A/B/C/D 与选项联动
+  /* 三档反馈：换档位只改这题的排期，不动对错次数 */
+  const gRow = fb.querySelector('#gradeRow');
+  if (gRow) gRow.querySelectorAll('[data-grade]').forEach(btn => {
+    btn.onclick = () => {
+      const g = btn.dataset.grade;
+      if (g === (srsGradeOf(k) || (st.ok ? '认识' : '忘记'))) return;
+      const r = srsGradeSet(k, g, bank);
+      if (!r) return;
+      gRow.querySelectorAll('[data-grade]').forEach(x => x.classList.toggle('on', x.dataset.grade === g));
+      const hint = fb.querySelector('#gradeHint');
+      if (hint) hint.textContent = (g === '认识')
+        ? ('已排到 ' + (r.ivl || 1) + ' 天后')
+        : (r.requeue ? '已排到后面：今天还会再出现 1 次' : '今天不再出现，' + (r.ivl || 1) + ' 天后再见');
+      toast('这题记为「' + g + '」，排期已更新', 1500, 'ok');
+      try { uiPaintBadge(); } catch (e) {}
+    };
+  });
 }
 
 function renderRich(k, text) {
@@ -4143,12 +4237,46 @@ function statsDaily(days) {
   return out;
 }
 
-/* 今天该复习的题：到期的错题，早到期的排前面 */
+/* 今天该复习的题：到期的错题，早到期的排前面
+   web184 起多了两种「今天」：⑤ 逾期堆叠（设置里可关）⑥ 提前复习（把未来的卡拉到今天） */
+function srsPileOn() { return SRS.pile !== false; }                 // 默认：逾期卡片堆到当天
+function srsPulledToday(k) {
+  const a = ANS[k];
+  return !!(a && a.pulled && a.pulled === srsDayKey(Date.now()));
+}
+function isDueToday(k) {
+  const a = ANS[k];
+  if (!a) return false;
+  if (srsPulledToday(k)) return true;                                // 功能二：手动拉到今天的卡
+  if (!inSrs(k)) return false;
+  const d = dueOf(k);
+  if (d == null || d > Date.now()) return false;
+  if (d < srsDayStart(Date.now())) return srsPileOn();               // 功能四：逾期堆不堆到当天
+  return true;
+}
 function dueKeys(limit) {
   const out = [];
-  baseBanks().forEach(b => b.questions.forEach(q => { const k = kOf(b, q); if (isDue(k)) out.push(k); }));
+  baseBanks().forEach(b => b.questions.forEach(q => { const k = kOf(b, q); if (isDueToday(k)) out.push(k); }));
   out.sort((a, b) => (dueOf(a) || 0) - (dueOf(b) || 0));
   return limit ? out.slice(0, limit) : out;
+}
+/* 功能二（提前复习）：把未来 n 天到期的卡片全部追加进今天 */
+function pullFuture(nDays) {
+  const today = srsDayKey(Date.now());
+  const t0 = srsDayStart(Date.now());
+  const end = t0 + Math.max(1, Math.min(60, +nDays || 30)) * 86400000;
+  let n = 0;
+  baseBanks().forEach(b => b.questions.forEach(q => {
+    const k = kOf(b, q), a = ANS[k];
+    if (!a || !inSrs(k) || a.pulled === today) return;
+    const d = dueOf(k);
+    if (d != null && d > Date.now() && d <= end) { a.pulled = today; n++; }
+  }));
+  if (n) {
+    saveAns();
+    try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  }
+  return n;
 }
 function startReview(limit) {
   const cap = +srsCfg().daily || 0;                  // 0 = 不限
@@ -4165,6 +4293,149 @@ function startReview(limit) {
     return;
   }
   makePaper('今日复习 · ' + ks.length + ' 题', ks, { kind: 'review', day: today, transient: true });
+}
+
+/* ============================================================
+   复习日历（web184 · 功能一）：按月翻页，点某天看那天的卡片
+   - 过去 30 天 / 未来 30 天可点（更远的只显示数字），符合「只读预览」的锁定
+   - 今天：给「开始今日复习」；未来：只读预览 + 一键拉到今天（功能二）
+   - 逾期：显示有多少张，堆不堆到今天看设置里的开关（功能四）
+   ============================================================ */
+let CAL_M = null;             // 当前月份 { y, m }（m: 0-11）
+let CAL_DAY = 0;              // 点开的那一天（0 点时间戳；0＝没点）
+
+function calBuckets() {
+  const ansN = {}, ansOk = {}, dueN = {};
+  const todayDk = srsDayKey(Date.now());
+  Object.keys(ANS).forEach(k => {
+    const a = ANS[k]; if (!a) return;
+    if (a.ts) { const dk = srsDayKey(a.ts); ansN[dk] = (ansN[dk] || 0) + 1; if (a.ok) ansOk[dk] = (ansOk[dk] || 0) + 1; }
+    const pulled = a.pulled === todayDk;
+    if (!(inSrs(k) || pulled)) return;
+    const due = dueOf(k); if (!due) return;
+    const dk = srsDayKey(pulled ? Date.now() : due);
+    dueN[dk] = (dueN[dk] || 0) + 1;
+  });
+  return { ansN: ansN, ansOk: ansOk, dueN: dueN };
+}
+
+/* 某一天相关的题：那天做过的 + 那天到期的（只读列表用） */
+function calDayItems(ts) {
+  const t0 = srsDayStart(ts), t1 = t0 + 86400000, out = [];
+  const dk = srsDayKey(ts);
+  baseBanks().forEach(b => b.questions.forEach(q => {
+    const k = kOf(b, q), a = ANS[k];
+    if (!a) return;
+    const doneDay = a.ts && a.ts >= t0 && a.ts < t1;
+    const due = dueOf(k);
+    const pulledDay = a.pulled === dk;                       // 提前拉到这天的卡（web184）
+    const dueDay = pulledDay || (due != null && due >= t0 && due < t1 && !a.pulled);
+    if (doneDay || dueDay) out.push({ b: b, q: q, k: k, a: a, doneDay: doneDay, dueDay: dueDay });
+  }));
+  out.sort((x, y) => (y.doneDay ? 1 : 0) - (x.doneDay ? 1 : 0));
+  return out;
+}
+
+function renderCal() {
+  $('appTitle').textContent = '复习日历';
+  $('stat').textContent = ''; $('bar').style.width = '0%';
+  const now = Date.now(), t0 = srsDayStart(now);
+  if (!CAL_M) { const d = new Date(); CAL_M = { y: d.getFullYear(), m: d.getMonth() }; }
+  const st = calBuckets();
+  const y = CAL_M.y, m = CAL_M.m;
+  const first = new Date(y, m, 1);
+  const days = new Date(y, m + 1, 0).getDate();
+  const off = (first.getDay() + 6) % 7;             // 周一当第一列
+  const BACK = 30 * 86400000, FWD = 30 * 86400000;
+  const cells = [];
+  for (let i = 0; i < off; i++) cells.push('<i class="cal-c out"></i>');
+  for (let d = 1; d <= days; d++) {
+    const ts = new Date(y, m, d).getTime(), dk = srsDayKey(ts);
+    const isToday = ts === t0;
+    const inRange = ts >= t0 - BACK && ts <= t0 + FWD;
+    const an = st.ansN[dk] || 0, dn = st.dueN[dk] || 0;
+    const lvl = an === 0 ? 0 : an <= 2 ? 1 : an <= 5 ? 2 : an <= 10 ? 3 : 4;
+    const cls = 'cal-c' + (isToday ? ' today' : (ts < t0 ? ' past' : ' future')) + (inRange ? '' : ' far') + (CAL_DAY === ts ? ' sel' : '');
+    const tip = (m + 1) + ' 月 ' + d + ' 日' + (an ? ' · 做了 ' + an + ' 题' : '') + (dn ? ' · 到期 ' + dn + ' 张' : '')
+      + (inRange ? '' : '（超出 30 天，只看数字）');
+    cells.push('<button class="' + cls + '" data-day="' + ts + '"' + (inRange ? '' : ' disabled') + ' title="' + tip + '">'
+      + '<span class="cal-d" data-l="' + lvl + '">' + d + '</span>'
+      + (dn ? '<span class="cal-due">' + dn + '</span>' : '')
+      + (an ? '<span class="cal-n">' + an + '</span>' : '')
+      + '</button>');
+  }
+  while (cells.length % 7) cells.push('<i class="cal-c out"></i>');
+
+  const dueN = dueKeys(0).length;
+  const overdue = Object.keys(ANS).filter(k => { const a = ANS[k]; if (!a || !inSrs(k)) return false; const d = dueOf(k); return d != null && d < t0; }).length;
+  const pullN = Object.keys(ANS).filter(k => ANS[k] && ANS[k].pulled === srsDayKey(now)).length;
+  const mStr = y + ' 年 ' + (m + 1) + ' 月';
+
+  let dayHtml = '';
+  if (CAL_DAY) {
+    const items = calDayItems(CAL_DAY);
+    const isFuture = CAL_DAY > t0;
+    const dd = new Date(CAL_DAY);
+    const head = (dd.getMonth() + 1) + ' 月 ' + dd.getDate() + ' 日 · ' + (items.length ? items.length + ' 张卡片' : '没有卡片')
+      + (isFuture ? '　<span class="mini-tag">预览，只读</span>' : '');
+    const rows = items.slice(0, 60).map(it => {
+      const stem = String(it.q.stem || '').replace(/\s+/g, ' ').slice(0, 46);
+      const tag = it.doneDay
+        ? '<span class="mini-tag ' + (it.a.ok ? 'ok' : 'bad') + '">' + (it.a.ok ? '答对' : '答错') + '</span>'
+        : '<span class="mini-tag">到期</span>';
+      const gtag = it.a && it.a.grade ? ' <span class="mini-tag">' + it.a.grade + '</span>' : '';
+      return '<div class="cal-row"><span class="cal-b">' + esc(it.b.title || '题库') + '</span>'
+        + '<span class="cal-q">' + esc(stem) + (String(it.q.stem || '').length > 46 ? '…' : '') + '</span>' + tag + gtag + '</div>';
+    }).join('');
+    dayHtml = '<div class="card" id="calDayBox"><div class="cal-dayhead">' + head
+      + (CAL_DAY === t0 ? '　<button class="btn small primary" id="calStart">开始今日复习（' + dueN + '）</button>' : '')
+      + '</div>' + (rows || '<div class="empty small">这天没有卡片。</div>')
+      + (items.length > 60 ? '<div class="small muted">只列前 60 张。</div>' : '') + '</div>';
+  }
+
+  $('view').innerHTML = `
+    <div class="card" id="calBox">
+      <div class="cal-head">
+        <button class="btn small" id="calPrev" title="上个月">‹</button>
+        <b class="cal-month">${mStr}</b>
+        <button class="btn small" id="calNext" title="下个月">›</button>
+        <span class="spacer-grow"></span>
+        <button class="btn small" id="calTodayBtn">今天</button>
+        <button class="btn small primary" id="calReviewBtn"${dueN ? '' : ' disabled'}>今日复习 ${dueN}</button>
+      </div>
+      <div class="cal-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div class="cal-grid">${cells.join('')}</div>
+      <div class="cal-foot">
+        <span class="small muted">深色＝做题多（0 / 2 / 5 / 10 题以上四档）；右上角小数字＝那天到期的复习卡</span>
+      </div>
+      <div class="cal-tools">
+        <div class="small muted">逾期 <b>${overdue}</b> 张${overdue ? (srsPileOn() ? '（已堆到今天）' : '（没堆到当天，可在设置里打开「逾期卡片堆到当天」）') : ''}
+          ${pullN ? '　·　已提前拉到今天 <b>' + pullN + '</b> 张' : ''}</div>
+        <button class="btn small" id="calPull" title="把未来 30 天到期的卡片全部追加到今天的复习里（提前复习）">把未来 30 天的卡片加到今天</button>
+      </div>
+    </div>
+    ${dayHtml}`;
+
+  $('view').querySelectorAll('.cal-c[data-day]').forEach(btn => {
+    btn.onclick = () => { CAL_DAY = +btn.dataset.day; render(); };
+  });
+  const prev = $('calPrev'), next = $('calNext');
+  if (prev) prev.onclick = () => { const d = new Date(y, m - 1, 1); CAL_M = { y: d.getFullYear(), m: d.getMonth() }; render(); };
+  if (next) next.onclick = () => { const d = new Date(y, m + 1, 1); CAL_M = { y: d.getFullYear(), m: d.getMonth() }; render(); };
+  const tbtn = $('calTodayBtn');
+  if (tbtn) tbtn.onclick = () => { const d = new Date(); CAL_M = { y: d.getFullYear(), m: d.getMonth() }; CAL_DAY = t0; render(); };
+  const rbtn = $('calReviewBtn');
+  if (rbtn) rbtn.onclick = () => startReview(0);
+  const sbtn = $('calStart');
+  if (sbtn) sbtn.onclick = () => startReview(0);
+  const pbtn = $('calPull');
+  if (pbtn) pbtn.onclick = () => {
+    const n = pullFuture(30);
+    if (!n) { toast('未来 30 天没有可以提前的卡片'); return; }
+    CAL_DAY = t0;
+    toast('已把 ' + n + ' 张未来的卡片加到今天（点「开始今日复习」就能做）', 2400, 'ok');
+    render();
+  };
 }
 
 function renderStats() {
@@ -4422,6 +4693,7 @@ function srsPaintEls() {
     f.appendChild(o); f.value = String(c.factor);
   }
   const wt = $('srsWrongToday'); if (wt) wt.checked = !!c.wrongToday;
+  const pl = $('srsPile'); if (pl) pl.checked = srsPileOn();
   if ($('srsDesc')) $('srsDesc').textContent = c.desc;
   if ($('srsPreview')) $('srsPreview').textContent = srsPreviewText(c);
 }
@@ -4525,6 +4797,14 @@ Object.keys(SRS_UI).forEach(id => on(id, e => {
   srsRepaint();
 }, 'change'));
 on('srsWrongToday', e => { srsSetField('wrongToday', !!e.target.checked); srsRepaint(); }, 'change');
+/* 功能四（web184）：逾期卡片堆不堆到当天 —— 默认堆；改完立刻重算「今日复习」的数量 */
+on('srsPile', e => {
+  SRS.pile = !!e.target.checked;
+  srsSave();
+  try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e2) {}
+  try { uiPaintBadge(); } catch (e3) {}
+  render();
+}, 'change');
 on('srsReset', () => {
   const m = SRS_PRESETS[SRS.mode] ? SRS.mode : 'sm2';
   setSrsMode(m); srsPaintEls();
