@@ -5382,6 +5382,14 @@ on('setGlowPick', e => {
   const v = String(e.target.value || '');
   if (/^#[0-9a-fA-F]{6}$/.test(v)) { SET.glowColor = v; writeLS(LS.set, SET); applyLook(); paintGlowEls(); }
 }, 'input');
+/* setGlowPickChg */
+(function(){
+  var el = $('setGlowPick');
+  if (el && el.addEventListener) el.addEventListener('change', function(){
+    var v = String(el.value || '');
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) { SET.glowColor = v; writeLS(LS.set, SET); applyLook(); paintGlowEls(); }
+  });
+})();
 on('setGlowReset', () => {
   SET.glowColor = ''; SET.glow = true; writeLS(LS.set, SET); applyLook(); paintGlowEls();
   toast('外发光改回跟主色', 1500, 'ok');
