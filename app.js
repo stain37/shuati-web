@@ -26,7 +26,8 @@ const LS = {
   tag: 'qbank.tags.v1',            /* 知识点标签（tags.js） */
   tagvocab: 'qbank.tagvocab.v1',   /* 考点词表（受控：AI 打标签只从里面挑） */
   report: 'qbank.report.v1',       /* AI 学情诊断的历史报告（report.js） */
-  qtn: 'qbank.qtn.v1'              /* 答题页右侧的「口诀 / 思路」小便签（跟解析分开存） */
+  qtn: 'qbank.qtn.v1',             /* 答题页右侧的「口诀 / 思路」小便签（跟解析分开存） */
+  pull: 'qbank.pullundo.v1'        /* 「提前复习 X 天」的撤销快照（web190） */
 };
 /* ---------- 大件数据改存 IndexedDB（localStorage 只有约 5MB） ----------
    现实：自定义解析（qbank.notes.v2）+ 自建题库（qbank.local.v2）轻松 3~5MB，
@@ -4370,22 +4371,59 @@ function dueKeys(limit) {
   out.sort((a, b) => (dueOf(a) || 0) - (dueOf(b) || 0));
   return limit ? out.slice(0, limit) : out;
 }
-/* 功能二（提前复习）：把未来 n 天到期的卡片全部追加进今天 */
+/* 功能二（提前复习）：把未来 n 天到期的卡片全部追加进今天
+   web190：① 改成「提前复习 X 天」，X 由用户填（1–30）；② 记一份快照，操作可以撤销。
+   快照里存「这张卡原来 pulled 是什么」，撤销时原样还原，因此连点两次也能一次撤干净。 */
+function pullUndoLoad() {
+  const o = readLS(LS.pull, null);
+  if (!o || !o.items || !o.items.length) return null;
+  if (o.day !== srsDayKey(Date.now())) return null;      // 跨天就不给撤了，免得撤出隔天的卡
+  return o;
+}
+function pullUndoClear() { try { writeLS(LS.pull, null); } catch (e) {} }
 function pullFuture(nDays) {
   const today = srsDayKey(Date.now());
   const t0 = srsDayStart(Date.now());
-  const end = t0 + Math.max(1, Math.min(60, +nDays || 30)) * 86400000;
-  let n = 0;
+  const days = Math.max(1, Math.min(30, Math.round(+nDays || 7)));
+  const end = t0 + days * 86400000 + 86399999;          // 含第 X 天整天（按日历日算，不是按小时）
+  const old = pullUndoLoad();
+  const seen = Object.create(null);
+  const items = [];
+  if (old) old.items.forEach(it => { seen[it.k] = 1; items.push(it); });
+  let added = 0;
   baseBanks().forEach(b => b.questions.forEach(q => {
     const k = kOf(b, q), a = ANS[k];
-    if (!a || !inSrs(k) || a.pulled === today) return;
+    if (!a || !inSrs(k) || a.pulled === today) return;   // 已经拉到今天的跳过，快照里保持原值
     const d = dueOf(k);
-    if (d != null && d > Date.now() && d <= end) { a.pulled = today; n++; }
+    if (d != null && d > Date.now() && d <= end) {
+      if (!seen[k]) { seen[k] = 1; items.push({ k: k, prev: a.pulled || '' }); }
+      a.pulled = today;
+      added++;
+    }
   }));
-  if (n) {
-    saveAns();
-    try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
-  }
+  if (!added) return 0;
+  saveAns();
+  try { writeLS(LS.pull, { day: today, days: days, at: Date.now(), items: items }); } catch (e) {}
+  try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  invalidateBanks();
+  return added;
+}
+/* 撤销上一次「提前复习」：把这些卡的 pulled 还原成原来的样子 */
+function undoPull() {
+  const o = pullUndoLoad();
+  if (!o) return 0;
+  let n = 0;
+  o.items.forEach(it => {
+    const a = ANS[it.k];
+    if (!a) return;
+    if (it.prev) a.pulled = it.prev; else delete a.pulled;
+    n++;
+  });
+  if (!n) return 0;
+  saveAns();
+  pullUndoClear();
+  try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  invalidateBanks();
   return n;
 }
 function startReview(limit) {
@@ -4479,6 +4517,8 @@ function renderCal() {
   const dueN = dueKeys(0).length;
   const overdue = Object.keys(ANS).filter(k => { const a = ANS[k]; if (!a || !inSrs(k)) return false; const d = dueOf(k); return d != null && d < t0; }).length;
   const pullN = Object.keys(ANS).filter(k => ANS[k] && ANS[k].pulled === srsDayKey(now)).length;
+  const pu = pullUndoLoad();                              // 上一次「提前复习」还能不能撤
+  const pullDays = pu ? pu.days : 7;
   const mStr = y + ' 年 ' + (m + 1) + ' 月';
 
   let dayHtml = '';
@@ -4521,7 +4561,14 @@ function renderCal() {
       <div class="cal-tools">
         <div class="small muted">逾期 <b>${overdue}</b> 张${overdue ? (srsPileOn() ? '（已堆到今天）' : '（没堆到当天，可在设置里打开「逾期卡片堆到当天」）') : ''}
           ${pullN ? '　·　已提前拉到今天 <b>' + pullN + '</b> 张' : ''}</div>
-        <button class="btn small" id="calPull" title="把未来 30 天到期的卡片全部追加到今天的复习里（提前复习）">把未来 30 天的卡片加到今天</button>
+        <div class="cal-pullbox">
+          <span class="small">提前复习</span>
+          <input class="num" id="calPullN" type="number" inputmode="numeric" min="1" max="30" step="1" value="${pullDays}"
+            title="把未来这几天到期的卡片都加到今天（1–30 天）">
+          <span class="small">天</span>
+          <button class="btn small" id="calPull" title="把未来 X 天到期的卡片追加到今天的复习里（可以撤销）">加到今天</button>
+          ${pu ? '<button class="btn small" id="calUndo" title="撤销上一次提前复习，把这些卡放回原来的日子">撤销（' + pu.items.length + ' 张）</button>' : ''}
+        </div>
       </div>
     </div>
     ${dayHtml}`;
@@ -4540,10 +4587,19 @@ function renderCal() {
   if (sbtn) sbtn.onclick = () => startReview(0);
   const pbtn = $('calPull');
   if (pbtn) pbtn.onclick = () => {
-    const n = pullFuture(30);
-    if (!n) { toast('未来 30 天没有可以提前的卡片'); return; }
+    const inp = $('calPullN');
+    const days = Math.max(1, Math.min(30, Math.round(+((inp && inp.value) || 7) || 7)));
+    const n = pullFuture(days);
+    if (!n) { toast('未来 ' + days + ' 天没有可以提前的卡片'); return; }
     CAL_DAY = t0;
-    toast('已把 ' + n + ' 张未来的卡片加到今天（点「开始今日复习」就能做）', 2400, 'ok');
+    toast('已把未来 ' + days + ' 天到期的 ' + n + ' 张卡片加到今天（点「开始今日复习」就能做，随时可撤销）', 2600, 'ok');
+    render();
+  };
+  const ubtn = $('calUndo');
+  if (ubtn) ubtn.onclick = () => {
+    const n = undoPull();
+    if (!n) { toast('没有可撤销的提前复习'); render(); return; }
+    toast('已撤销，' + n + ' 张卡片放回原来的日子', 2200, 'ok');
     render();
   };
 }
