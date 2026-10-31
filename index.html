@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261121a">
+<link rel="stylesheet" href="style.css?v=20261121b">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -165,7 +165,7 @@
     <input type="file" id="setBgFile" accept="image/*" style="display:none">
     <input type="file" id="setBgVideo" accept="video/*" style="display:none">
   </div>
-  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（50 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（71 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
   <div class="sty-tabs" id="styleTabs"></div>
       <div class="stylegrid" id="styleGrid"></div>
   <div class="hint" id="styleHint" style="margin-top:2px"></div>
@@ -178,6 +178,13 @@
     <input type="range" id="setFrostPx" min="0" max="30" step="2" value="14" style="width:100px;vertical-align:middle">
     <span class="small muted" id="setFrostPxVal">14px</span>
   </div>
+    <label class="chk"><input type="checkbox" id="setGlow" checked> 卡片/首屏外发光（一圈柔和光晕，颜色可换）</label>
+    <div class="tools" style="margin-top:6px">
+      <span class="tl">光晕颜色</span>
+      <input type="color" class="num" id="setGlowPick" value="#0d9488" title="选一个颜色">
+      <button class="btn small" type="button" id="setGlowReset">跟随主色</button>
+      <span class="hint" id="glowHint" style="margin-top:0"></span>
+    </div>
   <label class="chk"><input type="checkbox" id="setFrost" checked> 面板磨砂（背景模糊，关掉就是纯半透明）</label>
   <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
   <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
@@ -253,7 +260,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261120a"></script>
+<script src="app.js?v=20261121a"></script>
 <script src="collection.js?v=20261111b"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>
@@ -337,6 +344,37 @@
       navigator.serviceWorker.register('sw.js').catch(function () {});
     });
   }
+</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="monetOil" x="-5%" y="-5%" width="110%" height="110%">
+<feTurbulence type="fractalNoise" baseFrequency="0.003 0.012" numOctaves="1" result="noise"/>
+<feDisplacementMap in="SourceGraphic" in2="noise" scale="9" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+<feGaussianBlur in="disp" stdDeviation="0.4" result="soft"/>
+<feComposite in="SourceGraphic" in2="soft" operator="arithmetic" k1="0" k2="0.55" k3="0.45" k4="0"/>
+</filter></svg>
+
+<div class="oilpick" id="oilPick" aria-label="切换画作">
+  <button type="button" data-oil="1" class="on"><i class="dot"></i>睡莲</button>
+  <button type="button" data-oil="2"><i class="dot"></i>撑阳伞</button>
+  <button type="button" data-oil="3"><i class="dot"></i>日出</button>
+</div>
+<script>
+(function(){
+  var KEY='qbank.oilimg.v1';
+  var cur='1';
+  try{ var v=localStorage.getItem(KEY); if(v==='1'||v==='2'||v==='3') cur=v; }catch(e){}
+  function paint(n){
+    document.documentElement.setAttribute('data-oil', n);
+    var bs=document.querySelectorAll('#oilPick button');
+    for(var i=0;i<bs.length;i++){ bs[i].classList.toggle('on', bs[i].getAttribute('data-oil')===n); }
+    try{ localStorage.setItem(KEY, n); }catch(e){}
+  }
+  paint(cur);
+  var box=document.getElementById('oilPick');
+  if(box){ box.addEventListener('click', function(ev){
+    var b=ev.target.closest('button[data-oil]'); if(!b) return; paint(b.getAttribute('data-oil'));
+  }); }
+})();
 </script>
 </body>
 </html>
