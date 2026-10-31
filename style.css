@@ -2665,3 +2665,696 @@ html[data-style="acid"] .bnav,html[data-style="acid"] .bnav-ind{border-radius:0}
 .sty-mini .sty-line.s{width:62%}
 .sty-mini .sty-btn{width:44%;height:12px;border-radius:3px;margin-top:5px}
 @media (max-width:560px){ .stylegrid{grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px} }
+/* ================= §12 界面风格扩到 50 套（web187） =================
+   写法同 §10/§11：html[data-style=…] 与 …body 双份变量，深色另写 body.dark。
+   这一批按「视觉差异最大」挑的：古典装饰 / 绘画手作 / 现代平面 / 数字复古 / 东方 / 质感色彩。 */
+
+/* ---------- 18) 新古典主义：大理石白 + 细金双线 + 严格对称的衬线 ---------- */
+html[data-style="neocl"],
+html[data-style="neocl"] body{
+  --radius:2px; --r-card:2px; --r-s:1px; --r-m:2px; --r-l:4px;
+  --bg:#f7f5ef; --card:#fffefb; --line:rgba(122,110,88,.42); --card2:#f4f1e8;
+  --sh-1:0 1px 2px rgba(80,70,50,.10); --sh-card:0 2px 10px rgba(80,70,50,.08);
+  --gold:#b08d4f; --bg-wash:none;
+}
+html[data-style="neocl"] body.dark{--bg:#12100c;--card:#1a1712;--card2:#221d16;--line:rgba(212,186,140,.40);--gold:#d8bc82}
+html[data-style="neocl"] .card,html[data-style="neocl"] .vb-card{border:1px solid var(--line);box-shadow:inset 0 0 0 3px rgba(176,141,79,.16),var(--sh-card)}
+html[data-style="neocl"] .btn{border:1px solid var(--gold);background:transparent;letter-spacing:.06em}
+html[data-style="neocl"] h1,html[data-style="neocl"] h2.sec,html[data-style="neocl"] .vb-cap{font-family:var(--serif);letter-spacing:.05em}
+html[data-style="neocl"] h2.sec{border-bottom:1px solid var(--gold);padding-bottom:5px}
+html[data-style="neocl"] h2.sec::before{background:var(--gold);width:6px;height:6px;transform:rotate(45deg)}
+
+/* ---------- 19) 巴洛克：深酒红 + 金箔 + 强明暗 ---------- */
+html[data-style="baroque"],
+html[data-style="baroque"] body{
+  --radius:6px; --r-card:6px; --r-s:4px; --r-m:6px; --r-l:10px;
+  --bg:#20100e; --card:#2b1714; --card2:#341b17; --text:#f6e9d2; --sub:#c9a98a; --line:rgba(226,186,110,.42);
+  --sh-1:0 2px 6px rgba(0,0,0,.5); --sh-card:0 10px 30px rgba(0,0,0,.55), inset 0 0 0 1px rgba(226,186,110,.18);
+  --gold:#e2ba6e;
+  --bg-wash:radial-gradient(900px 600px at 20% -10%, rgba(226,186,110,.16), transparent 60%),
+            radial-gradient(700px 520px at 90% 10%, rgba(150,40,40,.28), transparent 62%);
+}
+html[data-style="baroque"] .card,html[data-style="baroque"] .vb-card{border:3px double var(--gold);box-shadow:var(--sh-card)}
+html[data-style="baroque"] .btn{border:1px solid var(--gold);background:linear-gradient(180deg,#3a1d18,#28120f);color:var(--text)}
+html[data-style="baroque"] h1,html[data-style="baroque"] h2.sec,html[data-style="baroque"] .vb-cap{font-family:var(--serif);font-style:italic;letter-spacing:.03em;text-shadow:0 1px 0 #000}
+html[data-style="baroque"] h2.sec::before{background:linear-gradient(180deg,var(--gold),#8a6420)}
+
+/* ---------- 20) 装饰艺术：墨绿 + 金 + 放射阶梯 ---------- */
+html[data-style="artdeco"],
+html[data-style="artdeco"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#0f2b28; --card:#123330; --card2:#16413c; --text:#f2ecdc; --sub:#bfae86; --line:rgba(200,164,92,.55);
+  --sh-1:none; --sh-card:none; --gold:#c8a45c;
+  --bg-wash:repeating-linear-gradient(90deg, rgba(200,164,92,.07) 0 1px, transparent 1px 26px),
+            radial-gradient(700px 500px at 50% -10%, rgba(200,164,92,.18), transparent 60%);
+}
+html[data-style="artdeco"] .card,html[data-style="artdeco"] .vb-card{border:1px solid var(--gold);box-shadow:inset 0 0 0 4px rgba(200,164,92,.12)}
+html[data-style="artdeco"] .btn{border:1px solid var(--gold);background:transparent;color:var(--gold);letter-spacing:.16em;text-transform:uppercase;font-size:11px}
+html[data-style="artdeco"] h1,html[data-style="artdeco"] h2.sec,html[data-style="artdeco"] .vb-cap{letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+html[data-style="artdeco"] h2.sec{border-bottom:2px solid var(--gold);padding-bottom:6px}
+html[data-style="artdeco"] h2.sec::before{background:var(--gold);width:22px;height:3px;border-radius:0}
+
+/* ---------- 21) 新艺术：草绿金 + 鞭形曲线 + 不对称大圆角 ---------- */
+html[data-style="artnouveau"],
+html[data-style="artnouveau"] body{
+  --radius:22px 4px 22px 4px; --r-card:22px 4px 22px 4px; --r-s:12px 2px 12px 2px; --r-m:999px; --r-l:26px;
+  --bg:#f1efe2; --card:#fbfaf3; --card2:#f4f2e6; --line:rgba(106,122,85,.45); --sage:#6a7a55; --gold:#b08d4f;
+  --sh-1:0 2px 6px rgba(90,100,70,.10); --sh-card:0 10px 26px rgba(90,100,70,.12);
+  --bg-wash:radial-gradient(700px 520px at 0% 0%, rgba(106,122,85,.14), transparent 62%),
+            radial-gradient(600px 460px at 100% 20%, rgba(176,141,79,.14), transparent 60%);
+}
+html[data-style="artnouveau"] .card,html[data-style="artnouveau"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="artnouveau"] .btn{border-radius:999px;border:1px solid var(--sage);background:rgba(255,255,255,.6);color:var(--sage)}
+html[data-style="artnouveau"] h1,html[data-style="artnouveau"] h2.sec,html[data-style="artnouveau"] .vb-cap{font-family:var(--serif);font-style:italic;letter-spacing:.02em}
+html[data-style="artnouveau"] h2.sec::before{background:var(--gold);border-radius:50% 0 50% 0;transform:rotate(-8deg)}
+
+/* ---------- 22) 蒸汽朋克：黄铜 + 皮革 + 铆钉齿轮 ---------- */
+html[data-style="steampunk"],
+html[data-style="steampunk"] body{
+  --radius:6px; --r-card:6px; --r-s:3px; --r-m:5px; --r-l:10px;
+  --bg:#2b2118; --card:#3a2d20; --card2:#463627; --text:#f0e2c8; --sub:#c2a887; --line:rgba(185,139,78,.55);
+  --brass:#b98b4e;
+  --sh-1:0 2px 5px rgba(0,0,0,.45); --sh-card:0 8px 24px rgba(0,0,0,.5), inset 0 0 0 4px #1f170f;
+  --bg-wash:radial-gradient(circle at 20% 20%, rgba(185,139,78,.16) 2px, transparent 3px),
+            radial-gradient(circle at 70% 60%, rgba(185,139,78,.12) 2px, transparent 3px);
+}
+html[data-style="steampunk"] .card,html[data-style="steampunk"] .vb-card{border:2px solid var(--brass);box-shadow:var(--sh-card)}
+html[data-style="steampunk"] .btn{border:2px solid var(--brass);background:linear-gradient(180deg,#4a3826,#33261a);color:#f7ecd6;box-shadow:inset 0 0 0 1px rgba(0,0,0,.5)}
+html[data-style="steampunk"] h1,html[data-style="steampunk"] h2.sec{font-family:var(--serif);letter-spacing:.06em;text-shadow:0 1px 0 #000}
+html[data-style="steampunk"] h2.sec::before{background:linear-gradient(180deg,#d9a85f,#7d5720);box-shadow:0 0 8px rgba(217,168,95,.5)}
+
+/* ---------- 23) 维多利亚：黑底金框 + 花体衬线 + 繁复分隔 ---------- */
+html[data-style="victorian"],
+html[data-style="victorian"] body{
+  --radius:2px; --r-card:2px; --r-s:1px; --r-m:2px; --r-l:4px;
+  --bg:#14100c; --card:#1e1811; --card2:#261e15; --text:#f2e8d6; --sub:#b9a789; --line:rgba(212,186,140,.38);
+  --gold:#d4ba8c;
+  --sh-1:none; --sh-card:0 6px 20px rgba(0,0,0,.6);
+  --bg-wash:radial-gradient(800px 600px at 50% -20%, rgba(212,186,140,.12), transparent 62%);
+}
+html[data-style="victorian"] .card,html[data-style="victorian"] .vb-card{border:3px double var(--gold);box-shadow:var(--sh-card)}
+html[data-style="victorian"] .btn{border:1px solid var(--gold);background:transparent;color:var(--gold);letter-spacing:.08em}
+html[data-style="victorian"] h1,html[data-style="victorian"] h2.sec,html[data-style="victorian"] .vb-cap{font-family:var(--serif);letter-spacing:.06em}
+html[data-style="victorian"] h2.sec{border-bottom:1px solid var(--gold);position:relative}
+html[data-style="victorian"] h2.sec::before{background:var(--gold);width:8px;height:8px;transform:rotate(45deg)}
+
+/* ---------- 24) 暗色调主义：近黑背景 + 单侧硬光 + 戏剧剪影 ---------- */
+html[data-style="tenebrism"],
+html[data-style="tenebrism"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#05060a; --card:#0b0d14; --card2:#121620; --text:#e8ebf4; --sub:#8f97ab; --line:rgba(232,235,244,.14);
+  --sh-1:none; --sh-card:36px 36px 90px rgba(0,0,0,.9), -6px -6px 40px rgba(255,255,255,.04);
+  --bg-wash:radial-gradient(560px 420px at 12% 8%, rgba(255,255,255,.10), transparent 66%);
+}
+html[data-style="tenebrism"] .card,html[data-style="tenebrism"] .vb-card{border:0;background:linear-gradient(135deg,#12151e,#080a10 70%);box-shadow:var(--sh-card)}
+html[data-style="tenebrism"] .btn{border:1px solid rgba(232,235,244,.3);background:transparent;color:var(--text)}
+html[data-style="tenebrism"] h1,html[data-style="tenebrism"] h2.sec{font-family:var(--serif);letter-spacing:.04em}
+html[data-style="tenebrism"] h2.sec::before{background:#e8ebf4;width:2px;height:18px;border-radius:0}
+
+/* ---------- 25) 点彩：细密色点 + 光学混色 + 朦胧边界 ---------- */
+html[data-style="pointil"],
+html[data-style="pointil"] body{
+  --radius:10px; --r-card:10px; --r-s:6px; --r-m:10px; --r-l:14px;
+  --bg:#fdfaf2; --card:#fffefa; --card2:#faf5e8; --line:rgba(120,110,90,.30);
+  --sh-1:none; --sh-card:none;
+  --bg-wash:radial-gradient(circle at 6px 6px, rgba(56,132,255,.20) 1.6px, transparent 2px),
+            radial-gradient(circle at 16px 14px, rgba(255,120,160,.20) 1.6px, transparent 2px),
+            radial-gradient(circle at 10px 20px, rgba(255,200,60,.20) 1.6px, transparent 2px);
+}
+html[data-style="pointil"] body.dark{--bg:#14130f;--card:#1c1a16;--line:rgba(255,255,255,.16)}
+html[data-style="pointil"] body{background-image:var(--bg-wash);background-size:26px 26px;background-attachment:fixed}
+html[data-style="pointil"] .card,html[data-style="pointil"] .vb-card{border:2px dotted var(--line);box-shadow:none}
+html[data-style="pointil"] .btn{border:2px dotted var(--line);background:transparent}
+html[data-style="pointil"] h2.sec::before{background:linear-gradient(90deg,#3884ff,#ff78a0,#ffc83c);border-radius:50%}
+
+/* ---------- 26) 波普艺术：粗描边 + 网点 + 原色平涂 ---------- */
+html[data-style="pop"],
+html[data-style="pop"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#ffffff; --card:#ffffff; --card2:#fff7d6; --line:#111111; --pop-y:#ffe14d; --pop-r:#ff4d4d; --pop-b:#2f6bff;
+  --sh-1:3px 3px 0 #111; --sh-card:6px 6px 0 #111;
+  --bg-wash:radial-gradient(circle at 4px 4px, rgba(17,17,17,.10) 1.4px, transparent 1.8px);
+}
+html[data-style="pop"] body.dark{--bg:#101010;--card:#181818;--card2:#241f10;--line:#f7f7f7;--sh-card:6px 6px 0 #f7f7f7;--sh-1:3px 3px 0 #f7f7f7}
+html[data-style="pop"] body{background-image:var(--bg-wash);background-size:14px 14px;background-attachment:fixed}
+html[data-style="pop"] .card,html[data-style="pop"] .vb-card{border:3px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="pop"] .btn{border:3px solid var(--line);background:var(--pop-y);font-weight:900;text-transform:uppercase;letter-spacing:.04em;box-shadow:3px 3px 0 var(--line)}
+html[data-style="pop"] h1,html[data-style="pop"] h2.sec{font-weight:900;text-transform:uppercase;letter-spacing:.02em;-webkit-text-stroke:.6px var(--line)}
+html[data-style="pop"] h2.sec::before{background:var(--pop-r);border-radius:0;width:16px;height:16px}
+
+/* ---------- 27) 概念草图：方格纸 + 虚线 + 单色线稿 ---------- */
+html[data-style="sketch"],
+html[data-style="sketch"] body{
+  --radius:2px; --r-card:2px; --r-s:2px; --r-m:2px; --r-l:3px;
+  --bg:#f8fafc; --card:rgba(255,255,255,.72); --card2:#ffffff; --line:rgba(100,116,139,.55); --ink:#334155;
+  --hand:"Segoe Print","Bradley Hand","Comic Sans MS","KaiTi","楷体",var(--serif);
+  --sh-1:none; --sh-card:none;
+  --bg-wash:linear-gradient(rgba(100,116,139,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(100,116,139,.12) 1px, transparent 1px);
+}
+html[data-style="sketch"] body.dark{--bg:#12161c;--card:rgba(24,30,38,.8);--line:rgba(180,196,220,.45);--ink:#cbd5e1;--bg-wash:linear-gradient(rgba(180,196,220,.10) 1px, transparent 1px),linear-gradient(90deg,rgba(180,196,220,.10) 1px, transparent 1px)}
+html[data-style="sketch"] body{background-image:var(--bg-wash);background-size:22px 22px;background-attachment:fixed}
+html[data-style="sketch"] .card,html[data-style="sketch"] .vb-card{border:1.5px dashed var(--line);box-shadow:none}
+html[data-style="sketch"] .btn{border:1.5px dashed var(--line);background:transparent;color:var(--ink)}
+html[data-style="sketch"] h1,html[data-style="sketch"] h2.sec,html[data-style="sketch"] .vb-cap{font-family:var(--hand);letter-spacing:.02em}
+html[data-style="sketch"] h2.sec::before{background:var(--ink);transform:rotate(-3deg)}
+
+/* ---------- 28) 拼贴手账：纸 + 胶带 + 拍立得白边 + 微微倾斜 ---------- */
+html[data-style="scrapbook"],
+html[data-style="scrapbook"] body{
+  --radius:4px; --r-card:4px; --r-s:3px; --r-m:5px; --r-l:8px;
+  --bg:#fbf6ec; --card:#fffdf8; --card2:#fdf3e0; --line:rgba(120,100,70,.28);
+  --sh-1:0 2px 5px rgba(90,70,40,.14); --sh-card:0 4px 14px rgba(90,70,40,.18);
+  --bg-wash:radial-gradient(circle at 20% 12%, rgba(255,214,138,.35), transparent 46%),
+            radial-gradient(circle at 82% 78%, rgba(255,178,196,.30), transparent 48%);
+}
+html[data-style="scrapbook"] body.dark{--bg:#171310;--card:#221b15;--card2:#2a2118;--line:rgba(255,236,206,.22)}
+html[data-style="scrapbook"] .card,html[data-style="scrapbook"] .vb-card{border:4px solid #fffdf8;box-shadow:var(--sh-card);transform:rotate(-.4deg)}
+html[data-style="scrapbook"] .card:nth-child(2n),html[data-style="scrapbook"] .vb-card:nth-child(2n){transform:rotate(.5deg)}
+html[data-style="scrapbook"] .btn{border:1px solid var(--line);background:#fffdf8;box-shadow:var(--sh-1)}
+html[data-style="scrapbook"] h1,html[data-style="scrapbook"] h2.sec{font-family:var(--hand)}
+html[data-style="scrapbook"] h2.sec::before{background:linear-gradient(180deg,#ffe08a,#f3c85c);transform:rotate(-4deg);border-radius:0;width:26px;height:12px}
+
+/* ---------- 29) 超现实：梦境渐变 + 双色错位影 + 倾斜卡片 ---------- */
+html[data-style="surreal"],
+html[data-style="surreal"] body{
+  --radius:40px; --r-card:40px 12px 40px 12px; --r-s:18px; --r-m:999px; --r-l:48px;
+  --bg:#f3eefc; --card:rgba(255,255,255,.78); --card2:#f7f2ff; --line:rgba(124,92,204,.34);
+  --sh-1:-2px 2px 0 rgba(124,92,204,.30); --sh-card:-6px 6px 0 rgba(124,92,204,.22), 6px -6px 0 rgba(255,150,200,.28);
+  --bg-wash:radial-gradient(720px 560px at 8% 12%, #ffd9f0 0%, transparent 58%),
+            radial-gradient(760px 620px at 92% 20%, #cfe6ff 0%, transparent 60%),
+            radial-gradient(600px 520px at 60% 100%, #f3e2ff 0%, transparent 62%);
+}
+html[data-style="surreal"] body.dark{--bg:#140f1e;--card:rgba(30,22,44,.8);--card2:#221833;--line:rgba(196,160,255,.32)}
+html[data-style="surreal"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="surreal"] .card,html[data-style="surreal"] .vb-card{border:1px dashed var(--line);box-shadow:var(--sh-card);transform:rotate(-.5deg)}
+html[data-style="surreal"] .btn{border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.7)}
+html[data-style="surreal"] h1,html[data-style="surreal"] h2.sec{font-family:var(--serif);font-style:italic;letter-spacing:.02em}
+html[data-style="surreal"] h2.sec::before{border-radius:50%;background:linear-gradient(135deg,#a78bfa,#f9a8d4)}
+
+/* ---------- 30) 瑞士国际：白底 + 黑体网格 + 一个红方块 ---------- */
+html[data-style="swiss"],
+html[data-style="swiss"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#ffffff; --card:#ffffff; --card2:#f3f3f3; --line:#111111; --red:#e2231a;
+  --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="swiss"] body.dark{--bg:#0d0d0d;--card:#141414;--card2:#1c1c1c;--line:#f2f2f2}
+html[data-style="swiss"] .card,html[data-style="swiss"] .vb-card{border:0;border-top:2px solid var(--line);box-shadow:none}
+html[data-style="swiss"] .btn{border:1.5px solid var(--line);background:transparent;font-weight:600;letter-spacing:.02em}
+html[data-style="swiss"] h1,html[data-style="swiss"] h2.sec{font-weight:800;letter-spacing:-.01em;text-transform:none}
+html[data-style="swiss"] h2.sec{border-bottom:2px solid var(--line);padding-bottom:4px}
+html[data-style="swiss"] h2.sec::before{background:var(--red);width:14px;height:14px;border-radius:0}
+html[data-style="swiss"] .bnav,html[data-style="swiss"] .bnav-ind{border-radius:0}
+
+/* ---------- 31) 功利主义：黑白高对比 + 直白大字 + 零装饰 ---------- */
+html[data-style="util"],
+html[data-style="util"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#f4f4f2; --card:#ffffff; --card2:#ededeb; --line:#000000; --text:#0a0a0a;
+  --sh-1:none; --sh-card:none; --bg-wash:none;
+  --mono:ui-monospace,"Cascadia Mono","Noto Sans Mono CJK SC",Consolas,monospace;
+}
+html[data-style="util"] body.dark{--bg:#0b0b0b;--card:#141414;--card2:#1d1d1d;--line:#ffffff;--text:#f5f5f5}
+html[data-style="util"] .card,html[data-style="util"] .vb-card{border:2px solid var(--line);box-shadow:none}
+html[data-style="util"] .btn{border:2px solid var(--line);background:var(--line);color:var(--card);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+html[data-style="util"] h1,html[data-style="util"] h2.sec{font-weight:900;text-transform:uppercase;letter-spacing:.02em}
+html[data-style="util"] h2.sec{border-bottom:6px solid var(--line);padding-bottom:2px}
+html[data-style="util"] h2.sec::before{display:none}
+html[data-style="util"] .mini-tag,html[data-style="util"] .vb-cap{font-family:var(--mono);text-transform:uppercase}
+
+/* ---------- 32) 奢华字体：奶油底 + 高对比衬线 + 宽字距 + 大片留白 ---------- */
+html[data-style="luxury"],
+html[data-style="luxury"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#faf8f3; --card:#fffdf9; --card2:#f5f1e8; --line:rgba(150,130,90,.30); --gold:#a98a4e;
+  --sh-1:none; --sh-card:0 1px 0 rgba(150,130,90,.14);
+  --bg-wash:none;
+}
+html[data-style="luxury"] body.dark{--bg:#111009;--card:#181610;--card2:#211d14;--line:rgba(214,188,132,.28);--gold:#d6bc84}
+html[data-style="luxury"] .card,html[data-style="luxury"] .vb-card{border:0;border-bottom:1px solid var(--line);box-shadow:none;padding:22px 20px}
+html[data-style="luxury"] .btn{border:0;border-bottom:1px solid var(--gold);background:transparent;border-radius:0;letter-spacing:.18em;text-transform:uppercase;font-size:11px;padding:8px 2px}
+html[data-style="luxury"] h1,html[data-style="luxury"] h2.sec,html[data-style="luxury"] .vb-cap{font-family:var(--serif);letter-spacing:.16em;text-transform:uppercase;font-weight:400}
+html[data-style="luxury"] h2.sec::before{display:none}
+html[data-style="luxury"] .bnav,html[data-style="luxury"] .bnav-ind{border-radius:0}
+
+/* ---------- 33) 世纪中叶现代：芥末黄 + 青绿 + 有机几何 ---------- */
+html[data-style="midcentury"],
+html[data-style="midcentury"] body{
+  --radius:16px; --r-card:16px; --r-s:10px; --r-m:999px; --r-l:20px;
+  --bg:#f3ecd8; --card:#fffdf5; --card2:#f7f0dd; --line:rgba(120,96,60,.30);
+  --mustard:#d9a03c; --teal:#2f7368;
+  --sh-1:0 2px 5px rgba(120,96,60,.12); --sh-card:0 8px 22px rgba(120,96,60,.14);
+  --bg-wash:radial-gradient(circle at 12% 18%, rgba(217,160,60,.22) 40px, transparent 42px),
+            radial-gradient(circle at 88% 32%, rgba(47,115,104,.18) 52px, transparent 54px);
+}
+html[data-style="midcentury"] body.dark{--bg:#14120c;--card:#1d1a12;--card2:#262115;--line:rgba(232,214,176,.24)}
+html[data-style="midcentury"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="midcentury"] .card,html[data-style="midcentury"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="midcentury"] .btn{border-radius:999px;border:1.5px solid var(--teal);background:transparent;color:var(--teal);font-weight:600}
+html[data-style="midcentury"] h1,html[data-style="midcentury"] h2.sec{letter-spacing:.01em;font-weight:700}
+html[data-style="midcentury"] h2.sec::before{background:var(--mustard);border-radius:50%}
+
+/* ---------- 34) 材料设计：白卡片 + 两级投影 + 顶部色条 ---------- */
+html[data-style="material"],
+html[data-style="material"] body{
+  --radius:4px; --r-card:4px; --r-s:4px; --r-m:4px; --r-l:8px;
+  --bg:#fafafa; --card:#ffffff; --card2:#f5f5f5; --line:rgba(0,0,0,.10);
+  --sh-1:0 1px 2px rgba(0,0,0,.10); --sh-card:0 2px 4px rgba(0,0,0,.10), 0 8px 16px rgba(0,0,0,.08);
+  --bg-wash:none;
+}
+html[data-style="material"] body.dark{--bg:#121212;--card:#1e1e1e;--card2:#262626;--line:rgba(255,255,255,.10);--sh-card:0 2px 4px rgba(0,0,0,.5),0 8px 16px rgba(0,0,0,.35)}
+html[data-style="material"] .card,html[data-style="material"] .vb-card{border:0;border-top:4px solid var(--primary);box-shadow:var(--sh-card)}
+html[data-style="material"] .btn{border:0;background:var(--primary);color:#fff;text-transform:uppercase;letter-spacing:.06em;font-size:11.5px;box-shadow:var(--sh-1)}
+html[data-style="material"] .btn.ghost,html[data-style="material"] .btn.line{background:transparent;color:var(--primary)}
+html[data-style="material"] h2.sec::before{border-radius:50%;width:9px;height:9px}
+
+/* ---------- 35) 北欧：冷白 + 细线 + 大留白 ---------- */
+html[data-style="nordic"],
+html[data-style="nordic"] body{
+  --radius:14px; --r-card:14px; --r-s:10px; --r-m:12px; --r-l:18px;
+  --bg:#f7f9fb; --card:#ffffff; --card2:#eef3f7; --line:#dbe3ec;
+  --sh-1:0 1px 2px rgba(30,50,80,.06); --sh-card:0 2px 10px rgba(30,50,80,.07);
+  --bg-wash:none;
+}
+html[data-style="nordic"] body.dark{--bg:#0f1418;--card:#161d23;--card2:#1d262e;--line:#2a3641;--sh-card:0 2px 10px rgba(0,0,0,.45)}
+html[data-style="nordic"] .card,html[data-style="nordic"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="nordic"] .btn{border:1px solid var(--line);background:#fff;font-weight:500}
+html[data-style="nordic"] body.dark .btn{background:#1a222a}
+html[data-style="nordic"] h1,html[data-style="nordic"] h2.sec{font-weight:600;letter-spacing:-.01em}
+html[data-style="nordic"] h2.sec{border-bottom:1px solid var(--line);padding-bottom:8px}
+html[data-style="nordic"] h2.sec::before{width:3px;height:14px;border-radius:2px}
+
+/* ---------- 36) 合成波：紫粉霓虹 + 地平线网格 + 镀铬字 ---------- */
+html[data-style="synthwave"],
+html[data-style="synthwave"] body{
+  --radius:4px; --r-card:4px; --r-s:2px; --r-m:4px; --r-l:8px;
+  --bg:#120a24; --card:rgba(30,12,54,.85); --card2:#240f3d; --text:#f6e9ff; --sub:#c9a6e8; --line:rgba(255,60,172,.55);
+  --sh-1:0 0 8px rgba(255,60,172,.30); --sh-card:0 0 0 1px rgba(255,60,172,.35), 0 10px 30px rgba(120,40,200,.35);
+  --bg-wash:radial-gradient(900px 500px at 50% 110%, rgba(255,60,172,.35), transparent 62%),
+            radial-gradient(700px 420px at 50% 96%, rgba(80,200,255,.22), transparent 60%),
+            linear-gradient(180deg,#120a24,#241041);
+}
+html[data-style="synthwave"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="synthwave"] .card,html[data-style="synthwave"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="synthwave"] .btn{border:1px solid var(--line);background:linear-gradient(180deg,#4b1a72,#2a0f42);color:#ffe7f7;letter-spacing:.08em;text-transform:uppercase;font-size:11px;box-shadow:0 0 10px rgba(255,60,172,.35)}
+html[data-style="synthwave"] h1,html[data-style="synthwave"] h2.sec,html[data-style="synthwave"] .vb-cap{background:linear-gradient(180deg,#fff,#8ad6ff 40%,#ff8fd0);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800;letter-spacing:.04em}
+html[data-style="synthwave"] h2.sec::before{background:linear-gradient(180deg,#ff3cac,#7849ff)}
+
+/* ---------- 37) 蒸汽波：粉紫渐层 + 斜体衬线 + 复古界面气味 ---------- */
+html[data-style="vaporwave"],
+html[data-style="vaporwave"] body{
+  --radius:8px; --r-card:8px; --r-s:6px; --r-m:8px; --r-l:12px;
+  --bg:#f6e9ff; --card:rgba(255,255,255,.62); --card2:#f3e6ff; --line:rgba(160,110,220,.40);
+  --sh-1:0 2px 6px rgba(150,110,220,.20); --sh-card:0 8px 26px rgba(150,110,220,.24);
+  --bg-wash:linear-gradient(135deg,#ffd9f2 0%,#dcd6ff 42%,#c8f5ff 100%);
+}
+html[data-style="vaporwave"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="vaporwave"] .card,html[data-style="vaporwave"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card);backdrop-filter:blur(6px)}
+html[data-style="vaporwave"] .btn{border:1px solid var(--line);background:rgba(255,255,255,.7);font-style:italic}
+html[data-style="vaporwave"] h1,html[data-style="vaporwave"] h2.sec,html[data-style="vaporwave"] .vb-cap{font-family:var(--serif);font-style:italic;letter-spacing:.04em;color:#7a3ea8}
+html[data-style="vaporwave"] body.dark h1,html[data-style="vaporwave"] body.dark h2.sec{color:#e5c8ff}
+html[data-style="vaporwave"] h2.sec::before{background:linear-gradient(180deg,#ff9ad5,#9b7bff);border-radius:2px}
+
+/* ---------- 38) 赛博朋克：黄黑警示 + 故障双影 + 荧光青 ---------- */
+html[data-style="cyberpunk"],
+html[data-style="cyberpunk"] body{
+  --radius:2px; --r-card:2px; --r-s:1px; --r-m:2px; --r-l:4px;
+  --bg:#0a0a0a; --card:#111111; --card2:#191919; --text:#f4f4f4; --sub:#9aa0a6; --line:rgba(242,230,0,.65);
+  --hazard:#f2e600; --cyan:#22d3ee; --magenta:#ff2d78;
+  --sh-1:none; --sh-card:3px 0 0 rgba(255,45,120,.55), -3px 0 0 rgba(34,211,238,.55);
+  --bg-wash:none;
+}
+html[data-style="cyberpunk"] .card,html[data-style="cyberpunk"] .vb-card{border:1px solid var(--hazard);box-shadow:var(--sh-card)}
+html[data-style="cyberpunk"] .btn{border:1px solid var(--hazard);background:var(--hazard);color:#0a0a0a;font-weight:900;text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+html[data-style="cyberpunk"] h1,html[data-style="cyberpunk"] h2.sec{text-transform:uppercase;letter-spacing:.08em;text-shadow:2px 0 0 rgba(255,45,120,.55),-2px 0 0 rgba(34,211,238,.55)}
+html[data-style="cyberpunk"] h2.sec{border-bottom:2px solid var(--hazard)}
+html[data-style="cyberpunk"] h2.sec::before{background:repeating-linear-gradient(45deg,var(--hazard) 0 4px,#111 4px 8px)}
+
+/* ---------- 39) 涂鸦：气泡粗描边 + 喷溅 + 微旋转 ---------- */
+html[data-style="graffiti"],
+html[data-style="graffiti"] body{
+  --radius:10px; --r-card:10px; --r-s:6px; --r-m:10px; --r-l:14px;
+  --bg:#f5f0e4; --card:#ffffff; --card2:#fff8e6; --line:#111111;
+  --sh-1:4px 4px 0 rgba(17,17,17,.9); --sh-card:6px 6px 0 rgba(17,17,17,.9);
+  --bg-wash:radial-gradient(circle at 30% 20%, rgba(255,90,180,.22) 26px, transparent 28px),
+            radial-gradient(circle at 74% 70%, rgba(60,180,255,.20) 34px, transparent 36px);
+}
+html[data-style="graffiti"] body.dark{--bg:#141210;--card:#1e1b17;--card2:#26221c;--line:#f5f0e4;--sh-card:6px 6px 0 #f5f0e4;--sh-1:4px 4px 0 #f5f0e4}
+html[data-style="graffiti"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="graffiti"] .card,html[data-style="graffiti"] .vb-card{border:4px solid var(--line);box-shadow:var(--sh-card);transform:rotate(-.5deg)}
+html[data-style="graffiti"] .btn{border:3px solid var(--line);border-radius:999px;background:#ffe14d;font-weight:900;text-transform:uppercase;transform:rotate(-1deg)}
+html[data-style="graffiti"] h1,html[data-style="graffiti"] h2.sec{font-weight:900;letter-spacing:.02em;transform:rotate(-1deg);text-shadow:3px 3px 0 rgba(17,17,17,.9)}
+html[data-style="graffiti"] h2.sec::before{background:#ff5ab4;border-radius:999px;transform:rotate(-8deg)}
+
+/* ---------- 40) 垃圾摇滚：做旧暗色 + 噪点 + 磨损边 ---------- */
+html[data-style="grunge"],
+html[data-style="grunge"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#1a1917; --card:#242220; --card2:#2c2926; --text:#d9d5cc; --sub:#8d877d; --line:rgba(217,213,204,.18);
+  --sh-1:none; --sh-card:0 8px 24px rgba(0,0,0,.55);
+  --bg-wash:repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px),
+            repeating-linear-gradient(90deg, rgba(0,0,0,.10) 0 2px, transparent 2px 5px);
+}
+html[data-style="grunge"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="grunge"] .card,html[data-style="grunge"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card);filter:contrast(1.02)}
+html[data-style="grunge"] .btn{border:1px solid var(--line);background:#2c2926;color:#d9d5cc;text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+html[data-style="grunge"] h1,html[data-style="grunge"] h2.sec{text-transform:uppercase;letter-spacing:.06em;font-weight:800;text-shadow:1px 1px 0 #000}
+html[data-style="grunge"] h2.sec{border-bottom:2px solid var(--line)}
+html[data-style="grunge"] h2.sec::before{background:#6b6560;border-radius:0;transform:rotate(2deg)}
+
+/* ---------- 41) 迪斯科：紫金闪光 + 胶囊按钮 + 镜面球光斑 ---------- */
+html[data-style="disco"],
+html[data-style="disco"] body{
+  --radius:999px; --r-card:26px; --r-s:14px; --r-m:999px; --r-l:34px;
+  --bg:#170f26; --card:rgba(40,22,64,.85); --card2:#301a4a; --text:#f8ecff; --sub:#c9a7e0; --line:rgba(255,214,102,.55);
+  --gold:#ffd666;
+  --sh-1:0 2px 8px rgba(0,0,0,.4); --sh-card:0 10px 34px rgba(120,40,180,.45), inset 0 1px 0 rgba(255,214,102,.25);
+  --bg-wash:radial-gradient(circle at 14% 12%, rgba(255,214,102,.35) 3px, transparent 4px),
+            radial-gradient(circle at 62% 26%, rgba(255,255,255,.28) 2px, transparent 3px),
+            radial-gradient(circle at 84% 62%, rgba(255,214,102,.28) 3px, transparent 4px),
+            radial-gradient(900px 600px at 50% 0%, rgba(160,80,255,.35), transparent 62%);
+}
+html[data-style="disco"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="disco"] .card,html[data-style="disco"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="disco"] .btn{border:1px solid var(--gold);background:linear-gradient(180deg,#ffe9a8,#e0a83a);color:#2a1330;font-weight:800;box-shadow:0 0 14px rgba(255,214,102,.4)}
+html[data-style="disco"] h1,html[data-style="disco"] h2.sec,html[data-style="disco"] .vb-cap{background:linear-gradient(180deg,#fff,#ffd666 55%,#ff9ad5);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:.06em;font-weight:800}
+html[data-style="disco"] h2.sec::before{background:linear-gradient(180deg,#fff6c9,#e0a83a);border-radius:50%;box-shadow:0 0 12px rgba(255,214,102,.7)}
+
+/* ---------- 42) 中国水墨：宣纸 + 墨晕 + 朱红印章 ---------- */
+html[data-style="ink"],
+html[data-style="ink"] body{
+  --radius:2px; --r-card:2px; --r-s:1px; --r-m:2px; --r-l:4px;
+  --bg:#f6f1e4; --card:rgba(255,255,255,.66); --card2:#fbf7ec; --line:rgba(40,38,34,.30); --ink:#2b2a26; --seal:#b23a2f;
+  --sh-1:none; --sh-card:none;
+  --bg-wash:radial-gradient(560px 420px at 8% 6%, rgba(30,28,24,.14), transparent 62%),
+            radial-gradient(520px 380px at 96% 90%, rgba(30,28,24,.10), transparent 60%);
+}
+html[data-style="ink"] body.dark{--bg:#121210;--card:rgba(28,26,22,.8);--card2:#1a1815;--line:rgba(240,236,225,.28);--ink:#efece3}
+html[data-style="ink"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="ink"] .card,html[data-style="ink"] .vb-card{border:1px solid var(--line);box-shadow:none}
+html[data-style="ink"] .btn{border:1px solid var(--ink);background:transparent;color:var(--ink);letter-spacing:.08em}
+html[data-style="ink"] h1,html[data-style="ink"] h2.sec,html[data-style="ink"] .vb-cap{font-family:var(--serif);letter-spacing:.1em;font-weight:600}
+html[data-style="ink"] h2.sec::before{background:var(--seal);width:12px;height:12px;border-radius:1px}
+
+/* ---------- 43) 日式禅意：侘寂土色 + 无边框 + 大留白 ---------- */
+html[data-style="zen"],
+html[data-style="zen"] body{
+  --radius:3px; --r-card:3px; --r-s:2px; --r-m:3px; --r-l:6px;
+  --bg:#e9e4d8; --card:#f2eee3; --card2:#ece7db; --line:rgba(90,84,70,.22); --moss:#6b7a5a;
+  --sh-1:none; --sh-card:0 1px 2px rgba(90,84,70,.10);
+  --bg-wash:none;
+}
+html[data-style="zen"] body.dark{--bg:#14140f;--card:#1b1a14;--card2:#221f18;--line:rgba(232,226,210,.16)}
+html[data-style="zen"] .card,html[data-style="zen"] .vb-card{border:0;box-shadow:var(--sh-card)}
+html[data-style="zen"] .btn{border:0;border-bottom:1px solid var(--line);background:transparent;border-radius:0;letter-spacing:.08em;color:#4a4638}
+html[data-style="zen"] body.dark .btn{color:#d8d2c0}
+html[data-style="zen"] h1,html[data-style="zen"] h2.sec{font-family:var(--serif);font-weight:400;letter-spacing:.12em}
+html[data-style="zen"] h2.sec::before{background:var(--moss);width:3px;height:16px;border-radius:0}
+html[data-style="zen"] .bnav,html[data-style="zen"] .bnav-ind{border-radius:2px}
+
+/* ---------- 44) 浮世绘：靛蓝＋朱红 + 平面色块 + 波浪线 ---------- */
+html[data-style="ukiyoe"],
+html[data-style="ukiyoe"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#f4ede0; --card:#fdf8ee; --card2:#f0e6d2; --line:#1f3a63; --indigo:#1f3a63; --vermilion:#c8452f;
+  --sh-1:none; --sh-card:none;
+  --bg-wash:repeating-radial-gradient(circle at 50% 120%, rgba(31,58,99,.10) 0 2px, transparent 2px 14px);
+}
+html[data-style="ukiyoe"] .card,html[data-style="ukiyoe"] .vb-card{border:2px solid var(--indigo);box-shadow:none}
+html[data-style="ukiyoe"] .btn{border:2px solid var(--indigo);background:transparent;color:var(--vermilion);font-weight:700;letter-spacing:.06em}
+html[data-style="ukiyoe"] h1,html[data-style="ukiyoe"] h2.sec{font-family:var(--serif);letter-spacing:.08em;color:var(--indigo)}
+html[data-style="ukiyoe"] body.dark h1,html[data-style="ukiyoe"] body.dark h2.sec{color:#dfe6f5}
+html[data-style="ukiyoe"] h2.sec{border-bottom:3px solid var(--vermilion);padding-bottom:3px}
+html[data-style="ukiyoe"] h2.sec::before{background:var(--vermilion);border-radius:0}
+
+/* ---------- 45) 青花瓷：白瓷 + 钴蓝细框 + 缠枝点纹 ---------- */
+html[data-style="porcelain"],
+html[data-style="porcelain"] body{
+  --radius:2px; --r-card:2px; --r-s:1px; --r-m:2px; --r-l:4px;
+  --bg:#f7fafc; --card:#ffffff; --card2:#f2f7fb; --line:rgba(31,78,156,.45); --cobalt:#1f4e9c;
+  --sh-1:none; --sh-card:0 1px 3px rgba(31,78,156,.10);
+  --bg-wash:radial-gradient(circle at 8px 8px, rgba(31,78,156,.10) 1.4px, transparent 1.8px);
+}
+html[data-style="porcelain"] body.dark{--bg:#0f141c;--card:#151c26;--card2:#1a222d;--line:rgba(140,180,240,.35)}
+html[data-style="porcelain"] body{background-image:var(--bg-wash);background-size:28px 28px;background-attachment:fixed}
+html[data-style="porcelain"] .card,html[data-style="porcelain"] .vb-card{border:1px solid var(--cobalt);box-shadow:inset 0 0 0 3px rgba(31,78,156,.10)}
+html[data-style="porcelain"] .btn{border:1px solid var(--cobalt);background:transparent;color:var(--cobalt)}
+html[data-style="porcelain"] h1,html[data-style="porcelain"] h2.sec{font-family:var(--serif);letter-spacing:.1em;color:var(--cobalt)}
+html[data-style="porcelain"] body.dark h1,html[data-style="porcelain"] body.dark h2.sec{color:#a9c8f5}
+html[data-style="porcelain"] h2.sec::before{background:var(--cobalt);width:10px;height:10px;border-radius:50% 0 50% 0}
+
+/* ---------- 46) 曼海蒂：橙红 + 细密点纹 + 金饰 ---------- */
+html[data-style="mehndi"],
+html[data-style="mehndi"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#fdf1e3; --card:#fff8ef; --card2:#fbe9d6; --line:#8a3b1e; --henna:#8a3b1e; --gold:#b8862b;
+  --sh-1:none; --sh-card:none;
+  --bg-wash:radial-gradient(circle at 6px 6px, rgba(138,59,30,.16) 1.2px, transparent 1.6px);
+}
+html[data-style="mehndi"] .card,html[data-style="mehndi"] .vb-card{border:2px dotted var(--henna);box-shadow:inset 0 0 0 5px rgba(184,134,43,.16)}
+html[data-style="mehndi"] .btn{border:2px dotted var(--henna);background:transparent;color:var(--henna);font-weight:700}
+html[data-style="mehndi"] h1,html[data-style="mehndi"] h2.sec{font-family:var(--serif);letter-spacing:.1em;color:var(--henna)}
+html[data-style="mehndi"] h2.sec::before{background:var(--gold);width:8px;height:8px;transform:rotate(45deg)}
+
+/* ---------- 47) 阿拉伯几何：深蓝 + 星形几何 + 金线 ---------- */
+html[data-style="arabic"],
+html[data-style="arabic"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#0e1a33; --card:#122140; --card2:#16294c; --text:#f2f6ff; --sub:#a9bcd8; --line:rgba(212,175,55,.5); --gold:#d4af37;
+  --sh-1:none; --sh-card:0 8px 26px rgba(0,0,0,.45);
+  --bg-wash:conic-gradient(from 45deg at 20% 20%, rgba(212,175,55,.10) 0 12%, transparent 12% 25%, rgba(212,175,55,.10) 25% 37%, transparent 37% 50%, rgba(212,175,55,.10) 50% 62%, transparent 62% 75%, rgba(212,175,55,.10) 75% 87%, transparent 87%);
+}
+html[data-style="arabic"] body{background-image:var(--bg-wash);background-size:120px 120px;background-attachment:fixed}
+html[data-style="arabic"] .card,html[data-style="arabic"] .vb-card{border:1px solid var(--gold);box-shadow:inset 0 0 0 4px rgba(212,175,55,.10),var(--sh-card)}
+html[data-style="arabic"] .btn{border:1px solid var(--gold);background:transparent;color:var(--gold);letter-spacing:.1em}
+html[data-style="arabic"] h1,html[data-style="arabic"] h2.sec{letter-spacing:.12em;font-weight:600}
+html[data-style="arabic"] h2.sec{border-bottom:1px solid var(--gold)}
+html[data-style="arabic"] h2.sec::before{background:var(--gold);width:12px;height:12px;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+
+/* ---------- 48) 莫兰迪：灰调低饱和 + 柔光 + 细线 ---------- */
+html[data-style="morandi"],
+html[data-style="morandi"] body{
+  --radius:12px; --r-card:12px; --r-s:8px; --r-m:10px; --r-l:16px;
+  --bg:#eeeae6; --card:#f5f2ee; --card2:#e9e4df; --line:rgba(120,112,104,.28);
+  --sh-1:0 1px 3px rgba(110,100,92,.10); --sh-card:0 4px 14px rgba(110,100,92,.12);
+  --bg-wash:none;
+}
+html[data-style="morandi"] body.dark{--bg:#171512;--card:#201d1a;--card2:#282420;--line:rgba(220,210,200,.18)}
+html[data-style="morandi"] .card,html[data-style="morandi"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="morandi"] .btn{border:1px solid var(--line);background:rgba(255,255,255,.55)}
+html[data-style="morandi"] body.dark .btn{background:#272320}
+html[data-style="morandi"] h1,html[data-style="morandi"] h2.sec{font-weight:500;letter-spacing:.02em}
+html[data-style="morandi"] h2.sec::before{background:#a89c92;border-radius:50%}
+
+/* ---------- 49) 马卡龙：粉彩 + 超大圆角 + 甜糖按钮 ---------- */
+html[data-style="macaron"],
+html[data-style="macaron"] body{
+  --radius:22px; --r-card:22px; --r-s:14px; --r-m:999px; --r-l:28px;
+  --bg:#fdf6f9; --card:#fffdfd; --card2:#fdeef4; --line:rgba(220,150,190,.35);
+  --sh-1:0 2px 6px rgba(220,150,190,.18); --sh-card:0 10px 26px rgba(220,150,190,.22);
+  --bg-wash:radial-gradient(700px 520px at 10% 0%, #ffe3f1 0%, transparent 60%),
+            radial-gradient(680px 500px at 90% 12%, #e6f7ff 0%, transparent 62%),
+            radial-gradient(620px 460px at 50% 100%, #f1ffe6 0%, transparent 62%);
+}
+html[data-style="macaron"] body.dark{--bg:#1a1218;--card:#241a21;--card2:#2c2028;--line:rgba(255,180,215,.26)}
+html[data-style="macaron"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="macaron"] .card,html[data-style="macaron"] .vb-card{border:1px solid var(--line);box-shadow:var(--sh-card)}
+html[data-style="macaron"] .btn{border-radius:999px;border:1px solid var(--line);background:linear-gradient(180deg,#fff,#ffe6f2);font-weight:600}
+html[data-style="macaron"] h1,html[data-style="macaron"] h2.sec{letter-spacing:.02em;font-weight:600}
+html[data-style="macaron"] h2.sec::before{background:linear-gradient(180deg,#ffb3d9,#a8e6ff);border-radius:50%}
+
+/* ---------- 50) 单色调：纯黑白灰 + 强对比 + 零彩色 ---------- */
+html[data-style="mono"],
+html[data-style="mono"] body{
+  --radius:6px; --r-card:6px; --r-s:4px; --r-m:6px; --r-l:10px;
+  --bg:#f5f5f5; --card:#ffffff; --card2:#ededed; --line:#111111;
+  --primary:#111111; --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="mono"] body.dark{--bg:#0c0c0c;--card:#151515;--card2:#1d1d1d;--line:#f0f0f0;--primary:#f0f0f0}
+html[data-style="mono"] .card,html[data-style="mono"] .vb-card{border:2px solid var(--line);box-shadow:none;filter:grayscale(1)}
+html[data-style="mono"] .btn{border:2px solid var(--line);background:transparent;color:var(--line);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+html[data-style="mono"] h1,html[data-style="mono"] h2.sec{font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+html[data-style="mono"] h2.sec::before{background:var(--line);border-radius:0}
+html[data-style="mono"] .hm-c,html[data-style="mono"] .cal-d{filter:grayscale(1)}
+
+/* ---------- 设置面板：风格分类标签 + 更紧凑的缩略图网格（web187） ---------- */
+.sty-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+.sty-tab{font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line2,#dbe3ec);background:var(--card2,#f4f6f9);color:var(--sub,#64748b);cursor:pointer;line-height:1.4}
+.sty-tab:hover{border-color:var(--primary,#0d9488);color:var(--primary,#0d9488)}
+.sty-tab.on{background:var(--primary,#0d9488);border-color:var(--primary,#0d9488);color:#fff;font-weight:600}
+html .stylegrid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+@media (max-width:560px){ html .stylegrid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))} }
+
+/* ==========================================================================
+   §13 皮肤材质纹理（web187）：自绘 SVG 平铺图案，pat/*.svg（每张 1 KB 上下）
+   - 只贴在 body 上，作为背景最上层；图案本身半透明黑/低透明度，深浅色都叠得上
+   - 加新皮肤想带材质：MAP 里加一行，或在 CSS 里直接写 background-image:var(--pat),var(--bg-wash)
+   ========================================================================== */
+html[data-style="pop"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:12px 12px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="pointil"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:14px 14px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="memphis"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:16px 16px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="material"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:18px 18px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="porcelain"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:12px 12px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="disco"] body{
+  --pat:url("pat/dots.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:20px 20px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="grunge"] body{
+  --pat:url("pat/grain.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:180px 180px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="tenebrism"] body{
+  --pat:url("pat/grain.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:180px 180px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="graffiti"] body{
+  --pat:url("pat/grain.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:180px 180px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="ink"] body{
+  --pat:url("pat/grain.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:220px 220px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="sketch"] body{
+  --pat:url("pat/grid.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:24px 24px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="vaporwave"] body{
+  --pat:url("pat/grid.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:26px 26px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="luxury"] body{
+  --pat:url("pat/pinstripe.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:8px 8px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="retro"] body{
+  --pat:url("pat/pinstripe.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:8px 8px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="util"] body{
+  --pat:url("pat/cross.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:28px 28px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="swiss"] body{
+  --pat:url("pat/cross.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:28px 28px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="ukiyoe"] body{
+  --pat:url("pat/seigaiha.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:96px 48px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="arabic"] body{
+  --pat:url("pat/star8.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:64px 64px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="mehndi"] body{
+  --pat:url("pat/mandala.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:52px 52px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="cyberpunk"] body{
+  --pat:url("pat/scan.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:4px 4px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="synthwave"] body{
+  --pat:url("pat/scan.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:4px 4px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="cyber"] body{
+  --pat:url("pat/scan.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:4px 4px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="morandi"] body{
+  --pat:url("pat/linen.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:6px 6px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}
+html[data-style="water"] body{
+  --pat:url("pat/linen.svg");
+  background-image:var(--pat),var(--bg-wash);
+  background-size:6px 6px,auto;
+  background-repeat:repeat,no-repeat;
+  background-position:0 0,center top;
+}

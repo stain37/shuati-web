@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261114a">
+<link rel="stylesheet" href="style.css?v=20261115a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -165,8 +165,9 @@
     <input type="file" id="setBgFile" accept="image/*" style="display:none">
     <input type="file" id="setBgVideo" accept="video/*" style="display:none">
   </div>
-  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（17 套，缩略图就是这套的边框／圆角／阴影／字色气质）：</div>
-  <div class="stylegrid" id="styleGrid"></div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（50 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
+  <div class="sty-tabs" id="styleTabs"></div>
+      <div class="stylegrid" id="styleGrid"></div>
   <div class="hint" id="styleHint" style="margin-top:2px"></div>
   <label class="chk"><input type="checkbox" id="setStyleAuto" checked> 换风格时自动配一套主推主题色（不勾就一直用你选的颜色）</label>
   <div class="tools" style="margin-top:8px">
@@ -252,7 +253,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261114a"></script>
+<script src="app.js?v=20261115a"></script>
 <script src="collection.js?v=20261111b"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>

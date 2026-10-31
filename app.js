@@ -538,57 +538,111 @@ const BG_OPTIONS = ['default', 'aurora', 'grid', 'dots', 'lines', 'rings', 'pape
 const BG_NAME = { default: '默认微光', aurora: '极光', grid: '细网格', dots: '圆点', lines: '斜纹', rings: '涟漪', paper: '纸感', plain: '纯色', custom: '自定义图片', video: '视频背景' };
 /* 界面风格（web185）：换的是「皮肤」—— 边框、圆角、阴影、字体气质，跟主题色 / 深色 / 背景互不干扰。
    实现全在 style.css 的 §10：<html data-style="…"> 覆盖变量 + 少量组件，default 就是原来的样子。 */
-const UI_STYLES = ['default', 'neo', 'glass', 'clay', 'mag', 'pixel', 'flat', 'y2k', 'memphis', 'bauhaus', 'riso', 'retro', 'cyber', 'pencil', 'water', 'gothic', 'acid'];
+const UI_STYLES = ['default', 'flat', 'neocl', 'baroque', 'artdeco', 'artnouveau', 'steampunk', 'victorian', 'gothic', 'retro', 'water', 'pencil', 'riso', 'pointil', 'pop', 'sketch', 'scrapbook', 'surreal', 'tenebrism', 'neo', 'mag', 'bauhaus', 'memphis', 'swiss', 'util', 'luxury', 'midcentury', 'material', 'nordic', 'pixel', 'y2k', 'cyber', 'cyberpunk', 'graffiti', 'grunge', 'synthwave', 'vaporwave', 'disco', 'acid', 'ink', 'zen', 'ukiyoe', 'porcelain', 'mehndi', 'arabic', 'glass', 'clay', 'morandi', 'macaron', 'mono'];
 const UI_STYLE_NAME = {
-  default: '清爽（默认）', neo: '新野兽派', glass: '毛玻璃', clay: '粘土拟态', mag: '编辑杂志', pixel: '像素 8-bit', flat: '极简扁平',
-  y2k: 'Y2K 千禧', memphis: '孟菲斯', bauhaus: '包豪斯', riso: 'Risograph', retro: '复古怀旧',
-  cyber: '赛博霓虹', pencil: '铅笔手绘', water: '水彩晕染', gothic: '哥特', acid: '酸性平面'
+  default: '清爽（默认）', flat: '极简扁平', neocl: '新古典主义', baroque: '巴洛克', artdeco: '装饰艺术', artnouveau: '新艺术',
+  steampunk: '蒸汽朋克', victorian: '维多利亚', gothic: '哥特', retro: '复古怀旧', water: '水彩晕染', pencil: '铅笔手绘',
+  riso: 'Risograph', pointil: '点彩', pop: '波普艺术', sketch: '概念草图', scrapbook: '拼贴手账', surreal: '超现实',
+  tenebrism: '暗色调主义', neo: '新野兽派', mag: '编辑杂志', bauhaus: '包豪斯', memphis: '孟菲斯', swiss: '瑞士国际',
+  util: '功利主义', luxury: '奢华字体', midcentury: '世纪中叶现代', material: '材料设计', nordic: '北欧极简', pixel: '像素 8-bit',
+  y2k: 'Y2K 千禧', cyber: '赛博霓虹', cyberpunk: '赛博朋克', graffiti: '涂鸦', grunge: '垃圾摇滚', synthwave: '合成波',
+  vaporwave: '蒸汽波', disco: '迪斯科', acid: '酸性平面', ink: '中国水墨', zen: '日式禅意', ukiyoe: '浮世绘',
+  porcelain: '青花瓷', mehndi: '印度曼海蒂', arabic: '阿拉伯几何', glass: '毛玻璃', clay: '粘土拟态', morandi: '莫兰迪',
+  macaron: '马卡龙', mono: '单色调',
 };
 const UI_STYLE_DESC = {
-  default: '现在这套：白卡片、圆角、轻阴影，干净耐看。',
-  neo: '粗黑边 + 实心投影 + 直角，像印刷海报；字更粗，按钮按下去会有位移。',
-  glass: '面板半透明 + 背景模糊，彩色光晕透上来；圆角更大。',
-  clay: '超大圆角 + 内外两层柔影，像捏出来的软陶块，按钮鼓一点。',
-  mag: '衬线标题 + 细线分隔 + 去掉阴影，暖纸底，像翻杂志。',
-  pixel: '零圆角 + 等宽字 + 硬边像素框，复古 8-bit。',
-  flat: '去掉所有阴影和渐变，只留细边框和色块，最安静。',
-  y2k: '亮面渐变 + 胶囊按钮 + 冷蓝粉光晕，千禧年数码味。',
-  memphis: '粗黑描边 + 硬投影 + 彩色圆点底纹，80 年代孟菲斯设计。',
-  bauhaus: '红黄蓝原色 + 粗直线 + 全大写，包豪斯几何。',
-  riso: '奶油纸底 + 玫红/蓝双色套印 + 错位投影，像丝网印刷。',
-  retro: '米黄纸 + 双线框 + 衬线字，旧书刊味道。',
-  cyber: '霓虹发光描边 + 等宽大写，赛博朋克；深色模式下最带感。',
-  pencil: '纸底 + 虚线框 + 手写体，像随手画的草图。',
-  water: '多层水彩晕染 + 半透明卡片 + 胶囊按钮，柔和通透。',
-  gothic: '暗底金边 + 衬线字，教堂彩窗感（这套自带深色，浅色主题下也是暗的）。',
-  acid: '荧光黄绿 + 纯黑粗框 + 大写重字，酸性平面／反设计。'
+  default: '现在这套：白卡片、圆角、轻阴影，干净耐看。', flat: '去掉所有阴影和渐变，只留细边框和色块，最安静。', neocl: '大理石白 + 细金双线 + 严格对称的衬线标题，像美术馆展签。', baroque: '深酒红 + 金箔双线框 + 斜体衬线，戏剧性的强明暗。',
+  artdeco: '墨绿 + 金线 + 放射阶梯，全大写宽字距，1920 年代奢华。', artnouveau: '草绿与金 + 鞭形曲线 + 不对称大圆角，穆夏式海报。', steampunk: '黄铜铆钉 + 皮革暗底 + 齿轮光斑，维多利亚机械感。', victorian: '黑底金框 + 衬线 + 菱形饰点，旧精装书气质。',
+  gothic: '暗底金边 + 衬线字，教堂彩窗感（这套自带深色，浅色主题下也是暗的）。', retro: '米黄纸 + 双线框 + 衬线字，旧书刊味道。', water: '多层水彩晕染 + 半透明卡片 + 胶囊按钮，柔和通透。', pencil: '纸底 + 虚线框 + 手写体，像随手画的草图。',
+  riso: '奶油纸底 + 玫红/蓝双色套印 + 错位投影，像丝网印刷。', pointil: '细密彩色点铺底 + 点线框，光学混色的朦胧边界。', pop: '粗黑描边 + 网点底纹 + 原色平涂，漫画式重复。', sketch: '方格纸 + 虚线框 + 手写批注，构图中途的样子。',
+  scrapbook: '拍立得白边 + 微微倾斜 + 纸胶带色块，层叠拼贴。', surreal: '梦境渐变 + 紫色/粉色双色错位影 + 倾斜卡片。', tenebrism: '近黑背景 + 单侧硬光 + 极重投影，舞台聚光感。', neo: '粗黑边 + 实心投影 + 直角，像印刷海报；字更粗，按钮按下去会有位移。',
+  mag: '衬线标题 + 细线分隔 + 去掉阴影，暖纸底，像翻杂志。', bauhaus: '红黄蓝原色 + 粗直线 + 全大写，包豪斯几何。', memphis: '粗黑描边 + 硬投影 + 彩色圆点底纹，80 年代孟菲斯设计。', swiss: '纯白 + 黑体 + 一个红方块 + 顶部粗线，理性的网格。',
+  util: '黑白高对比 + 巨粗下划线 + 全大写，信息优先零装饰。', luxury: '奶油底 + 高对比衬线 + 超宽字距 + 大片留白。', midcentury: '芥末黄 + 青绿 + 有机圆形 + 胶囊按钮，60 年代家具画册。', material: '白卡片 + 两级投影 + 顶部主色条 + 大写字按钮。',
+  nordic: '冷白 + 极细线 + 大留白，安静克制。', pixel: '零圆角 + 等宽字 + 硬边像素框，复古 8-bit。', y2k: '亮面渐变 + 胶囊按钮 + 冷蓝粉光晕，千禧年数码味。', cyber: '霓虹发光描边 + 等宽大写，赛博朋克；深色模式下最带感。',
+  cyberpunk: '黄黑警示边 + 故障红蓝双影 + 荧光黄按钮，高科技低生活。', graffiti: '气泡粗描边 + 喷溅底纹 + 微旋转，街头墙面的字。', grunge: '做旧暗色 + 噪点 + 磨损边，90 年代反精致。', synthwave: '紫粉霓虹 + 地平线渐层 + 镀铬渐变字，80 年代合成器封面。',
+  vaporwave: '粉紫渐层 + 斜体衬线 + 半透明面板，消逝的消费主义。', disco: '紫金闪光 + 镜面球光斑 + 胶囊按钮，舞池反光。', acid: '荧光黄绿 + 纯黑粗框 + 大写重字，酸性平面／反设计。', ink: '宣纸 + 墨晕 + 朱红印章，留白与墨色深浅。',
+  zen: '侘寂土色 + 无边框 + 超大留白，像一间安静的茶室。', ukiyoe: '靛蓝 + 朱红平面色块 + 波纹底纹，江户木版画。', porcelain: '白瓷底 + 钴蓝细框 + 缠枝点纹，青白之间。', mehndi: '橙红 + 细密点纹 + 金色内圈，手绘的祝福。',
+  arabic: '深蓝 + 金星几何 + 八角星标记，无限的几何。', glass: '面板半透明 + 背景模糊，彩色光晕透上来；圆角更大。', clay: '超大圆角 + 内外两层柔影，像捏出来的软陶块，按钮鼓一点。', morandi: '灰调低饱和 + 柔光 + 细线，安静的高级灰。',
+  macaron: '粉彩渐变 + 超大圆角 + 糖霜按钮，甜品色谱。', mono: '纯黑白灰 + 强对比 + 零彩色，一色的深度。',
 };
+/* 分类（设置里的筛选标签用）：base 通用 / classic 古典装饰 / painting 绘画手作 / modern 现代平面 / digital 数字复古 / east 东方 / material 质感色彩 */
+const UI_STYLE_CAT = {
+  default: 'base', flat: 'base', neocl: 'classic', baroque: 'classic', artdeco: 'classic', artnouveau: 'classic',
+  steampunk: 'classic', victorian: 'classic', gothic: 'classic', retro: 'classic', water: 'painting', pencil: 'painting',
+  riso: 'painting', pointil: 'painting', pop: 'painting', sketch: 'painting', scrapbook: 'painting', surreal: 'painting',
+  tenebrism: 'painting', neo: 'modern', mag: 'modern', bauhaus: 'modern', memphis: 'modern', swiss: 'modern',
+  util: 'modern', luxury: 'modern', midcentury: 'modern', material: 'modern', nordic: 'modern', pixel: 'digital',
+  y2k: 'digital', cyber: 'digital', cyberpunk: 'digital', graffiti: 'digital', grunge: 'digital', synthwave: 'digital',
+  vaporwave: 'digital', disco: 'digital', acid: 'digital', ink: 'east', zen: 'east', ukiyoe: 'east',
+  porcelain: 'east', mehndi: 'east', arabic: 'east', glass: 'material', clay: 'material', morandi: 'material',
+  macaron: 'material', mono: 'material',
+};
+const UI_STYLE_CATS = [{ id: 'all', name: '全部' }, { id: 'base', name: '通用' }, { id: 'classic', name: '古典装饰' }, { id: 'painting', name: '绘画手作' }, { id: 'modern', name: '现代平面' }, { id: 'digital', name: '数字复古' }, { id: 'east', name: '东方' }, { id: 'material', name: '质感色彩' }];
 /* 每套皮肤主推一个主题色（THEME_COLORS 里的 key）：换风格时自动配一套，
    设置里可以关（#setStyleAuto）。只是推荐，用户随后照样能自己改主题色。 */
 const UI_STYLE_TC = {
-  default: 'teal', neo: 'amber', glass: 'indigo', clay: 'rose', mag: 'graphite', pixel: 'emerald', flat: 'teal',
-  y2k: 'candy', memphis: 'candy', bauhaus: 'rose', riso: 'warm', retro: 'amber',
-  cyber: 'ocean', pencil: 'graphite', water: 'teal', gothic: 'graphite', acid: 'violet'
+  default: 'teal', flat: 'teal', neocl: 'graphite', baroque: 'amber', artdeco: 'emerald', artnouveau: 'amber',
+  steampunk: 'amber', victorian: 'graphite', gothic: 'graphite', retro: 'amber', water: 'teal', pencil: 'graphite',
+  riso: 'warm', pointil: 'indigo', pop: 'rose', sketch: 'graphite', scrapbook: 'warm', surreal: 'violet',
+  tenebrism: 'graphite', neo: 'amber', mag: 'graphite', bauhaus: 'rose', memphis: 'candy', swiss: 'rose',
+  util: 'graphite', luxury: 'graphite', midcentury: 'amber', material: 'indigo', nordic: 'ocean', pixel: 'emerald',
+  y2k: 'candy', cyber: 'ocean', cyberpunk: 'amber', graffiti: 'rose', grunge: 'graphite', synthwave: 'violet',
+  vaporwave: 'violet', disco: 'candy', acid: 'violet', ink: 'graphite', zen: 'emerald', ukiyoe: 'ocean',
+  porcelain: 'ocean', mehndi: 'warm', arabic: 'amber', glass: 'indigo', clay: 'rose', morandi: 'graphite',
+  macaron: 'rose', mono: 'graphite',
 };
-/* 设置面板缩略图用的迷你外观（值要和 style.css 里的皮肤对得上；探针会抽查几个） */
+/* 设置面板缩略图用的迷你外观（值要和 style.css 里的皮肤对得上；探针会抽查） */
 const UI_STYLE_SWATCH = {
   default: { r: '8px', bd: '1px solid #cbd5e1', sh: '0 2px 8px rgba(15,23,42,.10)', bg: '#f6f8fb', cd: '#ffffff', ac: '#0d9488' },
+  flat: { r: '7px', bd: '1.5px solid rgba(13,23,42,.2)', sh: 'none', bg: '#f7f8fa', cd: '#ffffff', ac: '#0f766e' },
+  neocl: { r: '2px', bd: '1px solid rgba(122,110,88,.5)', sh: 'inset 0 0 0 3px rgba(176,141,79,.25)', bg: '#f7f5ef', cd: '#fffefb', ac: '#b08d4f' },
+  baroque: { r: '6px', bd: '3px double #e2ba6e', sh: '0 10px 30px rgba(0,0,0,.55)', bg: '#20100e', cd: '#2b1714', ac: '#e2ba6e' },
+  artdeco: { r: '0', bd: '1px solid #c8a45c', sh: 'inset 0 0 0 4px rgba(200,164,92,.2)', bg: '#0f2b28', cd: '#123330', ac: '#c8a45c' },
+  artnouveau: { r: '22px 4px 22px 4px', bd: '1px solid rgba(106,122,85,.5)', sh: '0 10px 26px rgba(90,100,70,.16)', bg: '#f1efe2', cd: '#fbfaf3', ac: '#6a7a55' },
+  steampunk: { r: '6px', bd: '2px solid #b98b4e', sh: '0 8px 24px rgba(0,0,0,.5), inset 0 0 0 4px #1f170f', bg: '#2b2118', cd: '#3a2d20', ac: '#b98b4e' },
+  victorian: { r: '2px', bd: '3px double #d4ba8c', sh: '0 6px 20px rgba(0,0,0,.6)', bg: '#14100c', cd: '#1e1811', ac: '#d4ba8c' },
+  gothic: { r: '2px', bd: '1px solid rgba(212,175,55,.55)', sh: 'none', bg: '#0f0d0b', cd: '#17130f', ac: '#d4af37' },
+  retro: { r: '2px', bd: '2px double rgba(84,58,32,.5)', sh: 'none', bg: '#f3e9d2', cd: '#fbf3df', ac: '#7a5a34' },
+  water: { r: '14px', bd: '1px solid rgba(120,160,160,.35)', sh: '0 8px 20px rgba(90,150,150,.18)', bg: 'linear-gradient(135deg,#e9f7f4,#fff2e8)', cd: 'rgba(255,255,255,.8)', ac: '#2f8f86' },
+  pencil: { r: '6px', bd: '1.5px dashed rgba(70,58,45,.55)', sh: 'none', bg: '#faf6ec', cd: '#fffdf7', ac: '#6b5a45' },
+  riso: { r: '4px', bd: '1.5px solid rgba(40,30,60,.3)', sh: '4px 4px 0 rgba(255,79,123,.35)', bg: '#fdf7ea', cd: '#fffdf6', ac: '#2b6cff' },
+  pointil: { r: '10px', bd: '2px dotted rgba(120,110,90,.45)', sh: 'none', bg: '#fdfaf2', cd: '#fffefa', ac: '#3884ff' },
+  pop: { r: '0', bd: '3px solid #111', sh: '6px 6px 0 #111', bg: '#fff7d6', cd: '#ffffff', ac: '#ff4d4d' },
+  sketch: { r: '2px', bd: '1.5px dashed rgba(100,116,139,.6)', sh: 'none', bg: '#f8fafc', cd: '#ffffff', ac: '#334155' },
+  scrapbook: { r: '4px', bd: '4px solid #fffdf8', sh: '0 4px 14px rgba(90,70,40,.25)', bg: '#fbf6ec', cd: '#fffdf8', ac: '#f3c85c' },
+  surreal: { r: '40px 12px 40px 12px', bd: '1px dashed rgba(124,92,204,.45)', sh: '-6px 6px 0 rgba(124,92,204,.3), 6px -6px 0 rgba(255,150,200,.35)', bg: 'linear-gradient(135deg,#ffe7f6,#e8f0ff)', cd: 'rgba(255,255,255,.85)', ac: '#a78bfa' },
+  tenebrism: { r: '0', bd: '0', sh: '18px 18px 40px rgba(0,0,0,.85)', bg: '#05060a', cd: '#0b0d14', ac: '#e8ebf4' },
   neo: { r: '0', bd: '2px solid #0b1220', sh: '3px 3px 0 #0b1220', bg: '#f4f1e8', cd: '#fffdf4', ac: '#0b1220' },
+  mag: { r: '3px', bd: '1px solid rgba(58,44,28,.28)', sh: 'none', bg: '#faf7f0', cd: '#fffdf8', ac: '#7c5a33' },
+  bauhaus: { r: '0', bd: '3px solid #111', sh: 'none', bg: '#f4f1ea', cd: '#ffffff', ac: '#d21f1f' },
+  memphis: { r: '8px', bd: '2.5px solid #121212', sh: '4px 4px 0 #121212', bg: '#fffaf3', cd: '#ffffff', ac: '#ff5a78' },
+  swiss: { r: '0', bd: '0', sh: 'none', bg: '#ffffff', cd: '#ffffff', ac: '#e2231a' },
+  util: { r: '0', bd: '2px solid #000', sh: 'none', bg: '#f4f4f2', cd: '#ffffff', ac: '#000000' },
+  luxury: { r: '0', bd: '0', sh: '0 1px 0 rgba(150,130,90,.2)', bg: '#faf8f3', cd: '#fffdf9', ac: '#a98a4e' },
+  midcentury: { r: '16px', bd: '1px solid rgba(120,96,60,.35)', sh: '0 8px 22px rgba(120,96,60,.18)', bg: '#f3ecd8', cd: '#fffdf5', ac: '#d9a03c' },
+  material: { r: '4px', bd: '0', sh: '0 2px 4px rgba(0,0,0,.12), 0 8px 16px rgba(0,0,0,.10)', bg: '#fafafa', cd: '#ffffff', ac: '#5b6ef5' },
+  nordic: { r: '14px', bd: '1px solid #dbe3ec', sh: '0 2px 10px rgba(30,50,80,.08)', bg: '#f7f9fb', cd: '#ffffff', ac: '#3b82a8' },
+  pixel: { r: '0', bd: '2px solid #16203a', sh: '3px 3px 0 #16203a', bg: '#e8eef8', cd: '#ffffff', ac: '#16203a' },
+  y2k: { r: '12px', bd: '1px solid rgba(96,132,255,.45)', sh: '0 6px 16px rgba(86,126,255,.22)', bg: 'linear-gradient(135deg,#e6efff,#ffe9f6)', cd: 'rgba(255,255,255,.9)', ac: '#4f7cff' },
+  cyber: { r: '6px', bd: '1px solid rgba(34,211,238,.6)', sh: '0 0 12px rgba(34,211,238,.35)', bg: 'linear-gradient(135deg,#0a0f1c,#122036)', cd: 'rgba(10,18,32,.85)', ac: '#22d3ee' },
+  cyberpunk: { r: '2px', bd: '1px solid #f2e600', sh: '3px 0 0 rgba(255,45,120,.6), -3px 0 0 rgba(34,211,238,.6)', bg: '#0a0a0a', cd: '#111111', ac: '#f2e600' },
+  graffiti: { r: '10px', bd: '4px solid #111', sh: '6px 6px 0 rgba(17,17,17,.9)', bg: '#f5f0e4', cd: '#ffffff', ac: '#ff5ab4' },
+  grunge: { r: '0', bd: '1px solid rgba(217,213,204,.25)', sh: '0 8px 24px rgba(0,0,0,.55)', bg: '#1a1917', cd: '#242220', ac: '#8d877d' },
+  synthwave: { r: '4px', bd: '1px solid rgba(255,60,172,.6)', sh: '0 0 0 1px rgba(255,60,172,.4), 0 10px 30px rgba(120,40,200,.4)', bg: 'linear-gradient(180deg,#120a24,#2a1150)', cd: 'rgba(30,12,54,.9)', ac: '#ff3cac' },
+  vaporwave: { r: '8px', bd: '1px solid rgba(160,110,220,.45)', sh: '0 8px 26px rgba(150,110,220,.25)', bg: 'linear-gradient(135deg,#ffd9f2,#dcd6ff,#c8f5ff)', cd: 'rgba(255,255,255,.65)', ac: '#7a3ea8' },
+  disco: { r: '26px', bd: '1px solid rgba(255,214,102,.6)', sh: '0 10px 34px rgba(120,40,180,.5)', bg: 'linear-gradient(135deg,#25123d,#170f26)', cd: 'rgba(40,22,64,.9)', ac: '#ffd666' },
+  acid: { r: '0', bd: '2.5px solid #0a0a0a', sh: '5px 5px 0 #0a0a0a', bg: '#f2f2ef', cd: '#ffffff', ac: '#a8d600' },
+  ink: { r: '2px', bd: '1px solid rgba(40,38,34,.4)', sh: 'none', bg: '#f6f1e4', cd: 'rgba(255,255,255,.7)', ac: '#2b2a26' },
+  zen: { r: '3px', bd: '0', sh: '0 1px 3px rgba(90,84,70,.15)', bg: '#e9e4d8', cd: '#f2eee3', ac: '#6b7a5a' },
+  ukiyoe: { r: '0', bd: '2px solid #1f3a63', sh: 'none', bg: '#f4ede0', cd: '#fdf8ee', ac: '#c8452f' },
+  porcelain: { r: '2px', bd: '1px solid #1f4e9c', sh: 'inset 0 0 0 3px rgba(31,78,156,.15)', bg: '#f7fafc', cd: '#ffffff', ac: '#1f4e9c' },
+  mehndi: { r: '0', bd: '2px dotted #8a3b1e', sh: 'inset 0 0 0 5px rgba(184,134,43,.2)', bg: '#fdf1e3', cd: '#fff8ef', ac: '#8a3b1e' },
+  arabic: { r: '0', bd: '1px solid #d4af37', sh: 'inset 0 0 0 4px rgba(212,175,55,.15)', bg: '#0e1a33', cd: '#122140', ac: '#d4af37' },
   glass: { r: '14px', bd: '1px solid rgba(255,255,255,.7)', sh: '0 6px 18px rgba(60,120,180,.18)', bg: 'linear-gradient(135deg,#d8f3ff,#e8e0ff)', cd: 'rgba(255,255,255,.55)', ac: '#4f8df5' },
   clay: { r: '16px', bd: '0', sh: '0 4px 10px rgba(84,100,160,.18), inset 0 1px 0 #fff', bg: '#eef1fb', cd: '#f7f9ff', ac: '#6b7cff' },
-  mag: { r: '3px', bd: '1px solid rgba(58,44,28,.28)', sh: 'none', bg: '#faf7f0', cd: '#fffdf8', ac: '#7c5a33' },
-  pixel: { r: '0', bd: '2px solid #16203a', sh: '3px 3px 0 #16203a', bg: '#e8eef8', cd: '#ffffff', ac: '#16203a' },
-  flat: { r: '7px', bd: '1.5px solid rgba(13,23,42,.2)', sh: 'none', bg: '#f7f8fa', cd: '#ffffff', ac: '#0f766e' },
-  y2k: { r: '12px', bd: '1px solid rgba(96,132,255,.45)', sh: '0 6px 16px rgba(86,126,255,.22)', bg: 'linear-gradient(135deg,#e6efff,#ffe9f6)', cd: 'rgba(255,255,255,.9)', ac: '#4f7cff' },
-  memphis: { r: '8px', bd: '2.5px solid #121212', sh: '4px 4px 0 #121212', bg: '#fffaf3', cd: '#ffffff', ac: '#ff5a78' },
-  bauhaus: { r: '0', bd: '3px solid #111', sh: 'none', bg: '#f4f1ea', cd: '#ffffff', ac: '#d21f1f' },
-  riso: { r: '4px', bd: '1.5px solid rgba(40,30,60,.3)', sh: '4px 4px 0 rgba(255,79,123,.35)', bg: '#fdf7ea', cd: '#fffdf6', ac: '#2b6cff' },
-  retro: { r: '2px', bd: '2px double rgba(84,58,32,.5)', sh: 'none', bg: '#f3e9d2', cd: '#fbf3df', ac: '#7a5a34' },
-  cyber: { r: '6px', bd: '1px solid rgba(34,211,238,.6)', sh: '0 0 12px rgba(34,211,238,.35)', bg: 'linear-gradient(135deg,#0a0f1c,#122036)', cd: 'rgba(10,18,32,.85)', ac: '#22d3ee' },
-  pencil: { r: '6px', bd: '1.5px dashed rgba(70,58,45,.55)', sh: 'none', bg: '#faf6ec', cd: '#fffdf7', ac: '#6b5a45' },
-  water: { r: '14px', bd: '1px solid rgba(120,160,160,.35)', sh: '0 8px 20px rgba(90,150,150,.18)', bg: 'linear-gradient(135deg,#e9f7f4,#fff2e8)', cd: 'rgba(255,255,255,.8)', ac: '#2f8f86' },
-  gothic: { r: '2px', bd: '1px solid rgba(212,175,55,.55)', sh: 'none', bg: '#0f0d0b', cd: '#17130f', ac: '#d4af37' },
-  acid: { r: '0', bd: '2.5px solid #0a0a0a', sh: '5px 5px 0 #0a0a0a', bg: '#f2f2ef', cd: '#ffffff', ac: '#a8d600' }
+  morandi: { r: '12px', bd: '1px solid rgba(120,112,104,.3)', sh: '0 4px 14px rgba(110,100,92,.14)', bg: '#eeeae6', cd: '#f5f2ee', ac: '#a89c92' },
+  macaron: { r: '22px', bd: '1px solid rgba(220,150,190,.4)', sh: '0 10px 26px rgba(220,150,190,.25)', bg: 'linear-gradient(135deg,#ffe3f1,#e6f7ff)', cd: '#fffdfd', ac: '#ffb3d9' },
+  mono: { r: '6px', bd: '2px solid #111', sh: 'none', bg: '#f5f5f5', cd: '#ffffff', ac: '#111111' },
 };
 
 /* ---------- 自定义背景图（本机） ----------
@@ -4771,15 +4825,35 @@ function paintStyleEls() {
   if ($('setStyleAuto')) $('setStyleAuto').checked = SET.styleAuto !== false;
   paintStyleGrid();
 }
+/* 风格分类筛选（50 套太多，按大类点着看） */
+let STYLE_TAB = 'all';
+function styleTabsBuild() {
+  const host = $('styleTabs');
+  if (!host || host.__built) return;
+  host.innerHTML = UI_STYLE_CATS.map(c => '<button type="button" class="sty-tab" data-cat="' + c.id + '">' + c.name + '</button>').join('');
+  host.__built = true;
+  host.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-cat]');
+    if (!b) return;
+    STYLE_TAB = b.getAttribute('data-cat') || 'all';
+    paintStyleGrid();
+  });
+}
 /* 风格缩略图卡：点一下就切（等价于下拉框 change），选中的加 .on */
 function paintStyleGrid() {
   const host = $('styleGrid');
   if (!host) return;
   const cur = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+  styleTabsBuild();
+  /* 隐藏的下拉框只当「换风格」的通道：选项按表补齐，index.html 里不用手写 50 个 option */
+  const selBox = $('setStyle');
+  if (selBox && selBox.options.length !== UI_STYLES.length) {
+    selBox.innerHTML = UI_STYLES.map(id => '<option value="' + id + '">' + (UI_STYLE_NAME[id] || id) + '</option>').join('');
+  }
   if (!host.__built) {
     host.innerHTML = UI_STYLES.map(id => {
       const sw = UI_STYLE_SWATCH[id] || UI_STYLE_SWATCH.default;
-      return '<button type="button" class="sty-card" data-style-v="' + id + '" title="' + (UI_STYLE_DESC[id] || '') + '">' +
+      return '<button type="button" class="sty-card" data-style-v="' + id + '" data-cat="' + (UI_STYLE_CAT[id] || 'base') + '" title="' + (UI_STYLE_DESC[id] || '') + '">' +
         '<span class="sty-mini" style="border-radius:' + sw.r + ';border:' + sw.bd + ';box-shadow:' + sw.sh + ';background:' + sw.bg + '">' +
         '<i class="sty-bar" style="background:' + sw.ac + ';border-radius:' + sw.r + '"></i>' +
         '<i class="sty-line" style="background:' + sw.ac + '"></i>' +
@@ -4798,8 +4872,17 @@ function paintStyleGrid() {
     });
   }
   Array.prototype.forEach.call(host.querySelectorAll('[data-style-v]'), el => {
-    el.classList.toggle('on', el.getAttribute('data-style-v') === cur);
+    const id = el.getAttribute('data-style-v');
+    el.classList.toggle('on', id === cur);
+    const hidden = STYLE_TAB !== 'all' && el.getAttribute('data-cat') !== STYLE_TAB;
+    el.style.display = hidden ? 'none' : '';
   });
+  const tabs = $('styleTabs');
+  if (tabs) {
+    Array.prototype.forEach.call(tabs.querySelectorAll('[data-cat]'), b => {
+      b.classList.toggle('on', b.getAttribute('data-cat') === STYLE_TAB);
+    });
+  }
 }
 function openSettings() {
   $('setExpOnOk').checked = SET.expOnOk;
