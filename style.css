@@ -8426,3 +8426,9 @@ html[data-glow="off"] .card,html[data-glow="off"] .vb-card,html[data-glow="off"]
 #setGlowPick::-webkit-color-swatch{border:0;border-radius:6px}
 #setGlowPick:disabled{opacity:.45;cursor:not-allowed}
 #glowHint{font-size:12px;color:var(--sub)}
+/* ===== §72 光晕三态（本地未发布） ===== */
+html[data-style][data-style][data-glow="off"],html[data-style][data-style][data-glow="on"]{--sh-card:0 1px 2px rgba(13,23,42,.06),0 8px 22px rgba(13,23,42,.08);--sh-1:0 1px 2px rgba(13,23,42,.05);--sh-2:0 10px 24px rgba(13,23,42,.09)}
+html[data-style][data-style][data-glow="off"] .card,.vb-card,.hero,.sheet,.vl-card,.vb-resume,html[data-style][data-style][data-glow="on"] .card,.vb-card,.hero,.sheet,.vl-card,.vb-resume{box-shadow:0 1px 2px rgba(13,23,42,.06),0 8px 22px rgba(13,23,42,.08)!important;filter:none!important}
+html[data-style][data-style][data-glow="off"] .btn,html[data-style][data-style][data-glow="on"] .btn{box-shadow:0 1px 2px rgba(13,23,42,.08)!important}
+html[data-style][data-style][data-glow="off"] .hero::after{background:none!important;opacity:0!important}
+html[data-style][data-style][data-glow="on"] .card,html[data-style][data-style][data-glow="on"] .vb-card,html[data-style][data-style][data-glow="on"] .hero,html[data-style][data-style][data-glow="on"] .sheet{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--glow) 30%,transparent)) drop-shadow(0 12px 32px color-mix(in srgb,var(--glow) 24%,transparent))!important}

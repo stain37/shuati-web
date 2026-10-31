@@ -479,7 +479,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', styleAuto: true, glow: true, glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -1212,13 +1212,14 @@ function applyLook() {
   /* 界面风格（皮肤层）：只打一个属性，样式全在 style.css §10；不认识的值一律落回 default */
   const style = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-style', style);
-  /* 区块外发光：开关 + 颜色（空 = 跟当前主色） */
+  /* 区块外发光：三态 auto（跟风格）/ on（指定颜色）/ off */
   {
-    const on = SET.glow !== false;
+    let mode = SET.glowMode;
+    if (mode !== 'on' && mode !== 'off' && mode !== 'auto') mode = (SET.glow === false ? 'off' : 'auto');
     const gc = String(SET.glowColor || '').trim();
     const ok = /^#[0-9a-fA-F]{6}$/.test(gc);
     if (document.documentElement) {
-      document.documentElement.setAttribute('data-glow', on ? 'on' : 'off');
+      document.documentElement.setAttribute('data-glow', mode);
       if (ok) document.documentElement.style.setProperty('--glow', gc);
       else document.documentElement.style.removeProperty('--glow');
     }
@@ -5229,15 +5230,19 @@ function srsRepaint() {
 }
 /* 设置里「界面风格」的选中项与一句说明（皮肤只管观感，不碰任何数据） */
 function paintGlowEls() {
-  const box = $('setGlow'), pick = $('setGlowPick'), hint = $('glowHint');
-  const on = SET.glow !== false;
-  if (box) box.checked = on;
+  const sel = $('setGlowMode'), pick = $('setGlowPick'), hint = $('glowHint');
+  let mode = SET.glowMode;
+  if (mode !== 'on' && mode !== 'off' && mode !== 'auto') mode = (SET.glow === false ? 'off' : 'auto');
+  const on = mode !== 'off';
+  if (sel) sel.value = mode;
   const gc = String(SET.glowColor || '').trim();
   const ok = /^#[0-9a-fA-F]{6}$/.test(gc);
   const theme = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   const eff = ok ? gc : ((THEME_META[theme] || THEME_META.teal)[0]);
   if (pick) { pick.value = eff; pick.disabled = !on; }
-  if (hint) hint.textContent = on ? (ok ? '当前：自定义颜色' : '当前：跟随主色（' + (THEME_NAME[theme] || '冷静青') + '）') : '外发光已关掉';
+  if (hint) hint.textContent = mode === 'off' ? '外发光已关掉（风格自带的彩色阴影也一并收掉）'
+    : mode === 'auto' ? '跟随风格（这套风格本来是什么阴影就是什么）'
+    : (ok ? '开：自定义颜色' : '开：跟随主色（' + (THEME_NAME[theme] || '冷静青') + '）');
 }
 function paintStyleEls() {
   const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
@@ -5374,9 +5379,10 @@ on('setStyleAuto', e => {
   }
 }, 'change');
 /* 区块外发光：勾选开关 / 选颜色 / 一键跟主色 */
-on('setGlow', e => {
-  SET.glow = !!e.target.checked; writeLS(LS.set, SET); applyLook(); paintGlowEls();
-  toast(SET.glow ? '卡片外发光已打开' : '卡片外发光已关掉', 1500, 'ok');
+on('setGlowMode', e => {
+  const v = ['auto', 'on', 'off'].indexOf(e.target.value) >= 0 ? e.target.value : 'auto';
+  SET.glowMode = v; delete SET.glow; writeLS(LS.set, SET); applyLook(); paintGlowEls();
+  toast(v === 'off' ? '外发光已关掉' : v === 'on' ? '外发光已打开（颜色可换）' : '外发光跟随风格', 1600, 'ok');
 }, 'change');
 on('setGlowPick', e => {
   const v = String(e.target.value || '');
@@ -5391,8 +5397,8 @@ on('setGlowPick', e => {
   });
 })();
 on('setGlowReset', () => {
-  SET.glowColor = ''; SET.glow = true; writeLS(LS.set, SET); applyLook(); paintGlowEls();
-  toast('外发光改回跟主色', 1500, 'ok');
+  SET.glowColor = ''; writeLS(LS.set, SET); applyLook(); paintGlowEls();
+  toast('光晕颜色改回跟主色', 1500, 'ok');
 });
 on('setBgPick', bgPick);
 on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
