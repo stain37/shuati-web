@@ -2612,6 +2612,8 @@
     var b = bankOf(ref.id);
     return (b && b.cat) || null;
   }
+  function curDir() { return CUR; }
+
   function dropInto(dir) {
     if (!DRAG) return;
     var banks = (DRAG.banks || []).slice(), cats = (DRAG.cats || []).slice();

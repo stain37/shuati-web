@@ -422,6 +422,13 @@
       }
     });
     window.addEventListener('drop', function (e) {
+      /* 在某个目录页里拖文件进来：记下这个目录，导入完落到它里面，不要都跑到顶层 */
+      try {
+        if (window.CAT && typeof CAT.cur === 'function' && location.hash.indexOf('#/cat') === 0) {
+          var cur = CAT.cur();
+          if (cur) sessionStorage.setItem('importCat', String(cur));
+        }
+      } catch (err) {}
       var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       e.preventDefault();

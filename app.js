@@ -2237,6 +2237,33 @@ function lastPos() {
   return { bank: b, done: done, ok: ok, n: b.questions.length, idx: idx, ts: +v.ts || 0 };
 }
 window.addEventListener('hashchange', render);
+
+/* 答题页：往下滑把「上一题 / 答题卡 / 下一题」收起来，往上滑立刻回来 */
+(function navSinkBind() {
+  let lastY = 0, ticking = false;
+  function apply() {
+    ticking = false;
+    if (!document.body.classList.contains('quiz')) { document.body.classList.remove('nav-sink'); return; }
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const down = y > lastY + 6, up = y < lastY - 6;
+    if (y < 90) document.body.classList.remove('nav-sink');
+    else if (down) document.body.classList.add('nav-sink');
+    else if (up) document.body.classList.remove('nav-sink');
+    lastY = y;
+  }
+  window.__navSink = apply;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    setTimeout(function () { try { apply(); } catch (e) {} ticking = false; }, 40);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  /* 有的页面滚的是内部容器（#view），捕获阶段一起听 */
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  document.addEventListener('focusin', e => {
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) document.body.classList.remove('nav-sink');
+  });
+})();
 /* 任何一个脚本文件顶层抛错也留个提示，而不是白屏 */
 window.addEventListener('error', e => { if (e && e.message) showFatal(e.error || e.message); });
 window.addEventListener('unhandledrejection', e => { if (e && e.reason) showFatal(e.reason); });
@@ -4332,6 +4359,11 @@ function renderImport() {
         <label>题目内容（纯文本或 JSON）</label>
         <textarea id="ta" placeholder="把题目粘到这里…"></textarea>
       </div>
+      <div class="field">
+        <label class="chk" style="display:inline-flex;gap:8px;align-items:center">
+          <input type="checkbox" id="impPol"> 这是<b>政治</b>题库（保存后自动给每题打「政治」基本标签）
+        </label>
+      </div>
       <div class="actions">
         <button class="btn" id="pickFile">从文件读取</button>
         <input type="file" id="fileInput" accept=".txt,.json,.md" style="display:none">
@@ -4371,6 +4403,7 @@ D. …
     </details>`;
 
   $('ta').value = remembered;
+  try { if ($('impPol')) $('impPol').checked = SS.get('impPol') === 1; } catch (e) {}
   /* 批量导入整个文件夹（bf-folder.js） */
   if (typeof BFF !== 'undefined' && BFF && BFF.attach) { try { BFF.attach(); } catch (e) {} }
   on('pickFile', () => $('fileInput').click());
@@ -4381,6 +4414,7 @@ D. …
     r.readAsText(f, 'utf-8');
   }, 'change');
   on('doFormat', () => { $('ta').value = SAMPLE; });
+  on('impPol', e => { SS.set('impPol', e.target.checked ? 1 : 0); }, 'change');
   on('aiFormat', doAiFormat);
   on('doPreview', doPreview);
   on('doSave', doSave);
@@ -4653,10 +4687,23 @@ function doSave(opts) {
   let id = 'local-' + Date.now().toString(36);
   while (LOCAL.some(b => b.id === id)) id += '-' + i2s();    // 导入的题库里若带了重复 id 也不会串台
   const bank = { id: id, title: title, subtitle: (r.bank.subtitle || '自建题库') + ' · ' + qs.length + ' 题', createdAt: Date.now(), questions: qs };
+  /* 从某个目录里拖文件进来导入的，落在那个目录，不要都跑到顶层 */
+  try { const wantCat = SS.get('importCat'); if (wantCat !== '' && wantCat != null) { bank.cat = String(wantCat); SS.del('importCat'); } } catch (e) {}
   LOCAL.push(bank);
   invalidateBanks();
   writeLS(LS.banks, LOCAL);
   applyBankTags(bank);
+  /* 「这是政治题库」：给每题补一个「政治」基本标签 */
+  try {
+    if ($('impPol') && $('impPol').checked && typeof window.TAGS === 'object' && window.TAGS && typeof kOf === 'function') {
+      (bank.questions || []).forEach(q => {
+        const k = kOf(bank, q);
+        window.TAGS.set(k, window.TAGS.of(k).concat(['政治']), true);
+      });
+      window.TAGS.save();
+      setTimeout(() => toast('已给 ' + (bank.questions || []).length + ' 题打上「政治」'), 800);
+    }
+  } catch (e) {}
   if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
   toast('已保存：' + title);
   if (!(opts.reviewN > 0 && startReviewOf(bank, opts.reviewN))) go('#/bank/' + bank.id);

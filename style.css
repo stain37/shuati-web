@@ -8432,3 +8432,9 @@ html[data-style][data-style][data-glow="off"] .card,.vb-card,.hero,.sheet,.vl-ca
 html[data-style][data-style][data-glow="off"] .btn,html[data-style][data-style][data-glow="on"] .btn{box-shadow:0 1px 2px rgba(13,23,42,.08)!important}
 html[data-style][data-style][data-glow="off"] .hero::after{background:none!important;opacity:0!important}
 html[data-style][data-style][data-glow="on"] .card,html[data-style][data-style][data-glow="on"] .vb-card,html[data-style][data-style][data-glow="on"] .hero,html[data-style][data-style][data-glow="on"] .sheet{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--glow) 30%,transparent)) drop-shadow(0 12px 32px color-mix(in srgb,var(--glow) 24%,transparent))!important}
+/* ===== §73 答题双栏与自动隐藏（本地未发布） ===== */
+html[data-style] body.quiz .bnav{bottom:calc(82px + env(safe-area-inset-bottom))!important}
+@media (max-width:760px){html[data-style] body.quiz .bnav{bottom:calc(78px + env(safe-area-inset-bottom))!important}}
+.nav{transition:transform .22s ease,opacity .22s ease}
+body.nav-sink .nav{transform:translateY(140%);opacity:.001;pointer-events:none}
+body.nav-sink.quiz .bnav{transition:transform .22s ease,opacity .22s ease}

@@ -32,7 +32,7 @@
     return (i + 1) + '. ' + String(q.stem || '').slice(0, 260) + (o ? ' ' + o : '') + (ans ? ' 答' + ans : '');
   }
   var V_MIN = 15, V_MAX = 40;     /* 词表建议条数 */
-  var BASIC_TAGS = ['生理', '生化', '病理', '内科', '外科', '人文'];   /* 固定六大基本标签：能挂题，不能改名 / 删除 */
+  var BASIC_TAGS = ['生理', '生化', '病理', '内科', '外科', '人文', '政治'];   /* 固定六大基本标签：能挂题，不能改名 / 删除 */
   /* 第 8 条：考点 → 六大科目 的归属，供统计中心「按科目分组增减考点」用。
      贴标签时顺手学：一道题只挂一个基本标签时，它的考点就归这个科目。 */
   var SUB_KEY = 'qbank.tagsub.v1';
@@ -371,6 +371,28 @@
     var us = tagsOf(k).filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
     return setTags(k, us, false);
   }
+  /* 给已有考点改名：题上、词表、科目归属一起改；新名字已在词表里就合并 */
+  function renameTagEverywhere(oldName, newName) {
+    oldName = String(oldName || '').trim(); newName = String(newName || '').trim();
+    if (!oldName || !newName || oldName === newName) return 0;
+    if (BASIC_TAGS.indexOf(oldName) >= 0) return -1;      /* 基本标签固定，不改 */
+    var n = 0;
+    Object.keys(TAGD).forEach(function (k) {
+      var arr = tagsOf(k);
+      if (arr.indexOf(oldName) < 0) return;
+      var out = arr.filter(function (x) { return x !== oldName; });
+      if (out.indexOf(newName) < 0) out.push(newName);
+      TAGD[k] = out; n++;
+    });
+    var i = TAGV.indexOf(oldName);
+    if (i >= 0) { if (TAGV.indexOf(newName) < 0) TAGV[i] = newName; else TAGV.splice(i, 1); }
+    try { if (typeof learnSubAll === 'function') learnSubAll(); } catch (e) {}
+    var sub = (typeof SUBS === 'object' && SUBS) ? SUBS[oldName] : null;
+    if (sub && typeof setSub === 'function') setSub(newName, sub);
+    save(); saveVocab();
+    return n;
+  }
+
   function rememberVocab(list) {
     var added = 0;
     norm(list).forEach(function (t) {
@@ -837,8 +859,9 @@
     }).length;
     var chipOf = function (t) {
       var sub = subOf(t);
-      return '<button class="vocab-chip' + (used[t] ? ' on' : '') + '" data-vocabdel="' + esc(t) + '" title="点一下从词表里删掉（同时会摘掉题上的这个标签）' + (sub ? '；归属：' + sub : '') + '">'
-        + esc(t) + (used[t] ? ' <i>' + used[t] + '</i>' : '') + (sub ? ' <em class="vocab-sub">' + esc(sub) + '</em>' : '') + '</button>';
+      return '<span class="vocab-chip' + (used[t] ? ' on' : '') + '" data-vocabdel="' + esc(t) + '" title="点一下从词表里删掉（同时会摘掉题上的这个标签）；点 ✎ 改名"' + (sub ? '；归属：' + sub : '') + '">'
+        + esc(t) + (used[t] ? ' <i>' + used[t] + '</i>' : '') + (sub ? ' <em class="vocab-sub">' + esc(sub) + '</em>' : '')
+        + ' <em class="vocab-ren" data-vocabren="' + esc(t) + '" title="改名">✎</em></span>';
     };
     /* 第 8 条：按六大科目分组，每组一个「＋」往该科目加考点；没归属的进「未分类」 */
     var groups = [], seenG = {};
@@ -1608,6 +1631,27 @@
           }
           return;
         }
+        var rn = e.target.closest('[data-vocabren]');
+        if (rn) {
+          e.preventDefault(); e.stopPropagation();
+          var oldT = rn.getAttribute('data-vocabren');
+          (function () {
+            function applyRename(v) {
+              if (!v || v.trim() === oldT) return;
+              var r = renameTagEverywhere(oldT, v.trim());
+              if (r < 0) { if (typeof toast === 'function') toast('基本标签不能改名'); return; }
+              if (typeof toast === 'function') toast('已改名为「' + v.trim() + '」，' + (r || 0) + ' 道题同步', 2200, 'ok');
+              if (typeof render === 'function') { try { render(); } catch (err) {} }
+            }
+            if (typeof BFUI === 'object' && BFUI && BFUI.prompt) {
+              BFUI.prompt({ title: '考点改名', label: '新名字', value: oldT, test: function (x) { return x ? '' : '名字不能为空'; } })
+                .then(applyRename);
+            } else {
+              applyRename(window.prompt('把考点「' + oldT + '」改名为：', oldT));
+            }
+          })();
+          return;
+        }
         var dd = e.target.closest('[data-vocabdel]');
         if (!dd) return;
         var t = dd.getAttribute('data-vocabdel');
@@ -1809,7 +1853,7 @@
     of: tagsOf, set: setTags, add: addTags, del: delTag, all: function () { return TAGV.slice(); },
     subOf: subOf, setSub: setSub, aiPickTags: aiPickTags,
     basic: function () { return BASIC_TAGS.slice(); },
-    vocab: function () { return TAGV.slice(); }, rememberVocab: rememberVocab,
+    vocab: function () { return TAGV.slice(); }, rememberVocab: rememberVocab, rename: renameTagEverywhere,
     stats: tagStats, weakest: weakestKeys, html: statsHtml, bind: bindStats,
     rowHtml: rowHtml, bindRow: bindRow, job: JOB, genVocab: genVocab, tagAll: tagAll, aiOne: aiTagOne, stop: stop,
     classifyBasic: classifyBasic,
