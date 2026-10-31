@@ -8440,7 +8440,9 @@ body.nav-sink .nav{transform:translateY(140%);opacity:.001;pointer-events:none}
 body.nav-sink.quiz .bnav{transition:transform .22s ease,opacity .22s ease}
 /* ===== §74 顶栏下滑收起（所有页面） ===== */
 .row{transition:transform .22s ease,opacity .22s ease;will-change:transform}
-body.nav-sink .row:has(#appTitle){transform:translateY(-120%)!important;opacity:.001!important;pointer-events:none!important}
 .row:has(#appTitle){transition:transform .22s ease,opacity .22s ease;will-change:transform}
-body.nav-sink .nav{transform:translateY(-140%)!important;opacity:.001!important;pointer-events:none!important}
-body.nav-sink .wrap{padding-top:0!important}
+/* ===== §75 下滑只收底部导航 ===== */
+/* 下滑时只收底部导航（首页/错题/收藏那一栏），顶栏与答题双栏都不动 */
+.bnav{transition:transform .24s ease,opacity .24s ease}
+html[data-style][data-style] body.nav-sink .bnav{transform:translateY(150%)!important;opacity:.001!important;pointer-events:none!important}
+body.nav-sink .row:has(#appTitle),body.nav-sink .nav{transform:none!important;opacity:1!important;pointer-events:auto!important}
