@@ -3358,3 +3358,593 @@ html[data-style="water"] body{
   background-repeat:repeat,no-repeat;
   background-position:0 0,center top;
 }
+
+/* ==========================================================================
+   §14 差异化重做（web188）
+   目标：50 套之间「一眼能分出来」。手法只用三种——
+     ① 背景：大色块 / 多层渐变 / 图案纹理（pat/*.svg）；
+     ② 形状语言：圆角、边框（实线/双线/虚线/无）、阴影（硬投影/柔影/发光/无）；
+     ③ 字体与排印：衬线 / 等宽 / 手写 / 全大写 / 大字距。
+   新加的 10 套：win95 / blueprint / terminal / newsprint / sticker / ticket / hologram / aurora / botanical / enamel
+   ========================================================================== */
+
+/* ---------- 新 1) 复古窗口 win95：青绿桌面 + 银色凸起边框 + 深蓝标题条 ---------- */
+html[data-style="win95"], html[data-style="win95"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#008080; --card:#c0c0c0; --card2:#d4d0c8; --text:#000; --sub:#26303a;
+  --line:#808080; --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="win95"] body.dark{--bg:#001a1a;--card:#3a3a3a;--text:#eee;--line:#707070}
+html[data-style="win95"] .card, html[data-style="win95"] .vb-card{
+  background:#c0c0c0; color:#000;
+  border-width:2px; border-style:solid; border-color:#ffffff #404040 #404040 #ffffff;
+  box-shadow:none; border-radius:0;
+}
+html[data-style="win95"] body.dark .card, html[data-style="win95"] body.dark .vb-card{background:#3a3a3a;color:#eee;border-color:#6a6a6a #1a1a1a #1a1a1a #6a6a6a}
+html[data-style="win95"] h2.sec{
+  background:#000080; color:#fff; font-family:var(--mono); font-size:13px; font-weight:700;
+  padding:3px 8px; border:0; letter-spacing:0;
+}
+html[data-style="win95"] h2.sec::before{display:none}
+html[data-style="win95"] .btn{
+  background:#c0c0c0; color:#000; border-width:2px; border-style:solid;
+  border-color:#fff #404040 #404040 #fff; border-radius:0; box-shadow:none;
+}
+html[data-style="win95"] .btn:active{border-color:#404040 #fff #fff #404040}
+html[data-style="win95"] .bnav{background:#c0c0c0;border-radius:0;border:2px solid;border-color:#fff #404040 #404040 #fff}
+html[data-style="win95"] .bnav .btn{background:transparent;border:0;border-radius:0}
+html[data-style="win95"] .bnav .btn.on{background:#000080;color:#fff}
+html[data-style="win95"] .nav{background:#c0c0c0;border-bottom:2px solid #404040}
+
+/* ---------- 新 2) 蓝图 blueprint：深蓝底 + 白网格 + 等宽大写 ---------- */
+html[data-style="blueprint"], html[data-style="blueprint"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#0b2a5b; --card:rgba(12,44,92,.72); --card2:rgba(16,54,110,.8); --text:#dbe8ff; --sub:#9dbbe6;
+  --line:rgba(190,215,255,.45); --sh-1:none; --sh-card:none;
+  --bg-wash:none;
+}
+html[data-style="blueprint"] body{
+  background-image:url("pat/gridw.svg"), radial-gradient(circle at 80% 10%, rgba(90,150,255,.18), transparent 55%);
+  background-size:28px 28px, auto; background-repeat:repeat, no-repeat;
+}
+html[data-style="blueprint"] .card, html[data-style="blueprint"] .vb-card{
+  border:1px dashed rgba(200,222,255,.55); border-radius:0; box-shadow:none; backdrop-filter:blur(2px);
+}
+html[data-style="blueprint"] h1, html[data-style="blueprint"] h2.sec, html[data-style="blueprint"] .vb-cap{
+  font-family:var(--mono); text-transform:uppercase; letter-spacing:.16em; font-weight:500;
+}
+html[data-style="blueprint"] h2.sec{border-bottom:1px solid rgba(200,222,255,.5)}
+html[data-style="blueprint"] h2.sec::before{background:#8fc2ff;width:14px;height:2px;border-radius:0}
+html[data-style="blueprint"] .btn{border:1px dashed rgba(210,230,255,.7);background:transparent;color:#e4efff;font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em;border-radius:0}
+html[data-style="blueprint"] .bnav{border-radius:0;border:1px dashed rgba(200,222,255,.5)}
+html[data-style="blueprint"] .bnav .btn{border-radius:0}
+
+/* ---------- 新 3) 终端 terminal：近黑 + 荧光绿等宽 + 扫描线 ---------- */
+html[data-style="terminal"], html[data-style="terminal"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#05080a; --card:#0a1014; --card2:#0d151a; --text:#7dffb0; --sub:#4fbf85;
+  --line:#1d3a2a; --sh-1:none; --sh-card:0 0 0 1px rgba(57,255,136,.18); --primary:#39ff88;
+  --bg-wash:none;
+}
+html[data-style="terminal"] body{
+  font-family:var(--mono);
+  background-image:url("pat/scanf.svg"), radial-gradient(ellipse at 50% 0%, rgba(57,255,136,.10), transparent 60%);
+  background-size:4px 4px, auto;
+}
+html[data-style="terminal"] .card, html[data-style="terminal"] .vb-card{
+  border:1px solid rgba(57,255,136,.28); border-radius:0; background:rgba(8,18,14,.85);
+}
+html[data-style="terminal"] h2.sec{border-bottom:1px dashed rgba(57,255,136,.35);letter-spacing:.06em}
+html[data-style="terminal"] h2.sec::before{background:#39ff88;width:8px;height:14px;border-radius:0;box-shadow:0 0 10px #39ff88}
+html[data-style="terminal"] .btn{background:rgba(57,255,136,.08);border:1px solid rgba(57,255,136,.5);color:#8dffbb;border-radius:0}
+html[data-style="terminal"] .bnav{background:#070d10;border-radius:0;border:1px solid #16301f}
+html[data-style="terminal"] .bnav .btn{border-radius:0}
+
+/* ---------- 新 4) 报纸 newsprint：米白 + 衬线 + 黑色粗线 + 网点 ---------- */
+html[data-style="newsprint"], html[data-style="newsprint"] body{
+  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
+  --bg:#f2eee1; --card:#f8f5ea; --card2:#efe9d9; --text:#15130f; --sub:#4a4438;
+  --line:#15130f; --sh-1:none; --sh-card:none; --bg-wash:none;
+}
+html[data-style="newsprint"] body{background-image:url("pat/halftone.svg");background-size:16px 16px;font-family:var(--serif)}
+html[data-style="newsprint"] .card, html[data-style="newsprint"] .vb-card{
+  background:rgba(250,247,238,.94); border:1px solid #15130f; border-radius:0; box-shadow:none;
+}
+html[data-style="newsprint"] h1, html[data-style="newsprint"] h2.sec, html[data-style="newsprint"] .vb-cap{
+  font-family:var(--serif); font-weight:800; text-transform:uppercase; letter-spacing:.06em;
+}
+html[data-style="newsprint"] h2.sec{border-top:3px double #15130f; border-bottom:1px solid #15130f; padding-top:6px}
+html[data-style="newsprint"] h2.sec::before{display:none}
+html[data-style="newsprint"] .btn{border:1px solid #15130f;background:transparent;color:#15130f;border-radius:0;font-weight:700}
+html[data-style="newsprint"] .bnav{border-radius:0;border-top:3px double #15130f;background:#f2eee1}
+
+/* ---------- 新 5) 贴纸 sticker：白粗边 + 大圆角 + 微微歪 + 投影 ---------- */
+html[data-style="sticker"], html[data-style="sticker"] body{
+  --radius:18px; --r-card:20px; --r-s:12px; --r-m:999px; --r-l:26px;
+  --bg:#e8f1ff; --card:#ffffff; --card2:#f4f8ff; --text:#10203a; --sub:#5a708f;
+  --line:#ffffff; --primary:#3d7bff;
+  --sh-1:0 2px 6px rgba(20,60,140,.12); --sh-card:0 8px 20px rgba(20,60,140,.16);
+  --bg-wash:radial-gradient(circle at 12% 18%, #fde68a 0 90px, transparent 92px),
+            radial-gradient(circle at 88% 78%, #a7f3d0 0 110px, transparent 112px),
+            radial-gradient(circle at 70% 12%, #fbcfe8 0 70px, transparent 72px);
+}
+html[data-style="sticker"] body{background-image:var(--bg-wash);background-attachment:fixed}
+html[data-style="sticker"] .card, html[data-style="sticker"] .vb-card{
+  background:#fff; border:5px solid #fff; border-radius:20px; box-shadow:0 8px 20px rgba(20,60,140,.18);
+  transform:rotate(-.6deg);
+}
+html[data-style="sticker"] .vb-card:nth-child(2n){transform:rotate(.7deg)}
+html[data-style="sticker"] .vb-card:nth-child(3n){transform:rotate(-1.1deg)}
+html[data-style="sticker"] h2.sec{border:0;letter-spacing:.02em}
+html[data-style="sticker"] h2.sec::before{border-radius:3px;background:#ff5d8f;width:12px;height:12px;transform:rotate(-8deg)}
+html[data-style="sticker"] .btn{border:3px solid #fff;border-radius:999px;background:#3d7bff;color:#fff;box-shadow:0 4px 0 rgba(20,60,140,.28)}
+html[data-style="sticker"] .bnav{border-radius:999px;border:4px solid #fff;box-shadow:0 6px 20px rgba(20,60,140,.18)}
+html[data-style="sticker"] .bnav .btn{border-radius:999px;border:0;box-shadow:none;background:transparent;color:inherit}
+html[data-style="sticker"] .bnav .btn.on{background:#3d7bff;color:#fff;box-shadow:0 3px 0 rgba(20,60,140,.3)}
+
+/* ---------- 新 6) 票根 ticket：虚线撕口 + 等宽小字 + 窄高卡片 ---------- */
+html[data-style="ticket"], html[data-style="ticket"] body{
+  --radius:8px; --r-card:8px; --r-s:4px; --r-m:6px; --r-l:10px;
+  --bg:#f6f1e7; --card:#fffdf6; --card2:#f1ead9; --text:#1d1a14; --sub:#6b604f;
+  --line:#c9b892; --primary:#b4442f;
+  --sh-1:none; --sh-card:0 1px 0 rgba(160,140,110,.25);
+  --bg-wash:repeating-linear-gradient(135deg, rgba(180,68,47,.045) 0 12px, transparent 12px 24px);
+}
+html[data-style="ticket"] body{background-image:var(--bg-wash)}
+html[data-style="ticket"] .card, html[data-style="ticket"] .vb-card{
+  background:#fffdf6; border:1px dashed #b9a37d; border-radius:8px;
+  box-shadow:inset 0 -1px 0 rgba(160,140,110,.18);
+}
+html[data-style="ticket"] h1, html[data-style="ticket"] h2.sec, html[data-style="ticket"] .vb-cap{
+  font-family:var(--mono); text-transform:uppercase; letter-spacing:.14em; font-weight:600;
+}
+html[data-style="ticket"] h2.sec{border-bottom:2px dashed #c9b892}
+html[data-style="ticket"] h2.sec::before{background:#b4442f;width:10px;height:10px;border-radius:50%}
+html[data-style="ticket"] .btn{border:1px dashed #b9a37d;background:#fffdf6;color:#b4442f;border-radius:8px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em}
+html[data-style="ticket"] .bnav{border-radius:8px;border:1px dashed #c0ad88;background:#fffdf6}
+
+/* ---------- 新 7) 全息 hologram：虹彩渐变边 + 镀铬字 ---------- */
+html[data-style="hologram"], html[data-style="hologram"] body{
+  --radius:14px; --r-card:16px; --r-s:10px; --r-m:999px; --r-l:22px;
+  --bg:#0a0d18; --card:rgba(20,26,46,.78); --card2:rgba(28,36,62,.8); --text:#eaf1ff; --sub:#a9b6d6;
+  --line:rgba(180,200,255,.35); --primary:#7cf;
+  --sh-1:0 0 18px rgba(120,160,255,.25); --sh-card:0 0 0 1px rgba(190,210,255,.3), 0 12px 34px rgba(80,120,255,.22);
+  --bg-wash:none;
+}
+html[data-style="hologram"] body{
+  background-image:
+    radial-gradient(circle at 20% 15%, rgba(255,120,220,.20), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(120,220,255,.20), transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(160,255,190,.16), transparent 50%);
+  background-attachment:fixed;
+}
+html[data-style="hologram"] .card, html[data-style="hologram"] .vb-card{
+  border:1px solid transparent; border-radius:16px;
+  background:
+    linear-gradient(rgba(16,22,40,.92), rgba(16,22,40,.92)) padding-box,
+    linear-gradient(135deg,#ff7ad9,#7cc8ff,#9dffb0,#ffe37a) border-box;
+  box-shadow:0 12px 34px rgba(80,120,255,.22);
+}
+html[data-style="hologram"] h1, html[data-style="hologram"] h2.sec, html[data-style="hologram"] .vb-cap{
+  background:linear-gradient(100deg,#dff1ff,#ffd7f5,#d6ffe8,#dfe9ff);
+  -webkit-background-clip:text; background-clip:text; color:transparent; letter-spacing:.04em;
+}
+html[data-style="hologram"] .btn{border:1px solid rgba(190,210,255,.55);background:rgba(140,180,255,.12);color:#eaf1ff;border-radius:999px}
+html[data-style="hologram"] .bnav{border-radius:999px;border:1px solid rgba(190,210,255,.28);background:rgba(12,16,30,.8)}
+
+/* ---------- 新 8) 极光 aurora：深夜蓝 + 大光带 ---------- */
+html[data-style="aurora"], html[data-style="aurora"] body{
+  --radius:16px; --r-card:18px; --r-s:12px; --r-m:999px; --r-l:24px;
+  --bg:#050a12; --card:rgba(14,26,40,.72); --card2:rgba(18,32,48,.8); --text:#e8f6ff; --sub:#96b6cc;
+  --line:rgba(150,255,220,.22); --primary:#5ef0c0;
+  --sh-1:none; --sh-card:0 10px 30px rgba(0,40,50,.55);
+  --bg-wash:none;
+}
+html[data-style="aurora"] body{
+  background-image:
+    linear-gradient(115deg, transparent 40%, rgba(94,240,192,.22) 46%, rgba(94,240,192,.04) 52%, transparent 58%),
+    linear-gradient(95deg, transparent 55%, rgba(150,120,255,.22) 62%, transparent 70%),
+    linear-gradient(160deg, rgba(60,140,255,.18), transparent 45%),
+    radial-gradient(ellipse at 30% 0%, rgba(120,255,210,.16), transparent 55%);
+  background-attachment:fixed;
+}
+html[data-style="aurora"] .card, html[data-style="aurora"] .vb-card{
+  border:1px solid rgba(150,255,220,.26); border-radius:18px; backdrop-filter:blur(9px);
+  box-shadow:0 10px 30px rgba(0,40,50,.5);
+}
+html[data-style="aurora"] h2.sec{border-bottom:1px solid rgba(150,255,220,.25);letter-spacing:.06em}
+html[data-style="aurora"] h2.sec::before{background:linear-gradient(#8effd4,#7cc8ff);width:4px;height:18px;border-radius:2px}
+html[data-style="aurora"] .btn{border:1px solid rgba(150,255,220,.45);background:rgba(94,240,192,.10);color:#d9fff1;border-radius:999px}
+html[data-style="aurora"] .bnav{border-radius:999px;border:1px solid rgba(150,255,220,.22);background:rgba(6,14,22,.8)}
+
+/* ---------- 新 9) 植物图鉴 botanical：淡绿底 + 细线 + 衬线斜体 ---------- */
+html[data-style="botanical"], html[data-style="botanical"] body{
+  --radius:2px; --r-card:3px; --r-s:2px; --r-m:3px; --r-l:4px;
+  --bg:#f2f6ee; --card:#fbfdf8; --card2:#eef4e8; --text:#2d3a28; --sub:#63745a;
+  --line:rgba(120,145,105,.5); --primary:#5d7f4a;
+  --sh-1:none; --sh-card:none;
+  --bg-wash:none;
+}
+html[data-style="botanical"] body{background-image:url("pat/linen.svg");background-size:6px 6px;font-family:var(--serif)}
+html[data-style="botanical"] .card, html[data-style="botanical"] .vb-card{
+  border:1px solid rgba(120,145,105,.45); border-radius:3px; box-shadow:none; background:#fbfdf8;
+}
+html[data-style="botanical"] h1, html[data-style="botanical"] h2.sec, html[data-style="botanical"] .vb-cap{
+  font-family:var(--serif); font-style:italic; font-weight:500; letter-spacing:.02em;
+}
+html[data-style="botanical"] h2.sec{border-bottom:1px solid rgba(120,145,105,.5)}
+html[data-style="botanical"] h2.sec::before{background:none;border-left:2px solid #5d7f4a;border-radius:0;width:0;height:14px}
+html[data-style="botanical"] .btn{border:1px solid rgba(93,127,74,.6);background:transparent;color:#3f5733;border-radius:2px;letter-spacing:.04em}
+html[data-style="botanical"] .bnav{border-radius:2px;border:1px solid rgba(120,145,105,.45);background:#f7faf3}
+
+/* ---------- 新 10) 珐琅徽章 enamel：奶油底 + 金环 + 高光 ---------- */
+html[data-style="enamel"], html[data-style="enamel"] body{
+  --radius:26px; --r-card:26px; --r-s:14px; --r-m:999px; --r-l:30px;
+  --bg:#f7f1e6; --card:#fffdf8; --card2:#f6efe2; --text:#241d12; --sub:#6f6350;
+  --line:#d9c49a; --primary:#b8862b;
+  --sh-1:none; --sh-card:0 10px 26px rgba(120,90,40,.18), inset 0 1px 0 #fff;
+  --bg-wash:radial-gradient(circle at 50% -10%, rgba(255,255,255,.9), transparent 60%);
+}
+html[data-style="enamel"] body{background-image:var(--bg-wash)}
+html[data-style="enamel"] .card, html[data-style="enamel"] .vb-card{
+  border:2px solid #d9c49a; border-radius:26px; background:linear-gradient(180deg,#fffefb,#f8f1e4);
+  box-shadow:0 10px 26px rgba(120,90,40,.18), inset 0 1px 0 #fff, inset 0 -2px 0 rgba(180,140,80,.18);
+}
+html[data-style="enamel"] h2.sec{font-family:var(--serif);letter-spacing:.1em;border:0}
+html[data-style="enamel"] h2.sec::before{background:radial-gradient(circle at 35% 30%,#ffe9b8,#b8862b 70%);width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 2px #f7efdd}
+html[data-style="enamel"] .btn{
+  border:2px solid #d9c49a; border-radius:999px; color:#7a5a1e;
+  background:linear-gradient(180deg,#fffdf6,#f3e6c8); box-shadow:0 3px 0 rgba(160,120,60,.35), inset 0 1px 0 #fff;
+}
+html[data-style="enamel"] .bnav{border-radius:999px;border:2px solid #e0cda6;background:linear-gradient(180deg,#fffdf7,#f4ecdc)}
+html[data-style="enamel"] .bnav .btn{border-radius:999px}
+
+/* ================= 加大已有皮肤的反差（只挑最容易被看混的那些） ================= */
+
+/* default：保持朴素，把底色往冷白推，强调「就是最普通的」 */
+html[data-style="default"] body{background-image:none}
+
+/* bauhaus：背景放三个大几何块（圆/方/三角感），和 flat 彻底分开 */
+html[data-style="bauhaus"] body{
+  background-image:
+    radial-gradient(circle at 10% 12%, #f2c012 0 78px, transparent 80px),
+    radial-gradient(circle at 92% 82%, #1f4fd2 0 110px, transparent 112px),
+    linear-gradient(90deg, transparent 0 62%, rgba(210,31,31,.14) 62% 100%);
+  background-attachment:fixed;
+}
+html[data-style="bauhaus"] h1, html[data-style="bauhaus"] h2.sec{text-transform:uppercase;letter-spacing:.14em;font-weight:800}
+html[data-style="bauhaus"] .card, html[data-style="bauhaus"] .vb-card{background:#ffffff;border-width:3px;border-radius:0}
+
+/* swiss：整页白 + 顶部一条红 + 卡片无边框（靠留白），和 util/newsprint 分开 */
+html[data-style="swiss"] body{background-image:linear-gradient(#e2231a 0 10px, #ffffff 10px 100%);background-repeat:no-repeat;background-size:100% 100%}
+html[data-style="swiss"] .card, html[data-style="swiss"] .vb-card{border:0;box-shadow:none;background:transparent}
+html[data-style="swiss"] h2.sec{border-bottom:4px solid #111;text-transform:uppercase;letter-spacing:.02em;font-weight:800}
+html[data-style="swiss"] h2.sec::before{display:none}
+html[data-style="swiss"] .btn{background:#e2231a;color:#fff;border:0;border-radius:0;font-weight:700}
+
+/* mag：真「杂志」——衬线大标题 + 首字下沉 + 细线，去掉卡片底 */
+html[data-style="mag"] body{background-image:linear-gradient(180deg,#fbf8f1,#f5f0e6)}
+html[data-style="mag"] .card, html[data-style="mag"] .vb-card{background:transparent;border:0;border-top:2px solid #7c5a33;border-radius:0;box-shadow:none}
+html[data-style="mag"] h1{font-size:34px;letter-spacing:-.01em}
+html[data-style="mag"] h2.sec{border-bottom:3px double #7c5a33;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
+
+/* luxury：高对比衬线 + 超大字号 + 只有一条金线 */
+html[data-style="luxury"] body{background-image:radial-gradient(circle at 50% -20%, #fff 0, #faf8f3 60%)}
+html[data-style="luxury"] .card, html[data-style="luxury"] .vb-card{border:0;border-bottom:1px solid rgba(169,138,78,.45);border-radius:0;box-shadow:none;background:transparent}
+html[data-style="luxury"] h1{font-family:var(--serif);font-weight:400;letter-spacing:.18em;font-size:30px}
+html[data-style="luxury"] h2.sec{font-family:var(--serif);font-weight:400;letter-spacing:.28em;text-transform:uppercase;font-size:11px;border:0}
+
+/* util：黑白，卡片只剩一条 8px 黑条，标题反白块 */
+html[data-style="util"] body{background-image:none}
+html[data-style="util"] .card, html[data-style="util"] .vb-card{border:0;border-left:8px solid #000;border-radius:0;box-shadow:none;background:#fff}
+html[data-style="util"] h2.sec{background:#000;color:#fff;padding:2px 8px;border:0;letter-spacing:.16em}
+html[data-style="util"] h2.sec::before{display:none}
+html[data-style="util"] .btn{background:#000;color:#fff;border:0;border-radius:0}
+
+/* flat：只留细线与大留白，卡片白底无阴影（和 default 分开：没有圆角） */
+html[data-style="flat"] .card, html[data-style="flat"] .vb-card{border-radius:0;box-shadow:none;border-width:1px}
+
+/* mono：纯黑白 + 灰度滤镜 + 等宽数字，和 util/flat 分开 */
+html[data-style="mono"] body{background-image:none;font-family:var(--mono)}
+html[data-style="mono"] .card, html[data-style="mono"] .vb-card{border:2px solid #111;border-radius:0;box-shadow:4px 4px 0 #111;background:#fff}
+html[data-style="mono"] h2.sec{border-bottom:2px solid #111;text-transform:uppercase;letter-spacing:.1em}
+html[data-style="mono"] .btn{background:#fff;border:2px solid #111;border-radius:0;color:#111}
+
+/* nordic：冷白 + 大圆角 + 细影（和 default 分开：更淡、更圆） */
+html[data-style="nordic"] body{background-image:linear-gradient(180deg,#f8fbfd,#eef3f8)}
+html[data-style="nordic"] .card, html[data-style="nordic"] .vb-card{background:#fff;border:1px solid #e2eaf2;border-radius:18px;box-shadow:0 6px 18px rgba(40,70,110,.08)}
+
+/* material：卡片抬起来 + 顶部主色条（和 nordic 分开：阴影更重、有强调条） */
+html[data-style="material"] .card, html[data-style="material"] .vb-card{border-top:4px solid var(--primary);border-radius:6px;box-shadow:0 3px 6px rgba(0,0,0,.12),0 10px 24px rgba(0,0,0,.10)}
+
+/* midcentury：芥末黄 + 大色块 + 有机圆 */
+html[data-style="midcentury"] body{
+  background-image:
+    radial-gradient(circle at 8% 88%, rgba(45,125,120,.35) 0 70px, transparent 72px),
+    radial-gradient(circle at 78% 8%, rgba(217,160,60,.45) 0 96px, transparent 98px),
+    linear-gradient(180deg,#f6efd9,#efe3c4);
+  background-attachment:fixed;
+}
+html[data-style="midcentury"] .card, html[data-style="midcentury"] .vb-card{border:0;border-radius:20px;background:#fffdf3}
+
+/* zen：大面积留白 + 一条土线 + 无卡片框 */
+html[data-style="zen"] body{background-image:linear-gradient(180deg,#ece7db,#e5dfd1)}
+html[data-style="zen"] .card, html[data-style="zen"] .vb-card{background:transparent;border:0;border-bottom:1px solid rgba(90,84,70,.28);border-radius:0;box-shadow:none}
+html[data-style="zen"] h2.sec{border:0;letter-spacing:.2em;font-weight:400}
+html[data-style="zen"] h2.sec::before{display:none}
+
+/* morandi：灰调 + 大圆角 + 柔影（和 zen 分开：有框、有影） */
+html[data-style="morandi"] body{background-image:linear-gradient(160deg,#efece7,#e6e1da)}
+html[data-style="morandi"] .card, html[data-style="morandi"] .vb-card{background:#f7f4f0;border:1px solid rgba(140,130,120,.28);border-radius:16px;box-shadow:0 8px 20px rgba(120,110,100,.12)}
+
+/* macaron：糖果色块 + 超大圆角 + 果冻阴影 */
+html[data-style="macaron"] body{
+  background-image:
+    radial-gradient(circle at 15% 20%, #ffd6e7 0 120px, transparent 122px),
+    radial-gradient(circle at 85% 30%, #d9ecff 0 140px, transparent 142px),
+    radial-gradient(circle at 40% 92%, #fff0c2 0 130px, transparent 132px),
+    linear-gradient(180deg,#fff5fa,#f2f8ff);
+  background-attachment:fixed;
+}
+html[data-style="macaron"] .card, html[data-style="macaron"] .vb-card{border:3px solid #fff;border-radius:28px;box-shadow:0 10px 24px rgba(220,140,190,.22)}
+
+/* water：水彩团块（大、柔、三层），和 glass/macaron 分开 */
+html[data-style="water"] body{
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(120,200,190,.55) 0 110px, transparent 150px),
+    radial-gradient(circle at 88% 24%, rgba(255,180,140,.5) 0 90px, transparent 130px),
+    radial-gradient(circle at 60% 92%, rgba(150,170,255,.4) 0 120px, transparent 160px),
+    linear-gradient(180deg,#fdf6ec,#eef8f5);
+  background-attachment:fixed;
+}
+html[data-style="water"] .card, html[data-style="water"] .vb-card{background:rgba(255,255,255,.66);border:0;border-radius:22px;backdrop-filter:blur(3px);box-shadow:0 10px 26px rgba(120,160,160,.18)}
+
+/* glass：彩色光晕 + 玻璃（背景比 water 更「夜」、更饱和） */
+html[data-style="glass"] body{
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(90,200,255,.55), transparent 55%),
+    radial-gradient(circle at 82% 18%, rgba(190,120,255,.5), transparent 55%),
+    radial-gradient(circle at 50% 92%, rgba(60,240,200,.42), transparent 60%),
+    linear-gradient(160deg,#0b1030,#161a3d 55%,#0d2a3a);
+  background-attachment:fixed;
+}
+html[data-style="glass"] .card, html[data-style="glass"] .vb-card{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);color:#f2f7ff;backdrop-filter:blur(18px) saturate(150%);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+html[data-style="glass"] h2.sec{color:#eaf4ff;border-bottom:1px solid rgba(255,255,255,.3)}
+html[data-style="glass"] .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.4);color:#fff}
+
+/* clay：粘土（保留，但底色更饱和、圆角更大，和 enamel 分开） */
+html[data-style="clay"] body{background-image:radial-gradient(circle at 50% 0%, #f4f1ff, #e7ecfa)}
+html[data-style="clay"] .card, html[data-style="clay"] .vb-card{border-radius:34px}
+
+/* ink：宣纸 + 两团墨晕 + 竖排感的印章，纸张更明显 */
+html[data-style="ink"] body{
+  background-image:url("pat/grain.svg"),
+    radial-gradient(620px 460px at 6% 4%, rgba(25,24,20,.22), transparent 62%),
+    radial-gradient(560px 420px at 98% 96%, rgba(25,24,20,.16), transparent 60%),
+    linear-gradient(180deg,#f8f3e6,#efe7d4);
+  background-size:220px 220px, auto, auto, auto; background-attachment:fixed;
+}
+html[data-style="ink"] .card, html[data-style="ink"] .vb-card{background:rgba(255,255,255,.5);border:1px solid rgba(40,38,34,.32)}
+html[data-style="ink"] h1{letter-spacing:.3em}
+
+/* ukiyoe：青海波更清楚 + 顶部靛蓝横带 */
+html[data-style="ukiyoe"] body{
+  background-image:url("pat/seigaiha.svg"), linear-gradient(180deg,#f7f0e2,#f1e7d4);
+  background-size:96px 48px, auto;
+}
+html[data-style="ukiyoe"] .card, html[data-style="ukiyoe"] .vb-card{background:rgba(255,251,242,.94);border:1px solid #1f3a63;border-left:6px solid #c8452f}
+
+/* porcelain：青花缠枝底 + 双蓝框 */
+html[data-style="porcelain"] body{
+  background-image:url("pat/vine.svg"), linear-gradient(180deg,#fbfdff,#eef4fb);
+  background-size:72px 72px, auto;
+}
+html[data-style="porcelain"] .card, html[data-style="porcelain"] .vb-card{background:#ffffff;border:1px solid #1f4e9c;box-shadow:inset 0 0 0 4px #fff, inset 0 0 0 5px rgba(31,78,156,.55)}
+html[data-style="porcelain"] h1, html[data-style="porcelain"] h2.sec{color:#153a75;letter-spacing:.06em}
+
+/* arabic：八角星更明显 + 金色拱形装饰 */
+html[data-style="arabic"] body{
+  background-image:url("pat/star8.svg"),
+    radial-gradient(circle at 50% 0%, rgba(212,175,55,.16), transparent 55%),
+    linear-gradient(180deg,#0b1730,#0e1a33);
+  background-size:64px 64px, auto, auto; background-attachment:fixed;
+}
+html[data-style="arabic"] .card, html[data-style="arabic"] .vb-card{background:rgba(18,33,64,.86);border:1px solid #d4af37;border-radius:26px 26px 0 0}
+
+/* mehndi：橙红点纹 + 圆角花边 */
+html[data-style="mehndi"] body{background-image:url("pat/mandala.svg"), linear-gradient(180deg,#fdf3e6,#f8e6d2);background-size:52px 52px, auto;background-attachment:fixed}
+html[data-style="mehndi"] .card, html[data-style="mehndi"] .vb-card{background:#fffaf2;border:2px dotted #8a3b1e;border-radius:18px}
+
+/* artdeco：放射线 + 金色阶梯边 */
+html[data-style="artdeco"] body{
+  background-image:repeating-conic-gradient(from 0deg at 50% -10%, rgba(200,164,92,.14) 0 3deg, transparent 3deg 9deg),
+    linear-gradient(180deg,#10302c,#0c2422);
+  background-attachment:fixed;
+}
+html[data-style="artdeco"] .card, html[data-style="artdeco"] .vb-card{border:1px solid #c8a45c;border-radius:0;box-shadow:inset 0 0 0 3px #0c2422, inset 0 0 0 4px rgba(200,164,92,.7)}
+html[data-style="artdeco"] h1, html[data-style="artdeco"] h2.sec{text-transform:uppercase;letter-spacing:.22em;font-weight:500}
+
+/* baroque：深酒红 + 金双线 + 斜体衬线，和 gothic 分开（红 vs 黑） */
+html[data-style="baroque"] body{background-image:radial-gradient(circle at 50% -20%, #4a1d18, #200f0c 70%);background-attachment:fixed}
+html[data-style="baroque"] .card, html[data-style="baroque"] .vb-card{border:3px double #e2ba6e;border-radius:10px;background:rgba(52,24,20,.92)}
+html[data-style="baroque"] h1, html[data-style="baroque"] h2.sec{font-style:italic;letter-spacing:.04em}
+
+/* gothic：彩窗渐变 + 拱形圆角 */
+html[data-style="gothic"] body{
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(120,60,160,.28), transparent 60%),
+    radial-gradient(circle at 12% 78%, rgba(200,60,80,.20), transparent 45%),
+    radial-gradient(circle at 88% 82%, rgba(60,110,200,.20), transparent 45%),
+    linear-gradient(180deg,#0d0b0a,#14100d);
+  background-attachment:fixed;
+}
+html[data-style="gothic"] .card, html[data-style="gothic"] .vb-card{border-radius:46px 46px 4px 4px;border:1px solid rgba(212,175,55,.5)}
+
+/* steampunk：黄铜铆钉 + 皮革（背景加一层网格铆钉） */
+html[data-style="steampunk"] body{
+  background-image:
+    radial-gradient(circle, rgba(255,214,150,.22) 1.4px, transparent 2px),
+    linear-gradient(180deg,#2e2318,#1c150f);
+  background-size:22px 22px, auto; background-attachment:fixed;
+}
+html[data-style="steampunk"] .card, html[data-style="steampunk"] .vb-card{border:2px solid #b98b4e;border-radius:8px;box-shadow:inset 0 0 0 4px #1f170f, 0 10px 26px rgba(0,0,0,.55)}
+
+/* artnouveau：藤蔓曲线（用互锁弧）+ 不对称圆角 */
+html[data-style="artnouveau"] body{
+  background-image:
+    radial-gradient(circle at 0 100%, transparent 0 46px, rgba(106,122,85,.28) 47px 48px, transparent 49px),
+    radial-gradient(circle at 100% 0, transparent 0 46px, rgba(150,120,60,.25) 47px 48px, transparent 49px),
+    linear-gradient(180deg,#f4f1e2,#ebe6d0);
+  background-size:96px 96px, 96px 96px, auto; background-attachment:fixed;
+}
+html[data-style="artnouveau"] .card, html[data-style="artnouveau"] .vb-card{border:1px solid rgba(106,122,85,.55);border-radius:28px 4px 28px 4px;background:#fbfaf3}
+
+/* surreal：双色错位 + 倾斜 + 梦境渐变 */
+html[data-style="surreal"] body{
+  background-image:linear-gradient(135deg,#ffe7f6,#e8f0ff 55%,#f3e8ff);
+  background-attachment:fixed;
+}
+html[data-style="surreal"] .card, html[data-style="surreal"] .vb-card{border:1px dashed rgba(124,92,204,.5);border-radius:44px 10px 44px 10px;transform:rotate(-.35deg);box-shadow:-8px 8px 0 rgba(124,92,204,.22), 8px -8px 0 rgba(255,150,200,.28)}
+
+/* scrapbook：卡片像贴纸 + 倾斜 + 纸胶带色条 */
+html[data-style="scrapbook"] body{background-image:repeating-linear-gradient(0deg, rgba(120,100,60,.05) 0 26px, transparent 26px 52px), linear-gradient(180deg,#fbf6ec,#f4ecdc)}
+html[data-style="scrapbook"] .card, html[data-style="scrapbook"] .vb-card{border:6px solid #fff;border-radius:2px;box-shadow:0 6px 18px rgba(90,70,40,.28);transform:rotate(-.5deg)}
+html[data-style="scrapbook"] .vb-card:nth-child(2n){transform:rotate(.6deg)}
+
+/* sketch：方格纸 + 手写 + 虚线（和 blueprint 分开：浅色纸/手写） */
+html[data-style="sketch"] body{background-image:url("pat/grid.svg"), linear-gradient(180deg,#fafbfd,#f2f6fb);background-size:24px 24px, auto;font-family:var(--hand)}
+html[data-style="sketch"] h1, html[data-style="sketch"] h2.sec{font-family:var(--hand);letter-spacing:.02em}
+html[data-style="sketch"] .card, html[data-style="sketch"] .vb-card{border:1.5px dashed rgba(100,116,139,.6);border-radius:10px;transform:rotate(-.25deg)}
+
+/* pointil：真半调网点底 + 点线框 */
+html[data-style="pointil"] body{background-image:url("pat/halftone.svg");background-size:16px 16px;background-color:#fdfaf2}
+html[data-style="pointil"] .card, html[data-style="pointil"] .vb-card{background:#fffefa;border:2px dotted rgba(120,110,90,.5);border-radius:12px}
+
+/* riso：双色套印（粉/蓝），卡片带错位影 */
+html[data-style="riso"] body{background-image:linear-gradient(180deg,#fdf7ea,#fbeef0 60%,#eef2ff)}
+html[data-style="riso"] .card, html[data-style="riso"] .vb-card{background:#fffdf6;border:1.5px solid rgba(40,30,60,.35);box-shadow:5px 5px 0 rgba(255,79,123,.32), -4px -4px 0 rgba(43,108,255,.22)}
+
+/* 其它深色系：把「深底 + 某某色」各自的标志色再拉开 */
+html[data-style="synthwave"] body{
+  background-image:
+    linear-gradient(180deg, transparent 55%, rgba(255,60,172,.20) 56% 57%, transparent 58%),
+    repeating-linear-gradient(90deg, rgba(255,60,172,.16) 0 1px, transparent 1px 42px),
+    linear-gradient(180deg,#120a24,#341466 70%,#0b1b3a);
+  background-attachment:fixed;
+}
+html[data-style="disco"] body{
+  background-image:
+    conic-gradient(from 200deg at 50% -20%, rgba(255,214,102,.28) 0 6deg, transparent 6deg 14deg),
+    radial-gradient(circle at 70% 20%, rgba(255,120,220,.25), transparent 55%),
+    linear-gradient(180deg,#231238,#120d1e);
+  background-attachment:fixed;
+}
+html[data-style="cyberpunk"] body{
+  background-image:
+    repeating-linear-gradient(45deg, rgba(242,230,0,.08) 0 14px, transparent 14px 28px),
+    linear-gradient(180deg,#0a0a0a,#131313);
+  background-attachment:fixed;
+}
+html[data-style="acid"] body{
+  background-image:radial-gradient(circle at 78% 12%, rgba(168,214,0,.35) 0 130px, transparent 132px),
+    repeating-linear-gradient(0deg, rgba(10,10,10,.04) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg,#f4f4ee,#e9ece0);
+  background-attachment:fixed;
+}
+html[data-style="graffiti"] body{
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,90,180,.16) 0 90px, transparent 120px),
+    radial-gradient(circle at 80% 70%, rgba(90,180,255,.16) 0 110px, transparent 140px),
+    linear-gradient(180deg,#f7f2e6,#efe8d8);
+  background-attachment:fixed;
+}
+html[data-style="tenebrism"] body{
+  background-image:radial-gradient(ellipse at 30% 0%, rgba(230,235,255,.16), transparent 55%),
+    linear-gradient(180deg,#05060a,#0a0c12);
+  background-attachment:fixed;
+}
+html[data-style="y2k"] body{
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(120,160,255,.45), transparent 50%),
+    radial-gradient(circle at 85% 25%, rgba(255,150,220,.4), transparent 50%),
+    linear-gradient(180deg,#eaf1ff,#ffe9f7);
+  background-attachment:fixed;
+}
+html[data-style="pixel"] body{background-image:url("pat/grid.svg"), linear-gradient(180deg,#eef3fb,#e3ebf7);background-size:16px 16px, auto}
+html[data-style="neo"] body{background-image:linear-gradient(180deg,#f6f2e7,#efe9d8)}
+html[data-style="pop"] body{background-image:url("pat/halftone.svg"), linear-gradient(180deg,#fff9d9,#fff3b8);background-size:16px 16px, auto}
+html[data-style="grunge"] body{background-image:url("pat/grain.svg"), linear-gradient(180deg,#1c1b19,#111110);background-size:180px 180px, auto}
+
+/* ---------- §14b 再拉开几对太像的（web188） ---------- */
+/* flat 改成「线框版」：没有卡片底色、只有 1px 上边线，标题全大写小字距，按钮变成纯文字下划线 */
+html[data-style="flat"] body{ --bg:#f4f5f7; --card:transparent; --card2:#ffffff; --line:rgba(15,23,42,.28); --bg-wash:none; }
+html[data-style="flat"] .card,html[data-style="flat"] .vb-card{ border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; box-shadow:none; }
+html[data-style="flat"] h2.sec{ font-size:12px; letter-spacing:.18em; text-transform:uppercase; font-weight:700; border-bottom:0; }
+html[data-style="flat"] .btn{ border:0; border-bottom:1px solid currentColor; border-radius:0; background:transparent; padding:4px 2px; font-weight:600; }
+html[data-style="flat"] .bnav,html[data-style="flat"] .nav{ border-radius:0; background:transparent; }
+html[data-style="flat"] .cal-c,html[data-style="flat"] .hm-c,html[data-style="flat"] .vb-q-i{ border-radius:0; }
+
+/* luxury 改成「时装大片」：奶油底 + 上下金细线 + 超大宽字距衬线 + 极细按钮框 */
+html[data-style="luxury"] body{ --bg:#fbf8f1; --card:#fffdf8; --bg-wash:none; --line:rgba(169,138,78,.5); }
+html[data-style="luxury"] .card,html[data-style="luxury"] .vb-card{ border:0; border-top:1px solid rgba(169,138,78,.55); border-bottom:1px solid rgba(169,138,78,.55); border-radius:0; background:transparent; box-shadow:none; }
+html[data-style="luxury"] h1,html[data-style="luxury"] h2.sec{ font-family:var(--serif); text-transform:uppercase; letter-spacing:.34em; font-weight:400; }
+html[data-style="luxury"] .btn{ border:1px solid rgba(169,138,78,.6); border-radius:0; background:transparent; letter-spacing:.22em; text-transform:uppercase; font-size:11px; }
+
+/* zen 改成「和纸留白」：暖灰纸 + 左边一根墨线 + 无框无影 */
+html[data-style="zen"] body{ --bg:#e9e4d6; --card:transparent; --text:#3f3d36; --sub:#7b7566; --line:rgba(63,61,54,.2); --bg-wash:none; }
+html[data-style="zen"] .card,html[data-style="zen"] .vb-card{ border:0; border-left:1px solid rgba(63,61,54,.28); border-radius:0; background:transparent; box-shadow:none; }
+html[data-style="zen"] h2.sec{ border:0; font-weight:400; letter-spacing:.2em; }
+html[data-style="zen"] .btn{ border:0; border-radius:0; background:transparent; text-decoration:underline; text-underline-offset:5px; }
+html[data-style="zen"] .cal-c,html[data-style="zen"] .hm-c{ border-radius:0; background:rgba(255,255,255,.35); }
+
+/* acid 换成纯黑霓虹底（和 pop 的亮黄彻底分开） */
+html[data-style="acid"] body{ --bg:#0b0b0b; --card:#141414; --text:#f2f5e8; --sub:#a9b18f; --line:#c8ff00; --bg-wash:radial-gradient(circle at 88% 6%, rgba(200,255,0,.16), transparent 42%); }
+html[data-style="acid"] .card,html[data-style="acid"] .vb-card{ border:2px solid #c8ff00; border-radius:0; background:#111; box-shadow:6px 6px 0 rgba(200,255,0,.22); }
+html[data-style="acid"] h2.sec{ color:#c8ff00; letter-spacing:.08em; text-transform:uppercase; }
+html[data-style="acid"] .btn{ border:2px solid #c8ff00; border-radius:0; background:linear-gradient(#d8ff3d, #a8d600); color:#0a0a0a; font-weight:900; text-transform:uppercase; }
+html[data-style="acid"] .cal-c,html[data-style="acid"] .hm-c{ border-radius:0; background:#1a1a1a; }
+
+/* tenebrism 加单侧硬光：卡片只在右上亮，左侧压黑 */
+html[data-style="tenebrism"] body{ --bg:#030408; --bg-wash:radial-gradient(circle at 82% 0%, rgba(255,246,220,.20), transparent 46%); }
+html[data-style="tenebrism"] .card,html[data-style="tenebrism"] .vb-card{ background:linear-gradient(160deg, rgba(30,34,48,.9), rgba(6,7,11,.95)); border:1px solid rgba(255,255,255,.05); border-radius:0; box-shadow:22px 22px 44px #000; }
+html[data-style="tenebrism"] .btn{ border:1px solid rgba(255,255,255,.5); border-radius:0; background:transparent; color:#f4f1e6; }
+
+/* ink 加装裱感：外白边 + 内墨线，和 ukiyoe 的波浪朱红分开 */
+html[data-style="ink"] .card,html[data-style="ink"] .vb-card{ border:1px solid rgba(40,38,34,.28); background:#fffefa; box-shadow:inset 0 0 0 8px #fff, inset 0 0 0 9px rgba(40,38,34,.12); }
+html[data-style="ink"] h2.sec{ border-bottom:1px solid rgba(40,38,34,.3); letter-spacing:.24em; }
+
+/* artnouveau 用藤蔓弧形顶 + 不对称圆角，避开 porcelain 的青花 */
+html[data-style="artnouveau"] .card,html[data-style="artnouveau"] .vb-card{ border-radius:34px 6px 34px 6px; border:1px solid rgba(106,122,85,.5); background:#fbfaf1; }
+html[data-style="artnouveau"] h2.sec{ border-bottom:2px dotted rgba(106,122,85,.5); }
+
+/* ---------- §14c luxury / mag 彻底分开（web188） ---------- */
+html[data-style="luxury"] .card,html[data-style="luxury"] .vb-card{
+  border:2px double rgba(169,138,78,.75); border-radius:0; background:#fffdf8;
+  box-shadow:none;
+}
+html[data-style="luxury"] .btn{ border:2px double rgba(169,138,78,.8); }
+html[data-style="luxury"] body{ --bg:#f7f2e6; }
+
+html[data-style="mag"] .card,html[data-style="mag"] .vb-card{
+  border:0; border-left:4px solid rgba(124,90,51,.55); border-radius:0; background:#fbf8f1;
+  box-shadow:none; padding-left:14px;
+}
+html[data-style="mag"] h2.sec{ border:0; font-weight:700; letter-spacing:-.01em; }
+html[data-style="mag"] h2.sec::before{ width:0; }
+html[data-style="mag"] .btn{ border:0; border-radius:0; background:rgba(124,90,51,.10); }
+
+/* ---------- §14e 深色皮肤的首页渐变条压暗（web188） ---------- */
+html[data-style="terminal"] .hero::after,html[data-style="tenebrism"] .hero::after,html[data-style="arabic"] .hero::after,html[data-style="gothic"] .hero::after,html[data-style="baroque"] .hero::after,html[data-style="artdeco"] .hero::after,html[data-style="steampunk"] .hero::after,html[data-style="blueprint"] .hero::after,html[data-style="cyberpunk"] .hero::after,html[data-style="synthwave"] .hero::after,html[data-style="disco"] .hero::after,html[data-style="hologram"] .hero::after,html[data-style="aurora"] .hero::after,html[data-style="win95"] .hero::after,html[data-style="acid"] .hero::after,html[data-style="glass"] .hero::after{opacity:.42;background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 55%, #000) 0%, color-mix(in srgb, var(--primary) 18%, #000) 55%, transparent 100%)}
+html[data-style="terminal"] .hero,html[data-style="tenebrism"] .hero,html[data-style="arabic"] .hero,html[data-style="gothic"] .hero,html[data-style="baroque"] .hero,html[data-style="artdeco"] .hero,html[data-style="steampunk"] .hero,html[data-style="blueprint"] .hero,html[data-style="cyberpunk"] .hero,html[data-style="synthwave"] .hero,html[data-style="disco"] .hero,html[data-style="hologram"] .hero,html[data-style="aurora"] .hero,html[data-style="win95"] .hero,html[data-style="acid"] .hero,html[data-style="glass"] .hero{box-shadow:none;border:1px solid var(--line)}
+html[data-style="terminal"] .hero .hstat>div,html[data-style="terminal"] .hero .hstat>button.hs,html[data-style="tenebrism"] .hero .hstat>div,html[data-style="tenebrism"] .hero .hstat>button.hs,html[data-style="arabic"] .hero .hstat>div,html[data-style="arabic"] .hero .hstat>button.hs,html[data-style="gothic"] .hero .hstat>div,html[data-style="gothic"] .hero .hstat>button.hs,html[data-style="baroque"] .hero .hstat>div,html[data-style="baroque"] .hero .hstat>button.hs,html[data-style="artdeco"] .hero .hstat>div,html[data-style="artdeco"] .hero .hstat>button.hs,html[data-style="steampunk"] .hero .hstat>div,html[data-style="steampunk"] .hero .hstat>button.hs,html[data-style="blueprint"] .hero .hstat>div,html[data-style="blueprint"] .hero .hstat>button.hs,html[data-style="cyberpunk"] .hero .hstat>div,html[data-style="cyberpunk"] .hero .hstat>button.hs,html[data-style="synthwave"] .hero .hstat>div,html[data-style="synthwave"] .hero .hstat>button.hs,html[data-style="disco"] .hero .hstat>div,html[data-style="disco"] .hero .hstat>button.hs,html[data-style="hologram"] .hero .hstat>div,html[data-style="hologram"] .hero .hstat>button.hs,html[data-style="aurora"] .hero .hstat>div,html[data-style="aurora"] .hero .hstat>button.hs,html[data-style="win95"] .hero .hstat>div,html[data-style="win95"] .hero .hstat>button.hs,html[data-style="acid"] .hero .hstat>div,html[data-style="acid"] .hero .hstat>button.hs,html[data-style="glass"] .hero .hstat>div,html[data-style="glass"] .hero .hstat>button.hs{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+
+/* ---------- §14f 透明按钮皮肤的「主按钮」补实心（web188） ---------- */
+html[data-style="luxury"] .btn.primary,
+html[data-style="flat"] .btn.primary,
+html[data-style="zen"] .btn.primary{
+  background:var(--primary); border:1px solid var(--primary); border-radius:0;
+  color:#fff; text-decoration:none; letter-spacing:.08em; font-weight:600;
+}
+html[data-style="luxury"] .btn{ font-size:12px; letter-spacing:.14em; }
+html[data-style="flat"] .btn.primary{ border-bottom:1px solid var(--primary); }
+html[data-style="zen"] .btn.primary{ text-decoration:none; }
