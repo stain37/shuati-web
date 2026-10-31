@@ -8438,3 +8438,9 @@ html[data-style] body.quiz .bnav{bottom:calc(82px + env(safe-area-inset-bottom))
 .nav{transition:transform .22s ease,opacity .22s ease}
 body.nav-sink .nav{transform:translateY(140%);opacity:.001;pointer-events:none}
 body.nav-sink.quiz .bnav{transition:transform .22s ease,opacity .22s ease}
+/* ===== §74 顶栏下滑收起（所有页面） ===== */
+.row{transition:transform .22s ease,opacity .22s ease;will-change:transform}
+body.nav-sink .row:has(#appTitle){transform:translateY(-120%)!important;opacity:.001!important;pointer-events:none!important}
+.row:has(#appTitle){transition:transform .22s ease,opacity .22s ease;will-change:transform}
+body.nav-sink .nav{transform:translateY(-140%)!important;opacity:.001!important;pointer-events:none!important}
+body.nav-sink .wrap{padding-top:0!important}

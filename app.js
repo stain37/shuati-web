@@ -1362,7 +1362,7 @@ const XZ_SUB = [[1, 16, '生理'], [17, 28, '生化'], [29, 40, '病理'], [41, 
   [68, 92, '内科'], [93, 107, '外科'], [108, 115, '人文'],
   [116, 119, '生理'], [120, 123, '生化'], [124, 127, '病理'], [128, 131, '内科'], [132, 135, '外科'],
   [136, 141, '生理'], [142, 147, '生化'], [148, 153, '病理'], [154, 159, '内科'], [160, 165, '外科']];
-const XZ_SUB_ORDER = ['生理', '生化', '病理', '内科', '外科', '人文'];
+const XZ_SUB_ORDER = ['生理', '生化', '病理', '内科', '外科', '人文', '政治'];
 const xzSubOf = n => { for (let i = 0; i < XZ_SUB.length; i++) { const r = XZ_SUB[i]; if (n >= r[0] && n <= r[1]) return r[2]; } return ''; };
 const isXzPaper = list => Array.isArray(list) && list.length === XZ_LEN;
 const qScore = q => (qType(q, (q && q.answer) || []) === 'X' ? 2 : 1.5);
@@ -2243,7 +2243,7 @@ window.addEventListener('hashchange', render);
   let lastY = 0, ticking = false;
   function apply() {
     ticking = false;
-    if (!document.body.classList.contains('quiz')) { document.body.classList.remove('nav-sink'); return; }
+    /* 2026-11-01：不再只限答题页，首页/列表页下滑也收起顶栏 */
     const y = window.scrollY || document.documentElement.scrollTop || 0;
     const down = y > lastY + 6, up = y < lastY - 6;
     if (y < 90) document.body.classList.remove('nav-sink');
@@ -3793,7 +3793,7 @@ function qzTags(k) { try { return (window.TAGS && TAGS.of) ? TAGS.of(k) : []; } 
 function qzKey(bank, q) { return (bank && bank.paper && q && q._srcKey) ? q._srcKey : kOf(bank, q); }
 function qzBasics() {
   try { if (window.TAGS && typeof TAGS.basic === 'function') { const b = TAGS.basic(); if (b && b.length) return b; } } catch (e) {}
-  return ['生理', '生化', '病理', '内科', '外科', '人文'];
+  return ['生理', '生化', '病理', '内科', '外科', '人文', '政治'];
 }
 function qzBasicOf(bank, q, basic) {
   basic = basic || qzBasics();
@@ -3848,7 +3848,7 @@ function renderChips(bank) {
   if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
   const sj = $('subjchips');
   if (sj) {
-    const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['__none', '未选']];
+    const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['政治', '政治'], ['__none', '未选']];
     const allN = chipFilter(bank.questions, QZ.filter, bank).length;
     sj.innerHTML = '<span class="slabel">六科</span>' + subs.map(([v, label]) => {
       const cnt = v ? subjectCount(bank, v) : allN;

@@ -1951,7 +1951,7 @@ function tagListOf(k) {
 }
 function basicTags() {
   try { if (window.TAGS && typeof window.TAGS.basic === 'function') return window.TAGS.basic(); } catch (e) {}
-  return ['生理', '生化', '病理', '内科', '外科', '人文'];
+  return ['生理', '生化', '病理', '内科', '外科', '人文', '政治'];
 }
 
 /* 考点词表 → 「批量加标签」输入框的候选（tags.js 没加载就空着） */
