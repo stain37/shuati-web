@@ -5359,20 +5359,6 @@ on('setStyle', e => {
 on('setStyleAuto', e => {
   SET.styleAuto = !!e.target.checked;
 
-/* 区块外发光：勾选开关 / 选颜色 / 一键跟主色 */
-on('setGlow', e => {
-  SET.glow = !!e.target.checked; writeLS(LS.set, SET); applyLook(); paintGlowEls();
-  toast(SET.glow ? '卡片外发光已打开' : '卡片外发光已关掉', 1500, 'ok');
-}, 'change');
-on('setGlowPick', e => {
-  const v = String(e.target.value || '');
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) { SET.glowColor = v; writeLS(LS.set, SET); applyLook(); paintGlowEls(); }
-}, 'input');
-on('setGlowReset', () => {
-  SET.glowColor = ''; SET.glow = true; writeLS(LS.set, SET); applyLook(); paintGlowEls();
-  toast('外发光改回跟主色', 1500, 'ok');
-});
-
   writeLS(LS.set, SET);
   if (SET.styleAuto) {
     const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
@@ -5387,6 +5373,19 @@ on('setGlowReset', () => {
     toast('换风格不再自动改主题色', 1400, 'ok');
   }
 }, 'change');
+/* 区块外发光：勾选开关 / 选颜色 / 一键跟主色 */
+on('setGlow', e => {
+  SET.glow = !!e.target.checked; writeLS(LS.set, SET); applyLook(); paintGlowEls();
+  toast(SET.glow ? '卡片外发光已打开' : '卡片外发光已关掉', 1500, 'ok');
+}, 'change');
+on('setGlowPick', e => {
+  const v = String(e.target.value || '');
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) { SET.glowColor = v; writeLS(LS.set, SET); applyLook(); paintGlowEls(); }
+}, 'input');
+on('setGlowReset', () => {
+  SET.glowColor = ''; SET.glow = true; writeLS(LS.set, SET); applyLook(); paintGlowEls();
+  toast('外发光改回跟主色', 1500, 'ok');
+});
 on('setBgPick', bgPick);
 on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
 on('setBgVideo', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromVideo(f); }, 'change');
