@@ -9661,3 +9661,8 @@ html[data-style="softui"] .hero .hs,html[data-style="softui"] .hero .hs *{
 }
 html[data-style="softui"] .hero .hs b{font-weight:700!important}
 html[data-style="softui"] .hero .hs span{color:#4f46e5!important;-webkit-text-fill-color:#4f46e5!important;opacity:.8!important}
+
+/* §100 弹层压过底栏：答题卡/设置这些 .mask 之前被 nav(60/70) 盖住，题目格看不见 */
+html[data-style] .mask{z-index:120!important}
+html[data-style] .mask .sheet{max-height:88vh!important}
+html[data-style] body.quiz .mask .sheet{padding-bottom:calc(20px + env(safe-area-inset-bottom))!important}
