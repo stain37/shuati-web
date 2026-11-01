@@ -3359,43 +3359,6 @@ html[data-style="water"] body{
   background-position:0 0,center top;
 }
 
-/* ==========================================================================
-   §14 差异化重做（web188）
-   目标：50 套之间「一眼能分出来」。手法只用三种——
-     ① 背景：大色块 / 多层渐变 / 图案纹理（pat/*.svg）；
-     ② 形状语言：圆角、边框（实线/双线/虚线/无）、阴影（硬投影/柔影/发光/无）；
-     ③ 字体与排印：衬线 / 等宽 / 手写 / 全大写 / 大字距。
-   新加的 10 套：win95 / blueprint / terminal / newsprint / sticker / ticket / hologram / aurora / botanical / enamel
-   ========================================================================== */
-
-/* ---------- 新 1) 复古窗口 win95：青绿桌面 + 银色凸起边框 + 深蓝标题条 ---------- */
-html[data-style="win95"], html[data-style="win95"] body{
-  --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
-  --bg:#008080; --card:#c0c0c0; --card2:#d4d0c8; --text:#000; --sub:#26303a;
-  --line:#808080; --sh-1:none; --sh-card:none; --bg-wash:none;
-}
-html[data-style="win95"] body.dark{--bg:#001a1a;--card:#3a3a3a;--text:#eee;--line:#707070}
-html[data-style="win95"] .card, html[data-style="win95"] .vb-card{
-  background:#c0c0c0; color:#000;
-  border-width:2px; border-style:solid; border-color:#ffffff #404040 #404040 #ffffff;
-  box-shadow:none; border-radius:0;
-}
-html[data-style="win95"] body.dark .card, html[data-style="win95"] body.dark .vb-card{background:#3a3a3a;color:#eee;border-color:#6a6a6a #1a1a1a #1a1a1a #6a6a6a}
-html[data-style="win95"] h2.sec{
-  background:#000080; color:#fff; font-family:var(--mono); font-size:13px; font-weight:700;
-  padding:3px 8px; border:0; letter-spacing:0;
-}
-html[data-style="win95"] h2.sec::before{display:none}
-html[data-style="win95"] .btn{
-  background:#c0c0c0; color:#000; border-width:2px; border-style:solid;
-  border-color:#fff #404040 #404040 #fff; border-radius:0; box-shadow:none;
-}
-html[data-style="win95"] .btn:active{border-color:#404040 #fff #fff #404040}
-html[data-style="win95"] .bnav{background:#c0c0c0;border-radius:0;border:2px solid;border-color:#fff #404040 #404040 #fff}
-html[data-style="win95"] .bnav .btn{background:transparent;border:0;border-radius:0}
-html[data-style="win95"] .bnav .btn.on{background:#000080;color:#fff}
-html[data-style="win95"] .nav{background:#c0c0c0;border-bottom:2px solid #404040}
-
 /* ---------- 新 2) 蓝图 blueprint：深蓝底 + 白网格 + 等宽大写 ---------- */
 html[data-style="blueprint"], html[data-style="blueprint"] body{
   --radius:0; --r-card:0; --r-s:0; --r-m:0; --r-l:0;
@@ -3933,11 +3896,6 @@ html[data-style="mag"] h2.sec{ border:0; font-weight:700; letter-spacing:-.01em;
 html[data-style="mag"] h2.sec::before{ width:0; }
 html[data-style="mag"] .btn{ border:0; border-radius:0; background:rgba(124,90,51,.10); }
 
-/* ---------- §14e 深色皮肤的首页渐变条压暗（web188） ---------- */
-html[data-style="terminal"] .hero::after,html[data-style="tenebrism"] .hero::after,html[data-style="arabic"] .hero::after,html[data-style="gothic"] .hero::after,html[data-style="baroque"] .hero::after,html[data-style="artdeco"] .hero::after,html[data-style="steampunk"] .hero::after,html[data-style="blueprint"] .hero::after,html[data-style="cyberpunk"] .hero::after,html[data-style="synthwave"] .hero::after,html[data-style="disco"] .hero::after,html[data-style="hologram"] .hero::after,html[data-style="aurora"] .hero::after,html[data-style="win95"] .hero::after,html[data-style="acid"] .hero::after,html[data-style="glass"] .hero::after{opacity:.42;background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 55%, #000) 0%, color-mix(in srgb, var(--primary) 18%, #000) 55%, transparent 100%)}
-html[data-style="terminal"] .hero,html[data-style="tenebrism"] .hero,html[data-style="arabic"] .hero,html[data-style="gothic"] .hero,html[data-style="baroque"] .hero,html[data-style="artdeco"] .hero,html[data-style="steampunk"] .hero,html[data-style="blueprint"] .hero,html[data-style="cyberpunk"] .hero,html[data-style="synthwave"] .hero,html[data-style="disco"] .hero,html[data-style="hologram"] .hero,html[data-style="aurora"] .hero,html[data-style="win95"] .hero,html[data-style="acid"] .hero,html[data-style="glass"] .hero{box-shadow:none;border:1px solid var(--line)}
-html[data-style="terminal"] .hero .hstat>div,html[data-style="terminal"] .hero .hstat>button.hs,html[data-style="tenebrism"] .hero .hstat>div,html[data-style="tenebrism"] .hero .hstat>button.hs,html[data-style="arabic"] .hero .hstat>div,html[data-style="arabic"] .hero .hstat>button.hs,html[data-style="gothic"] .hero .hstat>div,html[data-style="gothic"] .hero .hstat>button.hs,html[data-style="baroque"] .hero .hstat>div,html[data-style="baroque"] .hero .hstat>button.hs,html[data-style="artdeco"] .hero .hstat>div,html[data-style="artdeco"] .hero .hstat>button.hs,html[data-style="steampunk"] .hero .hstat>div,html[data-style="steampunk"] .hero .hstat>button.hs,html[data-style="blueprint"] .hero .hstat>div,html[data-style="blueprint"] .hero .hstat>button.hs,html[data-style="cyberpunk"] .hero .hstat>div,html[data-style="cyberpunk"] .hero .hstat>button.hs,html[data-style="synthwave"] .hero .hstat>div,html[data-style="synthwave"] .hero .hstat>button.hs,html[data-style="disco"] .hero .hstat>div,html[data-style="disco"] .hero .hstat>button.hs,html[data-style="hologram"] .hero .hstat>div,html[data-style="hologram"] .hero .hstat>button.hs,html[data-style="aurora"] .hero .hstat>div,html[data-style="aurora"] .hero .hstat>button.hs,html[data-style="win95"] .hero .hstat>div,html[data-style="win95"] .hero .hstat>button.hs,html[data-style="acid"] .hero .hstat>div,html[data-style="acid"] .hero .hstat>button.hs,html[data-style="glass"] .hero .hstat>div,html[data-style="glass"] .hero .hstat>button.hs{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
-
 /* ---------- §14f 透明按钮皮肤的「主按钮」补实心（web188） ---------- */
 html[data-style="luxury"] .btn.primary,
 html[data-style="flat"] .btn.primary,
@@ -3978,8 +3936,6 @@ html[data-style="terminal"] .hero::after{opacity:.9;background:linear-gradient(1
 html[data-style="terminal"] .hero{color:#fff;}
 html[data-style="blueprint"] .hero::after{opacity:.9;background:linear-gradient(135deg,#0b2a5b,#14447f 58%,#2f6bb0);}
 html[data-style="blueprint"] .hero{color:#fff;}
-html[data-style="win95"] .hero::after{opacity:.9;background:linear-gradient(135deg,#000080,#00479b 58%,#0f7ba8);}
-html[data-style="win95"] .hero{color:#fff;}
 html[data-style="zen"] .card,html[data-style="zen"] .vb-card{background:rgba(255,255,255,.58);}
 html[data-style="porcelain"] .wrap{box-shadow:inset 0 0 0 1px rgba(31,78,156,.28), inset 0 0 0 6px #fff;}
 html[data-style="ink"] .card,html[data-style="ink"] .vb-card{background:#fffdf6;}
@@ -4456,13 +4412,6 @@ html[data-style="acid"] .vb-card{position:relative}
 html[data-style="acid"] .vb-card::after{content:"";position:absolute;right:-2px;top:-2px;border:9px solid transparent;border-right-color:var(--primary);border-top-color:var(--primary)}
 html[data-style="acid"] h2.sec{text-transform:uppercase;letter-spacing:.08em;background:var(--primary);color:#fff;display:inline-block;padding:3px 10px;transform:skewX(-8deg)}
 html[data-style="acid"] .btn{border:2px solid var(--line);box-shadow:3px 3px 0 var(--primary);border-radius:2px;font-weight:700}
-html[data-style="win95"] body{background-image:radial-gradient(color-mix(in srgb,var(--primary) 26%,transparent) 1.4px,transparent 1.5px),linear-gradient(180deg,color-mix(in srgb,var(--primary) 10%,transparent),transparent 60%)}
-html[data-style="win95"] body{background-size:12px 12px,100% 100%}
-html[data-style="win95"] .card,html[data-style="win95"] .vb-card{border:2px solid var(--line);box-shadow:5px 5px 0 color-mix(in srgb,var(--primary) 45%,transparent)}
-html[data-style="win95"] .vb-card{position:relative}
-html[data-style="win95"] .vb-card::after{content:"";position:absolute;right:-2px;top:-2px;border:9px solid transparent;border-right-color:var(--primary);border-top-color:var(--primary)}
-html[data-style="win95"] h2.sec{text-transform:uppercase;letter-spacing:.08em;background:var(--primary);color:#fff;display:inline-block;padding:3px 10px;transform:skewX(-8deg)}
-html[data-style="win95"] .btn{border:2px solid var(--line);box-shadow:3px 3px 0 var(--primary);border-radius:2px;font-weight:700}
 html[data-style="terminal"] body{background-image:radial-gradient(color-mix(in srgb,var(--primary) 26%,transparent) 1.4px,transparent 1.5px),linear-gradient(180deg,color-mix(in srgb,var(--primary) 10%,transparent),transparent 60%)}
 html[data-style="terminal"] body{background-size:12px 12px,100% 100%}
 html[data-style="terminal"] .card,html[data-style="terminal"] .vb-card{border:2px solid var(--line);box-shadow:5px 5px 0 color-mix(in srgb,var(--primary) 45%,transparent)}
@@ -5545,14 +5494,6 @@ html[data-style="acid"] h2.sec{text-transform:uppercase;letter-spacing:.16em;fon
 html[data-style="acid"] .btn{border-radius:2px;box-shadow:3px 3px 0 color-mix(in srgb,var(--line) 80%,transparent);font-weight:700}
 html[data-style="acid"] .btn.primary{background:var(--primary);color:#fff}
 html[data-style="acid"] .bnav{border:1px solid color-mix(in srgb,var(--line) 66%,transparent);border-radius:2px;box-shadow:4px 4px 0 color-mix(in srgb,var(--primary) 18%,transparent)}
-html[data-style="win95"] body{background-image:linear-gradient(180deg,color-mix(in srgb,var(--primary) 10%,transparent),transparent 42%),radial-gradient(600px 300px at 88% 4%,color-mix(in srgb,var(--primary) 18%,transparent),transparent 70%)}
-html[data-style="win95"] .hero::after{background:repeating-linear-gradient(115deg,color-mix(in srgb,var(--primary) 70%,#0b1220) 0 26px,color-mix(in srgb,var(--primary) 46%,#0b1220) 26px 52px)!important;opacity:1!important}
-html[data-style="win95"] .card,html[data-style="win95"] .vb-card{border:1px solid color-mix(in srgb,var(--line) 92%,transparent);border-radius:4px;box-shadow:inset 0 3px 0 var(--primary),0 6px 18px rgba(20,30,50,.07)}
-html[data-style="win95"] h2.sec{text-transform:uppercase;letter-spacing:.16em;font-size:12px}
-html[data-style="win95"] h2.sec::before{content:"§";color:var(--primary);margin-right:6px}
-html[data-style="win95"] .btn{border-radius:8px;background:transparent;border-bottom:2px solid var(--primary)}
-html[data-style="win95"] .btn.primary{background:var(--primary);color:#fff}
-html[data-style="win95"] .bnav{border:1px solid color-mix(in srgb,var(--line) 70%,transparent);border-radius:18px;box-shadow:0 10px 24px rgba(20,30,50,.10)}
 html[data-style="hologram"] body{background-image:repeating-linear-gradient(90deg,color-mix(in srgb,var(--primary) 8%,transparent) 0 12px,transparent 12px 24px)}
 html[data-style="hologram"] .hero::after{background:linear-gradient(180deg,#101317,#1b2026)!important;opacity:1!important;box-shadow:inset 0 -3px 0 var(--primary)}
 html[data-style="hologram"] .hero,html[data-style="hologram"] .hero *{color:var(--text)!important;text-shadow:none}
@@ -6460,20 +6401,6 @@ html[data-style="acid"] .sheet{border:2px solid #c8ff00;border-radius:0;backgrou
 html[data-style="acid"] {--primary:#c8ff00;--text:#f2ffd0;--sub:#c9dc8a}
 html[data-style="acid"] .hero{position:relative;isolation:isolate}
 html[data-style="acid"] .hero>*{position:relative;z-index:2}
-html[data-style="win95"] body{background-color:#0f8f8f}
-html[data-style="win95"] .card,html[data-style="win95"] .vb-card{border:2px solid #000;border-radius:0;background:#c3c7cb;box-shadow:inset 2px 2px 0 #fff,inset -2px -2px 0 #85898d,2px 2px 0 #00000033}
-html[data-style="win95"] body .card::before,html[data-style="win95"] body .vb-card::before{content:"";position:absolute;left:2px;right:2px;top:2px;height:18px;background:linear-gradient(90deg,#000080,#1084d0);border-bottom:1px solid #000}
-html[data-style="win95"] h2.sec{border:0;border-bottom:1px solid #85898d;padding-bottom:6px;color:#000;font-weight:700;letter-spacing:.02em;padding-top:22px}
-html[data-style="win95"] .btn{border:2px solid #000;border-radius:0;background:#c3c7cb;color:#000;box-shadow:inset 2px 2px 0 #fff,inset -2px -2px 0 #85898d}
-html[data-style="win95"] .btn.primary{background:#c3c7cb;color:#000;font-weight:700}
-html[data-style="win95"] .chip,html[data-style="win95"] .mini-tag,html[data-style="win95"] .vchip{border:2px solid #000;border-radius:0;background:#c3c7cb;color:#000;box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #85898d}
-html[data-style="win95"] .hero::after{background:linear-gradient(120deg,#028080,#0f8f8f 60%,#3cc4c4)!important;opacity:1!important}
-html[data-style="win95"] .hero{border:2px solid #000;box-shadow:inset 2px 2px 0 #fff,inset -2px -2px 0 #85898d}
-html[data-style="win95"] .hero,html[data-style="win95"] html[data-style="win95"] .hero *{color:#fff!important}
-html[data-style="win95"] .sheet{border:2px solid #000;border-radius:0;background:#c3c7cb;box-shadow:inset 2px 2px 0 #fff,inset -2px -2px 0 #85898d,0 30px 70px #00000066}
-html[data-style="win95"] {--primary:#000080;--text:#ffffff;--sub:#e2e8ef}
-html[data-style="win95"] .hero{position:relative;isolation:isolate}
-html[data-style="win95"] .hero>*{position:relative;z-index:2}
 html[data-style="zen"] .card,html[data-style="zen"] .vb-card{border:1px solid #d8d2c2;border-radius:1px;background:#f7f4ec;box-shadow:none;padding-left:18px}
 html[data-style="zen"] body .card::before,html[data-style="zen"] body .vb-card::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:1px;background:#c6bfa9}
 html[data-style="zen"] h2.sec{border:0;border-bottom:1px solid #d8d2c2;padding-bottom:8px;font-family:var(--serif);letter-spacing:.1em;font-weight:400}
@@ -6529,8 +6456,6 @@ html[data-style="cyberpunk"] body.dark{--text:#f2f6fb;--sub:#b8c4d2}
 html[data-style="cyberpunk"]{--text:#f2f6fb;--sub:#b8c4d2}
 html[data-style="acid"] body.dark{--text:#141b26;--sub:#4b5866}
 html[data-style="acid"]{--text:#141b26;--sub:#4b5866}
-html[data-style="win95"] body.dark{--text:#141b26;--sub:#4b5866}
-html[data-style="win95"]{--text:#141b26;--sub:#4b5866}
 html[data-style="terminal"] body.dark{--text:#f2f6fb;--sub:#b8c4d2}
 html[data-style="terminal"]{--text:#f2f6fb;--sub:#b8c4d2}
 html[data-style="zen"] body.dark{--text:#141b26;--sub:#4b5866}
@@ -6742,19 +6667,6 @@ html[data-style="acid"] .card::before,html[data-style="acid"] .vb-card::before{c
 html[data-style="acid"] h2.sec{text-transform:uppercase;font-style:italic;font-weight:900;letter-spacing:-.02em;color:#c8ff00}
 html[data-style="acid"] .btn{border:2px solid #c8ff00;border-radius:0;background:transparent;color:#c8ff00;text-transform:uppercase;font-weight:800;letter-spacing:.06em}
 html[data-style="acid"] .btn.primary{background:#c8ff00;color:#0b0b0b}
-html[data-style="win95"] .hero{position:relative;isolation:isolate}
-html[data-style="win95"] .hero>*{position:relative;z-index:2}
-html[data-style="win95"] .card,html[data-style="win95"] .vb-card{position:relative;overflow:visible;isolation:isolate}
-html[data-style="win95"] .card::after,html[data-style="win95"] .vb-card::after{content:none}
-html[data-style="win95"]{--primary:#000080;--bg:#008080;--card:#c0c0c0}
-html[data-style="win95"] .hero::after{background:#c0c0c0!important;opacity:1!important}
-html[data-style="win95"] .hero{border:2px solid;border-color:#fff #808080 #808080 #fff;box-shadow:none}
-html[data-style="win95"] .hero>*{color:#000!important}
-html[data-style="win95"] .card,html[data-style="win95"] .vb-card{border:2px solid;border-color:#fff #808080 #808080 #fff;border-radius:0;background:#c0c0c0;box-shadow:1px 1px 0 #000}
-html[data-style="win95"] .card::before,html[data-style="win95"] .vb-card::before{content:"";position:absolute;left:0;right:0;top:0;height:18px;background:linear-gradient(90deg,#000080,#1084d0);pointer-events:none}
-html[data-style="win95"] h2.sec{margin-top:16px;font-family:Tahoma,"MS Sans Serif",var(--sans);font-weight:700;font-size:.92em;color:#000}
-html[data-style="win95"] .btn{border:2px solid;border-color:#fff #808080 #808080 #fff;border-radius:0;background:#c0c0c0;color:#000;box-shadow:none;font-family:Tahoma,var(--sans)}
-html[data-style="win95"] .btn.primary{background:#c0c0c0;color:#000;font-weight:700}
 html[data-style="zen"] .hero{position:relative;isolation:isolate}
 html[data-style="zen"] .hero>*{position:relative;z-index:2}
 html[data-style="zen"] .card,html[data-style="zen"] .vb-card{position:relative;overflow:visible;isolation:isolate}
@@ -8446,3 +8358,369 @@ body.nav-sink.quiz .bnav{transition:transform .22s ease,opacity .22s ease}
 .bnav{transition:transform .24s ease,opacity .24s ease}
 html[data-style][data-style] body.nav-sink .bnav{transform:translateY(150%)!important;opacity:.001!important;pointer-events:none!important}
 body.nav-sink .row:has(#appTitle),body.nav-sink .nav{transform:none!important;opacity:1!important;pointer-events:auto!important}
+
+/* ===== §76 Win95 皮肤按 UI Kit 重做（本地未发布） =====
+   参照 windows-95-ui-kit：真·3D（四层内阴影）、深蓝渐变标题条 + 右上关闭钮、白底凹陷输入框、
+   方形复选框、青绿桌面、任务栏式底栏、灰色滚动条。 */
+@font-face{font-family:'W95Sans';src:url('fonts/w95sans.woff2') format('woff2'),url('fonts/w95sans.woff') format('woff');font-display:swap}
+
+html[data-style="win95"]{
+  --radius:0;--r-card:0;--r-s:0;--r-m:0;--r-l:0;
+  --bg:#008080;--card:#c0c0c0;--card2:#d0d0d0;--text:#0a0a0a;--sub:#3f3f3f;
+  --line:#000;--sh-1:none;--sh-card:none;--bg-wash:none;
+  --primary:#000080;--on-primary:#fff;
+  --w95-face:#c0c0c0;--w95-hi:#ffffff;--w95-hi2:#dfdfdf;--w95-sh:#808080;--w95-sh2:#404040;
+  --w95-title1:#000080;--w95-title2:#1084d0;
+  --w95-out:inset 1px 1px 0 var(--w95-hi),inset -1px -1px 0 var(--w95-sh2),
+            inset 2px 2px 0 var(--w95-hi2),inset -2px -2px 0 var(--w95-sh);
+  --w95-in:inset 1px 1px 0 var(--w95-sh2),inset -1px -1px 0 var(--w95-hi),
+           inset 2px 2px 0 var(--w95-sh),inset -2px -2px 0 var(--w95-hi2);
+  --w95-field:inset 1px 1px 0 var(--w95-sh),inset -1px -1px 0 var(--w95-hi2),
+              inset 2px 2px 0 var(--w95-sh2),inset -2px -2px 0 var(--w95-hi);
+}
+html[data-style="win95"],html[data-style="win95"] body{
+  font-family:'W95Sans',"MS Sans Serif",Tahoma,"Microsoft YaHei","PingFang SC",sans-serif!important;
+  letter-spacing:0!important;color:#0a0a0a;background-color:#008080!important;background-image:none!important;
+}
+html[data-style="win95"] body::before,html[data-style="win95"] body::after,
+html[data-style="win95"] .wrap::before,html[data-style="win95"] .wrap::after{content:none!important;display:none!important}
+
+html[data-style="win95"] .card,html[data-style="win95"] .vb-card,html[data-style="win95"] .sheet{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:var(--w95-out)!important;padding:16px!important;position:relative;
+}
+html[data-style="win95"] .card::before,html[data-style="win95"] .vb-card::before,
+html[data-style="win95"] .card::after,html[data-style="win95"] .vb-card::after{content:none!important;display:none!important}
+
+html[data-style="win95"] .card>h2.sec,html[data-style="win95"] .vb-card>h2.sec{
+  margin:0 -16px 12px!important;padding:4px 5px 4px 8px!important;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
+  color:#fff!important;border:0!important;border-radius:0!important;box-shadow:none!important;
+  font:700 13px/1.5 'W95Sans',Tahoma,sans-serif!important;display:flex!important;align-items:center;gap:6px;
+  letter-spacing:0!important;text-shadow:none!important;text-transform:none!important;
+}
+html[data-style="win95"] .card>h2.sec:first-child,html[data-style="win95"] .vb-card>h2.sec:first-child{margin-top:-16px!important}
+html[data-style="win95"] .card>h2.sec::before,html[data-style="win95"] .vb-card>h2.sec::before{display:none!important}
+html[data-style="win95"] .card>h2.sec::after,html[data-style="win95"] .vb-card>h2.sec::after{
+  content:'✕';margin-left:auto;width:16px;height:15px;flex:0 0 auto;display:grid;place-items:center;
+  font:700 10px/1 'W95Sans',Tahoma,sans-serif;color:#0a0a0a;background:var(--w95-face);border:1px solid #000;
+  box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #808080;
+}
+html[data-style="win95"] h2.sec{color:#0a0a0a!important;font:700 14px/1.5 'W95Sans',Tahoma,sans-serif!important;text-transform:none!important;letter-spacing:0!important}
+html[data-style="win95"] h2.sec::before{display:none!important}
+
+html[data-style="win95"] .btn,html[data-style="win95"] .btn.primary,html[data-style="win95"] .btn.ghost{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:var(--w95-out)!important;padding:3px 12px!important;min-height:26px;
+  font:600 12.5px/1.5 'W95Sans',Tahoma,sans-serif!important;text-shadow:none!important;letter-spacing:0!important;text-transform:none!important;
+}
+html[data-style="win95"] .btn:hover{background:#cacaca!important}
+html[data-style="win95"] .btn:active,html[data-style="win95"] .btn.on{box-shadow:var(--w95-in)!important;padding:4px 11px 2px 13px!important}
+html[data-style="win95"] .btn:focus-visible{outline:1px dotted #000!important;outline-offset:-4px!important}
+html[data-style="win95"] .btn.tiny,html[data-style="win95"] .btn.mini{min-height:22px!important;padding:1px 8px!important;font-size:11.5px!important}
+html[data-style="win95"] .btn.bare,html[data-style="win95"] .btn.link{border:0!important;background:transparent!important;box-shadow:none!important;min-height:0!important}
+
+html[data-style="win95"] input[type=text],html[data-style="win95"] input[type=search],
+html[data-style="win95"] input[type=url],html[data-style="win95"] input[type=number],
+html[data-style="win95"] input[type=password],html[data-style="win95"] input:not([type]),
+html[data-style="win95"] textarea,html[data-style="win95"] .txt,html[data-style="win95"] select{
+  background:#fff!important;color:#0a0a0a!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:var(--w95-field)!important;font-family:inherit!important;padding:4px 6px!important;
+}
+html[data-style="win95"] select{appearance:auto}
+html[data-style="win95"] input::placeholder,html[data-style="win95"] textarea::placeholder{color:#6a6a6a!important}
+
+html[data-style="win95"] input[type=checkbox],html[data-style="win95"] input[type=radio]{
+  appearance:none!important;-webkit-appearance:none!important;width:15px!important;height:15px!important;
+  flex:0 0 auto;position:relative;margin:0 2px 0 0;background:#fff!important;border:1px solid #000!important;
+  border-radius:0!important;box-shadow:inset 1px 1px 0 var(--w95-sh),inset -1px -1px 0 var(--w95-hi2)!important;
+}
+html[data-style="win95"] input[type=radio]{border-radius:50%!important}
+html[data-style="win95"] input[type=checkbox]:checked::after{
+  content:'';position:absolute;left:3px;top:0;width:4px;height:8px;border:solid #000;border-width:0 2px 2px 0;transform:rotate(40deg);
+}
+html[data-style="win95"] input[type=radio]:checked::after{content:'';position:absolute;inset:3px;border-radius:50%;background:#000}
+html[data-style="win95"] input[type=checkbox]:focus-visible,html[data-style="win95"] input[type=radio]:focus-visible{outline:1px dotted #000;outline-offset:2px}
+
+html[data-style="win95"] .hero{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #000!important;
+  border-radius:0!important;box-shadow:var(--w95-out)!important;position:relative;isolation:auto!important;
+}
+html[data-style="win95"] .hero::before,html[data-style="win95"] .hero::after{content:none!important;background:none!important;display:none!important;opacity:0!important}
+html[data-style="win95"] .hero,html[data-style="win95"] .hero *{color:#0a0a0a!important;text-shadow:none!important}
+html[data-style="win95"] .hero .hs,html[data-style="win95"] .hero .hstat>div{
+  background:#fff!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 var(--w95-sh),inset -1px -1px 0 var(--w95-hi2)!important;
+}
+html[data-style="win95"] .hero .hs b,html[data-style="win95"] .hero .hstat b{font-family:'W95Sans',Tahoma,sans-serif!important;color:#000080!important}
+
+html[data-style="win95"] .nav{
+  background:var(--w95-face)!important;border:0!important;border-bottom:1px solid #000!important;border-radius:0!important;
+  box-shadow:inset 0 1px 0 var(--w95-hi),inset 0 -1px 0 var(--w95-sh)!important;
+}
+html[data-style="win95"] .nav .btn{box-shadow:var(--w95-out)!important;min-height:22px!important;padding:1px 8px!important}
+html[data-style="win95"] .bnav{
+  background:var(--w95-face)!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 var(--w95-hi),inset -1px -1px 0 var(--w95-sh)!important;padding:4px 5px!important;
+}
+html[data-style="win95"] .bnav .btn{
+  background:transparent!important;border:1px solid transparent!important;box-shadow:none!important;color:#0a0a0a!important;
+  border-radius:0!important;padding:4px 8px!important;min-height:0!important;font:600 11.5px/1.4 'W95Sans',Tahoma,sans-serif!important;
+}
+html[data-style="win95"] .bnav .btn.on{background:var(--w95-face)!important;border:1px solid #000!important;box-shadow:var(--w95-in)!important}
+
+html[data-style="win95"] table{background:#fff!important;border-collapse:collapse!important}
+html[data-style="win95"] th,html[data-style="win95"] td{border:1px solid #808080!important;padding:4px 7px!important}
+html[data-style="win95"] th{background:var(--w95-face)!important;box-shadow:inset 1px 1px 0 var(--w95-hi),inset -1px -1px 0 var(--w95-sh)!important}
+html[data-style="win95"] .chip,html[data-style="win95"] .mini-tag,html[data-style="win95"] .vchip,html[data-style="win95"] .tag{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #000!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 var(--w95-hi),inset -1px -1px 0 var(--w95-sh)!important;
+}
+html[data-style="win95"] .chip.on,html[data-style="win95"] .mini-tag.on{box-shadow:var(--w95-in)!important}
+html[data-style="win95"] progress,html[data-style="win95"] .bar{background:#fff!important;border:1px solid #000!important;border-radius:0!important;box-shadow:var(--w95-field)!important}
+html[data-style="win95"] a{color:#0000ee!important;text-decoration:underline}
+html[data-style="win95"] ::selection{background:#000080!important;color:#fff!important}
+
+html[data-style="win95"] *::-webkit-scrollbar{width:16px;height:16px;background:#dfdfdf}
+html[data-style="win95"] *::-webkit-scrollbar-track{background:#dfdfdf;box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #808080}
+html[data-style="win95"] *::-webkit-scrollbar-thumb{background:#c0c0c0;border:1px solid #000;box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #808080}
+html[data-style="win95"] *::-webkit-scrollbar-button{background:#c0c0c0;border:1px solid #000;height:16px;width:16px;box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #808080}
+html[data-style="win95"] *::-webkit-scrollbar-corner{background:#c0c0c0}
+
+/* §76b 标题条：把首页那些真正的「标题行」也当成窗口标题（gname / nbhead / chat-title-row / card-h） */
+html[data-style="win95"] .card>.gname:first-child,
+html[data-style="win95"] .card>.nbhead:first-child,
+html[data-style="win95"] .card>.chat-title-row:first-child,
+html[data-style="win95"] .card>.card-h:first-child,
+html[data-style="win95"] .vb-card>.vb-cap:first-child{
+  margin:-16px -16px 12px!important;padding:4px 8px!important;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
+  color:#fff!important;font:700 13px/1.5 'W95Sans',Tahoma,sans-serif!important;
+  letter-spacing:0!important;text-shadow:none!important;border:0!important;
+}
+html[data-style="win95"] .card>.gname:first-child *,html[data-style="win95"] .card>.chat-title-row:first-child *,
+html[data-style="win95"] .card>.nbhead:first-child *{color:#fff!important}
+html[data-style="win95"] .card>.gname:first-child::after,
+html[data-style="win95"] .card>.nbhead:first-child::after{
+  content:'✕';margin-left:auto;width:16px;height:15px;flex:0 0 auto;display:grid;place-items:center;
+  font:700 10px/1 'W95Sans',Tahoma,sans-serif;color:#0a0a0a;background:var(--w95-face);border:1px solid #000;
+  box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #808080;
+}
+
+/* §76c 细节：去掉假关闭钮、给「云同步」这类 <b> 开头卡片也加标题条、给底栏留空间 */
+html[data-style="win95"] .card>h2.sec::after,
+html[data-style="win95"] .card>.gname:first-child::after,
+html[data-style="win95"] .card>.nbhead:first-child::after{content:none!important;display:none!important}
+html[data-style="win95"] .card>b:first-child{
+  display:block!important;margin:-16px -16px 10px!important;padding:4px 8px!important;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
+  color:#fff!important;font:700 13px/1.5 'W95Sans',Tahoma,sans-serif!important;text-shadow:none!important;
+}
+html[data-style="win95"] .wrap{padding-bottom:88px!important}
+
+/* §76d 底栏占位：给 body 留出固定底栏高度（.wrap 上的 padding 会被别的规则压掉） */
+html[data-style="win95"] body{padding-bottom:76px!important}
+html[data-style="win95"] .bnav{box-shadow:inset 1px 1px 0 var(--w95-hi),inset -1px -1px 0 var(--w95-sh)!important}
+
+/* §76e 夜间：只换桌面底色，面板保持经典灰（Win95 无深色主题） */
+html[data-style="win95"] body.dark{
+  --bg:#004f4f;--card:#c0c0c0;--card2:#d0d0d0;--text:#0a0a0a;--sub:#3f3f3f;--line:#000;
+  --w95-face:#c0c0c0;--w95-hi:#fff;--w95-hi2:#dfdfdf;--w95-sh:#808080;--w95-sh2:#404040;
+  --w95-title1:#000080;--w95-title2:#1084d0;--primary:#000080;
+  background-color:#004f4f!important;color:#0a0a0a!important;
+}
+html[data-style="win95"] body.dark .card,html[data-style="win95"] body.dark .vb-card,
+html[data-style="win95"] body.dark .sheet,html[data-style="win95"] body.dark .hero,
+html[data-style="win95"] body.dark .nav,html[data-style="win95"] body.dark .bnav{
+  background:var(--w95-face)!important;color:#0a0a0a!important;
+}
+html[data-style="win95"] body.dark .hero,html[data-style="win95"] body.dark .hero *{color:#0a0a0a!important}
+html[data-style="win95"] body.dark .hero .hs,html[data-style="win95"] body.dark .hero .hstat>div{background:#fff!important}
+html[data-style="win95"] body.dark input,html[data-style="win95"] body.dark textarea,
+html[data-style="win95"] body.dark select,html[data-style="win95"] body.dark .txt{background:#fff!important;color:#0a0a0a!important}
+
+/* §77 密度与斜面按 windows-95-ui-kit 校准 */
+html[data-style="win95"], html[data-style="win95"] body { font-size:13px!important; line-height:1.45!important }
+html[data-style="win95"] .card, html[data-style="win95"] .vb-card, html[data-style="win95"] .sheet { padding:10px 12px!important }
+html[data-style="win95"] .card>h2.sec, html[data-style="win95"] .card>.gname:first-child, html[data-style="win95"] .card>.nbhead:first-child,
+html[data-style="win95"] .card>.chat-title-row:first-child, html[data-style="win95"] .card>b:first-child, html[data-style="win95"] .vb-card>h2.sec{
+  margin:-10px -12px 8px!important; padding:2px 6px 2px 7px!important;
+  font:700 12px/18px 'W95Sans',Tahoma,sans-serif!important; min-height:18px;
+  border-bottom:1px solid #000!important;
+}
+html[data-style="win95"] .card>h2.sec:first-child, html[data-style="win95"] .vb-card>h2.sec:first-child{margin-top:-10px!important}
+
+html[data-style="win95"] .btn, html[data-style="win95"] .btn.primary, html[data-style="win95"] .btn.ghost{
+  min-height:23px!important; padding:2px 10px!important; font-size:12px!important; letter-spacing:.02em!important;
+  border:1px solid #0a0a0a!important;
+  box-shadow:inset 1px 1px 0 #fff, inset -1px -1px 0 #858585,
+             inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #a0a0a0!important;
+}
+html[data-style="win95"] .btn:hover{ background:#cacaca!important }
+html[data-style="win95"] .btn:active, html[data-style="win95"] .btn.on{
+  padding:3px 9px 1px 11px!important; border-color:#0a0a0a!important;
+  box-shadow:inset 1px 1px 0 #858585, inset -1px -1px 0 #fff,
+             inset 2px 2px 0 #a0a0a0, inset -2px -2px 0 #dfdfdf!important;
+}
+html[data-style="win95"] .btn.tiny, html[data-style="win95"] .btn.mini{ min-height:20px!important; padding:1px 7px!important; font-size:11.5px!important }
+
+html[data-style="win95"] input[type=text], html[data-style="win95"] input[type=search], html[data-style="win95"] input[type=url], html[data-style="win95"] input[type=number],
+html[data-style="win95"] input[type=password], html[data-style="win95"] input:not([type]), html[data-style="win95"] textarea, html[data-style="win95"] .txt, html[data-style="win95"] select{
+  min-height:21px!important; padding:2px 5px!important; font-size:12.5px!important; line-height:17px!important;
+  border:1px solid #0a0a0a!important;
+  box-shadow:inset 1px 1px 0 #858585, inset -1px -1px 0 #fff,
+             inset 2px 2px 0 #a0a0a0, inset -2px -2px 0 #dfdfdf!important;
+}
+html[data-style="win95"] textarea{ padding:4px 5px!important }
+
+html[data-style="win95"] .hero{ padding:10px 12px!important }
+html[data-style="win95"] .hero .hs, html[data-style="win95"] .hero .hstat>div{ padding:6px 8px!important; min-height:44px }
+html[data-style="win95"] .hero .hs b, html[data-style="win95"] .hero .hstat b{ font-size:19px!important; line-height:1.1!important }
+html[data-style="win95"] .hero .hs span, html[data-style="win95"] .hero .hstat span{ font-size:11.5px!important }
+
+html[data-style="win95"] .bnav{ padding:3px 4px!important }
+html[data-style="win95"] .bnav .btn{ font-size:11.5px!important; padding:3px 7px!important; min-height:0!important }
+html[data-style="win95"] .nav .btn{ font-size:11.5px!important }
+
+html[data-style="win95"] .small, html[data-style="win95"] .muted{ font-size:11.5px!important }
+html[data-style="win95"] .chip, html[data-style="win95"] .mini-tag, html[data-style="win95"] .vchip, html[data-style="win95"] .tag{ font-size:11.5px!important; padding:1px 7px!important }
+html[data-style="win95"] table{ font-size:12.5px!important }
+html[data-style="win95"] th, html[data-style="win95"] td{ padding:3px 6px!important }
+
+/* §78b 标题条按钮用背景图叠上去（不参与布局） */
+html[data-style="win95"] .card>h2.sec,html[data-style="win95"] .card>.gname:first-child,html[data-style="win95"] .card>.nbhead:first-child,html[data-style="win95"] .card>.chat-title-row:first-child,html[data-style="win95"] .card>b:first-child,html[data-style="win95"] .vb-card>h2.sec{
+  padding-right:66px!important;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='58'%20height='14'%3E%3Cg%20fill='%23c0c0c0'%20stroke='%23000'%20stroke-width='1'%3E%3Crect%20x='.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='20.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='40.5'%20y='.5'%20width='16'%20height='13'/%3E%3C/g%3E%3Cg%20stroke='%23fff'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M2%202h13M2%202v11'/%3E%3Cpath%20d='M22%202h13M22%202v11'/%3E%3Cpath%20d='M42%202h13M42%202v11'/%3E%3C/g%3E%3Cg%20stroke='%23808080'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M15%203v10M3%2013h13'/%3E%3Cpath%20d='M35%203v10M23%2013h13'/%3E%3Cpath%20d='M55%203v10M43%2013h13'/%3E%3C/g%3E%3Cg%20stroke='%23000'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M5%209h6'/%3E%3Crect%20x='25'%20y='4'%20width='7'%20height='6'/%3E%3Cpath%20d='M45%204l6%206M51%204l-6%206'/%3E%3C/g%3E%3C/svg%3E"),linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
+  background-repeat:no-repeat,no-repeat!important;
+  background-position:right 2px top 2px,0 0!important;
+  background-size:58px 14px,auto!important;
+}
+
+/* §79 顶栏开始按钮（纯装饰，不改变导航结构） */
+html[data-style="win95"] .nav{ position:relative!important; padding-left:84px!important }
+html[data-style="win95"] .nav::before{
+  content:'开始'; position:absolute; left:6px; top:50%; transform:translateY(-50%);
+  width:70px; height:22px; display:flex; align-items:center; padding-left:22px; box-sizing:border-box;
+  font:700 12px/1 'W95Sans',Tahoma,sans-serif; color:#0a0a0a;
+  background:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='14'%20height='14'%3E%3Crect%20x='0'%20y='0'%20width='6'%20height='6'%20fill='%23ff0000'/%3E%3Crect%20x='7'%20y='0'%20width='6'%20height='6'%20fill='%2300a000'/%3E%3Crect%20x='0'%20y='7'%20width='6'%20height='6'%20fill='%230000ff'/%3E%3Crect%20x='7'%20y='7'%20width='6'%20height='6'%20fill='%23ffd000'/%3E%3C/svg%3E") 5px center no-repeat,var(--w95-face);
+  border:1px solid #0a0a0a;
+  box-shadow:inset 1px 1px 0 #fff, inset -1px -1px 0 #858585, inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #a0a0a0;
+}
+html[data-style="win95"] .nav::before:active{ box-shadow:inset 1px 1px 0 #858585, inset -1px -1px 0 #fff }
+
+/* §79b 开始按钮挂到真正的顶栏 .top .row（span.title 就在里面） */
+html[data-style="win95"] .top .row{position:relative!important;padding-left:88px!important}
+html[data-style="win95"] .top::before{
+  content:'开始';position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:5;
+  width:72px;height:22px;display:flex;align-items:center;padding-left:22px;box-sizing:border-box;
+  font:700 12px/1 'W95Sans',Tahoma,sans-serif;color:#0a0a0a;
+  background:var(--w95-face);border:1px solid #0a0a0a;
+  box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #858585,inset 2px 2px 0 #dfdfdf,inset -2px -2px 0 #a0a0a0;
+}
+
+html[data-style="win95"] .top::before{
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='14'%20height='14'%3E%3Crect%20x='0'%20y='0'%20width='6'%20height='6'%20fill='%23ff0000'/%3E%3Crect%20x='7'%20y='0'%20width='6'%20height='6'%20fill='%2300a000'/%3E%3Crect%20x='0'%20y='7'%20width='6'%20height='6'%20fill='%230000ff'/%3E%3Crect%20x='7'%20y='7'%20width='6'%20height='6'%20fill='%23ffd000'/%3E%3C/svg%3E")!important;background-position:5px center!important;background-repeat:no-repeat!important;
+}
+
+/* §80 悬浮「导航」胶囊与它的菜单改成 95 按钮/菜单；底栏图标去彩 */
+html[data-style="win95"] #homeNavFab{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #0a0a0a!important;border-radius:0!important;
+  backdrop-filter:none!important;box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #858585,inset 2px 2px 0 #dfdfdf,inset -2px -2px 0 #a0a0a0!important;
+  font:700 12px/1 'W95Sans',Tahoma,sans-serif!important;padding:6px 10px!important;
+}
+html[data-style="win95"] #homeNavFab:active{box-shadow:inset 1px 1px 0 #858585,inset -1px -1px 0 #fff!important}
+html[data-style="win95"] #homeNavFab .hnf-ic,html[data-style="win95"] #homeNavFab .hnf-tx{color:#0a0a0a!important;filter:none!important}
+html[data-style="win95"] #homeNavMenu{
+  background:var(--w95-face)!important;border:1px solid #0a0a0a!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #858585,3px 3px 0 rgba(0,0,0,.35)!important;
+  padding:2px!important;backdrop-filter:none!important;
+}
+html[data-style="win95"] #homeNavMenu .hn-head{background:linear-gradient(90deg,#000080,#1084d0)!important;color:#fff!important;padding:2px 4px!important}
+html[data-style="win95"] #homeNavMenu .hn-cap{color:#fff!important;font:700 12px/1.6 'W95Sans',Tahoma,sans-serif!important}
+html[data-style="win95"] #homeNavMenu .hn-item{
+  background:transparent!important;border:0!important;border-radius:0!important;color:#0a0a0a!important;
+  font:400 12.5px/1.6 'W95Sans',Tahoma,sans-serif!important;padding:3px 8px!important;box-shadow:none!important;
+}
+html[data-style="win95"] #homeNavMenu .hn-item:hover{background:#000080!important;color:#fff!important}
+html[data-style="win95"] #homeNavMenu .hn-item:hover *{color:#fff!important}
+html[data-style="win95"] .bnav .btn>*,html[data-style="win95"] .bnav .btn svg{filter:grayscale(1)!important}
+
+/* §81 把主题的 teal 派生色也换掉（图标底色/浅底/描边） */
+html[data-style="win95"]{
+  --primary-weak:#e8e8e8;--primary-line:#808080;--primary-soft:rgba(0,0,128,.10);
+  --accent:#000080;--accent-weak:#e8e8e8;
+}
+html[data-style="win95"] .card i[class*="ic"],html[data-style="win95"] .card span[class*="ic"],
+html[data-style="win95"] .card .bi,html[data-style="win95"] .card .ico{
+  filter:grayscale(1) contrast(1.15)!important;background:transparent!important;color:#000080!important;
+}
+
+/* §82 全直角 + 图标去彩（真 95 没有圆角） */
+html[data-style="win95"] .card *,html[data-style="win95"] .sheet *,
+html[data-style="win95"] .bnav *,html[data-style="win95"] #homeNavMenu *{border-radius:0!important}
+html[data-style="win95"] .card span[class*="ico"],html[data-style="win95"] .card div[class*="ico"],
+html[data-style="win95"] .card span[class*="ic-"],html[data-style="win95"] .card svg,
+html[data-style="win95"] .bnav svg,html[data-style="win95"] .bnav span[class*="ic"]{
+  filter:grayscale(1) contrast(1.15)!important;
+}
+
+/* §83 收尾四项 */
+@font-face{font-family:'MS95';src:url('fonts/ms95.ttf') format('truetype');font-display:swap}
+html[data-style="win95"], html[data-style="win95"] body, html[data-style="win95"] .btn, html[data-style="win95"] .card, html[data-style="win95"] input, html[data-style="win95"] textarea, html[data-style="win95"] select{
+  font-family:'MS95','W95Sans',Tahoma,'Microsoft YaHei',sans-serif!important
+}
+
+/* 1) 首页四个入口：95 工具栏按钮 */
+html[data-style="win95"] .vb-q{
+  background:var(--w95-face)!important;color:#0a0a0a!important;border:1px solid #0a0a0a!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #858585,inset 2px 2px 0 #dfdfdf,inset -2px -2px 0 #a0a0a0!important;
+  padding:9px 6px 7px!important;gap:5px!important;font:400 12.5px/1.4 'MS95',Tahoma,sans-serif!important;
+}
+html[data-style="win95"] .vb-q:hover{background:#cacaca!important}
+html[data-style="win95"] .vb-q:active{box-shadow:inset 1px 1px 0 #858585,inset -1px -1px 0 #fff,inset 2px 2px 0 #a0a0a0,inset -2px -2px 0 #dfdfdf!important}
+html[data-style="win95"] .vb-q .vb-q-i{
+  color:#000080!important;font-size:19px!important;line-height:20px!important;filter:none!important;
+  background:none!important;border:0!important;box-shadow:none!important;
+}
+
+/* 2) 统计条 + 待复习卡补标题条 */
+html[data-style="win95"] .hero{position:relative!important;padding-top:30px!important}
+html[data-style="win95"] .hero::before{
+  content:'统计';position:absolute;left:0;right:0;top:0;height:18px;box-sizing:border-box;
+  padding:0 6px;font:700 12px/18px 'MS95',Tahoma,sans-serif;color:#fff;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2));
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2258%22 height=%2214%22/>'),linear-gradient(90deg,var(--w95-title1),var(--w95-title2));
+  border-bottom:1px solid #000;
+}
+html[data-style="win95"] .card:has(.ring), html[data-style="win95"] .card:has(.donut){position:relative!important;padding-top:32px!important}
+html[data-style="win95"] .card:has(.ring)::before, html[data-style="win95"] .card:has(.donut)::before{
+  content:'待复习';position:absolute;left:0;right:0;top:0;height:18px;box-sizing:border-box;
+  padding:0 6px;font:700 12px/18px 'MS95',Tahoma,sans-serif;color:#fff;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2));border-bottom:1px solid #000;
+}
+
+/* 3) 热力图：凹下去的白格 + 深蓝分级 */
+html[data-style="win95"] .hm .hm-c{
+  background:#fff!important;border:0!important;border-radius:0!important;
+  box-shadow:inset 1px 1px 0 #858585,inset -1px -1px 0 #fff,inset 2px 2px 0 #a0a0a0!important;
+}
+html[data-style="win95"] .hm .hm-c[data-l="1"]{background:#d3ddf2!important}
+html[data-style="win95"] .hm .hm-c[data-l="2"]{background:#9db3e0!important}
+html[data-style="win95"] .hm .hm-c[data-l="3"]{background:#5f7fbf!important}
+html[data-style="win95"] .hm .hm-c[data-l="4"]{background:#000080!important}
+
+/* §83b 修正：hero / vb-ring 的标题条要压过 §76 的 content:none */
+html[data-style="win95"] .hero{position:relative!important;padding-top:30px!important}
+html[data-style="win95"] .hero::before{
+  content:'统计'!important;display:block!important;position:absolute!important;left:0!important;right:0!important;top:0!important;
+  height:18px!important;box-sizing:border-box;padding:0 6px;font:700 12px/18px 'MS95',Tahoma,sans-serif!important;color:#fff!important;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;border-bottom:1px solid #000!important;
+  opacity:1!important;
+}
+html[data-style="win95"] .vb-card.vb-ring{position:relative!important;padding-top:32px!important}
+html[data-style="win95"] .vb-card.vb-ring::before{
+  content:'待复习'!important;display:block!important;position:absolute!important;left:0!important;right:0!important;top:0!important;
+  height:18px!important;box-sizing:border-box;padding:0 6px;font:700 12px/18px 'MS95',Tahoma,sans-serif!important;color:#fff!important;
+  background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;border-bottom:1px solid #000!important;
+  opacity:1!important;
+}
