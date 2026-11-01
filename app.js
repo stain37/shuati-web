@@ -1198,6 +1198,45 @@ function bgClearImage() {
   const sel = $('setBg'); if (sel) sel.value = 'default';
   toast('已清除自定义背景', 1400, 'ok');
 }
+
+/* §89 霓虹东京：雨夜街角灯箱（真 DOM，避免伪元素被别的皮肤规则顶掉） */
+
+/* §91 霓虹东京：挡风玻璃上的雨滴（真 DOM，带背景折射） */
+function ntDrops(on){
+  var box=document.getElementById('ntDrops');
+  if(!on){ if(box) box.remove(); return; }
+  if(box) return;
+  if(window.innerWidth<760) return;
+  box=document.createElement('div'); box.id='ntDrops'; box.setAttribute('aria-hidden','true');
+  var seed=20261101;
+  function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
+  function side(){ return rnd()<.5 ? (0.6+rnd()*9.4) : (90.2+rnd()*9.2); }
+  for(var i=0;i<20;i++){
+    var d=document.createElement('i');
+    var r=rnd();
+    var w = r<.22 ? (26+rnd()*16) : (r<.6 ? (12+rnd()*11) : (5+rnd()*6));
+    var h = w*(rnd()<.3 ? (1.6+rnd()*1.4) : (0.92+rnd()*0.5));
+    var top = (i<6 ? (1+rnd()*11) : (1+rnd()*94));
+    var left = (i<6 ? (4+rnd()*92) : side());
+    d.style.left=left.toFixed(2)+'%';
+    d.style.top=top.toFixed(2)+'%';
+    d.style.width=w.toFixed(1)+'px';
+    d.style.height=h.toFixed(1)+'px';
+    d.style.setProperty('--rot',(-14+rnd()*28).toFixed(1)+'deg');
+    d.style.opacity=(0.32+rnd()*0.34).toFixed(2);
+    if(rnd()<.22 && i>=6){ d.className='drip'; d.style.height=(h*2.2).toFixed(1)+'px'; }
+    if(rnd()<.3) d.className += ' slow';
+    box.appendChild(d);
+  }
+  document.body.appendChild(box);
+}
+
+function ntSigns(on){
+  var r=document.getElementById('ntSignR'), l=document.getElementById('ntSignL');
+  if(!on){ if(r) r.remove(); if(l) l.remove(); return; }
+  if(!r){ r=document.createElement('div'); r.id='ntSignR'; r.className='nt-sign nt-r'; r.textContent='カラオケ'; r.setAttribute('aria-hidden','true'); document.body.appendChild(r); }
+  if(!l){ l=document.createElement('div'); l.id='ntSignL'; l.className='nt-sign nt-l'; l.textContent='居酒屋'; l.setAttribute('aria-hidden','true'); document.body.appendChild(l); }
+}
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -1212,6 +1251,8 @@ function applyLook() {
   /* 界面风格（皮肤层）：只打一个属性，样式全在 style.css §10；不认识的值一律落回 default */
   const style = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-style', style);
+  try{ ntSigns(SET.style==='neontokyo'); }catch(e){}
+  try{ ntDrops(SET.style==='neontokyo'); }catch(e){}
   /* 区块外发光：三态 auto（跟风格）/ on（指定颜色）/ off */
   {
     let mode = SET.glowMode;
