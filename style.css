@@ -9277,3 +9277,28 @@ html[data-style="neontokyo"] .wrap{filter:contrast(.96) saturate(.98)}
 @media (prefers-reduced-motion:reduce){
   html[data-style="neontokyo"] #ntDrops i.slow{animation:none!important}
 }
+
+/* §93 雨夜东京：用真实雨夜街景照片做虚焦底（大模糊 + 压暗 + 霓虹色叠加） */
+html[data-style="neontokyo"] body::before{
+  content:''!important;position:fixed!important;inset:-6%!important;z-index:0!important;pointer-events:none!important;
+  width:auto!important;height:auto!important;left:-6%!important;top:-6%!important;right:-6%!important;bottom:-6%!important;
+  background-image:
+    linear-gradient(180deg,rgba(14,4,26,.55),rgba(8,2,16,.35) 42%,rgba(4,1,10,.72) 100%),
+    radial-gradient(900px 520px at 82% 18%,rgba(255,46,166,.42),transparent 68%),
+    radial-gradient(760px 460px at 10% 62%,rgba(90,220,255,.26),transparent 70%),
+    url('img/rain-night.jpg')!important;
+  background-size:auto,auto,auto,cover!important;
+  background-position:0 0,0 0,0 0,center!important;
+  background-repeat:no-repeat!important;
+  filter:blur(7px) saturate(1.35) brightness(.72) contrast(1.05)!important;
+  opacity:1!important;mix-blend-mode:normal!important;
+  transform:scale(1.06)!important;
+}
+/* 上面的玻璃雨滴层保持清晰，雾面层压在上面 */
+html[data-style="neontokyo"] .wrap{filter:none!important;background:transparent!important}
+html[data-style="neontokyo"] body{background:#07020f!important}
+html[data-style="neontokyo"] .wrap::before{
+  opacity:.9!important;
+  -webkit-backdrop-filter:blur(.4px);
+  backdrop-filter:blur(.4px);
+}
