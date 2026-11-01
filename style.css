@@ -7322,26 +7322,6 @@ html[data-style="vaporwave"] h2.sec::before{content:"▲";color:#ff71ce;backgrou
 html[data-style="vaporwave"] input,html[data-style="vaporwave"] select,html[data-style="vaporwave"] textarea,html[data-style="vaporwave"] .num{background:rgba(26,10,46,.8);border:2px solid rgba(255,113,206,.45);border-radius:8px;color:#f3e8ff;font-family:var(--mono)}
 html[data-style="vaporwave"] .bnav{background:rgba(26,10,46,.9);border:1px solid rgba(255,113,206,.4);border-radius:10px}
 html[data-style="vaporwave"] .bnav .btn.on{background:linear-gradient(90deg,#ff71ce,#01cdfe);color:#1a0a2e;border-radius:8px}
-html[data-style="neontokyo"]{--primary:#ff1493;--bg:#0a0a1a;--card:#12041e;--line:rgba(255,20,147,.35);--text:#f6f2ff;--sub:#b9c6e6;--bg-wash:none}
-html[data-style="neontokyo"] body{background-image:radial-gradient(circle at 18% -10%,rgba(255,20,147,.22),transparent 55%),radial-gradient(circle at 88% 6%,rgba(0,240,255,.16),transparent 50%),radial-gradient(circle at 50% 108%,rgba(255,107,0,.14),transparent 58%)}
-html[data-style="neontokyo"] body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 1px,transparent 1px 7px);opacity:.5}
-html[data-style="neontokyo"] .hero::after{background:linear-gradient(100deg,#3b0a2a,#0a0a1a 46%,#062a33)!important;opacity:1!important}
-html[data-style="neontokyo"] .hero{border:1px solid rgba(255,20,147,.45);border-radius:3px;box-shadow:0 0 22px rgba(255,20,147,.22),inset 0 -20px 40px rgba(255,107,0,.10)}
-html[data-style="neontokyo"] .hero .hs b{color:#fff;font-weight:800;text-shadow:0 0 14px rgba(255,20,147,.85),0 0 26px rgba(0,240,255,.45)}
-html[data-style="neontokyo"] .hero .hs{color:#9fd9ff!important;letter-spacing:.18em;text-transform:uppercase;font-size:9.5px;border-left:1px solid rgba(0,240,255,.35)}
-html[data-style="neontokyo"] .card,html[data-style="neontokyo"] .vb-card{background:rgba(10,10,26,.82);border:1px solid rgba(255,20,147,.3);border-radius:3px;box-shadow:0 0 16px rgba(255,20,147,.16);backdrop-filter:blur(8px)}
-html[data-style="neontokyo"] .card::before,html[data-style="neontokyo"] .vb-card::before{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;pointer-events:none;background:linear-gradient(to top,rgba(255,20,147,.14),rgba(0,240,255,.05) 45%,transparent)}
-html[data-style="neontokyo"] .card::after,html[data-style="neontokyo"] .vb-card::after{content:"";position:absolute;right:12px;top:11px;width:34px;height:6px;pointer-events:none;background:radial-gradient(circle at 3px 3px,#ff1493 0 2.6px,transparent 3px),radial-gradient(circle at 17px 3px,#00f0ff 0 2.6px,transparent 3px),radial-gradient(circle at 31px 3px,#ff6b00 0 2.6px,transparent 3px)}
-html[data-style="neontokyo"] .card h3,html[data-style="neontokyo"] .vb-card h3{color:#fff;letter-spacing:.04em;text-shadow:0 0 14px rgba(255,20,147,.45)}
-html[data-style="neontokyo"] .btn{background:rgba(10,10,26,.8);color:#ff1493;border:1px solid #ff1493;border-radius:3px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;font-size:10.5px;box-shadow:0 0 14px rgba(255,20,147,.35),inset 0 0 10px rgba(255,20,147,.08)}
-html[data-style="neontokyo"] .btn:hover{color:#fff;border-color:#00f0ff;background:rgba(255,20,147,.12);box-shadow:0 0 24px rgba(255,20,147,.6),0 0 32px rgba(0,240,255,.35)}
-html[data-style="neontokyo"] .btn.primary{background:#ff1493;color:#0a0a1a;border-color:#ff1493;box-shadow:0 0 18px rgba(255,20,147,.55)}
-html[data-style="neontokyo"] h2.sec{font-weight:800;letter-spacing:.28em;text-transform:uppercase;font-size:10.5px;color:#00f0ff;border-bottom:1px solid rgba(0,240,255,.35);text-shadow:0 0 10px rgba(0,240,255,.5)}
-html[data-style="neontokyo"] h2.sec::before{content:"東京";color:#ff1493;background:none;box-shadow:none;width:auto;height:auto;margin-right:8px;font-size:10px;letter-spacing:.1em;text-shadow:0 0 10px rgba(255,20,147,.7)}
-html[data-style="neontokyo"] input,html[data-style="neontokyo"] select,html[data-style="neontokyo"] textarea,html[data-style="neontokyo"] .num{background:rgba(10,10,26,.85);border:1px solid rgba(255,20,147,.35);border-radius:3px;color:#fff;font-family:var(--mono)}
-html[data-style="neontokyo"] .bnav{background:rgba(10,10,26,.92);border:1px solid rgba(255,20,147,.3);border-radius:3px}
-html[data-style="neontokyo"] .bnav .btn{color:#b9c6e6;letter-spacing:.1em;text-transform:uppercase;font-size:10px}
-html[data-style="neontokyo"] .bnav .btn.on{color:#fff;background:rgba(255,20,147,.18);box-shadow:inset 0 -2px 0 #ff1493,0 0 14px rgba(255,20,147,.35)}
 /* ===== §51b 三套修正（本地未发布） ===== */
 html[data-style="steampunk"] .hero::after{background:linear-gradient(90deg,#b5a642 0 78%,#b87333 78% 100%) left bottom/100% 12px no-repeat,repeating-linear-gradient(90deg,rgba(0,0,0,.35) 0 1px,transparent 1px 14px) left bottom/100% 12px no-repeat,linear-gradient(180deg,#3d2b1f,#241a12)!important;opacity:1!important}
 html[data-style="steampunk"] .hero{padding-bottom:40px}
@@ -7359,41 +7339,6 @@ html[data-style="vaporwave"] .hm-c[data-l="3"]{background:#b967ff!important}
 html[data-style="vaporwave"] .hm-c[data-l="4"]{background:#ff71ce!important;box-shadow:0 0 10px rgba(255,113,206,.8)}
 html[data-style="vaporwave"] .card p,html[data-style="vaporwave"] .vb-card p{color:#e6d5ff}
 html[data-style="vaporwave"] .muted{color:#c9a7ff!important}
-html[data-style="neontokyo"] .hero .hs{background:rgba(18,4,30,.7);padding:8px 12px;border-radius:2px}
-html[data-style="neontokyo"] .hero .hs b{color:#fff}
-html[data-style="neontokyo"] .hm-c{background:rgba(255,20,147,.16)!important;border-radius:1px}
-html[data-style="neontokyo"] .hm-c[data-l="2"]{background:rgba(255,20,147,.4)!important}
-html[data-style="neontokyo"] .hm-c[data-l="3"]{background:rgba(0,240,255,.55)!important}
-html[data-style="neontokyo"] .hm-c[data-l="4"]{background:#ff1493!important;box-shadow:0 0 10px rgba(255,20,147,.8)}
-html[data-style="neontokyo"] .card p,html[data-style="neontokyo"] .vb-card p{color:#b9c6e6}
-/* ===== §52 霓虹东京 / 霓虹复古 重做（本地未发布） ===== */
-html[data-style="neontokyo"]{--primary:#ff1493;--bg:#0a0a1a;--card:#12041e;--line:rgba(255,20,147,.30);--text:#ffffff;--sub:#97b6ff;--bg-wash:none}
-html[data-style="neontokyo"] body{background-color:#0a0a1a!important;color:#ffffff;background-image:radial-gradient(60% 42% at 14% -8%,rgba(255,20,147,.26),transparent 62%),radial-gradient(52% 40% at 88% 2%,rgba(0,240,255,.18),transparent 60%),radial-gradient(60% 46% at 50% 106%,rgba(255,107,0,.16),transparent 62%),repeating-linear-gradient(90deg,rgba(255,255,255,.028) 0 1px,transparent 1px 7px)}
-html[data-style="neontokyo"] .hero::after{background:linear-gradient(180deg,rgba(255,20,147,.22),rgba(10,10,26,.94) 46%,rgba(0,240,255,.14) 100%)!important;opacity:1!important}
-html[data-style="neontokyo"] .hero{border:1px solid rgba(255,20,147,.42);border-radius:3px;position:relative;isolation:isolate;box-shadow:0 0 22px rgba(255,20,147,.25),0 0 40px rgba(0,240,255,.12)}
-html[data-style="neontokyo"] .hero .hs{background:rgba(10,10,26,.72);border:1px solid rgba(0,240,255,.32);border-radius:2px;padding:9px 13px;backdrop-filter:blur(6px)}
-html[data-style="neontokyo"] .hero .hs b{color:#fff;font-weight:800;font-size:27px;text-shadow:0 0 12px rgba(255,20,147,.9),0 0 24px rgba(0,240,255,.5)}
-html[data-style="neontokyo"] .hero .hs{color:#97b6ff!important;letter-spacing:.2em;text-transform:uppercase;font-size:9px}
-html[data-style="neontokyo"] .card,html[data-style="neontokyo"] .vb-card{background:rgba(10,10,26,.82);border:1px solid rgba(255,20,147,.3);border-radius:3px;box-shadow:0 0 16px rgba(255,20,147,.16);backdrop-filter:blur(10px) saturate(150%);position:relative;overflow:hidden}
-html[data-style="neontokyo"] .card::before,html[data-style="neontokyo"] .vb-card::before{content:"";position:absolute;left:0;right:0;bottom:0;height:52%;pointer-events:none;z-index:0;background:linear-gradient(to top,rgba(255,20,147,.16),rgba(0,240,255,.06) 46%,transparent)}
-html[data-style="neontokyo"] .card::after,html[data-style="neontokyo"] .vb-card::after{content:"";position:absolute;right:12px;top:12px;width:36px;height:6px;pointer-events:none;background:radial-gradient(circle at 3px 3px,#ff1493 0 2.6px,transparent 3px),radial-gradient(circle at 18px 3px,#00f0ff 0 2.6px,transparent 3px),radial-gradient(circle at 33px 3px,#ff6b00 0 2.6px,transparent 3px)}
-html[data-style="neontokyo"] .card:hover,html[data-style="neontokyo"] .vb-card:hover{border-color:rgba(255,20,147,.65);transform:translateY(-2px);box-shadow:0 0 28px rgba(255,20,147,.4),0 0 44px rgba(0,240,255,.2)}
-html[data-style="neontokyo"] .card h3,html[data-style="neontokyo"] .vb-card h3{color:#fff;font-weight:800;letter-spacing:.03em;text-shadow:0 0 14px rgba(255,20,147,.5)}
-html[data-style="neontokyo"] .btn{background:rgba(10,10,26,.6);color:#ff1493;border:2px solid #ff1493;border-radius:2px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;font-size:10.5px;box-shadow:0 0 15px rgba(255,20,147,.4),0 0 20px rgba(0,240,255,.15),inset 0 0 12px rgba(255,20,147,.08);transition:all .35s ease}
-html[data-style="neontokyo"] .btn:hover{color:#fff;border-color:#00f0ff;background:rgba(255,20,147,.12);box-shadow:0 0 28px rgba(255,20,147,.7),0 0 36px rgba(0,240,255,.45),0 0 44px rgba(255,107,0,.3)}
-html[data-style="neontokyo"] .btn.primary{background:#ff1493;color:#0a0a1a;border-color:#ff1493;box-shadow:0 0 20px rgba(255,20,147,.5)}
-html[data-style="neontokyo"] .btn.primary:hover{background:#00f0ff;border-color:#00f0ff;color:#0a0a1a}
-html[data-style="neontokyo"] h2.sec{font-weight:800;letter-spacing:.26em;text-transform:uppercase;font-size:10.5px;color:#00f0ff;border-bottom:1px solid rgba(0,240,255,.32);text-shadow:0 0 10px rgba(0,240,255,.55)}
-html[data-style="neontokyo"] h2.sec::before{content:"東京 · ";color:#ff1493;background:none;box-shadow:none;width:auto;height:auto;margin-right:6px;font-size:10px;letter-spacing:.18em;text-shadow:0 0 12px rgba(255,20,147,.8)}
-html[data-style="neontokyo"] input,html[data-style="neontokyo"] select,html[data-style="neontokyo"] textarea,html[data-style="neontokyo"] .num{background:rgba(10,10,26,.8);border:1px solid rgba(255,20,147,.3);border-radius:2px;color:#fff;font-family:var(--mono)}
-html[data-style="neontokyo"] input:focus,html[data-style="neontokyo"] select:focus,html[data-style="neontokyo"] textarea:focus,html[data-style="neontokyo"] .num:focus{border-color:#ff1493;box-shadow:0 0 16px rgba(255,20,147,.35)}
-html[data-style="neontokyo"] .bnav{background:rgba(10,10,26,.94);border:1px solid rgba(255,20,147,.28);border-radius:3px}
-html[data-style="neontokyo"] .bnav .btn{color:#97b6ff;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
-html[data-style="neontokyo"] .bnav .btn.on{color:#fff;background:rgba(255,20,147,.16);box-shadow:inset 0 -2px 0 #ff1493,0 0 16px rgba(255,20,147,.35)}
-html[data-style="neontokyo"] .hm-c{background:rgba(255,20,147,.14)!important;border-radius:1px}
-html[data-style="neontokyo"] .hm-c[data-l="2"]{background:rgba(255,20,147,.38)!important}
-html[data-style="neontokyo"] .hm-c[data-l="3"]{background:rgba(0,240,255,.55)!important}
-html[data-style="neontokyo"] .hm-c[data-l="4"]{background:#ff1493!important;box-shadow:0 0 10px rgba(255,20,147,.85)}
 html[data-style="vaporwave"]{--primary:#ff71ce;--bg:#1a0a2e;--card:#2b0057;--line:rgba(255,113,206,.5);--text:#ffffff;--sub:#d9b8ff;--bg-wash:none}
 html[data-style="vaporwave"] body{background-color:#1a0a2e!important;color:#fff;background-image:linear-gradient(rgba(255,113,206,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(1,205,254,.12) 1px,transparent 1px),radial-gradient(70% 46% at 50% 112%,rgba(255,113,206,.34),transparent 62%);background-size:46px 46px,46px 46px,auto}
 html[data-style="vaporwave"] .hero::after{background:linear-gradient(100deg,#ff71ce,#b967ff 42%,#01cdfe 78%,#05ffa1)!important;opacity:1!important}
@@ -7422,25 +7367,6 @@ html[data-style="vaporwave"] .hm-c[data-l="3"]{background:#b967ff!important}
 html[data-style="vaporwave"] .hm-c[data-l="4"]{background:#01cdfe!important;box-shadow:0 0 12px rgba(1,205,254,.8)}
 /* ===== §53 霓虹东京·强化霓虹（本地未发布） ===== */
 @keyframes neon-flicker{0%,92%,100%{opacity:1}93%{opacity:.55}94%{opacity:1}96%{opacity:.7}97%{opacity:1}}
-html[data-style="neontokyo"] .card,html[data-style="neontokyo"] .vb-card{border:2px solid rgba(255,20,147,.62)!important;border-radius:3px;box-shadow:0 0 0 1px rgba(255,20,147,.22),0 0 28px rgba(255,20,147,.34),0 0 54px rgba(0,240,255,.16),inset 0 0 24px rgba(255,20,147,.10)!important}
-html[data-style="neontokyo"] .card:hover,html[data-style="neontokyo"] .vb-card:hover{border-color:rgba(0,240,255,.85)!important;box-shadow:0 0 0 1px rgba(0,240,255,.3),0 0 34px rgba(255,20,147,.5),0 0 60px rgba(0,240,255,.35),inset 0 0 26px rgba(0,240,255,.12)!important}
-html[data-style="neontokyo"] .card h3,html[data-style="neontokyo"] .vb-card h3{color:#fff!important;font-weight:800;letter-spacing:.04em;text-shadow:0 0 8px rgba(255,20,147,.95),0 0 18px rgba(255,20,147,.7),0 0 34px rgba(0,240,255,.45)!important;animation:neon-flicker 7s linear infinite}
-html[data-style="neontokyo"] .card p,html[data-style="neontokyo"] .vb-card p{color:#c8d4f0!important;text-shadow:0 0 10px rgba(0,240,255,.18)}
-html[data-style="neontokyo"] .hero .hs b{font-size:29px;color:#fff!important;text-shadow:0 0 6px #fff,0 0 14px #ff1493,0 0 26px #ff1493,0 0 44px rgba(0,240,255,.65)!important}
-html[data-style="neontokyo"] .hero .hs{background:rgba(8,8,20,.78)!important;border:1px solid rgba(255,20,147,.45)!important;box-shadow:0 0 16px rgba(255,20,147,.22),inset 0 0 14px rgba(255,20,147,.10);color:#9fd9ff!important;letter-spacing:.2em;text-shadow:0 0 8px rgba(0,240,255,.55)}
-html[data-style="neontokyo"] .hero{border:1px solid rgba(255,20,147,.55);box-shadow:0 0 26px rgba(255,20,147,.3),0 0 52px rgba(0,240,255,.14),inset 0 0 40px rgba(255,20,147,.08)!important}
-html[data-style="neontokyo"] h2.sec{color:#fff!important;font-weight:800;letter-spacing:.26em;text-transform:uppercase;font-size:10.5px;border-bottom:1px solid rgba(255,20,147,.5);text-shadow:0 0 8px rgba(255,20,147,.9),0 0 18px rgba(255,20,147,.6)!important}
-html[data-style="neontokyo"] h2.sec::before{content:"東京 · ";color:#00f0ff;background:none;box-shadow:none;width:auto;height:auto;margin-right:6px;font-size:10px;letter-spacing:.18em;text-shadow:0 0 10px rgba(0,240,255,.9),0 0 20px rgba(0,240,255,.6)!important}
-html[data-style="neontokyo"] .btn{border-width:2px!important;border-color:#ff1493!important;color:#fff!important;text-shadow:0 0 8px rgba(255,20,147,.9);box-shadow:0 0 12px rgba(255,20,147,.55),0 0 26px rgba(255,20,147,.3),inset 0 0 16px rgba(255,20,147,.14)!important}
-html[data-style="neontokyo"] .btn:hover{border-color:#00f0ff!important;background:rgba(255,20,147,.18)!important;box-shadow:0 0 16px rgba(0,240,255,.7),0 0 32px rgba(255,20,147,.7),0 0 54px rgba(255,107,0,.35)!important}
-html[data-style="neontokyo"] .btn.primary{background:#ff1493!important;color:#0a0a1a!important;text-shadow:none;box-shadow:0 0 18px rgba(255,20,147,.7),0 0 40px rgba(255,20,147,.45)!important}
-html[data-style="neontokyo"] .wrap::before{content:"夜の街";position:fixed;right:6px;top:132px;z-index:1;pointer-events:none;writing-mode:vertical-rl;font-size:21px;letter-spacing:.42em;color:#ff1493;text-shadow:0 0 6px #ff1493,0 0 16px #ff1493,0 0 32px rgba(0,240,255,.7),0 0 52px rgba(255,20,147,.55)}
-html[data-style="neontokyo"] .wrap::after{content:"カラオケ";position:fixed;left:6px;bottom:86px;z-index:1;pointer-events:none;writing-mode:vertical-rl;font-size:15px;letter-spacing:.5em;color:#00f0ff;text-shadow:0 0 6px #00f0ff,0 0 16px #00f0ff,0 0 30px rgba(255,20,147,.5)}
-html[data-style="neontokyo"] .bnav .btn.on{color:#fff!important;background:rgba(255,20,147,.2)!important;box-shadow:inset 0 -2px 0 #ff1493,0 0 20px rgba(255,20,147,.55)!important;text-shadow:0 0 8px rgba(255,20,147,.9)}
-html[data-style="neontokyo"] .hm-c{background:rgba(255,20,147,.22)!important;box-shadow:0 0 6px rgba(255,20,147,.25)}
-html[data-style="neontokyo"] .hm-c[data-l="2"]{background:rgba(255,20,147,.5)!important;box-shadow:0 0 8px rgba(255,20,147,.5)!important}
-html[data-style="neontokyo"] .hm-c[data-l="4"]{box-shadow:0 0 12px rgba(255,20,147,.95)!important}
-html[data-style="neontokyo"] .hm-c[data-l="3"]{box-shadow:0 0 10px rgba(0,240,255,.7)!important}
 /* ===== §54 61–70 结构级（本地未发布） ===== */
 html[data-style="rinpa"] body::before,html[data-style="rinpa"] body::after{content:none}
 html[data-style="rinpa"] .card::before,html[data-style="rinpa"] .vb-card::before{content:none}
@@ -8192,13 +8118,6 @@ html[data-style="vaporwave"] h2.sec{font-family:var(--mono);text-transform:upper
 html[data-style="vaporwave"] .card h3,html[data-style="vaporwave"] .vb-card h3,html[data-style="vaporwave"] .sec{text-transform:uppercase;letter-spacing:.14em;color:#ffe9fb!important}
 html[data-style="vaporwave"] .hm-c{background:rgba(255,113,206,.16)!important}
 html[data-style="vaporwave"] .hm-c[data-l="4"]{background:#ff2bd6!important}
-html[data-style="neontokyo"] .card::before,html[data-style="neontokyo"] .vb-card::before{content:none}
-html[data-style="neontokyo"] .card::after,html[data-style="neontokyo"] .vb-card::after{content:none}
-html[data-style="neontokyo"] .card,html[data-style="neontokyo"] .vb-card{position:relative;isolation:isolate}
-html[data-style="neontokyo"] .hm-c{background:rgba(255,20,147,.22)!important}
-html[data-style="neontokyo"] .hm-c[data-l="4"]{background:linear-gradient(135deg,#ff1493,#00fff0)!important}
-html[data-style="neontokyo"] h2.sec{letter-spacing:.24em;color:#00fff0!important;text-shadow:0 0 12px rgba(0,255,240,.55)}
-html[data-style="neontokyo"] .btn.primary{box-shadow:0 0 22px rgba(255,20,147,.55),0 0 40px rgba(0,255,240,.25)}
 /* ===== §64 洛可可简化（本地未发布） ===== */
 html[data-style="rococo"]{--bg:#fbf6f0;--card:#fffdfa;--line:rgba(198,166,110,.55);--text:#4a3b2f;--sub:#8a7660;--primary:#c9a86a;--radius:20px;--r-card:20px;--r-m:999px;--r-s:10px;--r-l:24px;--sh-card:0 10px 26px rgba(120,92,60,.10);--sh-1:0 1px 3px rgba(120,92,60,.10)}
 html[data-style="rococo"] body{background-color:#fbf6f0!important;background-image:radial-gradient(circle at 50% -10%,rgba(232,196,196,.35),transparent 55%),radial-gradient(circle at 100% 0%,rgba(226,204,164,.30),transparent 45%)!important}
@@ -8596,17 +8515,15 @@ html[data-style="win95"] .card>h2.sec,html[data-style="win95"] .card>.gname:firs
   background-size:58px 14px,auto!important;
 }
 
-/* §79 顶栏开始按钮（纯装饰，不改变导航结构） */
-html[data-style="win95"] .nav{ position:relative!important; padding-left:84px!important }
-html[data-style="win95"] .nav::before{
-  content:'开始'; position:absolute; left:6px; top:50%; transform:translateY(-50%);
-  width:70px; height:22px; display:flex; align-items:center; padding-left:22px; box-sizing:border-box;
-  font:700 12px/1 'W95Sans',Tahoma,sans-serif; color:#0a0a0a;
-  background:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='14'%20height='14'%3E%3Crect%20x='0'%20y='0'%20width='6'%20height='6'%20fill='%23ff0000'/%3E%3Crect%20x='7'%20y='0'%20width='6'%20height='6'%20fill='%2300a000'/%3E%3Crect%20x='0'%20y='7'%20width='6'%20height='6'%20fill='%230000ff'/%3E%3Crect%20x='7'%20y='7'%20width='6'%20height='6'%20fill='%23ffd000'/%3E%3C/svg%3E") 5px center no-repeat,var(--w95-face);
-  border:1px solid #0a0a0a;
-  box-shadow:inset 1px 1px 0 #fff, inset -1px -1px 0 #858585, inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #a0a0a0;
+/* §79 答题页「上一题 / 答题卡 / 下一题」始终固定在屏幕底部（开始按钮交给 §79b 的顶栏） */
+html[data-style="win95"] .nav{
+  position:fixed!important; left:12px!important; right:12px!important;
+  bottom:calc(82px + env(safe-area-inset-bottom))!important;
+  margin:0 auto!important; max-width:940px!important;
+  padding-left:14px!important; z-index:60!important;
 }
-html[data-style="win95"] .nav::before:active{ box-shadow:inset 1px 1px 0 #858585, inset -1px -1px 0 #fff }
+html[data-style="win95"] .nav::before{ content:none!important }
+html[data-style="win95"] body.quiz.focus .nav{ bottom:calc(10px + env(safe-area-inset-bottom))!important }
 
 /* §79b 开始按钮挂到真正的顶栏 .top .row（span.title 就在里面） */
 html[data-style="win95"] .top .row{position:relative!important;padding-left:88px!important}
@@ -8724,3 +8641,192 @@ html[data-style="win95"] .vb-card.vb-ring::before{
   background:linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;border-bottom:1px solid #000!important;
   opacity:1!important;
 }
+
+/* §84 答题页「上一题 / 答题卡 / 下一题」始终固定在屏幕底部（任何风格） */
+html[data-style][data-style] body.quiz .nav{
+  position:fixed!important;left:12px!important;right:12px!important;
+  bottom:calc(82px + env(safe-area-inset-bottom))!important;
+  margin:0 auto!important;max-width:940px!important;z-index:60!important;
+}
+html[data-style][data-style] body.quiz.focus .nav{bottom:calc(10px + env(safe-area-inset-bottom))!important}
+@media (max-width:760px){
+  html[data-style][data-style] body.quiz .nav{bottom:calc(78px + env(safe-area-inset-bottom))!important;left:8px!important;right:8px!important}
+}
+
+/* §85 霓虹东京 · 重做（参考 luckymaomi.github.io/ui/styles/neon-tokyo/showcase） */
+html[data-style="neontokyo"]{
+  --neon-pink:#ff1493;--neon-cyan:#00f0ff;--neon-violet:#bc13fe;--neon-orange:#ff6b00;
+  --bg:#04040f;--bg2:#0a0a1a;--card:rgba(10,10,26,.88);--card2:rgba(18,4,30,.92);
+  --line:rgba(0,240,255,.22);--text:#eef0ff;--sub:#c0b8d0;
+  --primary:#ff1493;--primary-weak:rgba(255,20,147,.12);--primary-line:rgba(255,20,147,.45);
+  --primary-soft:rgba(0,240,255,.10);--r-l:2px;--r-m:2px;--r-s:2px;
+  --sh-1:0 0 0 1px rgba(0,240,255,.16),0 10px 30px rgba(4,4,15,.9);
+  --sh-2:0 0 18px rgba(255,20,147,.22),0 0 42px rgba(0,240,255,.12);
+}
+html[data-style="neontokyo"] body{
+  background-color:#04040f!important;color:var(--text);
+  background-image:
+    radial-gradient(1100px 520px at 78% -10%,rgba(255,20,147,.20),transparent 62%),
+    radial-gradient(900px 460px at 12% 8%,rgba(0,240,255,.14),transparent 60%),
+    radial-gradient(700px 380px at 50% 108%,rgba(188,19,254,.18),transparent 65%),
+    repeating-linear-gradient(104deg,rgba(0,240,255,.045) 0 1px,transparent 1px 7px),
+    linear-gradient(#04040f,#0a0a1a 55%,#08060f)!important;
+  background-attachment:fixed!important;
+}
+/* 右侧竖排日文灯柱 */
+html[data-style="neontokyo"] body::before{
+  content:'東 京 夜 光 雨 霓 虹';position:fixed;right:10px;top:96px;z-index:0;
+  writing-mode:vertical-rl;font:600 13px/1.9 'MS95',Tahoma,sans-serif;
+  letter-spacing:.42em;color:rgba(0,240,255,.20);text-shadow:0 0 12px rgba(0,240,255,.35);
+  pointer-events:none;
+}
+html[data-style="neontokyo"] body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px);
+  mix-blend-mode:screen;opacity:.55;
+}
+/* 外壳 */
+html[data-style="neontokyo"] .wrap{position:relative;z-index:1;max-width:980px}
+html[data-style="neontokyo"] .top{
+  background:rgba(4,4,15,.86)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(0,240,255,.22)!important;box-shadow:0 1px 0 rgba(255,20,147,.18);
+}
+html[data-style="neontokyo"] .title{
+  font:700 19px/1.2 'MS95',Tahoma,sans-serif;letter-spacing:.16em;color:#fff;
+  text-shadow:0 0 10px rgba(255,20,147,.75),0 0 26px rgba(255,20,147,.35);
+}
+html[data-style="neontokyo"] .sub,#appTitle{letter-spacing:.08em}
+/* 卡片：暗底 + 1px 霓虹描边 + 顶部高光 */
+html[data-style="neontokyo"] .card,
+html[data-style="neontokyo"] .vb-card,
+html[data-style="neontokyo"] .sheet{
+  background:var(--card)!important;border:1px solid var(--line)!important;border-radius:2px!important;
+  box-shadow:var(--sh-1)!important;position:relative;overflow:hidden;
+}
+html[data-style="neontokyo"] .card::after,
+html[data-style="neontokyo"] .vb-card::after{
+  content:'';position:absolute;left:0;right:0;top:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,20,147,.9),rgba(0,240,255,.9),transparent);
+  opacity:.75;
+}
+html[data-style="neontokyo"] .card:hover,
+html[data-style="neontokyo"] .vb-card:hover{border-color:rgba(0,240,255,.42)!important;box-shadow:var(--sh-2)!important}
+/* 卡片标题：左侧品红竖条 + 字距 + 辉光 */
+html[data-style="neontokyo"] .card>h2.sec,
+html[data-style="neontokyo"] .card>.gname:first-child,
+html[data-style="neontokyo"] .card>.nbhead:first-child,
+html[data-style="neontokyo"] .card>.chat-title-row:first-child,
+html[data-style="neontokyo"] .vb-card>.vb-cap:first-child{
+  font:700 15px/1.3 'MS95',Tahoma,sans-serif;letter-spacing:.14em;color:#fff!important;
+  padding-left:11px!important;border-left:3px solid var(--neon-pink)!important;
+  text-shadow:0 0 10px rgba(255,20,147,.55);
+}
+html[data-style="neontokyo"] .card>h2.sec::after{content:none!important}
+/* 首屏统计 */
+html[data-style="neontokyo"] .hero{background:transparent!important;border:0!important;box-shadow:none!important}
+html[data-style="neontokyo"] .hs{
+  background:rgba(10,10,26,.72)!important;border:1px solid rgba(0,240,255,.18)!important;border-radius:2px!important;
+}
+html[data-style="neontokyo"] .hs b{
+  font:800 30px/1 'MS95',Tahoma,sans-serif!important;font-variant-numeric:tabular-nums;
+  color:#00f0ff!important;text-shadow:0 0 12px rgba(0,240,255,.65),0 0 30px rgba(0,240,255,.28);
+}
+html[data-style="neontokyo"] .hs span{color:var(--sub)!important;letter-spacing:.10em;font-size:11px!important}
+/* 按钮 */
+html[data-style="neontokyo"] .btn{
+  background:rgba(0,240,255,.04)!important;border:1px solid rgba(0,240,255,.42)!important;border-radius:0!important;
+  color:#9ff9ff!important;letter-spacing:.14em;font-weight:700!important;
+  text-shadow:0 0 8px rgba(0,240,255,.45);
+}
+html[data-style="neontokyo"] .btn:hover:not(:disabled){
+  border-color:var(--neon-cyan)!important;background:rgba(0,240,255,.12)!important;
+  box-shadow:0 0 16px rgba(0,240,255,.35),inset 0 0 18px rgba(0,240,255,.10)!important;
+}
+html[data-style="neontokyo"] .btn.primary{
+  background:var(--neon-pink)!important;border-color:var(--neon-pink)!important;color:#12001a!important;
+  box-shadow:0 0 18px rgba(255,20,147,.55),0 0 46px rgba(255,20,147,.22)!important;text-shadow:none;
+}
+html[data-style="neontokyo"] .btn.mid{background:rgba(188,19,254,.10)!important;border-color:rgba(188,19,254,.45)!important;color:#e7c9ff!important}
+/* 热力图 */
+html[data-style="neontokyo"] .hm-c{background:rgba(0,240,255,.06)!important;border:1px solid rgba(0,240,255,.10)!important;border-radius:1px!important}
+html[data-style="neontokyo"] .hm-c[data-l="1"]{background:rgba(255,20,147,.30)!important;border-color:rgba(255,20,147,.45)!important}
+html[data-style="neontokyo"] .hm-c[data-l="2"]{background:rgba(255,20,147,.62)!important;border-color:rgba(255,20,147,.7)!important}
+html[data-style="neontokyo"] .hm-c[data-l="3"]{background:rgba(0,240,255,.55)!important;border-color:rgba(0,240,255,.75)!important;box-shadow:0 0 6px rgba(0,240,255,.45)}
+html[data-style="neontokyo"] .hm-c[data-l="4"]{background:#00f0ff!important;border-color:#8ffcff!important;box-shadow:0 0 12px rgba(0,240,255,.8)}
+/* 输入 */
+html[data-style="neontokyo"] input.txt,html[data-style="neontokyo"] textarea,html[data-style="neontokyo"] select{
+  background:rgba(4,4,15,.9)!important;border:1px solid rgba(0,240,255,.26)!important;border-radius:0!important;color:#e8f6ff!important;
+}
+html[data-style="neontokyo"] input.txt:focus,html[data-style="neontokyo"] textarea:focus,html[data-style="neontokyo"] select:focus{
+  border-color:var(--neon-cyan)!important;box-shadow:0 0 0 1px rgba(0,240,255,.35),0 0 18px rgba(0,240,255,.25)!important;outline:none!important;
+}
+/* 底部导航 / 顶栏按钮 */
+html[data-style="neontokyo"] .bnav{
+  background:rgba(6,6,18,.94)!important;border-top:1px solid rgba(0,240,255,.28)!important;
+  box-shadow:0 -1px 0 rgba(255,20,147,.20),0 -14px 40px rgba(4,4,15,.9)!important;backdrop-filter:blur(12px);
+}
+html[data-style="neontokyo"] .bnav .btn{background:transparent!important;border:0!important;color:rgba(192,184,208,.72)!important;letter-spacing:.08em}
+html[data-style="neontokyo"] .bnav .btn.on{color:#00f0ff!important;text-shadow:0 0 10px rgba(0,240,255,.75)}
+html[data-style="neontokyo"] .nav{background:rgba(6,6,18,.94)!important;border-top:1px solid rgba(0,240,255,.28)!important}
+/* chip / 标签 */
+html[data-style="neontokyo"] .chip,html[data-style="neontokyo"] .tag{
+  border-radius:0!important;border:1px solid rgba(255,20,147,.35)!important;background:rgba(255,20,147,.07)!important;color:#ffb3da!important;
+}
+html[data-style="neontokyo"] ::selection{background:rgba(255,20,147,.55);color:#fff}
+html[data-style="neontokyo"] ::-webkit-scrollbar-thumb{background:rgba(0,240,255,.35);border-radius:0}
+html[data-style="neontokyo"] body.dark{--bg:#04040f;--bg2:#0a0a1a;--text:#eef0ff}
+
+/* §85b 霓虹东京 · 修正：首屏统计条压暗、竖排字收进画布、底栏选中不要实心块 */
+html[data-style="neontokyo"] .hero{
+  background:rgba(10,10,26,.55)!important;border:1px solid rgba(0,240,255,.20)!important;
+  box-shadow:inset 0 0 40px rgba(255,20,147,.10),0 0 0 1px rgba(255,20,147,.10)!important;
+}
+html[data-style="neontokyo"] .hero::after{
+  background:linear-gradient(90deg,rgba(255,20,147,.26),rgba(188,19,254,.16) 45%,rgba(0,240,255,.22))!important;
+  opacity:1!important;
+}
+html[data-style="neontokyo"] .hs{
+  background:rgba(4,4,15,.72)!important;border-color:rgba(0,240,255,.22)!important;
+  box-shadow:inset 0 0 22px rgba(0,240,255,.10)!important;
+}
+html[data-style="neontokyo"] body::before{right:16px!important;top:140px!important;font-size:11px!important;letter-spacing:.36em!important;color:rgba(0,240,255,.13)!important;text-shadow:none!important}
+html[data-style="neontokyo"] .bnav .btn.on{
+  background:transparent!important;box-shadow:none!important;border-color:transparent!important;color:#00f0ff!important;
+}
+html[data-style="neontokyo"] .bnav .btn.on::after{
+  content:'';position:absolute;left:50%;bottom:4px;width:22px;height:2px;transform:translateX(-50%);
+  background:linear-gradient(90deg,#ff1493,#00f0ff);box-shadow:0 0 10px rgba(0,240,255,.8);
+}
+html[data-style="neontokyo"] .bnav .btn{position:relative}
+html[data-style="neontokyo"] .top .btn{background:transparent!important;border:1px solid rgba(0,240,255,.30)!important;color:#9ff9ff!important;border-radius:0!important}
+
+/* §85c 霓虹东京 · 收尾：底栏选中彻底去底、竖排字内收、顶栏加副标 */
+html[data-style="neontokyo"] .bnav .btn.on{
+  background:none!important;background-image:none!important;border:0!important;box-shadow:none!important;
+}
+html[data-style="neontokyo"] body::before{right:26px!important}
+html[data-style="neontokyo"] .title::after{
+  content:'霓虹東京 · NEON TOKYO';margin-left:12px;font:600 10px/1 'MS95',Tahoma,sans-serif;
+  letter-spacing:.34em;color:rgba(0,240,255,.72);text-shadow:0 0 10px rgba(0,240,255,.55);
+}
+html[data-style="neontokyo"] .hero .hs b{color:#00f0ff!important}
+
+/* §85d 底栏选中态（类名可能是 .b.on 而不是 .btn.on） */
+html[data-style="neontokyo"] .bnav{border-radius:0!important}
+html[data-style="neontokyo"] .bnav .on,
+html[data-style="neontokyo"] .bnav .on *{
+  background:none!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;
+}
+html[data-style="neontokyo"] .bnav .on{color:#00f0ff!important;text-shadow:0 0 10px rgba(0,240,255,.8)}
+html[data-style="neontokyo"] .bnav .on::after{
+  content:'';position:absolute;left:50%;bottom:3px;width:20px;height:2px;transform:translateX(-50%);
+  background:linear-gradient(90deg,#ff1493,#00f0ff);box-shadow:0 0 10px rgba(0,240,255,.8);
+}
+
+/* §85e 底栏滑动指示条 .bnav-ind 换成霓虹槽 */
+html[data-style="neontokyo"] .bnav-ind{
+  background:linear-gradient(90deg,rgba(255,20,147,.20),rgba(0,240,255,.20))!important;
+  border:1px solid rgba(0,240,255,.38)!important;border-radius:2px!important;
+  box-shadow:0 0 20px rgba(0,240,255,.28),inset 0 0 16px rgba(255,20,147,.18)!important;
+}
+html[data-style="neontokyo"] .bnav .on::after{content:none!important}
