@@ -9666,3 +9666,62 @@ html[data-style="softui"] .hero .hs span{color:#4f46e5!important;-webkit-text-fi
 html[data-style] .mask{z-index:120!important}
 html[data-style] .mask .sheet{max-height:88vh!important}
 html[data-style] body.quiz .mask .sheet{padding-bottom:calc(20px + env(safe-area-inset-bottom))!important}
+
+/* ===== §101 画中画答题小窗（pip.js） ===== */
+#pipLayer{position:fixed;inset:0;z-index:95;pointer-events:none}
+#pipWin{
+  position:absolute;left:0;top:0;width:380px;height:300px;display:none;flex-direction:column;
+  background:var(--card,#fff);color:var(--text,#1f2937);border:1px solid var(--line,#e5e7eb);
+  border-radius:14px;overflow:hidden;pointer-events:auto;
+  box-shadow:0 18px 48px rgba(15,23,42,.22),0 2px 8px rgba(15,23,42,.10);
+}
+#pipWin.max{left:12px!important;top:12px!important;width:calc(100vw - 24px)!important;height:calc(100vh - 24px)!important;border-radius:16px}
+.pip-bar{display:flex;align-items:center;gap:8px;height:26px;padding:0 6px 0 10px;cursor:move;
+  background:linear-gradient(180deg,#f8fafc,#eef2f7);border-bottom:1px solid var(--line,#e5e7eb);
+  user-select:none;touch-action:none;position:relative}
+.pip-grip{position:absolute;left:50%;top:5px;width:44px;height:4px;margin-left:-22px;border-radius:3px;background:#cbd5e1}
+.pip-t{font:600 11.5px/1 system-ui,-apple-system,"Segoe UI",sans-serif;color:#334155;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pip-i{font:400 11px/1 system-ui,sans-serif;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pip-sp{flex:1 1 auto}
+.pip-btn{width:20px;height:18px;display:grid;place-items:center;border:1px solid #cbd5e1;border-radius:4px;
+  background:#fff;color:#475569;font-size:11px;line-height:1;cursor:pointer;padding:0}
+.pip-btn:hover{background:#e2e8f0;color:#0f172a}
+.pip-body{flex:1 1 auto;overflow:auto;overscroll-behavior:contain;background:var(--card,#fff)}
+.pip-body > .card{border:0!important;border-radius:0!important;box-shadow:none!important;margin:0!important;min-height:0!important;background:transparent!important}
+.pip-body > .card.qf-float{position:static!important;left:auto!important;top:auto!important;width:auto!important}
+.pip-body .qhead{position:sticky;top:0;z-index:2;background:var(--card,#fff)}
+.pip-body #nav{
+  display:flex!important;gap:6px;padding:6px 8px;position:sticky!important;bottom:0!important;left:auto!important;right:auto!important;
+  max-width:none!important;margin:0!important;background:var(--card,#fff);border-top:1px solid var(--line,#e5e7eb);z-index:3
+}
+.pip-body #nav .btn{flex:1 1 0;min-width:0;font-size:12px;padding:7px 4px}
+.pip-rz{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 46%,#cbd5e1 46% 52%,transparent 52%,transparent 64%,#cbd5e1 64% 70%,transparent 70%)}
+#pipBubble{position:absolute;right:6px;bottom:auto;top:60%;width:64px;height:58px;display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;padding:6px 4px;pointer-events:auto;touch-action:none;
+  border:1px solid rgba(255,255,255,.5);border-radius:18px;color:#fff;cursor:pointer;
+  background:linear-gradient(160deg,#0ea5a0,#0d9488);box-shadow:0 10px 26px rgba(13,148,136,.42)}
+#pipBubble b{font:600 11px/1.1 system-ui,sans-serif;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pipBubble span{font:400 9px/1.1 system-ui,sans-serif;opacity:.85;max-width:56px;overflow:hidden;white-space:nowrap}
+#pipBubble i{position:absolute;left:8px;right:8px;bottom:5px;height:2px;border-radius:2px;background:rgba(255,255,255,.35)}
+#pipBubble:hover{transform:translateY(-1px)}
+#pipBubble.left{left:6px;right:auto}
+@media (max-width:760px){
+  #pipWin{width:calc(100vw - 20px)!important;height:56vh!important}
+  .pip-body #nav{font-size:11px}
+}
+
+/* §101b 小窗内部更紧凑；占位块给个提示 */
+#pipHolder{display:flex;align-items:center;justify-content:center;min-height:200px;margin:8px 0;
+  border:1px dashed #cbd5e1;border-radius:14px;background:#fff;color:#94a3b8;font-size:13px;letter-spacing:.02em}
+.pip-body > .card{padding:10px 12px 78px!important}
+.pip-body #pipOpen{display:none!important}
+.pip-body .qhead{flex-wrap:wrap;gap:6px 8px}
+.pip-body .qhead .btn{font-size:12px;padding:5px 9px}
+.pip-body .qtwo{grid-template-columns:1fr!important;gap:0!important}
+.pip-body #qBody{max-width:none!important}
+.pip-body .stem{font-size:15px!important;line-height:1.65!important}
+.pip-body .opt{padding:9px 10px!important;font-size:14px!important}
+.pip-body .actions.qz-more{position:static!important;padding:8px 0 0!important;background:none!important}
+.pip-body .qsheet{position:absolute!important;z-index:20}
+.pip-body .chips,.pip-body .muted.small{font-size:12px}
