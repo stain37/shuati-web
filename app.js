@@ -336,7 +336,44 @@ function saveWarn(key, err) {
     document.getElementById("saveWarnClose").onclick = function () { el.remove(); };
   } catch (e) {}
 }
+/* ---------- 小窗（iframe ?pip=1）里「这次怎么刷」的设置：每个小窗各存一份 ----------
+   小窗之间只共用外观和题库数据；刷题模式、速刷限时、随机、自动下一题、答对显解析、专注模式
+   属于「这一次怎么刷」，各窗互不影响，也不反灌给父页。按 bank id 存，刷新/重开还能各回各的。 */
+const PIP_CTX = /[?&]pip=1/.test(location.search);
+const PIP_SET_KEY = 'qbank.pip.set.v1';
+const PIP_OP = ['quizMode', 'speedSec', 'shuffle', 'autoNext', 'expOnOk', 'focus'];
+function pipSetAll() { const o = readLS(PIP_SET_KEY, {}); return o && typeof o === 'object' ? o : {}; }
+function pipStore() {
+  const all = pipSetAll();
+  let id = '_';
+  try { id = decodeURIComponent((location.search.match(/[?&]bank=([^&]*)/) || [])[1] || '_'); } catch (e) {}
+  let s = all[id];
+  if (!s || typeof s !== 'object') s = all[id] = {};
+  return { all, id, s };
+}
+function pipSetSave(src) {
+  const p = pipStore();
+  PIP_OP.forEach(k => { p.s[k] = src[k]; });
+  writeLS(PIP_SET_KEY, p.all);
+}
+function pipSetApply() {
+  const p = pipStore();
+  PIP_OP.forEach(k => { if (p.s[k] != null) SET[k] = p.s[k]; });
+}
 const writeLS = (k, v) => {
+  /* 小窗里改设置：会话型键只留在本窗（还回 true 表示「存好了」），外观/全局键才写回共享那份。
+     只改了会话设置时干脆不写共享键 → 父页和其它小窗连 storage 事件都收不到，彻底不串。 */
+  if (PIP_CTX && k === LS.set && v && typeof v === 'object') {
+    pipSetSave(v);
+    const glob = readLS(LS.set, {}) || {};
+    let shared = false;
+    Object.keys(v).forEach(kk => {
+      if (PIP_OP.indexOf(kk) >= 0) return;
+      if (glob[kk] !== v[kk]) { glob[kk] = v[kk]; shared = true; }
+    });
+    if (!shared) return true;
+    v = glob;
+  }
   /* 笔记/题库（以及任何已经被迫搬进 IndexedDB 的键）都走内存 + IDB，别再挤 localStorage */
   if (LS_BIG.indexOf(k) >= 0 || (k in BIGMEM)) return bigSave(k, v);
   try { localStorage.setItem(k, JSON.stringify(v)); }
@@ -443,7 +480,7 @@ window.addEventListener('storage', e => {
     if (typeof CAT !== 'undefined' && CAT && CAT.reload) { try { CAT.reload(); CAT.render(); } catch (err) {} }
     return;
   }
-  else if (k === LS.set) { SET = Object.assign(SET, readLS(LS.set, {})); applyLook(); }
+  else if (k === LS.set) { SET = Object.assign(SET, readLS(LS.set, {})); if (PIP_CTX) pipSetApply(); applyLook(); }
   else if (k === TOMB_KEY) TOMB = readLS(TOMB_KEY, {});
   else return;
   _syncNeed = true;
@@ -485,6 +522,14 @@ Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
 if (['normal', 'speed', 'recite'].indexOf(SET.quizMode) < 0) SET.quizMode = 'normal';
 SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
+/* 小窗启动：套回本窗上次的会话设置；第一次开就以当前全局值当起点，之后各走各的 */
+if (PIP_CTX) {
+  const p = pipStore();
+  if (!Object.keys(p.s).length) pipSetSave(SET);
+  else PIP_OP.forEach(k => { if (p.s[k] != null) SET[k] = p.s[k]; });
+  if (['normal', 'speed', 'recite'].indexOf(SET.quizMode) < 0) SET.quizMode = 'normal';
+  SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
+}
 const QUIZ_MODES = [['normal', '普通'], ['speed', '⚡ 速刷'], ['recite', '📖 背题']];
 const BACKUP_KEY = 'qbank.lastbackup.v1';   // 上次导出备份的时间
 
@@ -1312,15 +1357,33 @@ let LIVE_PAPER = null;       // 每日复习这类「临时卷」：只在内存
 let _bankCache = null;
 function invalidateBanks() { _bankCache = null; if (typeof bumpHay === 'function') bumpHay(); }
 
+const PIP_BANKS = [];   /* 画中画小窗注入的临时卷：每次重建缓存都要带上 */
 function allBanks() {
   if (!_bankCache) {
     const base = (window.__BANKS__ || []).map(b => normalizeBank(b, 'builtin'))
       .concat(LOCAL.map(b => normalizeBank(b, 'local')));
     _bankCache = base.concat(paperBanks(base));
+    if (PIP_BANKS.length) {
+      const have = new Set(_bankCache.map(x => x.id));
+      PIP_BANKS.forEach(b => { if (!have.has(b.id)) _bankCache.push(b); });
+    }
   }
   return _bankCache;
 }
 function baseBanks() { return allBanks().filter(b => !b.paper); }
+
+/* 画中画小窗：把父窗口内存里的临时卷（每日复习 / 套卷）塞进小窗那份文档里。
+   小窗是独立文档，看不到父窗口的 LIVE_PAPER，只能靠这条注入。 */
+window.__PIP_BANK = function (id) { try { return bankById(id) || null; } catch (e) { return null; } };
+
+window.__PIP_INJECT = function (b) {
+  try {
+    if (!b || !b.id) return false;
+    if (!PIP_BANKS.some(x => x.id === b.id)) PIP_BANKS.push(Object.assign({}, b, { source: 'pip', paper: true }));
+    _bankCache = null;      /* 让下次 allBanks() 重建，把注入的卷带进去 */
+    return !!bankById(b.id);
+  } catch (e) { return false; }
+};
 function bankById(id) { return allBanks().find(b => b.id === id); }
 
 /* 主页题库排序 UI 在 cat.js（真正渲染首页的是 cat.js 的 catRenderHook）。

@@ -1,279 +1,305 @@
-/* ===== 画中画答题小窗 pip.js（P1：窗口壳 + 单窗） =====
-   做法：包一层 renderQuiz，答题页每次重画后把刚渲染出来的那张卡「搬」进浮窗，
-   页面原位留一个占位块。所以窗口里跑的就是原版答题卡：选项、提交、解析、口诀、专注、
-   收藏、更多抽屉、答题卡、速刷/背题全都在，事件绑定也都在。
-   窗口可拖（顶部横杠）、可拉大小（右下角）、可放大、可最小化成气泡（气泡可拖并吸附侧边）。 */
+/* ===== 画中画答题小窗 pip.js（P2：独立会话，最多 3 个） =====
+   做法：每个小窗 = 一个同源 iframe（src="index.html?pip=1#/bank/<id>"），里面跑的是完整本站，
+   带 ?pip=1 时进入「小窗客串模式」：隐藏顶栏和底栏、去掉页边距。
+   这样窗口里的题与页面上的是两个独立文档 → 各自一套 QZ / 各自一套 id，
+   窗口答 A 题库、页面答 B 题库可以同时进行，互不覆盖。
+   窗口：拖（顶部横杠）、拉大小（右下角斜纹）、放大、最小化成气泡（可拖、吸附左右侧边）、关闭。 */
 (function () {
+  /* 小窗里那份是本站在 iframe 内跑：不要再套一层小窗 */
+  if (/[?&]pip=1/.test(location.search)) return;
+
   const K = 'qbank.pip.v1';
+  const MAX = 3;
   const LS = {
     get() { try { return JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) { return {}; } },
     set(v) { try { localStorage.setItem(K, JSON.stringify(v)); } catch (e) {} }
   };
-  let ST = LS.get();
-  let win = null, layer = null, bubble = null, body = null;
-  let open = false, minimized = false, maximized = false;
-  let holder = null;
+  let ST = LS.get() || {};
+  const wins = [];                    /* {bank, el, frame, bubble, min, max, rect} */
+  let layer = null, seq = 0;
+  let zTop = 100, act = null;         /* 层叠顶端 / 当前激活的小窗（null = 都没激活，谁也不变淡） */
 
-  const isQuiz = () => /^#\/bank\//.test(location.hash || '');
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const bankId = () => (location.hash.match(/^#\/bank\/([^/?]+)/) || [])[1] || '';
+  const bankTitle = id => (window.BANKS && BANKS[id] && BANKS[id].title) || '答题小窗';
+  function toast(t) { if (window.toast) return window.toast(t, 1800); console.log('[pip]', t); }
 
   function mkLayer() {
     if (!layer) { layer = document.createElement('div'); layer.id = 'pipLayer'; document.body.appendChild(layer); }
     return layer;
   }
 
-  function build() {
-    if (win) return win;
-    mkLayer();
-    win = document.createElement('section');
-    win.id = 'pipWin';
-    win.innerHTML =
-      '<div class="pip-bar" data-drag><i class="pip-grip"></i><span class="pip-t">答题小窗</span>' +
-      '<span class="pip-i"></span><span class="pip-sp"></span>' +
-      '<button class="pip-btn" data-max title="放大 / 还原">⤢</button>' +
-      '<button class="pip-btn" data-min title="最小化成气泡">—</button>' +
-      '<button class="pip-btn" data-close title="关闭，把答题卡放回页面">✕</button></div>' +
-      '<div class="pip-body"></div><i class="pip-rz" data-rz title="拖动改大小"></i>';
-    layer.appendChild(win);
-    body = win.querySelector('.pip-body');
-    bindWin();
-    return win;
+  function makeWin(bank, rect, top) {
+    const el = document.createElement('section');
+    el.className = 'pip-win';
+    el.innerHTML =
+      '<div class="pip-bar"><i class="pip-grip"></i><span class="pip-t"></span>' +
+      '<span class="pip-sp"></span>' +
+      '<button class="pip-btn" data-a="max" title="放大 / 还原">⤢</button>' +
+      '<button class="pip-btn" data-a="min" title="最小化成气泡">—</button>' +
+      '<button class="pip-btn" data-a="close" title="关闭">✕</button></div>' +
+      '<div class="pip-wrap"><iframe class="pip-frame" title="答题小窗"></iframe><i class="pip-shield"></i></div>' +
+      '<i class="pip-rz" title="拖动改大小"></i>';
+    mkLayer().appendChild(el);
+
+    const rec = { bank, el, frame: el.querySelector('iframe'), bubble: null, min: false, max: false, rect: rect || null };
+    wins.push(rec);
+    el.querySelector('.pip-t').textContent = bankTitle(bank);
+    /* 临时卷（每日复习 / 套卷）只活在内存里，小窗是另一个文档 → 先存一份快照给它 */
+    try {
+      const bk = (typeof window.__PIP_BANK === 'function') ? window.__PIP_BANK(bank) : (window.BANKS && BANKS[bank]);
+      if (bk) localStorage.setItem('qbank.pip.snap.v1', JSON.stringify({ id: bank, bank: bk, ts: Date.now() }));
+    } catch (e) {}
+    rec.frame.src = 'index.html?pip=1&bank=' + encodeURIComponent(bank) + '#/bank/' + encodeURIComponent(bank);
+    applyRect(rec);
+    bind(rec);
+    save(); updateFab();
+    if (top) activate(rec); else paint();
+    return rec;
   }
 
-  function geo() {
-    if (!win) return;
-    const w = win.offsetWidth || 380, h = win.offsetHeight || 300;
-    const x = clamp(ST.x == null ? innerWidth - w - 16 : ST.x, 0, Math.max(0, innerWidth - w));
-    const y = clamp(ST.y == null ? 56 : ST.y, 0, Math.max(0, innerHeight - h));
-    win.style.left = x + 'px'; win.style.top = y + 'px';
-    if (!maximized) {
-      win.style.width = (ST.w || 400) + 'px';
-      win.style.height = (ST.h || 340) + 'px';
-    }
+  function applyRect(rec) {
+    const i = Math.max(0, wins.indexOf(rec));
+    const w = rec.rect && rec.rect.w ? rec.rect.w : 420;
+    const h = rec.rect && rec.rect.h ? rec.rect.h : 520;
+    const x = rec.rect && rec.rect.x != null ? rec.rect.x : (innerWidth - w - 18 - i * 26);
+    const y = rec.rect && rec.rect.y != null ? rec.rect.y : (70 + i * 22);
+    rec.el.style.width = w + 'px';
+    rec.el.style.height = h + 'px';
+    rec.el.style.left = clamp(x, 6, Math.max(6, innerWidth - w - 6)) + 'px';
+    rec.el.style.top = clamp(y, 6, Math.max(6, innerHeight - h - 6)) + 'px';
   }
 
-  function save() {
-    if (!win || minimized) return;
-    ST.x = parseInt(win.style.left) || 0;
-    ST.y = parseInt(win.style.top) || 0;
-    ST.w = win.offsetWidth; ST.h = win.offsetHeight;
-    ST.min = false; LS.set(ST);
+  /* ---------- 焦点：点哪个小窗，哪个就到最上层；其余变淡；点页面空白处全部失焦 ---------- */
+  function paint() {
+    const vis = wins.filter(w => !w.min);
+    const multi = vis.length > 1;
+    wins.forEach(w => {
+      const on = (w === act && !w.min);
+      w.el.classList.toggle('on', on);
+      w.el.classList.toggle('off', !!act && multi && !on && !w.min);
+      if (w.bubble) w.bubble.classList.toggle('on', on);
+    });
+    document.body.classList.toggle('pip-act', !!act);
+    document.body.classList.toggle('pip-multi', multi);
+  }
+  function activate(rec) {
+    if (!rec || rec.min) return;
+    act = rec;
+    rec.el.style.zIndex = ++zTop;
+    if (rec.bubble) rec.bubble.style.zIndex = zTop;
+    paint();
+  }
+  function deactivate() {
+    if (!act) return;
+    act = null;
+    paint();
   }
 
-  function bindWin() {
-    const bar = win.querySelector('[data-drag]');
-    const rz = win.querySelector('[data-rz]');
+  function bind(rec) {
+    const el = rec.el, bar = el.querySelector('.pip-bar'), rz = el.querySelector('.pip-rz');
+
+    /* 窗框任意处按下都先激活（capture：拖拽/按钮自己的处理照旧） */
+    el.addEventListener('pointerdown', () => activate(rec), true);
+    /* 窗内那份站立（同源 iframe）里的点击也要能激活：iframe 的点击不会冒泡到父文档 */
+    rec.frame.addEventListener('load', () => {
+      try {
+        const d = rec.frame.contentDocument;
+        if (d && !d.__pipAct) { d.__pipAct = 1; d.addEventListener('pointerdown', () => activate(rec), true); }
+      } catch (e) {}
+    });
+
     let drag = null;
     bar.addEventListener('pointerdown', e => {
-      if (maximized || e.target.closest('.pip-btn')) return;
-      drag = { x: e.clientX, y: e.clientY, ox: parseInt(win.style.left) || 0, oy: parseInt(win.style.top) || 0 };
-      bar.setPointerCapture(e.pointerId);
-      e.preventDefault();
+      if (e.target.closest('.pip-btn') || rec.max) return;
+      drag = { x: e.clientX, y: e.clientY, ox: parseInt(el.style.left) || 0, oy: parseInt(el.style.top) || 0 };
+      bar.setPointerCapture(e.pointerId); e.preventDefault();
     });
     bar.addEventListener('pointermove', e => {
       if (!drag) return;
-      const w = win.offsetWidth, h = win.offsetHeight;
-      win.style.left = clamp(drag.ox + (e.clientX - drag.x), 0, Math.max(0, innerWidth - w)) + 'px';
-      win.style.top = clamp(drag.oy + (e.clientY - drag.y), 0, Math.max(0, innerHeight - h)) + 'px';
+      el.style.left = clamp(drag.ox + e.clientX - drag.x, 0, innerWidth - el.offsetWidth) + 'px';
+      el.style.top = clamp(drag.oy + e.clientY - drag.y, 0, innerHeight - el.offsetHeight) + 'px';
     });
-    const endDrag = () => { if (drag) { drag = null; save(); } };
+    const endDrag = () => {
+      if (drag) { drag = null; snapSave(rec); }
+      /* 点过标题栏（拖或不拖）以后，按键直接进窗内那份站点 */
+      if (act === rec) { try { rec.frame.contentWindow.focus(); } catch (e) {} }
+    };
     bar.addEventListener('pointerup', endDrag);
     bar.addEventListener('pointercancel', endDrag);
 
     let rzOn = false, rw = 0, rh = 0, rx = 0, ry = 0;
     rz.addEventListener('pointerdown', e => {
-      if (maximized) return;
-      rzOn = true; rw = win.offsetWidth; rh = win.offsetHeight; rx = e.clientX; ry = e.clientY;
+      if (rec.max) return;
+      rzOn = true; rw = el.offsetWidth; rh = el.offsetHeight; rx = e.clientX; ry = e.clientY;
       rz.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation();
     });
     rz.addEventListener('pointermove', e => {
       if (!rzOn) return;
-      win.style.width = clamp(rw + (e.clientX - rx), 300, Math.min(980, innerWidth - 12)) + 'px';
-      win.style.height = clamp(rh + (e.clientY - ry), 200, Math.min(760, innerHeight - 12)) + 'px';
+      el.style.width = clamp(rw + e.clientX - rx, 300, Math.min(980, innerWidth - 12)) + 'px';
+      el.style.height = clamp(rh + e.clientY - ry, 240, Math.min(820, innerHeight - 12)) + 'px';
     });
-    const endRz = () => { if (rzOn) { rzOn = false; save(); } };
+    const endRz = () => { if (rzOn) { rzOn = false; snapSave(rec); } };
     rz.addEventListener('pointerup', endRz);
     rz.addEventListener('pointercancel', endRz);
 
-    win.querySelector('[data-max]').onclick = () => {
-      maximized = !maximized;
-      win.classList.toggle('max', maximized);
-      if (!maximized) geo();
-    };
-    win.querySelector('[data-min]').onclick = minimize;
-    win.querySelector('[data-close]').onclick = close;
-  }
-
-  /* ---------- 把页面里的答题卡搬进窗口 ---------- */
-  function absorb() {
-    if (!open || !win || !isQuiz()) return;
-    const v = document.getElementById('view');
-    if (!v) return;
-    const c = v.querySelector(':scope > .card');
-    const nav = document.getElementById('nav');
-    if (!c && !body.querySelector('.card')) return;
-
-    if (!holder) { holder = document.createElement('div'); holder.id = 'pipHolder'; }
-    holder.textContent = '答题卡在小窗里 · 点窗口右上角 ✕ 放回页面';
-    if (c) {
-      const old = body.querySelector('.card');
-      if (old && old !== c) old.remove();
-      body.insertBefore(c, body.firstChild);
-      holder.style.minHeight = Math.min(460, c.offsetHeight || 460) + 'px';
-    }
-    if (nav && nav.parentNode !== body) body.appendChild(nav);
-    if (!holder.parentNode) v.insertBefore(holder, v.firstChild || null);
-    refreshTitle();
-  }
-
-  function refreshTitle() {
-    if (!win) return;
-    const t = (document.getElementById('appTitle') || {}).textContent || '答题';
-    win.querySelector('.pip-t').textContent = t;
-    const mid = document.querySelector('#pipWin .pip-body #nav .mid, #pipWin .pip-body #nav button:nth-child(2)');
-    win.querySelector('.pip-i').textContent = mid ? (' ' + mid.textContent.replace(/\s+/g, ' ').trim()) : '';
-  }
-
-  /* ---------- 气泡 ---------- */
-  function buildBubble() {
-    if (bubble) return bubble;
-    mkLayer();
-    bubble = document.createElement('button');
-    bubble.id = 'pipBubble';
-    bubble.title = '答题小窗（可拖动，松手吸附到左右侧边；点一下还原）';
-    bubble.innerHTML = '<b></b><span></span><i></i>';
-    layer.appendChild(bubble);
-
-    let ing = false, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
-    bubble.addEventListener('pointerdown', e => {
-      ing = true; moved = false; sx = e.clientX; sy = e.clientY;
-      ox = bubble.offsetLeft; oy = bubble.offsetTop;
-      bubble.setPointerCapture(e.pointerId); e.preventDefault();
+    el.querySelectorAll('.pip-btn').forEach(b => {
+      b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === 'max') { rec.max = !rec.max; el.classList.toggle('max', rec.max); }
+        else if (a === 'min') minimize(rec);
+        else close(rec);
+        save();
+      };
     });
-    bubble.addEventListener('pointermove', e => {
+  }
+
+  function snapSave(rec) {
+    rec.rect = { x: parseInt(rec.el.style.left) || 0, y: parseInt(rec.el.style.top) || 0, w: rec.el.offsetWidth, h: rec.el.offsetHeight };
+    save();
+  }
+
+  function save() {
+    ST.wins = wins.filter(w => !w.min).map(w => ({ bank: w.bank, rect: w.max ? null : w.rect }));
+    LS.set(ST);
+  }
+
+  /* ---------- 最小化成气泡：可拖、松手吸左右边、点一下还原 ---------- */
+  function bubbleFor(rec) {
+    const b = document.createElement('button');
+    b.className = 'pip-bubble';
+    b.title = '点一下还原这个小窗（可拖着走，松手会吸到左右边）';
+    b.innerHTML = '<b></b><span>小窗</span>';
+    mkLayer().appendChild(b);
+    b.style.zIndex = ++zTop;
+    b.querySelector('b').textContent = bankTitle(rec.bank).slice(0, 6);
+
+    const minList = wins.filter(w => w.min);
+    const i = minList.indexOf(rec);
+    b.style.top = (96 + Math.max(0, i) * 64) + 'px';
+    b.style.right = '8px';
+
+    let ing = false, moved = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    b.addEventListener('pointerdown', e => {
+      ing = true; moved = false; sx = e.clientX; sy = e.clientY; ox = b.offsetLeft; oy = b.offsetTop;
+      b.style.zIndex = ++zTop;
+      b.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    b.addEventListener('pointermove', e => {
       if (!ing) return;
-      const dx = e.clientX - sx, dy = e.clientY - sy;
-      if (Math.abs(dx) + Math.abs(dy) > 5) moved = true;
-      const w = bubble.offsetWidth, h = bubble.offsetHeight;
-      bubble.style.left = clamp(ox + dx, 6, innerWidth - w - 6) + 'px';
-      bubble.style.top = clamp(oy + dy, 6, innerHeight - h - 96) + 'px';
-      bubble.style.right = 'auto';
+      if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 5) moved = true;
+      if (!moved) return;
+      b.style.left = clamp(ox + e.clientX - sx, 6, innerWidth - b.offsetWidth - 6) + 'px';
+      b.style.top = clamp(oy + e.clientY - sy, 6, innerHeight - b.offsetHeight - 96) + 'px';
+      b.style.right = 'auto';
     });
     const up = () => {
-      if (!ing) return; ing = false;
-      if (!moved) { restore(); return; }
-      const w = bubble.offsetWidth, cx = bubble.offsetLeft + w / 2;
-      const side = cx < innerWidth / 2 ? 'left' : 'right';
-      bubble.style.left = side === 'left' ? '6px' : 'auto';
-      bubble.style.right = side === 'left' ? 'auto' : '6px';
-      bubble.style.top = clamp(bubble.offsetTop, 6, innerHeight - bubble.offsetHeight - 96) + 'px';
-      bubble.classList.toggle('left', side === 'left');
-      ST.side = side; ST.by = parseInt(bubble.style.top) || 0; LS.set(ST);
+      if (!ing) return;
+      ing = false;
+      if (!moved) { restore(rec); return; }
+      const leftSide = (b.offsetLeft + b.offsetWidth / 2) < innerWidth / 2;
+      b.style.left = leftSide ? '6px' : 'auto';
+      b.style.right = leftSide ? 'auto' : '6px';
     };
-    bubble.addEventListener('pointerup', up);
-    bubble.addEventListener('click', () => { if (!moved) restore(); });   /* 键盘/程序化点击也能还原 */
-    bubble.addEventListener('pointercancel', () => { ing = false; });
-    return bubble;
+    b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up);
+    b.addEventListener('click', () => { if (!moved) restore(rec); });
+    rec.bubble = b;
+    return b;
   }
 
-  function minimize() {
-    if (!win || !open) return;
-    minimized = true;
-    const b = buildBubble();
-    const n = document.querySelector('#pipWin .pip-body #nav .mid, #pipWin .pip-body #nav button:nth-child(2)');
-    b.querySelector('b').textContent = ((document.getElementById('appTitle') || {}).textContent || '答题').slice(0, 5);
-    b.querySelector('span').textContent = n ? n.textContent.replace(/\s+/g, ' ').trim().slice(0, 8) : '';
-    b.style.top = (ST.by || Math.max(96, innerHeight - 160)) + 'px';
-    b.classList.toggle('left', ST.side === 'left');
-    b.style.left = ST.side === 'left' ? '6px' : 'auto';
-    b.style.right = ST.side === 'left' ? 'auto' : '6px';
-    b.style.display = 'flex';
-    win.style.display = 'none';
-    ST.min = true; LS.set(ST);
-  }
-
-  function restore() {
-    minimized = false;
-    if (bubble) bubble.style.display = 'none';
-    if (win) { win.style.display = 'flex'; geo(); }
-    ST.min = false; LS.set(ST);
-  }
-
-  function pop() {
-    if (open) { restore(); return true; }
-    build();
-    open = true; minimized = false; maximized = false;
-    win.classList.remove('max');
-    win.style.display = 'flex';
-    geo();
-    absorb();
+  function minimize(rec) {
+    rec.min = true;
+    rec.el.style.display = 'none';
+    if (act === rec) act = null;
+    bubbleFor(rec);
+    paint();
     save();
-    ST.open = true; LS.set(ST);
-    return true;
   }
 
-  function close() {
-    if (!open) return;
-    const card = body && body.querySelector('.card');
-    const nav = document.getElementById('nav');
-    if (holder && holder.parentNode && card) {
-      holder.parentNode.insertBefore(card, holder);
-      holder.remove();
-    }
-    if (nav && nav.parentNode === body) document.body.appendChild(nav);
-    holder = null;
-    if (body) body.innerHTML = '';
-    open = false; minimized = false;
-    if (win) { win.style.display = 'none'; win.classList.remove('max'); }
-    if (bubble) bubble.style.display = 'none';
-    ST.open = false; ST.min = false; LS.set(ST);
+  function restore(rec) {
+    rec.min = false;
+    if (rec.bubble) { rec.bubble.remove(); rec.bubble = null; }
+    rec.el.style.display = 'flex';
+    activate(rec);
+    save();
   }
 
-  /* ---------- 入口按钮 ---------- */
+  function close(rec) {
+    const i = wins.indexOf(rec);
+    if (i < 0) return;
+    if (act === rec) act = null;
+    try { rec.frame.src = 'about:blank'; } catch (e) {}
+    rec.el.remove();
+    if (rec.bubble) rec.bubble.remove();
+    wins.splice(i, 1);
+    paint();
+    save(); updateFab();
+  }
+
+  function updateFab() {
+    const n = wins.length, et = document.getElementById('pipEntry');
+    if (!et) return;
+    et.disabled = n >= MAX;
+    et.textContent = n ? ('⤢ 小窗 ' + n + '/' + MAX) : '⤢ 小窗';
+    et.title = n >= MAX ? '最多同时 3 个小窗' : '开一个小窗答这套题：切到别的页面它也会留着';
+  }
+
+  /* ---------- 入口按钮：放在答题页头部 ---------- */
+  function open() {
+    const b = bankId();
+    if (!b) { toast('先进入一个题库，再开小窗'); return null; }
+    if (wins.length >= MAX) { toast('最多同时 3 个小窗，先关一个'); return null; }
+    if (wins.some(w => w.bank === b)) { toast('这套题已经在小窗里了'); return null; }
+    mkLayer();
+    return makeWin(b, null, true);
+  }
+
   function ensureEntry() {
-    if (!isQuiz()) return;
+    if (!bankId()) {
+      const old = document.getElementById('pipEntry');
+      if (old) old.remove();
+      return;
+    }
     const head = document.querySelector('#view .qhead');
-    if (!head || document.getElementById('pipOpen')) return;
-    const b = document.createElement('button');
-    b.className = 'btn';
-    b.id = 'pipOpen';
-    b.title = '变成浮窗：可以拖到任意位置、切到别的页面也一直在；窗口里的上一题/答题卡/下一题就是这套题自己的';
-    b.textContent = '⤢ 小窗';
-    b.onclick = () => { pop(); };
-    const anchor = head.querySelector('#btnQn');
-    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(b, anchor);
-    else head.appendChild(b);
+    if (!head) return;
+    if (!document.getElementById('pipEntry')) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.id = 'pipEntry';
+      b.onclick = () => open();
+      const anchor = head.querySelector('#btnQn');
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(b, anchor);
+      else head.appendChild(b);
+    }
+    updateFab();
   }
 
-  /* ---------- 包住 renderQuiz：每次重画后把新卡搬进窗口 ---------- */
-  function wrapRender() {
-    if (!window.renderQuiz || window.renderQuiz.__pipWrapped) return;
-    const orig = window.renderQuiz;
-    const wrapped = function () {
-      const r = orig.apply(this, arguments);
-      if (open) setTimeout(absorb, 0);
-      return r;
-    };
-    wrapped.__pipWrapped = true;
-    window.renderQuiz = wrapped;
+  function revive() {
+    const list = (ST.wins || []).slice(0, MAX);
+    if (!list.length) return;
+    list.forEach(w => { if (w && w.bank) makeWin(w.bank, w.rect || null, false); });
+    ST.wins = []; LS.set(ST);
   }
+
+  /* 点页面其它地方 → 所有小窗一起失焦（不改变叠放，只是不再突出） */
+  document.addEventListener('pointerdown', e => {
+    if (!act) return;
+    const t = e.target;
+    if (t && t.closest && (t.closest('.pip-win') || t.closest('.pip-bubble'))) return;
+    deactivate();
+  }, true);
 
   function watch() {
-    wrapRender(); ensureEntry();
-    let n = 0;
-    const t = setInterval(() => { wrapRender(); ensureEntry(); if (++n > 20) clearInterval(t); }, 500);
+    ensureEntry();
+    setInterval(ensureEntry, 900);
     const view = document.getElementById('view');
-    if (view) new MutationObserver(() => { wrapRender(); setTimeout(ensureEntry, 0); }).observe(view, { childList: true, subtree: false });
+    if (view) new MutationObserver(() => setTimeout(ensureEntry, 0)).observe(view, { childList: true, subtree: false });
   }
 
-  addEventListener('hashchange', () => setTimeout(() => {
-    /* 换到另一个题库/每日复习：不关闭窗口，让新渲染的卡直接替换窗口里那张（单窗单会话） */
-    ensureEntry();
-    if (open && isQuiz()) absorb();
-  }, 120));
+  addEventListener('hashchange', () => setTimeout(ensureEntry, 80));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); setTimeout(revive, 700); });
+  else { watch(); setTimeout(revive, 700); }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
-  else watch();
-
-  window.PIP = { pop, close, minimize, restore, absorb, get isOpen() { return open; } };
+  window.PIP = { open, closeAll: () => wins.slice().forEach(close), get count() { return wins.length; } };
 })();

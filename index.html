@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261127a">
+<link rel="stylesheet" href="style.css?v=20261130a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -29,6 +29,14 @@
 </script>
 </head>
 <body>
+<script>(function(){try{if(/[?&]pip=1/.test(location.search)){document.documentElement.className+=" pip-guest";document.addEventListener("DOMContentLoaded",function(){document.body.classList.add("pip-guest-body");var snap=null;try{snap=JSON.parse(localStorage.getItem("qbank.pip.snap.v1")||"null");}catch(e){}
+var m=/[?&]bank=([^&]+)/.exec(location.search);var want=m?("#/bank/"+m[1]):"";var n=0,injected=false;
+var iv=setInterval(function(){n++;
+  if(snap&&m&&window.__PIP_INJECT&&!injected){try{injected=window.__PIP_INJECT(snap.bank);}catch(e){}}
+  if(want&&(location.hash===""||location.hash==="#/")){try{location.hash=want;}catch(e){}}
+  try{localStorage.setItem("pip.dbg",JSON.stringify({snap:!!snap,inj:!!injected,m:!!m,hash:location.hash,n:n,hasFn:!!window.__PIP_INJECT,keys:(window.BANKS?Object.keys(window.BANKS).length:-1)}));}catch(e){}
+  if(n>40){clearInterval(iv);}
+},250);});}}catch(e){}})();</script>
 
 <div class="top">
   <div class="row">
@@ -267,7 +275,7 @@
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261126c"></script>
+<script src="app.js?v=20261130a"></script>
 <script src="collection.js?v=20261123a"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>
@@ -309,7 +317,7 @@
 <script src="skills.js?v=20261031c"></script>
 <script src="ai-ops.js?v=20261105c"></script>
 <script src="motion.js?v=20261030b"></script>
-<script src="pip.js?v=20261127b"></script>
+<script src="pip.js?v=20261130a"></script>
 
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。
