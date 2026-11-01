@@ -8991,10 +8991,12 @@ html[data-style="neontokyo"] body::after{
   -webkit-mask-image:linear-gradient(0deg,#000 0%,rgba(0,0,0,.6) 48%,transparent 100%);
   mask-image:linear-gradient(0deg,#000 0%,rgba(0,0,0,.6) 48%,transparent 100%);
 }
-/* 让街景别盖住正文：所有正文容器抬到上层 */
-html[data-style="neontokyo"] .top,html[data-style="neontokyo"] .wrap,
-html[data-style="neontokyo"] .bnav,html[data-style="neontokyo"] .nav,
-html[data-style="neontokyo"] .home-nav-fab{position:relative;z-index:2}
+/* 让街景别盖住正文：只抬层级，绝不能改 position（会把固定底栏/悬浮导航钉到页底） */
+html[data-style="neontokyo"] .top,html[data-style="neontokyo"] .wrap{z-index:2}
+html[data-style="neontokyo"] .bnav{z-index:50}
+html[data-style="neontokyo"] .nav{z-index:60}
+html[data-style="neontokyo"] .home-nav-fab{z-index:55}
+html[data-style="neontokyo"] .home-nav-fab{position:fixed!important}
 
 /* §88 霓虹东京 · 街角灯箱：右侧「カラオケ」竖招牌 + 左侧「居酒屋」小灯箱 */
 html[data-style="neontokyo"] body::before{
@@ -9301,4 +9303,25 @@ html[data-style="neontokyo"] .wrap::before{
   opacity:.9!important;
   -webkit-backdrop-filter:blur(.4px);
   backdrop-filter:blur(.4px);
+}
+
+/* §95 答题页底栏顺序：‹上一题/答题卡/下一题› 贴屏幕最底、固定；底部导航叠在它上面；下滑一起收起 */
+html[data-style][data-style] body.quiz{
+  --quizbar-h:68px;
+}
+html[data-style][data-style] body.quiz .nav{
+  position:fixed!important;left:12px!important;right:12px!important;
+  bottom:calc(0px + env(safe-area-inset-bottom))!important;
+  margin:0 auto!important;max-width:940px!important;z-index:70!important;
+  transition:transform .24s ease,opacity .24s ease;
+}
+html[data-style][data-style] body.quiz .bnav{
+  bottom:calc(var(--quizbar-h) + env(safe-area-inset-bottom))!important;
+  z-index:60!important;transition:transform .24s ease,opacity .24s ease;
+}
+html[data-style][data-style] body.quiz.focus .nav{bottom:calc(0px + env(safe-area-inset-bottom))!important}
+html[data-style][data-style] body.nav-sink .nav{transform:translateY(160%)!important;opacity:.001!important;pointer-events:none!important}
+@media (max-width:760px){
+  html[data-style][data-style] body.quiz{--quizbar-h:64px}
+  html[data-style][data-style] body.quiz .nav{left:8px!important;right:8px!important}
 }
