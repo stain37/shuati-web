@@ -7,7 +7,7 @@
        这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
        所以装到手机主屏之后断网打开，资料库照样能搜。
    改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v68-web212';  // web212: 弹层(.mask)压过底栏，答题卡不再被盖住
+const VERSION = 'shuati-v68-web213';  // web213: 题目区块不再自动进入拖动浮起状态
 const CORE = [
   /* 只预缓存「能打开页面」的最小一组：装到主屏后断网也能进站。
      其它 js/css/字体第一次用到时由下面的 stale-while-revalidate 自动进缓存，

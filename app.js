@@ -3587,7 +3587,9 @@ function uiQnPanel(fk) {
    「⠿」按住拖：整个答题卡变浮层跟着走；靠近窗口左 / 右 / 上 / 下边或中心线时吸附，
    位置存在 qbank.quizfloat.v1，下次进来还在原处。再点一次「⠿」回到正常排版。 */
 const QF_KEY = 'qbank.quizfloat.v1';
-function qfState() { return readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0, h: 0 }; }
+function qfState() { const s = readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0, h: 0 };
+  if (s.float) { s.float = false; writeLS(QF_KEY, s); }   /* 旧版会把「浮起」记进本地，进题库就自动浮起；这里一次性清掉 */
+  return s; }
 function qfSave(st) { writeLS(QF_KEY, st); }
 function uiQuizFloat() {
   const card = document.querySelector('#view > .card');
@@ -3615,7 +3617,7 @@ function uiQuizFloat() {
     grip.title = on ? '拖动题目区块；再点一下回到正常排版' : '按住拖动题目区块；松手会吸附到窗口边 / 居中';
     qfSave(st);
   };
-  applyFloat(!!st.float);
+  applyFloat(false);   /* 浮起只在本次操作里生效，不再从 localStorage 自动恢复 */
   let moved = false;                                   /* 拖过就别再当成「点一下切回正常排版」 */
   grip.onclick = () => { if (moved) { moved = false; return; } applyFloat(!st.float); };
   const guideV = document.createElement('div'), guideH = document.createElement('div');
@@ -3651,7 +3653,7 @@ function uiQuizFloat() {
   }
   let drag = null;
   const onDown = (ev) => {
-    if (!card.classList.contains('qf-float')) { applyFloat(true); }
+    /* 只是按下不算拖动：等真的移动超过阈值再浮起，避免点一下就"变成拖动状态" */
     const r = card.getBoundingClientRect();
     moved = false;
     drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: r.left, y: r.top };
@@ -3662,7 +3664,11 @@ function uiQuizFloat() {
   const onMove = (ev) => {
     if (!drag) return;
     let x = ev.clientX - drag.dx, y = ev.clientY - drag.dy;
-    if (!moved && (Math.abs(x - drag.x) > 4 || Math.abs(y - drag.y) > 4)) moved = true;
+    if (!moved && (Math.abs(x - drag.x) > 4 || Math.abs(y - drag.y) > 4)) {
+      moved = true;
+      if (!card.classList.contains('qf-float')) { applyFloat(true); drag.dx = ev.clientX - card.getBoundingClientRect().left; drag.dy = ev.clientY - card.getBoundingClientRect().top; }
+    }
+    if (!moved) return;
     x = Math.max(0, Math.min(window.innerWidth - 80, x));
     y = Math.max(0, Math.min(window.innerHeight - 60, y));
     card.style.left = x + 'px'; card.style.top = y + 'px';
