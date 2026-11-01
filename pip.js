@@ -267,9 +267,10 @@
   }
 
   addEventListener('hashchange', () => setTimeout(() => {
-    if (open && isQuiz()) close();          /* 回答题页：页面会重新渲染，避免两套同 id */
+    /* 换到另一个题库/每日复习：不关闭窗口，让新渲染的卡直接替换窗口里那张（单窗单会话） */
     ensureEntry();
-  }, 80));
+    if (open && isQuiz()) absorb();
+  }, 120));
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
   else watch();
