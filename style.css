@@ -9325,3 +9325,339 @@ html[data-style][data-style] body.nav-sink .nav{transform:translateY(160%)!impor
   html[data-style][data-style] body.quiz{--quizbar-h:64px}
   html[data-style][data-style] body.quiz .nav{left:8px!important;right:8px!important}
 }
+
+/* ==========================================================================
+   §97 量化线场 qline —— 纸白 / 墨黑 / 钴蓝，竖向量化线场，衬线大标题
+   ========================================================================== */
+html[data-style="qline"]{
+  --primary:#2152e7; --ink:#202220; --paper:#fafaf8; --soft:#eeeeeb;
+  --rule:#d9dbd5; --detect:#267dff; --red:#ec353e; --muted:#6b7068;
+  --serif:'Georgia','Times New Roman','Songti SC',serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+  --sans:Arial,Helvetica,'PingFang SC',sans-serif;
+  --bg:#fafaf8; --card:#ffffff; --text:#202220;
+  --primary-weak:#eef2ff; --primary-line:#c2dcff; --primary-soft:rgba(33,82,231,.10);
+  --sh-card:none; --sh-1:none; --sh-2:none;
+}
+html[data-style="qline"],html[data-style="qline"] body{
+  background:#fafaf8!important;color:#202220!important;font-family:var(--sans)!important;
+  background-image:
+    repeating-linear-gradient(90deg,rgba(32,34,32,.05) 0 1px,transparent 1px 52px),
+    repeating-linear-gradient(0deg,rgba(32,34,32,.035) 0 1px,transparent 1px 52px)!important;
+}
+html[data-style="qline"] body::before,html[data-style="qline"] body::after,
+html[data-style="qline"] .wrap::before,html[data-style="qline"] .wrap::after{content:none!important}
+html[data-style="qline"] .wrap{max-width:1000px}
+html[data-style="qline"] h1,html[data-style="qline"] h2,html[data-style="qline"] h3,
+html[data-style="qline"] .title,html[data-style="qline"] .gname,html[data-style="qline"] .nbhead{
+  font-family:var(--serif)!important;font-weight:600!important;letter-spacing:-.012em;color:#202220!important;
+}
+html[data-style="qline"] h2.sec{
+  font-size:19px!important;text-transform:none;border-left:0;padding-left:0;
+  border-bottom:1px solid #202220;padding-bottom:8px;margin-bottom:14px;
+}
+html[data-style="qline"] h2.sec::before{content:'§ ';color:#267dff;font-family:var(--mono);font-size:12px;vertical-align:2px}
+html[data-style="qline"] .small,html[data-style="qline"] .muted{color:#6b7068!important}
+/* 卡片：1px 发丝边 + 硬质底座（无模糊阴影） */
+html[data-style="qline"] .card,html[data-style="qline"] .vb-card,html[data-style="qline"] .sheet{
+  background:#fff!important;border:1px solid var(--rule)!important;border-radius:17px!important;
+  box-shadow:0 8px 0 -2px #ecece8,0 8px 0 -1px rgba(32,34,32,.13)!important;
+  padding:16px 18px!important;
+}
+html[data-style="qline"] .card::before,html[data-style="qline"] .card::after,
+html[data-style="qline"] .vb-card::before,html[data-style="qline"] .vb-card::after{content:none!important}
+/* 首屏：纸面 + 蓝检测框 + 等宽读数 */
+html[data-style="qline"] .hero{
+  background:#fafaf8!important;border:1px solid #202220!important;border-radius:4px!important;
+  box-shadow:6px 6px 0 -1px rgba(32,34,32,.10)!important;padding:18px 20px!important;
+  position:relative;overflow:visible!important;
+}
+html[data-style="qline"] .hero::before{
+  content:'';position:absolute;inset:6px;pointer-events:none;
+  background:
+    linear-gradient(#267dff,#267dff) left top/14px 1px no-repeat,
+    linear-gradient(#267dff,#267dff) left top/1px 14px no-repeat,
+    linear-gradient(#267dff,#267dff) right top/14px 1px no-repeat,
+    linear-gradient(#267dff,#267dff) right top/1px 14px no-repeat,
+    linear-gradient(#267dff,#267dff) left bottom/14px 1px no-repeat,
+    linear-gradient(#267dff,#267dff) left bottom/1px 14px no-repeat,
+    linear-gradient(#267dff,#267dff) right bottom/14px 1px no-repeat,
+    linear-gradient(#267dff,#267dff) right bottom/1px 14px no-repeat;
+  opacity:.9;
+}
+html[data-style="qline"] .hero::after{
+  content:'FIELD 60×30 · WEIGHTS 0.38/1.12/2.28/3.80 · SEED 7319';display:block;margin-top:12px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:#267dff;background:none;opacity:1;
+}
+html[data-style="qline"] .hs{
+  background:#fff!important;border:1px solid var(--rule)!important;border-radius:4px!important;
+  box-shadow:none!important;padding:10px 12px!important;
+}
+html[data-style="qline"] .hs b{
+  font-family:var(--mono)!important;font-size:26px!important;font-weight:500!important;color:#202220!important;
+  letter-spacing:-.02em;
+}
+html[data-style="qline"] .hs span{font-family:var(--mono);font-size:10px;color:#6b7068;letter-spacing:.06em}
+/* 按钮：发丝边纸按钮，主按钮墨底 */
+html[data-style="qline"] .btn,html[data-style="qline"] button{
+  background:#fafaf8!important;color:#202220!important;border:1px solid #202220!important;
+  border-radius:6px!important;box-shadow:none!important;font-family:var(--sans)!important;font-weight:500;
+  transition:background .16s ease,color .16s ease;
+}
+html[data-style="qline"] .btn:hover,html[data-style="qline"] button:hover{background:#202220!important;color:#fafaf8!important}
+html[data-style="qline"] .btn.primary,html[data-style="qline"] .btn.on{
+  background:#202220!important;color:#fafaf8!important;border-color:#202220!important;
+}
+html[data-style="qline"] .btn.primary:hover{background:#2152e7!important;border-color:#2152e7!important;color:#fff!important}
+html[data-style="qline"] input,html[data-style="qline"] textarea,html[data-style="qline"] select{
+  background:#fff!important;border:1px solid var(--rule)!important;border-radius:5px!important;
+  color:#202220!important;box-shadow:none!important;font-family:var(--sans);
+}
+html[data-style="qline"] input:focus,html[data-style="qline"] textarea:focus{
+  outline:none!important;border-color:#267dff!important;box-shadow:0 0 0 3px rgba(38,125,255,.16)!important;
+}
+/* 标签 / 表 / 热力 */
+html[data-style="qline"] .mini-tag,html[data-style="qline"] .chip,html[data-style="qline"] .tag{
+  background:#fff!important;border:1px solid var(--rule)!important;border-radius:4px!important;
+  color:#3a3f3a!important;font-family:var(--mono);font-size:11px;
+}
+html[data-style="qline"] .hm .hm-c{
+  border-radius:1px!important;background:#eeeeeb!important;box-shadow:inset 0 0 0 1px rgba(32,34,32,.06);
+}
+html[data-style="qline"] .hm .hm-c[data-l="1"]{background:#c2dcff!important}
+html[data-style="qline"] .hm .hm-c[data-l="2"]{background:#7aa8ff!important}
+html[data-style="qline"] .hm .hm-c[data-l="3"]{background:#2152e7!important}
+html[data-style="qline"] .hm .hm-c[data-l="4"]{background:#202220!important}
+html[data-style="qline"] table{border-collapse:collapse}
+html[data-style="qline"] th,html[data-style="qline"] td{border-bottom:1px solid var(--rule)}
+html[data-style="qline"] .nav,html[data-style="qline"] .bnav{
+  background:rgba(250,250,248,.96)!important;border-color:var(--rule)!important;
+  border-radius:8px!important;backdrop-filter:none!important;box-shadow:none!important;
+}
+html[data-style="qline"] .bnav .btn{border:0!important;background:transparent!important}
+html[data-style="qline"] .bnav .btn.on{background:transparent!important;color:#2152e7!important;box-shadow:inset 0 -2px 0 #2152e7!important}
+/* ==========================================================================
+   §98 新拟物派 neu —— 同一块灰，挤出 / 压进去
+   ========================================================================== */
+html[data-style="neu"]{
+  --primary:#6d5dfc; --face:#e0e5ec; --dark:#b8bcc2; --light:#ffffff; --ink:#333333; --muted:#6b7280;
+  --bg:#e0e5ec; --card:#e0e5ec; --text:#333333;
+  --primary-weak:#e8e6ff; --primary-line:#c9c4ff; --primary-soft:rgba(109,93,252,.12);
+  --out:8px 8px 16px #b8bcc2,-8px -8px 16px #ffffff;
+  --out-sm:4px 4px 8px #b8bcc2,-4px -4px 8px #ffffff;
+  --in:inset 6px 6px 12px #b8bcc2,inset -6px -6px 12px #ffffff;
+  --sh-card:var(--out); --sh-1:var(--out); --sh-2:var(--out-sm);
+}
+html[data-style="neu"],html[data-style="neu"] body{
+  background:#e0e5ec!important;color:#333!important;
+  font-family:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif!important;
+}
+html[data-style="neu"] body::before,html[data-style="neu"] body::after,
+html[data-style="neu"] .wrap::before,html[data-style="neu"] .wrap::after{content:none!important}
+html[data-style="neu"] h1,html[data-style="neu"] h2,html[data-style="neu"] h3,
+html[data-style="neu"] .title,html[data-style="neu"] .gname{color:#333!important;font-weight:600!important}
+html[data-style="neu"] h2.sec{
+  border:0!important;border-left:4px solid #6d5dfc!important;padding-left:12px!important;
+  color:#2f3033!important;background:none!important;
+}
+html[data-style="neu"] .card,html[data-style="neu"] .vb-card,html[data-style="neu"] .sheet{
+  background:#e0e5ec!important;border:0!important;border-radius:22px!important;
+  box-shadow:var(--out)!important;
+}
+html[data-style="neu"] .card::before,html[data-style="neu"] .card::after,
+html[data-style="neu"] .vb-card::before,html[data-style="neu"] .vb-card::after{content:none!important}
+html[data-style="neu"] .hero{
+  background:#e0e5ec!important;border:0!important;border-radius:26px!important;box-shadow:var(--out)!important;
+}
+html[data-style="neu"] .hero::before,html[data-style="neu"] .hero::after{content:none!important;background:none!important}
+html[data-style="neu"] .hs{
+  background:#e0e5ec!important;border:0!important;border-radius:16px!important;box-shadow:var(--in)!important;
+}
+html[data-style="neu"] .hs b{color:#4b3fd4!important;font-weight:600!important}
+html[data-style="neu"] .hs span{color:#6b7280!important}
+html[data-style="neu"] .btn,html[data-style="neu"] button{
+  background:#e0e5ec!important;color:#3a3d42!important;border:0!important;border-radius:16px!important;
+  box-shadow:var(--out-sm)!important;transition:box-shadow .3s ease-in-out,color .3s!important;
+}
+html[data-style="neu"] .btn:hover,html[data-style="neu"] button:hover{
+  box-shadow:3px 3px 6px #b8bcc2,-3px -3px 6px #ffffff!important;color:#4b3fd4!important;
+}
+html[data-style="neu"] .btn:active,html[data-style="neu"] button:active,
+html[data-style="neu"] .btn.on{
+  box-shadow:inset 5px 5px 10px #b8bcc2,inset -5px -5px 10px #ffffff!important;color:#4b3fd4!important;
+}
+html[data-style="neu"] input,html[data-style="neu"] textarea,html[data-style="neu"] select{
+  background:#e0e5ec!important;border:0!important;border-radius:14px!important;color:#333!important;
+  box-shadow:var(--in)!important;transition:box-shadow .3s ease-in-out!important;
+}
+html[data-style="neu"] input:focus,html[data-style="neu"] textarea:focus{
+  outline:none!important;box-shadow:inset 2px 2px 4px #b8bcc2,inset -2px -2px 4px #fff!important;
+}
+html[data-style="neu"] .mini-tag,html[data-style="neu"] .chip,html[data-style="neu"] .tag{
+  background:#e0e5ec!important;border:0!important;border-radius:12px!important;box-shadow:var(--out-sm)!important;
+  color:#5b5f66!important;
+}
+html[data-style="neu"] .hm .hm-c{border-radius:6px!important;background:#e0e5ec!important;box-shadow:inset 2px 2px 4px #b8bcc2,inset -2px -2px 4px #fff!important}
+html[data-style="neu"] .hm .hm-c[data-l="1"]{background:#dcd9ff!important}
+html[data-style="neu"] .hm .hm-c[data-l="2"]{background:#bcb4ff!important}
+html[data-style="neu"] .hm .hm-c[data-l="3"]{background:#8b7bff!important}
+html[data-style="neu"] .hm .hm-c[data-l="4"]{background:#6d5dfc!important}
+html[data-style="neu"] .nav,html[data-style="neu"] .bnav{
+  background:#e0e5ec!important;border:0!important;border-radius:20px!important;box-shadow:var(--out)!important;
+  backdrop-filter:none!important;
+}
+html[data-style="neu"] .bnav .btn{box-shadow:none!important;border-radius:14px!important}
+html[data-style="neu"] .bnav .btn.on{box-shadow:var(--in)!important;color:#4b3fd4!important}
+/* ==========================================================================
+   §99 柔和 UI softui —— 白卡 + 靛蓝彩影 + 大圆角
+   ========================================================================== */
+html[data-style="softui"]{
+  --primary:#6366f1; --slate:#f1f5f9; --ink:#1e293b; --body:#475569; --muted:#94a3b8;
+  --pink:#ec4899; --green:#10b981; --amber:#f59e0b;
+  --bg:#f8fafc; --card:#ffffff; --text:#1e293b;
+  --primary-weak:#eef2ff; --primary-line:#c7d2fe; --primary-soft:rgba(99,102,241,.12);
+  --soft:0 14px 34px rgba(99,102,241,.16),0 2px 6px rgba(15,23,42,.04);
+  --sh-card:var(--soft); --sh-1:var(--soft); --sh-2:0 6px 18px rgba(99,102,241,.12);
+}
+html[data-style="softui"],html[data-style="softui"] body{
+  background:#f8fafc!important;color:#1e293b!important;
+  font-family:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif!important;
+  background-image:
+    radial-gradient(700px 420px at 8% -6%,rgba(99,102,241,.10),transparent 70%),
+    radial-gradient(620px 380px at 96% 8%,rgba(236,72,153,.08),transparent 72%)!important;
+}
+html[data-style="softui"] body::before,html[data-style="softui"] body::after,
+html[data-style="softui"] .wrap::before,html[data-style="softui"] .wrap::after{content:none!important}
+html[data-style="softui"] h1,html[data-style="softui"] h2,html[data-style="softui"] h3,
+html[data-style="softui"] .title,html[data-style="softui"] .gname{
+  color:#1e293b!important;font-weight:650!important;letter-spacing:-.015em;
+}
+html[data-style="softui"] h2.sec{border:0!important;padding-left:0!important;color:#1e293b!important}
+html[data-style="softui"] .small,html[data-style="softui"] .muted{color:#94a3b8!important}
+html[data-style="softui"] .card,html[data-style="softui"] .vb-card,html[data-style="softui"] .sheet{
+  background:#fff!important;border:0!important;border-radius:24px!important;
+  box-shadow:var(--soft)!important;
+}
+html[data-style="softui"] .card::before,html[data-style="softui"] .card::after,
+html[data-style="softui"] .vb-card::before,html[data-style="softui"] .vb-card::after{content:none!important}
+html[data-style="softui"] .hero{
+  background:#fff!important;border:0!important;border-radius:28px!important;
+  box-shadow:0 18px 44px rgba(99,102,241,.18)!important;
+}
+html[data-style="softui"] .hero::before,html[data-style="softui"] .hero::after{content:none!important;background:none!important}
+html[data-style="softui"] .hs{
+  background:#f1f5f9!important;border:0!important;border-radius:18px!important;
+  box-shadow:none!important;
+}
+html[data-style="softui"] .hs b{color:#4f46e5!important;font-weight:650!important}
+html[data-style="softui"] .hs span{color:#64748b!important}
+html[data-style="softui"] .btn,html[data-style="softui"] button{
+  background:#6366f1!important;color:#fff!important;border:0!important;border-radius:999px!important;
+  box-shadow:0 8px 20px rgba(99,102,241,.32)!important;font-weight:600;
+  transition:transform .2s ease,box-shadow .2s ease,background .2s!important;
+}
+html[data-style="softui"] .btn:hover,html[data-style="softui"] button:hover{
+  transform:translateY(-2px)!important;box-shadow:0 14px 28px rgba(99,102,241,.38)!important;
+}
+html[data-style="softui"] .btn.primary{background:#4f46e5!important}
+html[data-style="softui"] .btn.on{background:#eef2ff!important;color:#4f46e5!important;box-shadow:none!important}
+html[data-style="softui"] input,html[data-style="softui"] textarea,html[data-style="softui"] select{
+  background:#f1f5f9!important;border:0!important;border-radius:16px!important;color:#1e293b!important;
+  box-shadow:none!important;transition:box-shadow .2s ease!important;
+}
+html[data-style="softui"] input:focus,html[data-style="softui"] textarea:focus{
+  outline:none!important;box-shadow:0 0 0 4px rgba(99,102,241,.18)!important;background:#fff!important;
+}
+html[data-style="softui"] .mini-tag,html[data-style="softui"] .chip,html[data-style="softui"] .tag{
+  background:#f1f5f9!important;border:0!important;border-radius:999px!important;color:#4f46e5!important;
+  font-weight:600;
+}
+html[data-style="softui"] .hm .hm-c{border-radius:6px!important;background:#eef2f7!important;box-shadow:none!important}
+html[data-style="softui"] .hm .hm-c[data-l="1"]{background:#e0e7ff!important}
+html[data-style="softui"] .hm .hm-c[data-l="2"]{background:#c7d2fe!important}
+html[data-style="softui"] .hm .hm-c[data-l="3"]{background:#a5b4fc!important}
+html[data-style="softui"] .hm .hm-c[data-l="4"]{background:#6366f1!important}
+html[data-style="softui"] .nav,html[data-style="softui"] .bnav{
+  background:#ffffff!important;border:0!important;border-radius:26px!important;
+  box-shadow:0 12px 30px rgba(99,102,241,.16)!important;backdrop-filter:blur(10px)!important;
+}
+html[data-style="softui"] .bnav .btn{background:transparent!important;box-shadow:none!important;color:#64748b!important;border-radius:18px!important}
+html[data-style="softui"] .bnav .btn.on{background:#eef2ff!important;color:#4f46e5!important}
+html[data-style="softui"] .bnav .btn:hover{transform:none!important}
+
+/* §97b 量化线场：首屏读数归位 + 真的竖线场纹理 + 底栏指示条 */
+html[data-style="qline"] .hero{padding-bottom:34px!important}
+html[data-style="qline"] .hero::after{
+  position:absolute!important;left:20px!important;right:20px!important;bottom:11px!important;
+  margin:0!important;display:block!important;background:none!important;
+}
+html[data-style="qline"] .hero::before{
+  background-image:
+    linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),
+    linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),
+    repeating-linear-gradient(90deg,
+      rgba(32,34,32,.30) 0 1px,transparent 1px 9px,
+      rgba(32,34,32,.30) 9px 11px,transparent 11px 24px,
+      rgba(32,34,32,.30) 24px 27px,transparent 27px 46px,
+      rgba(32,34,32,.30) 46px 51px,transparent 51px 74px)!important;
+  background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,no-repeat,repeat!important;
+  background-size:14px 1px,1px 14px,14px 1px,1px 14px,14px 1px,1px 14px,14px 1px,1px 14px,auto 52px!important;
+  background-position:left top,left top,right top,right top,left bottom,left bottom,right bottom,right bottom,0 100%!important;
+  opacity:.9!important;
+}
+html[data-style="qline"] .bnav .bnav-ind{
+  background:#2152e7!important;opacity:1!important;border-radius:2px!important;
+  box-shadow:none!important;filter:none!important;
+}
+
+/* §97c 去掉首屏读数（会压到数字），改为顶栏下的四档竖线带 */
+html[data-style="qline"] .hero{padding-bottom:18px!important}
+html[data-style="qline"] .hero::after{content:none!important}
+html[data-style="qline"] .top{position:relative;border-bottom:1px solid #202220!important;background:#fafaf8!important}
+html[data-style="qline"] .top::after{
+  content:'';position:absolute;left:0;right:0;bottom:-11px;height:10px;pointer-events:none;
+  background:repeating-linear-gradient(90deg,
+    rgba(32,34,32,.55) 0 1px,transparent 1px 8px,
+    rgba(32,34,32,.55) 8px 10px,transparent 10px 22px,
+    rgba(32,34,32,.55) 22px 25px,transparent 25px 44px,
+    rgba(32,34,32,.55) 44px 49px,transparent 49px 72px);
+  opacity:.35;
+}
+
+/* §97d 首屏只留蓝角标，去掉里面的竖线；底栏指示条压细 */
+html[data-style="qline"] .hero::before{
+  background-image:
+    linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),
+    linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff),linear-gradient(#267dff,#267dff)!important;
+  background-size:14px 1px,1px 14px,14px 1px,1px 14px,14px 1px,1px 14px,14px 1px,1px 14px!important;
+  background-repeat:no-repeat!important;
+  background-position:left top,left top,right top,right top,left bottom,left bottom,right bottom,right bottom!important;
+}
+html[data-style="qline"] .bnav .bnav-ind{
+  top:auto!important;bottom:6px!important;height:2px!important;border-radius:2px!important;
+  background:#2152e7!important;opacity:1!important;box-shadow:none!important;filter:none!important;
+}
+
+/* §99b 柔和 UI：首屏数字加深、入口砖改白卡、行内小按钮改白 */
+html[data-style="softui"] .hs{background:#eef2ff!important}
+html[data-style="softui"] .hs b{color:#312e81!important;font-weight:700!important}
+html[data-style="softui"] .hs span{color:#4f46e5!important;opacity:.75}
+html[data-style="softui"] .vb-q{
+  background:#fff!important;color:#4f46e5!important;
+  box-shadow:0 12px 26px rgba(99,102,241,.14),0 2px 6px rgba(15,23,42,.04)!important;
+  border-radius:22px!important;
+}
+html[data-style="softui"] .vb-q .vb-q-i,html[data-style="softui"] .vb-q svg{color:#6366f1!important;background:#eef2ff!important}
+html[data-style="softui"] .vb-q:hover{transform:translateY(-2px)!important;box-shadow:0 16px 32px rgba(99,102,241,.20)!important}
+html[data-style="softui"] .row .btn,html[data-style="softui"] .acts .btn{
+  background:#fff!important;color:#4f46e5!important;box-shadow:0 8px 18px rgba(99,102,241,.14)!important;
+}
+html[data-style="softui"] .row .btn:hover,html[data-style="softui"] .acts .btn:hover{transform:translateY(-1px)!important}
+
+/* §99c 柔和 UI：首屏数字/标签用 -webkit-text-fill-color 强制显色（防渐变文字残留） */
+html[data-style="softui"] .hero .hs,html[data-style="softui"] .hero .hs *{
+  -webkit-text-fill-color:#1e1b4b!important;color:#1e1b4b!important;text-shadow:none!important;
+  opacity:1!important;filter:none!important;
+}
+html[data-style="softui"] .hero .hs b{font-weight:700!important}
+html[data-style="softui"] .hero .hs span{color:#4f46e5!important;-webkit-text-fill-color:#4f46e5!important;opacity:.8!important}

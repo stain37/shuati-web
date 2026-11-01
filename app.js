@@ -611,6 +611,9 @@ const UI_STYLES = [
   'vaporwave',
   'neontokyo',
   'oil',
+  'qline',
+  'neu',
+  'softui',
 ];
 
 const UI_STYLE_NAME = {
@@ -989,6 +992,9 @@ const UI_STYLE_SWATCH = {
   vaporwave: {r:'14px', bd:'1px', sh:'0 0 18px rgba(255,113,206,.45)', bg:'#1a0a2e', cd:'#2b0057', ac:'#ff71ce'},
   neontokyo: {r:'3px', bd:'1px', sh:'0 0 18px rgba(255,20,147,.35)', bg:'#0a0a1a', cd:'#12041e', ac:'#ff1493'},
   oil: { r: '12px', bd: '1px solid rgba(232,168,124,.35)', sh: '0 3px 0 rgba(192,57,43,.15),0 8px 24px rgba(44,62,80,.10)', bg: '#f5f0e1', cd: '#f5f0e1', ac: '#e8a87c' },
+  qline: {r:'17px', bd:'1px', sh:'0 6px 0 -1px rgba(32,34,32,.14)', bg:'#fafaf8', cd:'#ffffff', ac:'#2152e7'},
+  neu: {r:'22px', bd:'0', sh:'8px 8px 16px #b8bcc2, -8px -8px 16px #ffffff', bg:'#e0e5ec', cd:'#e0e5ec', ac:'#6d5dfc'},
+  softui: {r:'24px', bd:'0', sh:'0 12px 32px rgba(99,102,241,.18)', bg:'#f8fafc', cd:'#ffffff', ac:'#6366f1'},
 };
 
 /* ---------- 自定义背景图（本机） ----------
