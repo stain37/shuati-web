@@ -1169,7 +1169,7 @@ function aiPdfBlockHtml(h, full) {
     const useLite = !!lite && (aiPdfLiteFirst() || aiPdfNoViewer());
     const primary = useLite ? lite : viewer;
     const plabel = useLite ? '📖 看原页（轻量阅读器）' : '📖 看原页（网页阅读器）';
-    return (_img0 ? '<div class="pdf-prev" style="margin:0 0 8px"><img src="' + esc(_img0) + '" loading="lazy" alt="' + esc(title) + '" style="display:block;width:100%;border:1px solid var(--line);border-radius:var(--r-s);background:#fff"></div>' : '')
+    return (_img0 ? '<div class="pdf-prev" style="margin:0 0 8px"><div style="position:relative;display:block"><img class="pdf-hl-img" src="' + esc(_img0) + '" loading="lazy" alt="' + esc(title) + '" data-snip="' + esc(String(h.snip || full || '').slice(0, 400)) + '" style="display:block;width:100%;border:1px solid var(--line);border-radius:var(--r-s);background:#fff"></div><div class="small muted" style="margin:4px 0 0"><span class="pdf-hl-tip">正在定位引用句…</span></div></div>' : '')
       + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(primary) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="' + (useLite ? '1' : '0') + '" data-title="' + esc(title) + '" title="在本站里打开原页（纯网页渲染，安卓 / iPhone / 华为平板都行；Esc 或右上角关闭退出）">' + plabel + '</button>'
       + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
@@ -1181,11 +1181,12 @@ function aiPdfBlockHtml(h, full) {
   const _img = aiPdfImgUrl(h);
   const _prev = _img
     ? '<div class="pdf-prev" style="margin:0 0 8px">'
-      + '<a href="' + esc(direct) + '" target="_blank" rel="noopener" title="在新窗口打开完整 PDF（第 ' + esc(anchor || '1') + ' 页）">'
-      + '<img src="' + esc(_img) + '" loading="lazy" alt="' + esc(title) + '" title="第 ' + esc(anchor || '1') + ' 页 · 点图看完整 PDF" '
-      + 'style="display:block;width:100%;max-width:760px;border:1px solid var(--line);border-radius:var(--r-s);background:#fff;cursor:zoom-in">'
+      + '<a href="' + esc(direct) + '" data-imgzoom="' + esc(_img) + '" data-imgsnip="' + esc((snip || '').slice(0, 400)) + '" data-imgtitle="' + esc(title) + '" style="position:relative;display:block;max-width:760px" title="点一下放大看这一页（Esc 退出）；要翻页用下面的「打开 PDF」">'
+      + '<img class="pdf-hl-img" src="' + esc(_img) + '" loading="lazy" alt="' + esc(title) + '" title="第 ' + esc(anchor || '1') + ' 页 · 点图看完整 PDF" '
+      + 'data-snip="' + esc(String(h.snip || full || '').slice(0, 400)) + '" '
+      + 'style="display:block;width:100%;border:1px solid var(--line);border-radius:var(--r-s);background:#fff;cursor:zoom-in">'
       + '</a>'
-      + '<div class="small muted" style="margin:4px 0 0">这是引用那一页的图（已预渲染，点开即出）；要翻页 / 检索再看完整 PDF。</div></div>'
+      + '<div class="small muted" style="margin:4px 0 0">这是引用那一页的图（已预渲染，点开即出）；<span class="pdf-hl-tip">正在定位引用句…</span> 要翻页 / 检索再看完整 PDF。</div></div>'
     : '';
   /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
   return _prev + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
@@ -1199,6 +1200,145 @@ function aiPdfBlockHtml(h, full) {
         + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）；半天不出来就点上面的「' + esc(label) + ' ↗」用系统阅读器看。</div>'
         + '</div>');
 }
+
+/* ---------- 引用句高亮：页图上画出 PDF 里那一句的位置 ----------
+   坐标来自 pdfhl/<key>.json（PyMuPDF 导出的词级 bbox，归一化到 0..1）。
+   做法：词按顺序拼成「无空白串」，在串里找引用句（逐级放宽：整句 → 前 40 → 24 → 12 字），
+   命中的词按行聚成一两块矩形，叠在图片上（百分比定位，随便缩放都对齐）。 */
+function aiPdfHlNorm(s) {
+  return String(s || '').replace(/[\s\u3000]+/g, '').replace(/[，。；：、,.;:!?！？…（）()【】\[\]“”"'’‘]/g, '');
+}
+function aiPdfHlImgKey(img) {
+  try {
+    const m = /pdfimg\/([A-Za-z0-9]+_p\d+)\.webp/.exec(img.getAttribute('src') || '');
+    return m ? m[1] : '';
+  } catch (e) { return ''; }
+}
+function aiPdfHlRects(words, snip) {
+  const norm = [];
+  const owner = [];
+  words.forEach((w, wi) => {
+    const t = aiPdfHlNorm(w[0]);
+    for (let i = 0; i < t.length; i++) { norm.push(t[i]); owner.push(wi); }
+  });
+  const hay = norm.join('');
+  const needle0 = aiPdfHlNorm(snip);
+  if (!hay || !needle0) return [];
+  let start = -1, len = 0;
+  const tries = [];
+  if (needle0.length >= 6) tries.push([needle0, needle0.length]);
+  [40, 24, 14, 10].forEach(n => { if (needle0.length > n) tries.push([needle0.slice(0, n), n]); });
+  for (const [q, qlen] of tries) {
+    const i = hay.indexOf(q);
+    if (i >= 0) { start = i; len = qlen; break; }
+  }
+  if (start < 0) return [];
+  const hitWords = [];
+  for (let i = start; i < start + len && i < owner.length; i++) {
+    const wi = owner[i];
+    if (hitWords.indexOf(wi) < 0) hitWords.push(wi);
+  }
+  /* 按行聚合：同一行的词 y 中心差 < 0.012 视作一行 */
+  const lines = [];
+  hitWords.sort((a, b) => a - b).forEach(wi => {
+    const w = words[wi];
+    const cy = (w[2] + w[4]) / 2;
+    const line = lines.find(l => Math.abs(l.cy - cy) < 0.012);
+    if (line) { line.x0 = Math.min(line.x0, w[1]); line.x1 = Math.max(line.x1, w[3]); line.y0 = Math.min(line.y0, w[2]); line.y1 = Math.max(line.y1, w[4]); line.cy = (line.y0 + line.y1) / 2; }
+    else lines.push({ x0: w[1], y0: w[2], x1: w[3], y1: w[4], cy: cy });
+  });
+  return lines.map(l => ({ x0: l.x0, y0: l.y0, x1: l.x1, y1: l.y1 }));
+}
+
+/* 词级坐标按 16 个分片（pdfhl/b00..b0f.json）存放：bucket = int(key 前 12 位十六进制,16) % 16，
+   同一分片只取一次，缓存在内存里（每片约 100 KB）。 */
+const AI_PDFHL_BUCKET = {};
+function aiPdfHlShard(key) {
+  const pre = String(key || '').split('_p')[0];
+  if (!/^[0-9a-f]{4,40}$/i.test(pre)) return Promise.resolve(null);
+  const b = (parseInt(pre, 16) % 16);
+  const name = 'b' + (b < 16 ? '0' : '') + b.toString(16);
+  if (AI_PDFHL_BUCKET[name]) return AI_PDFHL_BUCKET[name];
+  const p = fetch(aiPdfBase() + 'pdfhl/' + name + '.json', { cache: 'force-cache' })
+    .then(r => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then(j => (j || {}));
+  AI_PDFHL_BUCKET[name] = p;
+  return p;
+}
+
+function aiPdfHlPaint(img) {
+  if (!img || img.__hlDone) return;
+  img.__hlDone = 1;
+  const key = aiPdfHlImgKey(img);
+  const host = img.parentNode;
+  const tip = host && host.parentNode ? host.parentNode.querySelector('.pdf-hl-tip') : null;
+  if (!key || !host) { if (tip) tip.textContent = ''; return; }
+  const snip = img.getAttribute('data-snip') || '';
+  aiPdfHlShard(key)
+    .then(sh => {
+      const words = (sh && sh[key]) || [];
+      const rects = words.length ? aiPdfHlRects(words, snip) : [];
+      if (!rects.length) { if (tip) tip.textContent = '（这一页没定位到引用句，可能是扫描件或换行断了）'; return; }
+      const box = document.createElement('div');
+      box.className = 'pdf-hl-layer';
+      box.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+      rects.forEach(r => {
+        const d = document.createElement('div');
+        d.style.cssText = 'position:absolute;background:rgba(255,214,0,.42);mix-blend-mode:multiply;border-radius:2px;'
+          + 'left:' + (r.x0 * 100).toFixed(3) + '%;top:' + (r.y0 * 100).toFixed(3) + '%;'
+          + 'width:' + Math.max(0.5, (r.x1 - r.x0) * 100).toFixed(3) + '%;height:' + Math.max(0.4, (r.y1 - r.y0) * 100).toFixed(3) + '%';
+        box.appendChild(d);
+      });
+      host.appendChild(box);
+      if (tip) tip.textContent = '黄色就是引用句所在位置。';
+    })
+    .catch(() => { if (tip) tip.textContent = ''; });
+}
+document.addEventListener('load', function (e) {
+  const t = e.target;
+  if (t && t.tagName === 'IMG' && t.classList && t.classList.contains('pdf-hl-img')) { try { aiPdfHlPaint(t); } catch (err) {} }
+}, true);
+
+
+/* ---------- 站内大图：点引用页的图先原地放大（不下载 PDF） ---------- */
+function aiPdfZoom(src, title, snip) {
+  const old = document.getElementById('pdfZoom');
+  if (old) old.remove();
+  const box = document.createElement('div');
+  box.id = 'pdfZoom';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9991;background:rgba(8,12,20,.86);display:flex;flex-direction:column;padding:12px;gap:8px';
+  const big = 1.9;
+  box.innerHTML = '<div style="display:flex;gap:8px;align-items:center;color:#fff;font-size:13px">'
+    + '<span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(title || '引用页') + '</span>'
+    + '<button class="btn tiny" type="button" id="pdfZoomBtn" title="在 100% 与放大之间切换">放大 / 适应</button>'
+    + '<button class="btn tiny" type="button" id="pdfZoomClose">关闭</button></div>'
+    + '<div style="flex:1 1 auto;overflow:auto;background:#fff;border-radius:8px">'
+    + '<img id="pdfZoomImg" src="' + esc(src) + '" style="display:block;width:100%;transition:width .12s ease"></div>';
+  document.body.appendChild(box);
+  const img = box.querySelector('#pdfZoomImg');
+  if (snip) { img.setAttribute('data-snip', String(snip).slice(0, 400)); try { aiPdfHlPaint(img); } catch (e) {} }
+  let zoomed = false;
+  const toggle = () => {
+    zoomed = !zoomed;
+    img.style.width = zoomed ? (big * 100).toFixed(0) + '%' : '100%';
+    box.querySelector('div[style*="overflow:auto"]').scrollTop = 0;
+  };
+  box.querySelector('#pdfZoomBtn').addEventListener('click', toggle);
+  box.querySelector('#pdfZoomImg').addEventListener('click', toggle);
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  box.querySelector('#pdfZoomClose').addEventListener('click', close);
+  box.addEventListener('click', e => { if (e.target === box) close(); });
+  document.addEventListener('keydown', onKey, true);
+}
+document.addEventListener('click', function (e) {
+  const a = e.target && e.target.closest ? e.target.closest('[data-imgzoom]') : null;
+  if (!a) return;
+  e.preventDefault();
+  try { aiPdfZoom(a.getAttribute('data-imgzoom'), a.getAttribute('data-imgtitle'), a.getAttribute('data-imgsnip')); } catch (err) {}
+}, false);
+
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
 function aiPdfFullscreen(pdf, title, rel, anchor) {
   const old = document.getElementById('pdfFs');
