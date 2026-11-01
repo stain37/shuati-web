@@ -1095,6 +1095,45 @@ function aiPdfTouch() {
 }
 /* 展开块的正文：有 PDF 的篇**就是 PDF 本身**（默认内嵌阅读器，不再给提取出来的文字 ——
    讲义是手写/带图的，提取文字只留给 AI 自己搜和引用）；没 PDF（手机 / 线上 / 文件不在）才给文字。 */
+
+/* —— 被引用页的预览图（pdfimg/*.webp）——
+   点开【参考资料】时秒出图，不再等几十 MB 的 PDF；图片按需 lazy 加载。
+   清单 pdfimg/index.json：{ "<key>": { f: "文件名.pdf", p: 页码, n: 总页数, src } } */
+let PDFIMG_MAP = null;
+function aiPdfImgMap() {
+  if (PDFIMG_MAP) return PDFIMG_MAP;
+  PDFIMG_MAP = {};
+  try {
+    const ls = readLS('qbank.pdfimg.v1', null);
+    if (ls && ls.ts && Date.now() - ls.ts < 86400000 && ls.map) PDFIMG_MAP = ls.map;
+  } catch (e) {}
+  return PDFIMG_MAP;
+}
+function aiPdfImgWarm() {
+  const m = aiPdfImgMap();
+  if (Object.keys(m).length) return;
+  try {
+    fetch(aiPdfBase() + 'pdfimg/index.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null).then(j => {
+      if (!j) return;
+      const map = {};
+      Object.keys(j).forEach(k => { const o = j[k] || {}; if (o.f) map[o.f + '#' + o.p] = k; });
+      PDFIMG_MAP = map;
+      try { writeLS('qbank.pdfimg.v1', { ts: Date.now(), map: map }); } catch (e) {}
+    }).catch(() => {});
+  } catch (e) {}
+}
+function aiPdfImgUrl(h) {
+  try {
+    if (!h || !h.file) return '';
+    const base = String(h.file).split(/[\\\/]/).pop();
+    const pg = String(h.pdfp || h.page || '');
+    if (!base || !pg) return '';
+    const k = aiPdfImgMap()[base + '#' + pg];
+    return k ? (aiPdfBase() + 'pdfimg/' + k + '.webp') : '';
+  } catch (e) { return ''; }
+}
+try { setTimeout(aiPdfImgWarm, 1200); } catch (e) {}
+
 function aiPdfBlockHtml(h, full) {
   const pdf = aiPdfOk() ? aiPdfHref(h) : '';
   if (!pdf) {
@@ -1125,26 +1164,40 @@ function aiPdfBlockHtml(h, full) {
       + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">这台设备的浏览器版本较旧（跑不动站内阅读器），已经改成用系统阅读器打开。</div>';
   }
   if (viewer && aiPdfTouch()) {
+    const _img0 = aiPdfImgUrl(h);
     /* 这台设备上「标准阅读器」以前失败过（华为内核 / 看门狗标记）→ 直接用轻量的那个 */
     const useLite = !!lite && (aiPdfLiteFirst() || aiPdfNoViewer());
     const primary = useLite ? lite : viewer;
     const plabel = useLite ? '📖 看原页（轻量阅读器）' : '📖 看原页（网页阅读器）';
-    return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    return (_img0 ? '<div class="pdf-prev" style="margin:0 0 8px"><img src="' + esc(_img0) + '" loading="lazy" alt="' + esc(title) + '" style="display:block;width:100%;border:1px solid var(--line);border-radius:var(--r-s);background:#fff"></div>' : '')
+      + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
       + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(primary) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="' + (useLite ? '1' : '0') + '" data-title="' + esc(title) + '" title="在本站里打开原页（纯网页渲染，安卓 / iPhone / 华为平板都行；Esc 或右上角关闭退出）">' + plabel + '</button>'
       + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
       + ((useLite || !lite) ? '' : '<button class="btn tiny pdf-lite" type="button" data-pdf="' + esc(lite) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="1" data-title="' + esc(title) + '" title="轻量阅读器：给官方那份跑不起来的老内核用">轻量阅读器</button>')
       + '</div>'
       + '<div class="small muted pdf-touch-hint" style="margin:0 0 9px">手机上看原页：点左边那颗「看原页」，本站的阅读器会直接翻开这一页（走加速线路，比直连快十几倍），能翻页、双指放大。</div>';
   }
+  /* 电脑：有预渲染页图就先给图（秒开），没有再退回内嵌阅读器 */
+  const _img = aiPdfImgUrl(h);
+  const _prev = _img
+    ? '<div class="pdf-prev" style="margin:0 0 8px">'
+      + '<a href="' + esc(direct) + '" target="_blank" rel="noopener" title="在新窗口打开完整 PDF（第 ' + esc(anchor || '1') + ' 页）">'
+      + '<img src="' + esc(_img) + '" loading="lazy" alt="' + esc(title) + '" title="第 ' + esc(anchor || '1') + ' 页 · 点图看完整 PDF" '
+      + 'style="display:block;width:100%;max-width:760px;border:1px solid var(--line);border-radius:var(--r-s);background:#fff;cursor:zoom-in">'
+      + '</a>'
+      + '<div class="small muted" style="margin:4px 0 0">这是引用那一页的图（已预渲染，点开即出）；要翻页 / 检索再看完整 PDF。</div></div>'
+    : '';
   /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
-  return '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+  return _prev + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
     + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
     + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（原站直链，加载慢一点）">' + label + ' ↗</a>'
     + '</div>'
-    + '<div class="pdf-embed" style="margin:0 0 9px">'
-    + '<iframe src="' + esc(viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
-    + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）；半天不出来就点上面的「' + esc(label) + ' ↗」用系统阅读器看。</div>'
-    + '</div>';
+    + (_img
+      ? '<div class="small muted" style="margin:0 0 9px">要翻页 / 搜索整本时，点上面「' + esc(label) + '」或「⛶ 全屏看原页」。</div>'
+      : '<div class="pdf-embed" style="margin:0 0 9px">'
+        + '<iframe src="' + esc(viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
+        + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）；半天不出来就点上面的「' + esc(label) + ' ↗」用系统阅读器看。</div>'
+        + '</div>');
 }
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
 function aiPdfFullscreen(pdf, title, rel, anchor) {
