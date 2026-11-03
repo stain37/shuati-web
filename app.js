@@ -3364,6 +3364,7 @@ function renderQuiz(bankId) {
       <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
         <button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>
+        <button class="btn" id="doSrc" title="看看这道题命中的资料原文：只检索知识库、不调用模型（不花 token），点条目展开全文 / PDF 原页">📎 看资料</button>
         <span class="srcjump" id="srcJump" hidden></span>
       </div>
       <div class="qsheet" id="qSheet" hidden>
@@ -3419,6 +3420,20 @@ function renderQuiz(bankId) {
   uiQnPanel(fk);                 /* 口诀 / 思路：独立浮窗（可拖 / 可拉大小，只在本页） */
   /* §8：管理动作抽屉的开关（「⋯ 更多」按钮 / 遮罩 / 取消 三处都关） */
   on('doMore', () => qSheetToggle(true));
+  /* 「📎 看资料」：不打开抽屉，直接开 AI 面板并只跑检索（不调用模型） */
+  on('doSrc', () => {
+    qSheetToggle(false);
+    if (typeof aiOpenPanel !== 'function') { toast('AI 模块没加载（ai.js）'); return; }
+    const host = $('aiHost');
+    if (!host) return;
+    aiOpenPanel(host, fk, q);
+    if (typeof aiSrcOnly === 'function') { try { aiSrcOnly(host, ''); } catch (e) {} }
+    else toast('AI 模块版本太旧，先刷新一次');
+  });
+  /* 抽屉 / 解析重画之后，把「📎 资料 N」那个小章重新画回来（以前重画会把它弄丢）；
+     题目有预存参考资料时直接显示，没有就收起来。 */
+  if (typeof aiSrcShowSaved === 'function') { try { aiSrcShowSaved(fk); } catch (e) {} }
+  else if (typeof paintSrcJump === 'function') { try { paintSrcJump(); } catch (e) {} }
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));

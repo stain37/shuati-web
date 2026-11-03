@@ -2181,6 +2181,7 @@ body.minimal .btn.primary,body.minimal .btn.danger{background:var(--card)!import
 
 /* 参考资料：小钮贴在「更多」旁边；列表本身改成单行横滑，不再把正文往下顶（web177 第 ⑦ 条） */
 .srcjump{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub);cursor:pointer;user-select:none}
+.srcjump[hidden]{display:none}
 .srcjump:hover{color:var(--primary);border-color:var(--primary)}
 .aisrc{display:flex;flex-wrap:wrap;align-items:center;gap:6px;overflow:visible;max-height:none}
 /* 参考资料那一行以前被压成单行横滑、字被切掉，看着像坏了（web178 第 ⑧ 条）；现在正常换行 */

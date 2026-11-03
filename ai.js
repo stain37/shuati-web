@@ -1490,14 +1490,22 @@ function aiSrcAnyOpen() { try { return !!document.querySelector('.aisrc-full'); 
 /* 「更多」旁边那个空位：本次 AI 解析用了几条资料，就显示一个小小的「📎 资料 3」。
    点它 → 直接在按钮旁边摊开列表，点某条就地看原文（web178 第 ⑦ 条：不再只是把你滚过去）。 */
 let AI_SRC_HITS = [];
+/* 记住最后一次该显示几条：整页重画会换掉 #srcJump 这个节点，
+   等它重新出现时由 paintSrcJump() 补画回去（以前重画一次就再也看不见了）。 */
+let AI_SRC_JUMP = { n: 0, names: '' };
 function aiSrcJump(n, names) {
+  AI_SRC_JUMP = { n: +n || 0, names: names || '' };
+  paintSrcJump();
+}
+function paintSrcJump() {
   let el = null;
   try { el = document.getElementById('srcJump'); } catch (e) {}
   if (!el) return;
+  const n = AI_SRC_JUMP.n;
   if (!n) { el.hidden = true; el.textContent = ''; return; }
   el.hidden = false;
   el.textContent = '📎 资料 ' + n;
-  el.title = '这次解析引用了 ' + n + ' 条资料' + (names ? '：' + names : '') + '（点一下直接看原文）';
+  el.title = '这次解析引用了 ' + n + ' 条资料' + (AI_SRC_JUMP.names ? '：' + AI_SRC_JUMP.names : '') + '（点一下直接看原文）';
   if (!el.__bound) {
     el.__bound = 1;
     el.addEventListener('click', function (ev) {
@@ -1506,8 +1514,26 @@ function aiSrcJump(n, names) {
     });
   }
 }
-let AI_SRC_PANEL = null;
-function aiSrcPanel(anchor) {
+/* 题目一换，小章就得跟着换：有预存资料就显示（哪怕解析还没展开），没有就收起来。
+   render 之后由 app.js 调它，避免上一题的资料数粘在下一题上。 */
+function aiSrcShowSaved(k) {
+  AI_SRC_HITS = [];
+  AI_SRC_JUMP = { n: 0, names: '' };
+  if (k && typeof aiSrcFor === 'function') {
+    let sv = [];
+    try { sv = aiSrcFor(k) || []; } catch (e) { sv = []; }
+    if (sv.length) {
+      AI_SRC_HITS = sv.slice();
+      const names = sv.slice(0, 3).map(function (h) {
+        return '《' + aiSrcName(h) + '》' + (h.page ? ' p' + h.page : '');
+      }).join('、');
+      AI_SRC_JUMP = { n: sv.length, names: names };
+    }
+  }
+  paintSrcJump();
+}
+window.aiSrcShowSaved = aiSrcShowSaved;
+let AI_SRC_PANEL = null;function aiSrcPanel(anchor) {
   const close = () => { if (AI_SRC_PANEL) { AI_SRC_PANEL.remove(); AI_SRC_PANEL = null; } };
   if (AI_SRC_PANEL) { close(); return; }
   const hits = AI_SRC_HITS || [];
@@ -1777,6 +1803,13 @@ async function aiSrcOnly(host, userQ) {
   }, 500);
   let ctx = { hits: [], text: '', count: 0, note: '' };
   try { ctx = await aiContext(st.q, userQ, { noModel: true }); } catch (e) {} finally { clearInterval(progT); }
+  /* 这次没命中、但这道题以前存过参考资料 → 先把存下来的那份摆出来（不用重跑 AI） */
+  if ((!ctx.hits || !ctx.hits.length) && st.k && typeof aiSrcFor === 'function') {
+    try {
+      const sv = aiSrcFor(st.k);
+      if (sv && sv.length) ctx = { hits: sv, text: '', count: sv.length, note: '这是上次「存入本题解析」时存下的参考资料' };
+    } catch (e) {}
+  }
   st.ctx = ctx;
   st.srcOnly = { html: aiSrcOnlyHtml(ctx), text: aiSrcOnlyText(ctx) };
   aiPaintSrc(H(), ctx);
