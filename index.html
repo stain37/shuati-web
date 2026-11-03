@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261130b">
+<link rel="stylesheet" href="style.css?v=20261130c">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -111,6 +111,12 @@ var iv=setInterval(function(){n++;
       <option value="m">标准</option>
       <option value="l">大</option>
       <option value="xl">特大</option>
+    </select>
+    <span class="tl" title="只放大题干、选项、解析的字，按钮和导航保持原样">大字模式</span>
+    <select class="num" id="setBig" title="只放大题干 / 选项 / 解析的字，离屏幕远也看得清；按钮和导航不变">
+      <option value="0">关</option>
+      <option value="1">大字 ×1.22</option>
+      <option value="2">特大 ×1.45</option>
     </select>
     <span class="tl">正文颜色</span>
     <select class="num" id="setTextColor" title="题干 / 选项 / 解析正文的字色；不动按钮和标题">
@@ -275,7 +281,7 @@ var iv=setInterval(function(){n++;
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261130b"></script>
+<script src="app.js?v=20261130c"></script>
 <script src="collection.js?v=20261130b"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261110b"></script>

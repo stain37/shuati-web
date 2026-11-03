@@ -543,7 +543,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -1322,6 +1322,13 @@ function applyLook() {
   document.body.classList.toggle('fs-s', SET.fs === 's');
   document.body.classList.toggle('fs-l', SET.fs === 'l');
   document.body.classList.toggle('fs-xl', SET.fs === 'xl');
+  /* 大字模式（远看）：整页缩放而不是只放大字号，间距/按钮一起变大。
+     0 关，1 = ×1.2，2 = ×1.45；具体倍数在 style.css 的 html[data-big] 里。 */
+  const bigv = +SET.big === 2 ? '2' : (+SET.big === 1 ? '1' : '');
+  if (document.documentElement) {
+    if (bigv) document.documentElement.setAttribute('data-big', bigv);
+    else document.documentElement.removeAttribute('data-big');
+  }
   const color = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const bg = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
@@ -5542,6 +5549,7 @@ function openSettings() {
   if ($('setMinimal')) $('setMinimal').checked = !!SET.minimal;
   if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
+  if ($('setBig')) $('setBig').value = String(+SET.big === 2 ? 2 : (+SET.big === 1 ? 1 : 0));
   if ($('setTextColor')) $('setTextColor').value = SET.textColor || 'auto';
   if ($('setTextColorPick')) $('setTextColorPick').value = SET.textColorPick || '#334155';
   if ($('setColor')) $('setColor').value = THEME_COLORS.indexOf(SET.color) >= 0 ? SET.color : 'teal';
@@ -5560,6 +5568,11 @@ on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');
 on('setFs', e => setLook('fs', e.target.value), 'change');
+on('setBig', e => {
+  const v = +e.target.value === 2 ? 2 : (+e.target.value === 1 ? 1 : 0);
+  setLook('big', v);
+  if (typeof toast === 'function') toast(v ? '大字模式已开：整页 ×' + (v === 2 ? '1.45' : '1.2') : '大字模式已关', 1500, 'ok');
+}, 'change');
 on('setTextColor', e => setLook('textColor', e.target.value), 'change');
 on('setTextColorPick', e => { SET.textColorPick = e.target.value; setLook('textColor', 'custom'); }, 'input');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');

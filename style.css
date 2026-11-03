@@ -9821,3 +9821,16 @@ body.pip-multi .pip-win{transition:filter .18s ease,opacity .18s ease}
 .pip-shield{position:absolute;inset:0;z-index:4;display:none;background:transparent}
 .pip-win.off .pip-shield{display:block}
 .pip-win .pip-rz{z-index:6}
+
+/* ===== 大字模式（阅读区放大）=====
+   设置里「大字模式」只放大题干 / 选项 / 解析，按钮与导航保持原样。
+   --qscale 由 html[data-big] 控制；padding 也按倍数走，字大了不会挤在框里。 */
+:root{--qscale:1}
+html[data-big="1"]{--qscale:1.22}
+html[data-big="2"]{--qscale:1.45}
+body .stem{font-size:calc(var(--fs)*1.04*var(--qscale));line-height:1.8}
+body .opt{font-size:calc(var(--fs)*var(--qscale));padding:calc(12px*var(--qscale)) calc(14px*var(--qscale))}
+body .opt .k{flex-basis:calc(26px*var(--qscale));height:calc(26px*var(--qscale));font-size:calc(13px*var(--qscale));border-radius:calc(8px*var(--qscale))}
+body .exp{font-size:calc(var(--fs)*0.93*var(--qscale))}
+body .stem-sm{font-size:calc(var(--fs)*var(--qscale))}
+body .opts-sm .o{font-size:calc(var(--fs)*0.93*var(--qscale))}
