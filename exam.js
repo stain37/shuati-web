@@ -51,9 +51,9 @@ function renderExam(paperId) {
     saveEX();
   }
   /* 之前离开考试页时把倒计时暂停了：回到考试页就把剩余时间接上 */
-  if (EX && EX.pausedLeft) {
-    if (EX.duration) EX.endAt = Date.now() + EX.pausedLeft;
-    EX.pausedLeft = 0;
+  if (EX && (EX.paused || EX.pausedLeft)) {
+    if (EX.duration && EX.pausedLeft) EX.endAt = Date.now() + EX.pausedLeft;
+    EX.pausedLeft = 0; EX.paused = 0;
     saveEX();
   }
   startTimer();

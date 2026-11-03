@@ -489,7 +489,6 @@ const saveQtn = () => mergeWrite(LS.qtn, QTN, 'qtn');
 
 /* 别的标签页写了 → 把最新数据读进内存；正打字就先不重画，免得把输入冲掉 */
 let _syncT = 0, _syncNeed = false;
-let LEAVE_EXAM_NOTICE = 0;   /* 离开未交卷考试时的提示节流（不再用 confirm 拦人） */
 window.addEventListener('storage', e => {
   if (!e || !e.key) return;
   const k = e.key;
@@ -2486,14 +2485,20 @@ function renderInner() {
      记录都在 EX 里存着，回到考试页还能接着做 */
   if (typeof examActive === 'function' && examActive() && r.name !== 'exam') {
     stopExamTimer();
-    /* 真把倒计时停住：记住剩余时间，回到考试页再接着跑（不然墙钟一直在走） */
-    if (typeof EX !== 'undefined' && EX && EX.endAt && !EX.pausedLeft) {
-      EX.pausedLeft = Math.max(0, EX.endAt - Date.now());
-      try { if (typeof saveEX === 'function') saveEX(); } catch (e) {}
-    }
-    if (!LEAVE_EXAM_NOTICE || Date.now() - LEAVE_EXAM_NOTICE > 4000) {
-      LEAVE_EXAM_NOTICE = Date.now();
-      toast('考试已暂停，倒计时停住了；想接着做点回去考试', 2600);
+    /* 正在考的那份套卷已经不在了（被删/被合并清掉）：直接作废这场考试，别再提示 */
+    let gone = false;
+    try { gone = !(typeof bankById === 'function' && bankById(EX.id)); } catch (e) { gone = true; }
+    if (gone) {
+      try { if (typeof clearEX === 'function') clearEX(); } catch (e) {}
+    } else {
+      /* 真把倒计时停住：记住剩余时间，回到考试页再接着跑（不然墙钟一直在走）。
+         只在「第一次离开」时提示一次，之后来回切页面不再打扰 */
+      if (typeof EX !== 'undefined' && EX && !EX.paused) {
+        EX.paused = 1;
+        if (EX.endAt) EX.pausedLeft = Math.max(0, EX.endAt - Date.now());
+        try { if (typeof saveEX === 'function') saveEX(); } catch (e) {}
+        toast('考试已暂停，倒计时停住了；想接着做点回去考试', 2600);
+      }
     }
   }
 
@@ -2925,6 +2930,8 @@ function deletePaper(id) {
   if (b) b.questions.forEach(q => { const k = kOf(b, q); delete ANS[k]; tombAdd('ans', k); });
   PAPERS = PAPERS.filter(x => x.id !== id);
   tombAdd('paper', id);      // 记墓碑：别的标签页/合并写入不会把这个套卷加回来
+  /* 正在考的那份被删了：把会话里的考试一起清掉，否则每次切页都会提示「考试已暂停」 */
+  if (typeof EX !== 'undefined' && EX && EX.id === id) { try { if (typeof clearEX === 'function') clearEX(); } catch (e) {} }
   savePapers(); saveAns();
   invalidateBanks();
   toast('已删除套卷'); render();
@@ -2943,6 +2950,8 @@ function deletePapers(ids) {
     tombAdd('paper', p.id);
   });
   PAPERS = PAPERS.filter(p => list.indexOf(p.id) < 0);
+  /* 批量删里包含正在考的那份：同样把会话清掉 */
+  if (typeof EX !== 'undefined' && EX && list.indexOf(EX.id) >= 0) { try { if (typeof clearEX === 'function') clearEX(); } catch (e) {} }
   savePapers(); saveAns();
   invalidateBanks();
   toast('已删除 ' + hit.length + ' 个套卷');
