@@ -265,6 +265,7 @@ async function syncPayload() {
   const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
   if (s.kb) out.kbDrop = syncKbDrops();
   if (s.banks && typeof window.bankDrops === 'function') out.banksDrop = window.bankDrops();   /* 删掉的题库要跟着走，否则对面一推就复活 */
+  if (s.cat && typeof CAT !== 'undefined' && CAT && CAT.drops) out.catsDrop = CAT.drops();    /* 删掉的文件夹同理 */
   return out;
 }
 /* 把云端的这份数据并进本机（本机自己那套合并写入负责时间戳和墓碑） */
@@ -330,9 +331,12 @@ function syncMergeCloud(cloud) {
       writeLS(LS.banks, LOCAL); invalidateBanks();
     }
   }
-  if (s.cat && Array.isArray(d.cats) && d.cats.length) {
+  if (s.cat) {
     try {
-      if (typeof CAT !== 'undefined' && CAT && CAT.importCats) { const r = CAT.importCats(d.cats) || {}; added += (r.added || 0); }
+      if (typeof CAT !== 'undefined' && CAT && CAT.importCats) {
+        const r = CAT.importCats(Array.isArray(d.cats) ? d.cats : [], cloud.catsDrop) || {};
+        added += (r.added || 0);
+      }
     } catch (e) {}
   }
 

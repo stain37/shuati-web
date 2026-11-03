@@ -26,6 +26,32 @@
   var CONFIRM_KEY = 'qbank.catconfirm.v1'; // 「移动题库会改哪些东西」是否已提示过
 
   var CAT = null;                        // [{ id, title, parent, order }]
+  /* 删过的目录记账：{ 目录id: 删除时间戳 }。同步时跟着上传，
+     对面就不会把旧目录再补回来（不然删完刷新又出现）。 */
+  var CATDROP_KEY = 'qbank.cats.drop.v1';
+  var CATDROP_TTL = 90 * 86400000;
+  function catDropsRead() {
+    try { return JSON.parse(localStorage.getItem(CATDROP_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function catDrops() {
+    var all = catDropsRead(), now = Date.now(), out = {};
+    Object.keys(all).forEach(function (k) { if (now - (+all[k] || 0) < CATDROP_TTL) out[k] = all[k]; });
+    return out;
+  }
+  function catDrop(id) {
+    if (!id) return;
+    var all = catDropsRead(), now = Date.now();
+    Object.keys(all).forEach(function (k) { if (now - (+all[k] || 0) >= CATDROP_TTL) delete all[k]; });
+    all[String(id)] = now;
+    try { localStorage.setItem(CATDROP_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  function catDropClear(id) {
+    if (!id) return;
+    var all = catDropsRead();
+    if (!all[String(id)]) return;
+    delete all[String(id)];
+    try { localStorage.setItem(CATDROP_KEY, JSON.stringify(all)); } catch (e) {}
+  }
   var CUR = null;                        // 当前目录 id（null = 根）
   var CUR_SET = false;                   // 本次打开页面是否已确定过目录（避免被存档顶回去）
   var TREE_OPEN = false;                  // 目录树是否展开（从树里点目录后保持展开，不再自动收起）
@@ -264,22 +290,39 @@
     c.title = String(title || '').trim() || c.title;
   }
   /* 从题库文件 / 全部数据备份里带入分类：同 id 就地更新，新 id 追加。
-     不能简单地「已存在就跳过」——那样同一个分类会在树里出现两次。 */
-  function importCats(rows) {
+     不能简单地「已存在就跳过」——那样同一个分类会在树里出现两次。
+     drops：云端记下的「这个目录被删过」的时间戳表。删目录必须留墓碑，
+     否则同步一拉、云端那份还在，删掉的文件夹下次刷新就复活了（题库同款问题）。 */
+  function importCats(rows, drops) {
     ensure();
-    var seen = {}, added = 0, upd = 0;
+    var seen = {}, added = 0, upd = 0, removed = 0;
+    /* 本地导入（题库文件 / 备份）：用户主动带进来的目录，先清旧墓碑，允许它回来
+       —— 必须在读 catDrops() 之前清，否则下面 drop 里还留着它，反而被挡住 */
+    if (!drops && rows && rows.length) {
+      rows.forEach(function (c) { if (c && c.id) catDropClear(c.id); });
+    }
+    /* 本机删过的也认（云端可能还没带上 catsDrop，比如另一台设备还是旧版） */
+    var drop = Object.assign({}, catDrops(), drops || {});
+    /* 云端删掉的目录，本机也删（子目录交给下面的孤儿处理） */
+    if (Object.keys(drop).length) {
+      var before = CAT.length;
+      CAT = CAT.filter(function (c) { return !drop[c.id]; });
+      removed = before - CAT.length;
+      if (CUR && drop[CUR]) CUR = null;
+    }
     CAT.forEach(function (c) { seen[c.id] = 1; });
     (rows || []).forEach(function (c) {
       if (!c || !c.id) return;
       c = { id: String(c.id), title: String(c.title || '未命名分类'), parent: (c.parent == null ? null : String(c.parent)), order: (c.order == null ? 999 : (+c.order || 0)) };
+      if (drop[c.id]) { delete seen[c.id]; return; }        /* 删过的别再补回来 */
       if (!seen[c.id]) { CAT.push(c); seen[c.id] = 1; added++; return; }
       var t = CAT.filter(function (x) { return x.id === c.id; })[0];
       if (t) { t.title = c.title; t.parent = c.parent; t.order = c.order; upd++; }
     });
     /* 父目录不存在（文件里少带了）就挂到顶层，别让分类变成看不见的孤儿 */
     CAT.forEach(function (c) { if (c.parent && !CAT.some(function (x) { return x.id === c.parent; })) c.parent = null; });
-    if (added || upd) { saveCats(); }
-    return { added: added, updated: upd };
+    if (added || upd || removed) { saveCats(); }
+    return { added: added, updated: upd, removed: removed };
   }
   function isDesc(rootId, id) { return rootId === id || descIds(rootId).indexOf(id) >= 0; }
   function moveCat(id, newParent, beforeId) {
@@ -1829,6 +1872,7 @@
         syncBankToLocal(b.id);
       });
       CAT = CAT.filter(function (x) { return x.id !== id; });
+      catDrop(id);                                   /* 留墓碑：不记的话同步一拉就复活 */
       if (CUR === id) CUR = parent;
       if (typeof invalidateBanks === 'function') invalidateBanks();
       saveCats();
@@ -2007,6 +2051,7 @@
         syncBankToLocal(b.id);
       });
       CAT = CAT.filter(function (x) { return !set[x.id]; });                            // 整棵子树一起删
+      ids.forEach(catDrop);                                                            // 留墓碑，别让同步把目录补回来
       if (CUR && set[CUR]) CUR = c.parent || null;
       if (typeof invalidateBanks === 'function') invalidateBanks();
       saveCats();
@@ -2671,6 +2716,7 @@
     ids.forEach(function (x) { set[x] = 1; });
     var n = CAT.filter(function (c) { return set[c.id]; }).length;
     CAT = CAT.filter(function (c) { return !set[c.id]; });
+    ids.forEach(catDrop);                          /* 空目录也留墓碑，不然同步会给补回来 */
     if (CUR && set[CUR]) CUR = null;
     saveCats();
     try { invalidateBanks(); } catch (e) {}
@@ -2920,6 +2966,9 @@
     setCur: function (id) { CUR = id || null; CUR_SET = true; },
     create: createCat,
     importCats: importCats,
+    drops: catDrops,
+    drop: catDrop,
+    dropClear: catDropClear,
     rename: renameCat,
     move: moveCat,
     moveBank: moveBank,

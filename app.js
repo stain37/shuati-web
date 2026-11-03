@@ -4176,11 +4176,14 @@ function srsGradeSet(k, grade, bank) {
   /* 改档 = 把这次反馈重新判一遍：先回到「今天判之前」的状态再算。
      以前判分时已经自动排过一次（答对→认识 / 答错→忘记），这里不改回去的话
      firstToday 永远是 false，点「模糊 / 忘记」间隔一动不动，三档看着都一样。 */
+  /* 「今天已经重入过一次」这件事不能跟着回滚 —— 否则改一次档位就把名额又还回去，
+     点两次「忘记」就能让同一道题在当天反复冒出来。 */
+  const keepRq = rec.rq ? { d: rec.rq.d, n: rec.rq.n } : null;
   if (rec.srs0) {
     rec.ivl = (rec.srs0.ivl == null ? 0 : rec.srs0.ivl);
     rec.ease = (rec.srs0.ease == null ? (+srsCfg().ease0 || 2.5) : rec.srs0.ease);
     rec.gday = rec.srs0.gday;
-    rec.rq = rec.srs0.rq ? { d: rec.srs0.rq.d, n: rec.srs0.rq.n } : null;
+    rec.rq = keepRq;
   }
   const r = srsApplyGrade(rec, grade, Date.now());
   saveAns();
@@ -4203,6 +4206,8 @@ function commitAnswer(k, sel, answer) {
     ts: now, redo: false,
     ease: (prev.ease == null ? (+srsCfg().ease0 || 2.5) : prev.ease),
     ivl: (prev.ivl == null ? 0 : prev.ivl),
+    /* 今天已经判过一次的题，别当成「今天第一次」再算一遍长期间隔 */
+    gday: prev.gday,
     /* 当天重入次数要跟着走，否则「同一天最多再来一次」会被下一次作答清掉 */
     rq: (prev.rq && prev.rq.d === srsDayKey(now)) ? { d: prev.rq.d, n: prev.rq.n } : null
   };
