@@ -283,11 +283,18 @@ function syncMergeCloud(cloud) {
   Object.keys(ct.wipe || {}).forEach(k => { if (!TOMB.wipe[k] || ct.wipe[k] > TOMB.wipe[k]) TOMB.wipe[k] = ct.wipe[k]; });
   writeLS(TOMB_KEY, TOMB);
 
-  /* 2) 记录类：先并进内存，再走站点自己的 mergeWrite（新的赢、墓碑优先） */
+  /* 2) 记录类：先并进内存，再走站点自己的 mergeWrite（新的赢、墓碑优先）
+        注意：这里不能无脑 Object.assign —— 云端那份可能是几分钟前的旧记录，
+        直接覆盖会把本机刚做的作答/复习排期冲掉（表现为「刷新后待复习数又回到老数字」）。 */
+  const isNewerRec = (a, b) => ((+b.ts || 0) > (+a.ts || 0));
   const put = (mem, cloudObj) => {
     if (!cloudObj) return;
-    Object.keys(cloudObj).forEach(k => { if (!mem[k]) added++; });
-    Object.assign(mem, cloudObj);
+    Object.keys(cloudObj).forEach(k => {
+      const c = cloudObj[k], m = mem[k];
+      if (!m) { mem[k] = c; added++; return; }
+      if (c && m && c.ts != null && m.ts != null) { if (isNewerRec(m, c)) mem[k] = c; return; }
+      mem[k] = c;
+    });
   };
   if (s.ans) { put(ANS, d.answers); saveAns(); put(FAV, d.favs); saveFav(); }
   if (s.note) { put(NOTES, d.notes); saveNotes(); put(FIX, d.fixes); saveFix(); }
