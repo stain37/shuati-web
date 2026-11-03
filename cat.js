@@ -1850,6 +1850,7 @@
       if (typeof LOCAL !== 'undefined' && Array.isArray(LOCAL)) {
         LOCAL = LOCAL.filter(function (x) { return x.id !== b.id; });
       }
+      try { if (window.bankDrop) window.bankDrop(b.id); } catch (e) {}
       try { if (window.TAGS && TAGS.dropBank) TAGS.dropBank(b.id); } catch (e) {}
       try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}
     });
@@ -1954,6 +1955,7 @@
       });
     });
     LOCAL = (LOCAL || []).filter(function (b) { return srcIds.indexOf(b.id) < 0; });
+    srcIds.forEach(function (id) { try { if (window.bankDrop) window.bankDrop(id); } catch (e) {} });   /* 合并掉的原题库也算删除 */
     try { if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
     if (typeof invalidateBanks === 'function') invalidateBanks();
     try { if (typeof saveAns === 'function') saveAns(); } catch (e) {}
@@ -2161,6 +2163,7 @@
         tombAdd('ans', k); tombAdd('fav', k); tombAdd('note', k);
       });
       if (typeof LOCAL !== 'undefined') LOCAL = LOCAL.filter(function (x) { return x.id !== b.id; });
+      try { if (window.bankDrop) window.bankDrop(b.id); } catch (e) {}
       try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}
       if (typeof invalidateBanks === 'function') invalidateBanks();
       try { if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
@@ -2248,6 +2251,7 @@
           qn++;
         });
         if (typeof LOCAL !== 'undefined') LOCAL = LOCAL.filter(function (x) { return x.id !== b.id; });
+        try { if (window.bankDrop) window.bankDrop(b.id); } catch (e) {}
         try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}
       });
       /* 空目录删掉（只从分类表里摘掉；里面本来就是空的，没有子目录也没题库） */

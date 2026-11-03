@@ -419,6 +419,33 @@ function tombWipe(kind) {                    // 整表清空（例如「清空�
   writeLS(TOMB_KEY, TOMB);
 }
 function tombClear() { TOMB = { ans: {}, fav: {}, note: {}, qtn: {}, aisrc: {}, fix: {}, paper: {}, tag: {}, vocab: {}, report: {}, wipe: {} }; writeLS(TOMB_KEY, TOMB); }
+
+/* ---------- 整本题库的删除账本（qbank.banks.drop.v1） ----------
+   只把题库从 LOCAL 里滤掉不够：云同步那边还留着这一本，而 sync.js 合并题库时是按 id 求并集、
+   没有墓碑，于是页面一刷新（自动同步）或别的设备一推，这本就「补」回来了。
+   知识库（kbDrop）先踩过同一个坑，题库照抄同一套：{ bankId: 删除时间 }，90 天后自动清。
+   若某本被重新导入/重建（带 at 时间戳），at 比删除时间新就当作「又回来了」，不再删。 */
+const BANKDROP_KEY = 'qbank.banks.drop.v1';
+const BANKDROP_TTL = 90 * 86400000;
+function bankDrops() {
+  const m = readLS(BANKDROP_KEY, null);
+  return (m && typeof m === 'object') ? m : {};
+}
+function bankDrop(id) {
+  if (!id) return;
+  const now = Date.now(), m = bankDrops();
+  m[id] = now;
+  Object.keys(m).forEach(k => { if (now - m[k] > BANKDROP_TTL) delete m[k]; });
+  writeLS(BANKDROP_KEY, m);
+}
+function bankDropClear(id) {
+  const m = bankDrops();
+  if (!(id in m)) return;
+  delete m[id];
+  writeLS(BANKDROP_KEY, m);
+}
+function bankDropClearAll() { writeLS(BANKDROP_KEY, {}); }
+window.bankDrops = bankDrops; window.bankDrop = bankDrop;
 function recTs(v) {
   if (v == null) return 0;
   if (typeof v === 'number') return v;
@@ -2811,10 +2838,12 @@ function renderHome() {
       tombAdd('ans', k); tombAdd('fav', k); tombAdd('note', k);   // 记墓碑：别的标签页不会把它合并回来
     });
     LOCAL = LOCAL.filter(x => x.id !== b.id);
+    bankDrop(b.id);                                                       // 记账：刷新/同步都别把它捞回来
     try { localStorage.removeItem('qbank.last.' + b.id); } catch (e) {}   // 顺手清掉「上次做到哪」的键
     if (typeof dropTagsOfBank === 'function') { try { dropTagsOfBank(b.id); } catch (e) {} }   // 考点标签也一起清（跟收藏一个道理）
     invalidateBanks();
     writeLS(LS.banks, LOCAL); saveAns(); saveFav(); saveNotes();
+    try { bigFlush(); } catch (e) {}                                      // 大键有 400ms 去抖，删除要立刻落盘
     if (typeof BF !== 'undefined' && BF && BF.autoSave) { try { BF.autoSave(); } catch (e) {} }
     toast('已删除'); render();
   });
@@ -3203,6 +3232,7 @@ function importAllData(e) {
         } catch (err) {}
       }
       tombClear();   // 导入＝以这份备份为准，清掉本机墓碑，别把要恢复的记录挡回去
+      bankDropClearAll();   // 题库的删除账本同理：备份里有的题库说明是用户要的，别再按旧账删掉
       /* 解析参考资料：放在 tombClear 之后并（走的 mergeWrite 会看墓碑）*/
       if (d.aisrc && typeof aiSrcMergeIn === 'function') { try { aiSrcMergeIn(d.aisrc); } catch (e) {} }
       migrate();
@@ -3326,10 +3356,10 @@ function renderQuiz(bankId) {
       </div>
       <div class="actions qz-more">
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
-        ${speed ? '' : `<button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>`}
+        <button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>
         <span class="srcjump" id="srcJump" hidden></span>
       </div>
-      ${speed ? '' : `<div class="qsheet" id="qSheet" hidden>
+      <div class="qsheet" id="qSheet" hidden>
         <div class="qsheet-scrim" data-qsheet="0"></div>
         <div class="qsheet-panel" role="dialog" aria-label="这题的管理动作">
           <div class="grip"></div>
@@ -3346,7 +3376,7 @@ function renderQuiz(bankId) {
           </div>
           <button class="btn" data-qsheet="0">取消</button>
         </div>
-      </div>`}
+      </div>
       <div class="fb" id="fb"></div>
       <div class="keyhint">
         <span><span class="kbd">A</span>–<span class="kbd">H</span> 选选项</span>
@@ -4121,6 +4151,15 @@ function srsApplyGrade(rec, grade, now) {
 function srsGradeSet(k, grade, bank) {
   const rec = ANS[k];
   if (!rec || SRS_GRADES.indexOf(grade) < 0) return null;
+  /* 改档 = 把这次反馈重新判一遍：先回到「今天判之前」的状态再算。
+     以前判分时已经自动排过一次（答对→认识 / 答错→忘记），这里不改回去的话
+     firstToday 永远是 false，点「模糊 / 忘记」间隔一动不动，三档看着都一样。 */
+  if (rec.srs0) {
+    rec.ivl = (rec.srs0.ivl == null ? 0 : rec.srs0.ivl);
+    rec.ease = (rec.srs0.ease == null ? (+srsCfg().ease0 || 2.5) : rec.srs0.ease);
+    rec.gday = rec.srs0.gday;
+    rec.rq = rec.srs0.rq ? { d: rec.srs0.rq.d, n: rec.srs0.rq.n } : null;
+  }
   const r = srsApplyGrade(rec, grade, Date.now());
   saveAns();
   if (r.requeue) {
@@ -4134,16 +4173,32 @@ function srsGradeSet(k, grade, bank) {
 function commitAnswer(k, sel, answer) {
   const ok = sameAns(sel, answer);
   const prev = ANS[k] || {};
+  const now = Date.now();
   const rec = {
     sel: sel.slice(), ok: ok,
     tries: (prev.tries || 0) + 1,
     wrong: (prev.wrong || 0) + (ok ? 0 : 1),
-    ts: Date.now(), redo: false,
+    ts: now, redo: false,
     ease: (prev.ease == null ? (+srsCfg().ease0 || 2.5) : prev.ease),
-    ivl: (prev.ivl == null ? 0 : prev.ivl)
+    ivl: (prev.ivl == null ? 0 : prev.ivl),
+    /* 当天重入次数要跟着走，否则「同一天最多再来一次」会被下一次作答清掉 */
+    rq: (prev.rq && prev.rq.d === srsDayKey(now)) ? { d: prev.rq.d, n: prev.rq.n } : null
   };
+  /* 今天第一次判这一题：先把「判之前」的排期存一份快照。
+     下面仍会自动按默认档排一次（答题就走的人也有排期），
+     用户随后改档时从这份快照重算，间隔不会在自动排过的基础上再算一遍。 */
+  if (prev.gday !== srsDayKey(now)) {
+    rec.srs0 = {
+      ivl: (prev.ivl == null ? null : prev.ivl),
+      ease: (prev.ease == null ? null : prev.ease),
+      gday: prev.gday, due: prev.due,
+      rq: prev.rq ? { d: prev.rq.d, n: prev.rq.n } : null
+    };
+  } else if (prev.srs0) {
+    rec.srs0 = prev.srs0;
+  }
   /* 做完先按默认档位排期：答对＝认识，答错＝忘记（做完可以在反馈里改成别的档） */
-  srsApplyGrade(rec, ok ? '认识' : '忘记', Date.now());
+  srsApplyGrade(rec, ok ? '认识' : '忘记', now);
   ANS[k] = rec;
   return ok;
 }

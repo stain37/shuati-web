@@ -264,6 +264,7 @@ async function syncPayload() {
   tomb.wipe = TOMB.wipe || {};
   const out = { app: 'shuati-sync', v: 1, updatedAt: Date.now(), device: SYC.device || syncDevice(), scope: s, data: d, tomb: tomb };
   if (s.kb) out.kbDrop = syncKbDrops();
+  if (s.banks && typeof window.bankDrops === 'function') out.banksDrop = window.bankDrops();   /* 删掉的题库要跟着走，否则对面一推就复活 */
   return out;
 }
 /* 把云端的这份数据并进本机（本机自己那套合并写入负责时间戳和墓碑） */
@@ -309,7 +310,26 @@ function syncMergeCloud(cloud) {
     if (hit) { writeLS('qbank.var.v1', mem); added += hit; }
     if (typeof varqReload === 'function') varqReload(); else if (window.varqReload) window.varqReload();
   }
-  if (s.banks && Array.isArray(d.banks)) { d.banks.forEach(b => { if (b && b.id && !LOCAL.some(x => x.id === b.id)) { LOCAL.push(b); added++; } }); writeLS(LS.banks, LOCAL); invalidateBanks(); }
+  /* 题库：按 id 并集补进来；但「删掉的题库」也要按账本走，否则刷新一次就复活（web217 踩过）。
+     账本 qbank.banks.drop.v1 是 { bankId: 删除时间 }；若某本带 at（重建/重导入时间）比删除时间新，
+     说明用户又要它了，不删。云端账本先并进本机，再决定删谁、补谁。 */
+  if (s.banks) {
+    const mine = (typeof window.bankDrops === 'function') ? window.bankDrops() : {};
+    let dch = false;
+    Object.keys(cloud.banksDrop || {}).forEach(id => {
+      if (!mine[id] || cloud.banksDrop[id] > mine[id]) { mine[id] = cloud.banksDrop[id]; dch = true; }
+    });
+    if (dch) { try { writeLS('qbank.banks.drop.v1', mine); } catch (e) {} }
+    if (Array.isArray(d.banks) || dch) {
+      const kept = LOCAL.filter(b => !(b && mine[b.id] && !(b.at && b.at > mine[b.id])));
+      if (kept.length !== LOCAL.length) LOCAL = kept;
+      (Array.isArray(d.banks) ? d.banks : []).forEach(b => {
+        if (!b || !b.id || mine[b.id]) return;                      /* 本机（或云端）删掉的，不补回来 */
+        if (!LOCAL.some(x => x.id === b.id)) { LOCAL.push(b); added++; }
+      });
+      writeLS(LS.banks, LOCAL); invalidateBanks();
+    }
+  }
   if (s.cat && Array.isArray(d.cats) && d.cats.length) {
     try {
       if (typeof CAT !== 'undefined' && CAT && CAT.importCats) { const r = CAT.importCats(d.cats) || {}; added += (r.added || 0); }

@@ -213,6 +213,20 @@ function mdBareDiagram(md) {
   });
   return hit ? out.join('\n\n') : src;
 }
+/* 粘进来的纯文本像不像「Markdown 块」（表格 / 标题 / 列表 / 引用 / 代码围栏）。
+   像就先转成 HTML 再插：以前一律当纯文本插，表格的竖线和 |---| 分隔行会被拆成
+   一段一段普通文字，保存时每行又单独成段，表格再也认不出来（只能去完整编辑器重贴）。
+   单行文本（比如 **加粗**）不折腾，保持原来的「只留纯文字」。 */
+function mdLooksBlocky(s) {
+  if (!s || s.indexOf('\n') < 0) return false;
+  const lines = s.split(/\r?\n/);
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i].indexOf('|') >= 0 && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(lines[i + 1])) return true;
+  }
+  if (/^[ \t]*#{1,4}[ \t]+\S/m.test(s)) return true;
+  if (/^[ \t]*```/m.test(s)) return true;
+  return false;
+}
 function mdToHtml(md) {
   if (!md) return '';
   md = mdBareDiagram(md);
@@ -1302,6 +1316,31 @@ function richBind(el, fk) {
     const cb = ev.clipboardData || window.clipboardData;
     const t = (cb ? cb.getData('text/plain') : '') || '';
     if (!t) return;
+    /* 2026-11-03：整块 Markdown（表格 / 标题 / 列表…）先转 HTML 再插 ——
+       显示态当场就是表格，保存时 mdFromHtml 又能原样写回 Markdown。 */
+    if (mdLooksBlocky(t)) {
+      const html = mdToHtml(t);
+      undoSnap(el, true);                       // 先给「粘之前」留一步撤销
+      /* 不用 execCommand('insertHTML')：无头/未聚焦窗口里它会把 HTML 当纯文本塞进来
+         （实测 innerHTML 变成 &lt;table&gt;…）。直接按 Range 插节点，光标停到插入内容末尾。 */
+      const box = document.createElement('div');
+      box.innerHTML = html;
+      const frag = document.createDocumentFragment();
+      let last = null;
+      while (box.firstChild) { last = box.firstChild; frag.appendChild(last); }
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) {
+        const r = sel.getRangeAt(0); r.deleteContents(); r.insertNode(frag);
+        if (last) {
+          const r2 = document.createRange();
+          r2.setStartAfter(last); r2.collapse(true);
+          sel.removeAllRanges(); sel.addRange(r2);
+        }
+      } else { el.appendChild(frag); }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      richState(el, '未保存…', true);
+      return;
+    }
     let doneOk = false;
     try { doneOk = document.execCommand('insertText', false, t) !== false; } catch (e) { doneOk = false; }
     if (!doneOk || el.textContent.indexOf(t) < 0) {  // execCommand 被废弃 / 不支持时退化成手工插纯文本节点

@@ -1729,16 +1729,20 @@ body.dark .vb-card{ box-shadow:var(--sh-card); }
 
 /* §8 视觉 v2 铺开（二）：答题页「⋯ 更多」抽屉 —— 管理动作不再摊在题目下面 */
 .actions.qz-more{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
-.qsheet{ position:fixed; inset:0; z-index:35; display:flex; align-items:flex-end; justify-content:center; }
+/* 2026-11-03：从底部弹层改成屏幕中央的对话框。
+   底栏 .bnav / 答题 .nav 在不少皮肤里被抬到 z-index 50–70，35 的抽屉会被压在下面（看着像被导航盖住），
+   所以这里同时把层抬到 80，并且四周留出安全边距、面板自己滚动。 */
+.qsheet{ position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; padding:16px; }
 .qsheet[hidden]{ display:none; }
 .qsheet-scrim{ position:absolute; inset:0; background:rgba(8,12,20,.42);
   animation:v2fade .18s ease both; }
-.qsheet-panel{ position:relative; width:100%; max-width:520px; background:var(--card);
-  border:1px solid var(--line); border-radius:22px 22px 0 0; box-shadow:var(--sh-pop);
-  padding:12px 14px calc(16px + env(safe-area-inset-bottom));
+.qsheet-panel{ position:relative; width:100%; max-width:520px; max-height:min(86vh,760px); overflow:auto;
+  background:var(--card);
+  border:1px solid var(--line); border-radius:22px; box-shadow:var(--sh-pop);
+  padding:12px 14px calc(14px + env(safe-area-inset-bottom));
   display:flex; flex-direction:column; gap:8px;
   animation:qsheetIn .24s cubic-bezier(.2,.9,.3,1) both; }
-.qsheet-panel .grip{ width:38px; height:4px; border-radius:99px; background:var(--line2); margin:0 auto 4px; }
+.qsheet-panel .grip{ display:none; }   /* 居中对话框不需要「上拉手柄」 */
 .qsheet-cap{ font-size:12.5px; color:var(--sub); font-weight:600; }
 .qsheet-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .qsheet-grid .btn{ width:100%; }
@@ -8281,7 +8285,8 @@ body.nav-sink .row:has(#appTitle),body.nav-sink .nav{transform:none!important;op
 /* ===== §76 Win95 皮肤按 UI Kit 重做（本地未发布） =====
    参照 windows-95-ui-kit：真·3D（四层内阴影）、深蓝渐变标题条 + 右上关闭钮、白底凹陷输入框、
    方形复选框、青绿桌面、任务栏式底栏、灰色滚动条。 */
-@font-face{font-family:'W95Sans';src:url('fonts/w95sans.woff2') format('woff2'),url('fonts/w95sans.woff') format('woff');font-display:swap}
+/* U+00D7（×）这个字体里画坏了（字形是个「L」），把它排除掉，让系统字体渲染乘号 */
+@font-face{font-family:'W95Sans';src:url('fonts/w95sans.woff2') format('woff2'),url('fonts/w95sans.woff') format('woff');font-display:swap;unicode-range:U+0000-00D6,U+00D8-FFFF}
 
 html[data-style="win95"]{
   --radius:0;--r-card:0;--r-s:0;--r-m:0;--r-l:0;
@@ -8509,7 +8514,7 @@ html[data-style="win95"] th, html[data-style="win95"] td{ padding:3px 6px!import
 /* §78b 标题条按钮用背景图叠上去（不参与布局） */
 html[data-style="win95"] .card>h2.sec,html[data-style="win95"] .card>.gname:first-child,html[data-style="win95"] .card>.nbhead:first-child,html[data-style="win95"] .card>.chat-title-row:first-child,html[data-style="win95"] .card>b:first-child,html[data-style="win95"] .vb-card>h2.sec{
   padding-right:66px!important;
-  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='58'%20height='14'%3E%3Cg%20fill='%23c0c0c0'%20stroke='%23000'%20stroke-width='1'%3E%3Crect%20x='.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='20.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='40.5'%20y='.5'%20width='16'%20height='13'/%3E%3C/g%3E%3Cg%20stroke='%23fff'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M2%202h13M2%202v11'/%3E%3Cpath%20d='M22%202h13M22%202v11'/%3E%3Cpath%20d='M42%202h13M42%202v11'/%3E%3C/g%3E%3Cg%20stroke='%23808080'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M15%203v10M3%2013h13'/%3E%3Cpath%20d='M35%203v10M23%2013h13'/%3E%3Cpath%20d='M55%203v10M43%2013h13'/%3E%3C/g%3E%3Cg%20stroke='%23000'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M5%209h6'/%3E%3Crect%20x='25'%20y='4'%20width='7'%20height='6'/%3E%3Cpath%20d='M45%204l6%206M51%204l-6%206'/%3E%3C/g%3E%3C/svg%3E"),linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='58'%20height='14'%3E%3Cg%20fill='%23c0c0c0'%20stroke='%23000'%20stroke-width='1'%3E%3Crect%20x='.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='20.5'%20y='.5'%20width='16'%20height='13'/%3E%3Crect%20x='40.5'%20y='.5'%20width='16'%20height='13'/%3E%3C/g%3E%3Cg%20stroke='%23fff'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M2%202h13M2%202v11'/%3E%3Cpath%20d='M22%202h13M22%202v11'/%3E%3Cpath%20d='M42%202h13M42%202v11'/%3E%3C/g%3E%3Cg%20stroke='%23808080'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M15%203v10M3%2013h13'/%3E%3Cpath%20d='M35%203v10M23%2013h13'/%3E%3Cpath%20d='M55%203v10M43%2013h13'/%3E%3C/g%3E%3Cg%20stroke='%23000'%20stroke-width='1'%20fill='none'%3E%3Cpath%20d='M5%209h6'/%3E%3Crect%20x='25'%20y='4'%20width='7'%20height='6'/%3E%3C/g%3E%3Cg%20fill='%23000'%20stroke='none'%3E%3Cpath%20d='M44,3h2l6,6v2h-2z'/%3E%3Cpath%20d='M52,3h-2l-6,6v2h2z'/%3E%3C/g%3E%3C/svg%3E"),linear-gradient(90deg,var(--w95-title1),var(--w95-title2))!important;
   background-repeat:no-repeat,no-repeat!important;
   background-position:right 2px top 2px,0 0!important;
   background-size:58px 14px,auto!important;
@@ -8525,11 +8530,20 @@ html[data-style="win95"] .nav{
 html[data-style="win95"] .nav::before{ content:none!important }
 html[data-style="win95"] body.quiz.focus .nav{ bottom:calc(10px + env(safe-area-inset-bottom))!important }
 
-/* §79b 开始按钮挂到真正的顶栏 .top .row（span.title 就在里面） */
-html[data-style="win95"] .top .row{position:relative!important;padding-left:88px!important}
+/* §79b 开始按钮：钉在顶栏第一行、排在「← 返回」右边
+   2026-11-03 两次踩坑：① top:50% 是相对整条顶栏算的，顶栏多一行就压住六科导航；
+   ② left:8px 在窄窗口会压住「← 返回」（返回是 position:fixed，left=max(12px, (100vw-940px)/2+12px)，
+   窗口一窄它就贴到视口左边）。现在 left 用与 #backFix 完全相同的 max() 公式再加 80px（72 按钮宽 + 8 间距），
+   并把返回按钮在 win95 下钉成固定 72px 宽，两者几何关系确定，任何宽度都不重叠；
+   同时把 .row 的左侧预留从 104px 加到 176px，让「⌂ 主页」排在开始按钮之后。
+   没有返回按钮（body 无 has-back）时整颗按钮不渲染。 */
+html[data-style="win95"] #backFix{width:72px;justify-content:center;left:max(92px,calc((100vw - 940px)/2 + 92px))}
+html[data-style="win95"] body.has-back .top .row{padding-left:176px}
+html[data-style="win95"] body:not(.has-back) .top::before{content:none}
 html[data-style="win95"] .top::before{
-  content:'开始';position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:5;
-  width:72px;height:22px;display:flex;align-items:center;padding-left:22px;box-sizing:border-box;
+  content:'开始';position:absolute;z-index:5;
+  left:max(12px,calc((100vw - 940px)/2 + 12px));top:9px;
+  width:72px;height:24px;display:flex;align-items:center;padding-left:22px;box-sizing:border-box;
   font:700 12px/1 'W95Sans',Tahoma,sans-serif;color:#0a0a0a;
   background:var(--w95-face);border:1px solid #0a0a0a;
   box-shadow:inset 1px 1px 0 #fff,inset -1px -1px 0 #858585,inset 2px 2px 0 #dfdfdf,inset -2px -2px 0 #a0a0a0;
@@ -8537,6 +8551,12 @@ html[data-style="win95"] .top::before{
 
 html[data-style="win95"] .top::before{
   background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='14'%20height='14'%3E%3Crect%20x='0'%20y='0'%20width='6'%20height='6'%20fill='%23ff0000'/%3E%3Crect%20x='7'%20y='0'%20width='6'%20height='6'%20fill='%2300a000'/%3E%3Crect%20x='0'%20y='7'%20width='6'%20height='6'%20fill='%230000ff'/%3E%3Crect%20x='7'%20y='7'%20width='6'%20height='6'%20fill='%23ffd000'/%3E%3C/svg%3E")!important;background-position:5px center!important;background-repeat:no-repeat!important;
+}
+/* 窄屏：返回按钮缩到 62px/left:10px（见上面 560px 断点），开始按钮跟着排到 80px */
+@media (max-width:560px){
+  html[data-style="win95"] #backFix{width:62px;justify-content:center;left:80px}
+  html[data-style="win95"] body.has-back .top .row{padding-left:156px}
+  html[data-style="win95"] .top::before{left:10px;top:7px;width:64px;height:22px}
 }
 
 /* §80 悬浮「导航」胶囊与它的菜单改成 95 按钮/菜单；底栏图标去彩 */
