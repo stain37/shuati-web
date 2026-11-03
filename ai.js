@@ -360,8 +360,11 @@ function aiMyRecText(k) {
   const a = ANS[k];
   return '【我的作答】' + ((a.sel || []).join('') || '—') + '（错 ' + (a.wrong || 0) + ' 次 / 共 ' + (a.tries || 0) + ' 次作答）';
 }
-async function aiContext(q, userQ) {
+async function aiContext(q, userQ, opt) {
   const cfg = aiCfg();
+  /* opt.noModel：只查资料、不碰模型（面板上的「只看资料」用它）。
+     扩写和重排都要调模型，这个模式下两个都关掉，一次请求都不发。 */
+  const noModel = !!(opt && opt.noModel);
   const empty = { hits: [], text: '', count: 0, note: '' };
   if (!cfg.topK || typeof kbSearch !== 'function') return empty;
   /* 资料文件是懒加载的：第一次真正用到时才去挂 知识库.js */
@@ -384,7 +387,7 @@ async function aiContext(q, userQ) {
   const ctl = new AbortController();
   const timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, 12000);     /* 扩写/重排合计最多等 12 秒 */
   /* ① 扩写：让模型把题目换几种「教材的说法」 */
-  if (cfg.expand && AIC.model && main && typeof kbExpandQueries === 'function') {
+  if (!noModel && cfg.expand && AIC.model && main && typeof kbExpandQueries === 'function') {
     try {
       const extra = await kbExpandQueries(q, userQ, ctl.signal);
       extra.forEach(x => { queries.push(x); weights.push(0.7); });
@@ -399,7 +402,7 @@ async function aiContext(q, userQ) {
       : await kbSearch(queries[0], ids, K);
   } catch (e) { hits = []; }
   /* ③ 重排：把捞回来的候选段落给模型看一遭，让它挑真正相关的那几段 */
-  if (!ctl.signal.aborted && cfg.rerank && AIC.model && hits.length > 1 && typeof kbRerank === 'function') {
+  if (!noModel && !ctl.signal.aborted && cfg.rerank && AIC.model && hits.length > 1 && typeof kbRerank === 'function') {
     try {
       const before = hits.map(h => h.key).join('|');
       const re = await kbRerank([stem, optText, ask].filter(Boolean).join('\n'), hits, K, ctl.signal);
@@ -522,12 +525,19 @@ function aiRestore(st) {
   if (st.ctx) { try { aiPaintSrc(host, st.ctx); } catch (e) {} }
   try { aiPaintHist(host); } catch (e) {}
   if (st.text) aiPaintOut(host, st.text, true);
-  else if (!st.running) {
+  else if (st.srcOnly) {
+    const o0 = host.querySelector('.aiout');
+    if (o0) {
+      o0.innerHTML = st.srcOnly.html;
+      o0.querySelectorAll('.aionly-i').forEach(li => { li.onclick = () => aiSrcOnlyOpen(host, li, +li.dataset.i); });
+    }
+  }
+  else {
     const out = host.querySelector('.aiout');
     if (out && !out.innerHTML.trim()) out.innerHTML = '<span class="muted">还没开始。先在上面写你要什么（可以留空），再点「生成解析」；写好追问后点「继续问」。</span>';
   }
   if (st.running) aiState(host, '正在生成…', '');
-  else aiState(host, st.text ? ('完成' + aiTempNoteText()) : '就绪 · 等你的要求', st.text ? 'ok' : '');
+  else aiState(host, st.text ? ('完成' + aiTempNoteText()) : (st.srcOnly ? '只看资料（没有调用模型）' : '就绪 · 等你的要求'), (st.text || st.srcOnly) ? 'ok' : '');
   const stop = host.querySelector('.ai-stop'), go = host.querySelector('.ai-go');
   if (stop) stop.disabled = !st.running;
   if (go) go.disabled = !!st.running;
@@ -580,6 +590,7 @@ function aiPanelHtml(host) {
   L.push('<div class="aibar">');
   L.push('<button class="btn primary ai-go">生成解析</button>');
   L.push('<button class="btn ai-ask" title="把框里写的话当成追问，接着上面的对话继续问">继续问</button>');
+  L.push('<button class="btn ai-srconly" title="只检索知识库、把命中的段落列出来给你自己看，不调用模型、不花 token">只看资料</button>');
   L.push('<button class="btn ai-stop" disabled>停止</button>');
   L.push('<button class="btn ai-copy">复制</button>');
   L.push('<button class="btn ai-copyq" title="把这道题 + 命中的资料 + 要求复制到剪贴板，粘到 Chatbox 等客户端里问">复制提问</button>');
@@ -647,10 +658,11 @@ function aiPanelBind(host) {
     aiRun(host, aiAskText());
   };
   q('.ai-ask').onclick = () => { const v = aiAskText(); if (!v) { toast('先在框里写一句要问的'); return; } try { const a = q('.ai-askq'); if (a) a.blur(); } catch (e) {} aiRun(host, v); };
+  q('.ai-srconly').onclick = () => { try { const a = q('.ai-askq'); if (a) a.blur(); } catch (e) {} aiSrcOnly(host, aiAskText()); };
   q('.ai-askq').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); q('.ai-go').click(); } };
   { const askq = q('.ai-askq'); if (askq) askq.oninput = () => { const st0 = AI_LAST[host.dataset.aiid]; if (st0) st0.draft = askq.value; }; }
   q('.ai-stop').onclick = () => { const st = AI_LAST[host.dataset.aiid]; if (st && st.ctl) st.ctl.abort(); };
-  q('.ai-copy').onclick = () => { const st = AI_LAST[host.dataset.aiid]; aiCopy(st ? st.text : '', host); };
+  q('.ai-copy').onclick = () => { const st = AI_LAST[host.dataset.aiid]; aiCopy(st ? (st.text || (st.srcOnly && st.srcOnly.text) || '') : '', host); };
   q('.ai-copyq').onclick = () => {
     const st = AI_LAST[host.dataset.aiid];
     if (!st) return;
@@ -662,7 +674,7 @@ function aiPanelBind(host) {
     if (!st0) return;
     if (st0.running) { toast('正在生成，先点「停止」再清'); return; }
     if (st0.text && !confirm('把这次对话清掉重新开始？（已经「存入本题解析」的正文不受影响）')) return;
-    st0.text = ''; st0.msgs = []; st0.hist = []; st0.curQ = ''; st0.ctx = null; st0.reason = '';
+    st0.text = ''; st0.msgs = []; st0.hist = []; st0.curQ = ''; st0.ctx = null; st0.reason = ''; st0.srcOnly = null;
     aiPaintHist(host);
     aiPaintSrc(host, null);
     aiPaintOut(host, '', true);
@@ -1619,7 +1631,7 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   if (!st || st.running) return;
   if (!AIC.base || !AIC.model) { aiState(host, '先在「设置 / 知识库」里填接口地址和模型', 'bad'); return; }
   const fresh = !userQ;
-  if (fresh) { st.text = ''; st.msgs = []; st.hist = []; st.curQ = ''; }
+  if (fresh) { st.text = ''; st.msgs = []; st.hist = []; st.curQ = ''; st.srcOnly = null; }
   else if (st.text) {                       /* 追问：先把上一轮收进历史，免得被新回答顶掉 */
     st.hist = st.hist || [];
     st.hist.push({ q: st.curQ || '', a: st.text });
@@ -1692,6 +1704,97 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
     try { H().querySelector('.ai-stop').disabled = true; H().querySelector('.ai-go').disabled = false; } catch (e) {}
   }
 }
+/* ---------- 「只看资料」：只检索、不回答 ----------
+   有时候不想要模型的总结，只想看知识库里到底命中了哪几段原话（自己判断、或者贴给别人看）。
+   这条路完全不碰模型：扩写/重排都关掉，一个 token 都不发。 */
+function aiSrcOnlyHtml(ctx) {
+  const L = [];
+  L.push('<div class="aionly">');
+  if (!ctx || !ctx.hits || !ctx.hits.length) {
+    L.push('<div class="muted small">' + esc((ctx && ctx.note) || '没有命中资料：先在上面选资料库，或者把题干关键词换成教材里的说法再试。') + '</div>');
+    L.push('</div>');
+    return L.join('');
+  }
+  L.push('<div class="small muted" style="margin:0 0 8px">下面只列命中的资料原话，<b>没有调用模型</b>（不花 token）。'
+    + '点面板底部的「参考资料」标签可以展开整段原文、打开 PDF 原页。</div>');
+  L.push('<ol class="aionly-list">');
+  ctx.hits.forEach((h, i) => {
+    const meta = [];
+    if (h.head) meta.push(h.head);
+    if (h.page) meta.push('第' + h.page + '页');
+    const body = String(h.full || h.text || h.snip || '').trim();
+    L.push('<li class="aionly-i" data-i="' + i + '"><div class="aionly-t">[' + (i + 1) + '] 《' + esc(h.doc || '') + '》'
+      + (meta.length ? ' <span class="muted">· ' + esc(meta.join(' · ')) + '</span>' : '')
+      + '<span class="aionly-open">展开全文 / PDF ›</span></div>'
+      + '<div class="aionly-b">' + esc(body.slice(0, 600)) + (body.length > 600 ? '…' : '') + '</div></li>');
+  });
+  L.push('</ol>');
+  if (ctx.note) L.push('<div class="small muted" style="margin-top:6px">' + esc(ctx.note) + '</div>');
+  L.push('</div>');
+  return L.join('');
+}
+function aiSrcOnlyText(ctx) {
+  if (!ctx || !ctx.hits || !ctx.hits.length) return '（没有命中资料）';
+  const L = ['只列资料（没有调用模型）', ''];
+  ctx.hits.forEach((h, i) => {
+    const meta = [h.head, h.page ? '第' + h.page + '页' : ''].filter(Boolean).join(' · ');
+    L.push('[' + (i + 1) + '] 《' + (h.doc || '') + '》' + (meta ? ' · ' + meta : ''));
+    L.push(String(h.full || h.text || h.snip || '').trim().slice(0, 600));
+    L.push('');
+  });
+  if (ctx.note) L.push('（' + ctx.note + '）');
+  return L.join('\n');
+}
+/* 点列表里的一条，就地展开整段原文（带 PDF 页图），再点收起 */
+function aiSrcOnlyOpen(host, li, i) {
+  const st = AI_LAST[host && host.dataset ? host.dataset.aiid : ''];
+  const h = (st && st.ctx && st.ctx.hits) ? st.ctx.hits[i] : null;
+  if (!h) return;
+  const cur = li.querySelector('.aisrc-full');
+  if (cur) { cur.remove(); li.classList.remove('on'); return; }
+  const full = String(h.full || h.text || '');
+  const d = document.createElement('div');
+  d.className = 'aisrc-full';
+  d.dataset.i = String(i);
+  d.innerHTML = aiPdfBlockHtml(h, full);
+  li.appendChild(d);
+  try { aiBindPdfInline(d); } catch (e) {}
+  li.classList.add('on');
+}
+async function aiSrcOnly(host, userQ) {
+  const st = AI_LAST[host && host.dataset ? host.dataset.aiid : ''];
+  if (!st || st.running) return;
+  st.running = true; st.ctl = new AbortController();
+  st.host = host; st.sels = aiSels(host, st.k); st.ts = Date.now(); st.endTs = 0;
+  const H = () => (aiFindHost(st) || host);
+  try { H().querySelector('.ai-stop').disabled = false; H().querySelector('.ai-go').disabled = true; } catch (e) {}
+  aiState(H(), '正在检索资料…');
+  const progT = setInterval(() => {
+    try {
+      const t = (typeof kbProgressText === 'function') ? kbProgressText() : '';
+      aiState(H(), t || '正在检索资料…');
+    } catch (e) {}
+  }, 500);
+  let ctx = { hits: [], text: '', count: 0, note: '' };
+  try { ctx = await aiContext(st.q, userQ, { noModel: true }); } catch (e) {} finally { clearInterval(progT); }
+  st.ctx = ctx;
+  st.srcOnly = { html: aiSrcOnlyHtml(ctx), text: aiSrcOnlyText(ctx) };
+  aiPaintSrc(H(), ctx);
+  const h = H();
+  const out = h.querySelector('.aiout');
+  if (out) {
+    out.innerHTML = st.srcOnly.html;
+    out.querySelectorAll('.aionly-i').forEach(li => {
+      li.onclick = () => aiSrcOnlyOpen(H(), li, +li.dataset.i);
+    });
+  }
+  aiPaintHist(h);
+  aiState(h, ctx.hits && ctx.hits.length ? ('只看资料 · 命中 ' + ctx.hits.length + ' 段（没有调用模型）') : '没命中资料',
+    ctx.hits && ctx.hits.length ? 'ok' : 'bad');
+  st.running = false; st.endTs = Date.now();
+  try { h.querySelector('.ai-stop').disabled = true; h.querySelector('.ai-go').disabled = false; } catch (e) {}
+}
+
 /* ---------- 存下来的「参考资料」 ----------
    AI 面板里那份参考资料（含「点开就是 PDF」）本来只活在这次会话里：一「存入本题解析」、面板一收就没了。
    所以保存时把命中的资料清单写进 qbank.aisrc.v1[题目key]（只存身份：库/文件/页码/标题/一句摘要，

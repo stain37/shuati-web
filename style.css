@@ -717,6 +717,17 @@ body.dark .srsline{background:var(--card);border-color:var(--line)}
 .aiout code{background:var(--bg2);padding:1px 4px;border-radius:4px}
 .aiout table{border-collapse:collapse;margin:6px 0}
 .aiout th,.aiout td{border:1px solid var(--line);padding:3px 7px}
+/* 「只看资料」：只列命中段落（不调用模型），样式跟正常解析区分开 */
+.aionly{font-size:calc(var(--fs)*0.95)}
+.aionly-list{margin:0 0 0 18px;padding:0}
+.aionly-list li{margin:0 0 10px}
+.aionly-i{cursor:pointer}
+.aionly-i.on>.aionly-t{color:var(--primary)}
+.aionly-open{margin-left:8px;font-weight:400;font-size:.9em;color:#94a3b8;white-space:nowrap}
+.aionly-i:hover .aionly-open{color:var(--primary)}
+.aionly-i .aisrc-full{margin:8px 0 0;cursor:auto}
+.aionly-t{font-weight:600;line-height:1.55;margin:0 0 3px}
+.aionly-b{white-space:pre-wrap;line-height:1.72;color:var(--ink2,#475569);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;max-height:220px;overflow:auto}
 .aisrc{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
 .aitag{display:inline-block;padding:2px 7px;background:var(--bg2);border:1px solid var(--line);border-radius:6px;font-size:12px}
 .aitag{cursor:pointer}
