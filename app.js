@@ -489,6 +489,7 @@ const saveQtn = () => mergeWrite(LS.qtn, QTN, 'qtn');
 
 /* 别的标签页写了 → 把最新数据读进内存；正打字就先不重画，免得把输入冲掉 */
 let _syncT = 0, _syncNeed = false;
+let LEAVE_EXAM_NOTICE = 0;   /* 离开未交卷考试时的提示节流（不再用 confirm 拦人） */
 window.addEventListener('storage', e => {
   if (!e || !e.key) return;
   const k = e.key;
@@ -2481,10 +2482,19 @@ function renderInner() {
   if ($('btnGoKb')) $('btnGoKb').style.display = '';
   if ($('btnSetAll')) $('btnSetAll').style.display = '';
 
-  /* 考试没交卷就想跳走：先确认，免得倒计时在后台自己跑 */
+  /* 考试没交卷就想跳走：不再弹确认框（有人会被反复拦着），直接暂停计时、留个提示，
+     记录都在 EX 里存着，回到考试页还能接着做 */
   if (typeof examActive === 'function' && examActive() && r.name !== 'exam') {
-    if (!confirm('考试还没交卷。离开的话倒计时仍会继续，确定离开？')) { go('#/exam/' + EX.id); return; }
     stopExamTimer();
+    /* 真把倒计时停住：记住剩余时间，回到考试页再接着跑（不然墙钟一直在走） */
+    if (typeof EX !== 'undefined' && EX && EX.endAt && !EX.pausedLeft) {
+      EX.pausedLeft = Math.max(0, EX.endAt - Date.now());
+      try { if (typeof saveEX === 'function') saveEX(); } catch (e) {}
+    }
+    if (!LEAVE_EXAM_NOTICE || Date.now() - LEAVE_EXAM_NOTICE > 4000) {
+      LEAVE_EXAM_NOTICE = Date.now();
+      toast('考试已暂停，倒计时停住了；想接着做点回去考试', 2600);
+    }
   }
 
   if (r.name === 'home') renderHome();

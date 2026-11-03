@@ -19,7 +19,7 @@ function saveEX() {
     sessionStorage.setItem('shuati.exam', JSON.stringify({
       id: EX.id, answers: EX.answers, marks: Array.from(EX.marks),
       submitted: EX.submitted, startedAt: EX.startedAt, duration: EX.duration || 0, endAt: EX.endAt,
-      results: EX.results || null, usedMs: EX.usedMs || 0
+      results: EX.results || null, usedMs: EX.usedMs || 0, pausedLeft: EX.pausedLeft || 0
     }));
   } catch (e) {}
 }
@@ -39,7 +39,8 @@ function renderExam(paperId) {
   document.body.classList.add('quiz');
 
   if (!EX || EX.id !== paperId) {
-    if (EX && !EX.submitted && !confirm('还有一场考试没交卷，开始新的一场会作废它。继续？')) { go('#/'); return; }
+    /* 上次那场没交卷就直接作废，不再弹 confirm 拦人（答案在 EX 里，离开也不算丢） */
+    if (EX && !EX.submitted) stopExamTimer();
     const mins = conf.duration || 0;
     EX = {
       id: paperId, answers: {}, marks: new Set(), submitted: false,
@@ -47,6 +48,12 @@ function renderExam(paperId) {
       endAt: mins ? Date.now() + mins * 1000 : 0,          // duration=0 表示不限时
       results: null
     };
+    saveEX();
+  }
+  /* 之前离开考试页时把倒计时暂停了：回到考试页就把剩余时间接上 */
+  if (EX && EX.pausedLeft) {
+    if (EX.duration) EX.endAt = Date.now() + EX.pausedLeft;
+    EX.pausedLeft = 0;
     saveEX();
   }
   startTimer();
@@ -326,7 +333,4 @@ function renderExamGrid() {
   });
 }
 
-/* 离开页面前提醒 */
-window.addEventListener('beforeunload', e => {
-  if (EX && !EX.submitted) { e.preventDefault(); e.returnValue = ''; return ''; }
-});
+/* 离开页面不再弹浏览器确认框：答案随时 saveEX 保存，计时器在离开考试页时由 app.js 暂停 */
