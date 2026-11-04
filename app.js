@@ -1561,6 +1561,10 @@ const answered = k => { const a = ANS[k]; return !!a && !a.redo; };
 /* 到期时间：答错的题当天回到队列，答对后按间隔排期 */
 /* 复习排期只针对「做错过」的题——每日复习 = 错题集的排期 */
 function inSrs(k) { const a = ANS[k]; return !!a && (a.wrong || 0) > 0; }
+/* 「这题还算不算错题」：错过（wrong>0）且没被订正过（fixed）。
+   fixed 只在「仅重做错题」那一轮里答对时打上；错次数 wrong 本身不清，
+   所以「累计错了几次」照样看得到，错题集里才会消失。 */
+function isWrongRec(a) { return !!a && (a.wrong || 0) > 0 && !a.fixed; }
 function dueOf(k) {
   const a = ANS[k];
   if (!a) return null;
@@ -1725,7 +1729,7 @@ function openAnsEditor(host, k, q, done) {
 }
 
 /* ---------- 运行时状态 ---------- */
-const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false };
+const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false, rw: null };
 const SS = {
   get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -2691,7 +2695,7 @@ function renderHome() {
     totalQ++;
     const k = kOf(b, q), a = ANS[k];
     if (a && !a.redo) { totalDone++; if (a.ok) totalOk++; }
-    if (a && (a.wrong || 0) > 0) wrongN++;
+    if (isWrongRec(a)) wrongN++;
     if (isDueToday(k)) dueN++;
   }));
   const srsCap = +srsCfg().daily || 0;
@@ -2703,7 +2707,7 @@ function renderHome() {
     b.questions.forEach(q => {
       const a = ANS[kOf(b, q)];
       if (a && !a.redo) { done++; if (a.ok) ok++; }
-      if (a && (a.wrong || 0) > 0) wr++;
+      if (isWrongRec(a)) wr++;
     });
     const pct = b.questions.length ? Math.round(done / b.questions.length * 100) : 0;
     const acc = done ? Math.round(ok / done * 100) : 0;
@@ -2891,6 +2895,7 @@ function randomPaper(banks, n) {
 function startBank(bankId) {
   const b = bankById(bankId); if (!b || !b.questions.length) return;
   QZ.order = null;
+  QZ.rw = null;                    /* 换题库就退出「仅重做错题」那一轮 */
   QZ.focusCur = false;
   if (b.exam) { rememberLast(b, null); go('#/exam/' + b.id); return; }
   const last = readLS('qbank.last.' + b.id, null);
@@ -3472,6 +3477,9 @@ function renderQuiz(bankId) {
   });
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
+  /* 答题条最左边两颗：重做题库 / 仅重做错题（定义在 redo() 底下） */
+  on('redoBank', () => { qSheetToggle(false); redoBankAll(bank); });
+  on('redoWrong', () => { qSheetToggle(false); redoWrongOnly(bank); });
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
      不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
   /* 点抽屉里的动作先把抽屉收掉：不然遮罩（.qsheet 固定全屏）还盖着，
@@ -3512,6 +3520,7 @@ function renderQuiz(bankId) {
     const a = ANS[fk] || (ANS[fk] = { sel: [], ok: false, tries: 0, wrong: 0, ts: Date.now(), upd: Date.now() });
     const had = (a.wrong || 0) > 0;
     a.wrong = had ? 0 : Math.max(1, a.wrong || 0);
+    a.fixed = 0;                       /* 手动加回来就把「已订正」一起撤掉，否则加回去也看不见 */
     a.ts = a.ts || Date.now();
     a.upd = Date.now();
     saveAns();
@@ -3584,7 +3593,7 @@ function renderQuiz(bankId) {
   bank.questions.forEach(x => {
     const a = ANS[kOf(bank, x)];
     if (a && !a.redo) { done++; if (a.ok) ok++; }
-    if (a && (a.wrong || 0) > 0) wr++;
+    if (isWrongRec(a)) wr++;
   });
   $('stat').textContent = `${done}/${bank.questions.length}${wr ? ' · 错' + wr : ''}`;
   $('bar').style.width = (done / bank.questions.length * 100) + '%';
@@ -3995,7 +4004,7 @@ function qzHasSubject(bank, q) {
 function chipFilter(arr, f, bank) {
   if (f === 'single') return arr.filter(q => ansOf(favKey(bank, q), q).length === 1);
   if (f === 'multi') return arr.filter(q => ansOf(favKey(bank, q), q).length > 1);
-  if (f === 'wrong') return arr.filter(q => { const a = ANS[kOf(bank, q)]; return a && (a.wrong || 0) > 0; });
+  if (f === 'wrong') return arr.filter(q => isWrongRec(ANS[kOf(bank, q)]));
   if (f === 'fav') return arr.filter(q => FAV[favKey(bank, q)]);
   if (f === 'due') return arr.filter(q => isDue(kOf(bank, q)));
   if (f === 'undone') return arr.filter(q => !answered(kOf(bank, q)));
@@ -4003,6 +4012,11 @@ function chipFilter(arr, f, bank) {
 }
 function poolOf(bank) {
   let arr = bank.questions.slice();
+  /* 「仅重做错题」那一轮：池子只放这一轮的题，顺序照原题库，
+     免得做完错题一翻页又滑到别的题上（也保证 pool 里 qNo / 进度分母是对的） */
+  if (QZ.rw && String(QZ.rw.bankId) === String(bank.id)) {
+    arr = arr.filter(q => QZ.rw.ids.indexOf(String(q.id)) >= 0);
+  }
   if (SET.shuffle) {
     if (!QZ.order || QZ.order.bankId !== bank.id) {
       const a = arr.slice();
@@ -4227,6 +4241,8 @@ function commitAnswer(k, sel, answer) {
     ivl: (prev.ivl == null ? 0 : prev.ivl),
     /* 今天已经判过一次的题，别当成「今天第一次」再算一遍长期间隔 */
     gday: prev.gday,
+    /* 订正标记：答对时保留（错题集里继续隐身），这次答错就清掉——又错了，重新进错题本 */
+    fixed: ok ? (prev.fixed || 0) : 0,
     /* 当天重入次数要跟着走，否则「同一天最多再来一次」会被下一次作答清掉 */
     rq: (prev.rq && prev.rq.d === srsDayKey(now)) ? { d: prev.rq.d, n: prev.rq.n } : null
   };
@@ -4256,6 +4272,13 @@ function judge(bank, q, sel) {
   const ok = commitAnswer(k, sel, ans);
   /* 套卷 / 模考：把这次对错累加到原题上（SRS 一并生效） */
   if (bank.paper && q._srcKey) commitAnswer(q._srcKey, sel, ans);
+  /* 「仅重做错题」这一轮：答对＝订正（打上 fixed，从错题集里移出），答错＝留着（fixed 已由 commitAnswer 清掉） */
+  if (QZ.rw && String(QZ.rw.bankId) === String(bank.id) && QZ.rw.ids.indexOf(String(q.id)) >= 0) {
+    const marked = ok ? Date.now() : 0;
+    if (ANS[k]) ANS[k].fixed = marked;
+    if (bank.paper && q._srcKey && ANS[q._srcKey]) ANS[q._srcKey].fixed = marked;
+    if (ok) QZ.rw.done = (QZ.rw.done || 0) + 1;
+  }
   delete QZ.pending[q.id];
   saveAns();
   render();
@@ -4283,6 +4306,64 @@ function redo(bank, q) {
   saveAns();
   if (window.FX && FX.reset) FX.reset(bank.id);      /* 再答一次：允许这套题重新庆祝 */
   render();
+}
+
+/* ---------- 重做题库 / 仅重做错题（答题条最左边两颗） ----------
+   两个都只是「把已答标记退回未答」（ANS[k].redo = true），历史记录一条不删：
+   错次数 wrong、作答次数 tries 都留着，重新作答时接着累加。
+   区别只有两处：
+   · 重做题库：整库全部退回未答，顺序照题库原序，从第一题开始；
+   · 仅重做错题：只挑当前错题组成一轮，答对＝订正（打上 fixed → 从错题集/错题 chip/答题卡里移出），
+     答错＝留着（commitAnswer 会把 fixed 清掉）。「累计错了几次」照旧看得到。 */
+function redoBankAll(bank) {
+  if (!bank || !bank.questions || !bank.questions.length) return;
+  const todo = bank.questions.filter(q => { const a = ANS[kOf(bank, q)]; return a && !a.redo; });
+  if (!todo.length) { toast('这道题库还没做过，直接从头做就行'); return; }
+  const backup = [];
+  todo.forEach(q => { const k = kOf(bank, q); ANS[k].redo = true; backup.push(k); });
+  QZ.rw = null;
+  QZ.order = null;
+  QZ.filter = 'all';
+  QZ.subject = '';
+  QZ.pending = {};
+  QZ.cur = bank.questions[0].id;
+  saveAns();
+  if (window.FX && FX.reset) { try { FX.reset(bank.id); } catch (e) {} }
+  render();
+  toast('开始重做：' + todo.length + ' 题（错次数、作答次数都留着，继续累计）', 4200, 'ok', {
+    label: '撤销',
+    fn: () => { backup.forEach(k => { if (ANS[k]) delete ANS[k].redo; }); saveAns(); render(); toast('已撤销重做', 1500); }
+  });
+}
+
+function redoWrongOnly(bank) {
+  if (!bank || !bank.questions || !bank.questions.length) return;
+  const ids = bank.questions.filter(q => isWrongRec(ANS[kOf(bank, q)])).map(q => q.id);
+  if (!ids.length) { toast('这道题库现在没有错题了'); return; }
+  const backup = [];
+  ids.forEach(id => {
+    const q = bank.questions.find(x => String(x.id) === String(id));
+    if (!q) return;
+    const k = kOf(bank, q);
+    if (ANS[k]) { ANS[k].redo = true; backup.push(k); }
+  });
+  QZ.rw = { bankId: bank.id, ids: ids.map(String), done: 0 };
+  QZ.order = { bankId: bank.id, ids: ids };
+  QZ.filter = 'all';
+  QZ.subject = '';
+  QZ.pending = {};
+  QZ.cur = ids[0];
+  saveAns();
+  if (window.FX && FX.reset) { try { FX.reset(bank.id); } catch (e) {} }
+  render();
+  toast('仅重做错题：' + ids.length + ' 题 · 答对的会自动移出错题本，答错的留着', 4600, 'ok', {
+    label: '撤销',
+    fn: () => {
+      backup.forEach(k => { if (ANS[k]) delete ANS[k].redo; });
+      QZ.rw = null; QZ.order = null;
+      saveAns(); render(); toast('已撤销这一轮错题重做', 1600);
+    }
+  });
 }
 
 /* ---------- 方案九：三种刷题模式（⚡ 速刷 / 📖 背题）+ ⏱ 模考入口 ---------- */
@@ -4504,7 +4585,7 @@ function renderGrid() {
   const bank = bankById(QZ.bankId); if (!bank) return;
   const body = $('gridBody');
   let done = 0, wrong = 0;
-  bank.questions.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && !a.redo) done++; if (a && (a.wrong || 0) > 0) wrong++; });
+  bank.questions.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && !a.redo) done++; if (isWrongRec(a)) wrong++; });
 
   /* 题多的时候（几百题）只想看错题或没做的，这里给个筛子 */
   const f = $('gridFilter');
@@ -4515,7 +4596,7 @@ function renderGrid() {
   }
   const shown = bank.questions.filter(q => {
     const a = ANS[kOf(bank, q)];
-    if (GRIDF === 'wrong') return !!(a && (a.wrong || 0) > 0);
+    if (GRIDF === 'wrong') return isWrongRec(a);
     if (GRIDF === 'undone') return !(a && !a.redo);
     return true;
   });
@@ -4524,7 +4605,7 @@ function renderGrid() {
     + (shown.length ? `<div class="grid">` + shown.map(q => {
       const k = kOf(bank, q), a = ANS[k];
       const no = bank.questions.indexOf(q) + 1;     // 用原题号，筛选后也不会串号
-      const cls = 'gnum' + (a && (a.wrong || 0) > 0 ? ' err' : (a ? ' done' : '')) + (String(q.id) === String(QZ.cur) ? ' cur' : '');
+      const cls = 'gnum' + (isWrongRec(a) ? ' err' : (a ? ' done' : '')) + (String(q.id) === String(QZ.cur) ? ' cur' : '');
       return `<button class="${cls}" data-j="${esc(q.id)}">${no}</button>`;
     }).join('') + `</div>` : '<div class="empty">这个筛选下没有题目。</div>');
 
@@ -5249,7 +5330,7 @@ function renderStats() {
     b.questions.forEach(q => {
       const a = ANS[kOf(b, q)];
       if (a && !a.redo) { done++; if (a.ok) ok++; }
-      if (a && (a.wrong || 0) > 0) wr++;
+      if (isWrongRec(a)) wr++;
     });
     return { b: b, done: done, wr: wr, n: b.questions.length, acc: done ? Math.round(ok / done * 100) : 0 };
   });
@@ -5257,7 +5338,7 @@ function renderStats() {
   const tops = [];
   banks.forEach(b => b.questions.forEach(q => {
     const a = ANS[kOf(b, q)];
-    if (a && (a.wrong || 0) > 0) tops.push({ b: b, q: q, a: a });
+    if (isWrongRec(a)) tops.push({ b: b, q: q, a: a });
   }));
   tops.sort((x, y) => (y.a.wrong || 0) - (x.a.wrong || 0) || (y.a.tries || 0) - (x.a.tries || 0));
 

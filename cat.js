@@ -253,7 +253,7 @@
     b.questions.forEach(function (q) {
       var k = kOf(b, q), a = ANS[k];
       if (a && !a.redo) { done++; if (a.ok) ok++; }
-      if (a && (a.wrong || 0) > 0) wr++;
+      if (a && (a.wrong || 0) > 0 && !a.fixed) wr++;
     });
     return { n: n, done: done, ok: ok, wr: wr, pct: n ? done / n * 100 : 0, acc: done ? Math.round(ok / done * 100) : 0 };
   }
@@ -804,7 +804,7 @@
       totalQ++;
       var k = kOf(b, q), a = ANS[k];
       if (a && !a.redo) { totalDone++; if (a.ok) totalOk++; }
-      if (a && (a.wrong || 0) > 0) wrongN++;
+      if (a && (a.wrong || 0) > 0 && !a.fixed) wrongN++;
       if (typeof isDue === 'function' && isDue(k)) dueN++;
     }); });
     var favN = Object.keys(FAV).filter(function (k) { return FAV[k]; }).length;

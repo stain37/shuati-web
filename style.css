@@ -9846,3 +9846,13 @@ body .opt .k{flex-basis:calc(26px*var(--qscale));height:calc(26px*var(--qscale))
 body .exp{font-size:calc(var(--fs)*0.93*var(--qscale))}
 body .stem-sm{font-size:calc(var(--fs)*var(--qscale))}
 body .opts-sm .o{font-size:calc(var(--fs)*0.93*var(--qscale))}
+
+/* 2026-11-04 答题条最左边两颗「重做题库 / 仅重做错题」：桌面显示全名，窄屏只留图标免得把条挤爆 */
+.nav .btn.redo{display:flex;align-items:center;justify-content:center;gap:4px;font-weight:600}
+.nav .btn.redo i{font-style:normal;opacity:.7}
+.nav .btn.redo.on{background:var(--primary-weak);border-color:var(--primary-line);color:var(--primary)}
+.nav .btn.redo.on i{opacity:1}
+@media (max-width:620px){
+  .nav .btn.redo{flex:0 0 46px;padding-left:4px;padding-right:4px}
+  .nav .btn.redo .rt{display:none}
+}

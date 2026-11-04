@@ -2070,7 +2070,7 @@ function collect(mode, kw, scope) {
     const list = hayListOf(b);
     for (let idx = 0; idx < list.length; idx++) {
       const it = list[idx], k = it.k, q = it.q, rec = recOf(k);
-      if (mode === 'wrong') { if (!rec || (rec.wrong || 0) <= 0) continue; }
+      if (mode === 'wrong') { if (!rec || (rec.wrong || 0) <= 0 || rec.fixed) continue; }
       else if (mode === 'fav') { if (!FAV[k]) continue; }
       else if (mode === 'due') { if (!isDue(k)) continue; }
       if (terms.length) {
@@ -3526,7 +3526,7 @@ function ctxItemItems(k) {
   var q = o.q || {};
   var isFav = (typeof FAV !== 'undefined') && FAV[k];
   var a = (typeof ANS !== 'undefined') ? ANS[k] : null;
-  var inWrong = !!(a && a.wrong > 0);
+  var inWrong = !!(a && a.wrong > 0 && !a.fixed);
   var st = null;
   try { st = (typeof LP !== 'undefined') ? (location.hash.indexOf('#/wrong') >= 0 ? LP.wrong : LP.fav) : null; } catch (e) {}
   var selKeys = (st && st.sel) ? Array.from(st.sel) : [];
