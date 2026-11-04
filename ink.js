@@ -749,9 +749,10 @@
     document.body.appendChild(wrap);
 
 
-    var s = vpSize(cv, 1);
-    fitCanvas(cv, s.cw, s.ch);
-    EDIT = { bankId: bank.id, qid: q.id, w0: s.cw, h0: s.ch };
+    var vw = Math.max(1, innerWidth), vh = Math.max(1, innerHeight);
+    cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+    fitCanvas(cv, vw, vh);
+    EDIT = { bankId: bank.id, qid: q.id, w0: vw, h0: vh };
     liveCv = cv;
     /* Esc 直接退出批注 */
     var escFn = function (e) { if (e && e.key === 'Escape') { var dn = wrap.querySelector('.ink-done'); if (dn) dn.click(); } };
@@ -765,7 +766,7 @@
         var r0 = card.getBoundingClientRect();
         var cr = { x: Math.round(r0.left + scrollX), y: Math.round(r0.top + scrollY), w: Math.round(r0.width), h: Math.round(r0.height) };
         if (dirty || (prevRec && prevRec.ops) || o.length) {
-          if (o.length) INK_MEM[keyOf(bank, q)] = {
+          if (false) INK_MEM[keyOf(bank, q)] = {
             ops: o, vw: Math.max(document.documentElement.scrollWidth, innerWidth),
             vh: Math.max(document.documentElement.scrollHeight, innerHeight),
             cr: cr, ts: Date.now()

@@ -9878,10 +9878,13 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .ink-chk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);margin-left:4px}
 /* 整页批注：铺满整个文档（不是视口），所以笔迹会跟着页面一起滚动 */
 .ink-view{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:12;display:none}
-.ink-fix{position:absolute;left:0;top:0;width:100%;touch-action:none;pointer-events:auto;z-index:12;display:none;cursor:crosshair}
+.ink-fix{position:fixed;left:0;top:0;width:100vw;height:100vh;touch-action:none;pointer-events:auto;z-index:30;display:none;cursor:crosshair}
 body.ink-on{user-select:none;-webkit-user-select:none}
 body.ink-on *{cursor:crosshair}
 body.ink-on .ink-wrap,body.ink-on .ink-wrap *{cursor:pointer;user-select:none}
+/* 批注时整页画布会吃掉点击：把题目工具行和底栏抬到画布上面，仍然可点 */
+body.ink-on .qhead,body.ink-on #nav,body.ink-on .bnav{position:relative;z-index:20}
+body.ink-on .qmode,body.ink-on .top,body.ink-on #subjchips,body.ink-on #chips{position:relative;z-index:20}
 body.ink-on .ink-txt{cursor:text}
 .ink-seg button{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 9px;font-size:12.5px;cursor:pointer;min-width:0}
@@ -9894,7 +9897,7 @@ body.ink-on .ink-txt{cursor:text}
 .ink-acts button{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 11px;font-size:12.5px;cursor:pointer}
 .ink-acts .pri{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
-.ink-txt{position:fixed;z-index:46;background:var(--card);border:1px dashed var(--primary);border-radius:5px;
+.ink-txt{position:fixed;z-index:1400;background:var(--card);border:1px dashed var(--primary);border-radius:5px;
   padding:1px 4px;outline:none;min-width:96px;font-family:inherit}
 
 .ink-full{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(1180px,94vw);height:min(820px,90vh);min-width:520px;min-height:420px;resize:both;overflow:hidden;box-shadow:0 24px 60px rgba(2,6,23,.45);border-radius:12px;z-index:1200;background:var(--card);display:flex;flex-direction:column;
