@@ -657,10 +657,17 @@
     return { w: w, h: h, cw: w, ch: h };
   }
 
+  function penOps(ops) {
+    return (ops || []).filter(function (o) {
+      return o && (o.t === 'pen' || o.t === 'pencil' || o.t === 'hl' || o.t === 'eraser');
+    });
+  }
+
   function paint(bank, q) {
     if (!bank || !q) return;
     var cv = viewLayer();
     var rec = INK_MEM[keyOf(bank, q)] || inkAll()[keyOf(bank, q)];
+    if (rec && rec.ops) rec = { ops: penOps(rec.ops), vw: rec.vw, vh: rec.vh, cr: rec.cr, ts: rec.ts };
     if (!rec || !rec.ops || !rec.ops.length || !inkShow()) { cv.style.display = 'none'; var L0 = document.getElementById('inkImgLayer'); if (L0) { L0.innerHTML = ''; L0._im = {}; L0.style.display = 'none'; } return; }
     var editing = !!EDIT;
     cv.style.display = editing ? 'none' : 'block';
