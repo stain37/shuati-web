@@ -196,7 +196,7 @@
       '<div class="ink-row ink-acts">' +
       '<button class="ink-undo" title="撤销">↶ 撤销</button>' +
       '<button class="ink-clear" title="清空">清空</button>' +
-      '<button class="ink-done pri">完成</button>' +
+      '<button class="ink-done pri">' + (penOnly ? '退出' : '完成') + '</button>' +
       '</div>' +
       (penOnly ? '' : '<input type="file" accept="image/*" hidden>') +
       '</div>';
@@ -514,14 +514,14 @@
     var seg = tb.querySelector('.ink-seg');
     seg.onclick = function (ev) {
       var b = ev.target.closest('button'); if (!b) return;
-      if (b.dataset.m === 'img') { tb.querySelector('input[type=file]').click(); return; }
+      if (b.dataset.m === 'img') { var fi = tb.querySelector('input[type=file]'); if (fi) fi.click(); return; }
       Array.prototype.forEach.call(seg.children, function (x) { x.classList.remove('on'); });
       b.classList.add('on'); st.tool = b.dataset.m;
       cv.style.cursor = st.tool === 'text' ? 'text' : 'crosshair';
     };
     var sws = tb.querySelector('.ink-sws');
     var pal = [inkAuto()].concat(COLORS);
-    pal.forEach(function (c, i) {
+    if (sws) pal.forEach(function (c, i) {
       var b = document.createElement('button');
       b.className = 'ink-sw' + (i === 0 ? ' on' : '');
       b.title = i === 0 ? '跟随主题（深色主题下就是这个浅色）' : '';
@@ -540,7 +540,7 @@
     /* 文字底色：无 / 白 / 黄 / 绿 / 蓝 / 黑（配下面的「半透明」开关） */
     var bgs = tb.querySelector('.ink-bgs');
     var BGS = [['', '无'], ['#ffffff', '白'], ['#fff3a3', '黄'], ['#d1fae5', '绿'], ['#dbeafe', '蓝'], ['#111827', '黑']];
-    BGS.forEach(function (pair, i) {
+    if (bgs) BGS.forEach(function (pair, i) {
       var b = document.createElement('button');
       b.className = 'ink-bg' + (i === 0 ? ' on' : '');
       b.title = pair[1] + '底';
@@ -580,7 +580,7 @@
     tb.querySelector('.ink-undo').onclick = function () { if (ops.length) { ops.pop(); dirty = true; paint(); } };
     tb.querySelector('.ink-clear').onclick = function () { if (!ops.length) return; if (confirm('清空这一层的全部笔迹？')) { ops = []; dirty = true; paint(); } };
     var file = tb.querySelector('input[type=file]');
-    file.addEventListener('change', function () {
+    if (file) file.addEventListener('change', function () {
       var f = file.files && file.files[0]; if (!f) return;
       var r = new FileReader();
       r.onload = function () {
@@ -743,6 +743,10 @@
     fitCanvas(cv, s.cw, s.ch);
     EDIT = { bankId: bank.id, qid: q.id, w0: s.cw, h0: s.ch };
     liveCv = cv;
+    /* Esc 直接退出批注 */
+    var escFn = function (e) { if (e && e.key === 'Escape') { var dn = wrap.querySelector('.ink-done'); if (dn) dn.click(); } };
+    document.addEventListener('keydown', escFn);
+    window.__inkEsc = escFn;
     liveStudio = Studio({
       cv: cv, wrap: wrap, ops: ops || [], state: state || null,
       w0: s.cw, h0: s.ch, handles: true,
@@ -791,6 +795,25 @@
   }
 
   /* ---------- 空白板 ---------- */
+  /* 白板是浮动窗口：按住标题条可以挪位置 */
+  function dragHead(wrap) {
+    var head = wrap.querySelector('.ink-head');
+    if (!head) return;
+    head.style.cursor = 'grab';
+    head.addEventListener('pointerdown', function (ev) {
+      if (ev.target.closest('button')) return;
+      ev.preventDefault();
+      var r = wrap.getBoundingClientRect();
+      var x0 = ev.clientX, y0 = ev.clientY;
+      wrap.style.transform = 'none';
+      wrap.style.left = r.left + 'px'; wrap.style.top = r.top + 'px';
+      function mv(e2) { wrap.style.left = (r.left + e2.clientX - x0) + 'px'; wrap.style.top = (r.top + e2.clientY - y0) + 'px'; }
+      function up() { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); }
+      document.addEventListener('pointermove', mv);
+      document.addEventListener('pointerup', up);
+    });
+  }
+
   function board() {
     closeAll();
     var wrap = document.createElement('div');
@@ -829,6 +852,16 @@
         toast('手稿已存进历史（' + (all.length) + ' 张）', 2000, 'good');
       }
     });
+    /* 窗口拖大拖小之后，画布要跟着重算，不然只会显示一部分 */
+    try {
+      if (window.ResizeObserver) {
+        var ro = new ResizeObserver(function () {
+          clearTimeout(ro._t);
+          ro._t = setTimeout(function () { try { sizeIt(); if (st) st.resize(); } catch (e) {} }, 60);
+        });
+        ro.observe(stage);
+      }
+    } catch (e) {}
     wrap.querySelector('.ink-close').onclick = function () {
       if (st && st.ops().length && !confirm('这张还没完成，关掉就不保存了，确定？')) return;
       closeAll();
@@ -890,6 +923,7 @@
       '<div class="ink-stage"><canvas></canvas></div>' + toolsHtml();
     document.body.appendChild(wrap);
     document.body.classList.add('ink-on');
+    dragHead(wrap);
     var stage = wrap.querySelector('.ink-stage'), cv = wrap.querySelector('canvas');
     var r = stage.getBoundingClientRect();
     cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
@@ -980,6 +1014,7 @@
   }
 
   function closeAll() {
+    try { if (window.__inkEsc) { document.removeEventListener('keydown', window.__inkEsc); window.__inkEsc = null; } } catch (e) {}
     try { document.body.classList.remove('ink-on'); } catch (e) {}
     /* 退出批注后，右上角那颗按钮要立刻变回「隐藏/显示批注」 */
     try {

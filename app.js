@@ -2413,7 +2413,12 @@ window.addEventListener('hashchange', render);
   });
 })();
 /* 任何一个脚本文件顶层抛错也留个提示，而不是白屏 */
-window.addEventListener('error', e => { if (e && e.message) showFatal(e.error || e.message); });
+window.addEventListener('error', e => {
+  /* 跨域脚本（浏览器扩展/第三方）出错时浏览器只给一句 "Script error."，没有任何可用信息，
+     弹红条只会吓人，直接忽略；本站的脚本都是同源，真出错会有完整堆栈 */
+  if (!e || !e.message || /^Script error\.?$/i.test(e.message)) return;
+  showFatal(e.error || e.message);
+});
 window.addEventListener('unhandledrejection', e => { if (e && e.reason) showFatal(e.reason); });
 
 /* render 出错不再白屏：留一条错误提示，能复制能重载 */
