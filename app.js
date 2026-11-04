@@ -3503,8 +3503,15 @@ function renderQuiz(bankId) {
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('doRedoBank', () => { qSheetToggle(false); redoSheet(bank, q); });
   on('doExport', () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
-  on('btnExport', () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
-  on('btnRedo2', () => { qSheetToggle(false); redoSheet(bank, q); });
+  /* 工具行与抽屉里是两颗同名 id 的按钮，必须逐个绑，$() 只拿第一个 */
+  document.querySelectorAll('#doExport').forEach(el => { el.onclick = () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); }; });
+  document.querySelectorAll('#doRedoBank').forEach(el => { el.onclick = () => { qSheetToggle(false); redoSheet(bank, q); }; });
+  document.querySelectorAll('#doInkEye').forEach(el => { el.onclick = () => {
+    const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
+    try { localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1'); } catch (e) {}
+    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
+    inkEyeSync(); render();
+  }; });
   on('btnInkEye', () => {
     const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
     try { localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1'); } catch (e) {}

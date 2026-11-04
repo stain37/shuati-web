@@ -144,7 +144,7 @@
       '<span class="exp-lab">附注</span><span class="exp-note"><button data-v="none">无</button><button data-v="ink" class="on">题目批注</button><button data-v="board">白板手稿</button><select class="exp-board" hidden></select></span>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-ans"> 带答案</label>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-exp" checked> 带解析</label>' +
-      '<button class="exp-go btn primary" style="margin-left:auto">导出 0 题</button>' +
+      '<button class="exp-go btn primary" style="margin-left:auto" onclick="try{window.EXP._go()}catch(e){alert(\'\u5bfc\u51fa\u51fa\u9519\uff1a\'+(e&&e.message||e))}">导出 0 题</button>' +
       '</div></div>';
     document.body.appendChild(host);
 
@@ -569,5 +569,5 @@
     }
   }, true);
 
-  window.EXP = { selfTest: selfTest, open: open, close: close };
+  window.EXP = { selfTest: selfTest, open: open, close: close, _go: doExport };
 })();
