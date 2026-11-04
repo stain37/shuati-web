@@ -12,6 +12,8 @@
 (function () {
   'use strict';
   var INK_KEY = 'qbank.ink.v1';
+  /* 实时圈画：批注只在内存里，刷新/关页就没了（不再写 localStorage） */
+  var INK_MEM = {};
   var BOARD_KEY = 'qbank.board.v1';
   var COLORS = ['#111827', '#e11d48', '#f59e0b', '#0f9d58', '#2563eb', '#7c3aed'];
   /* 深色主题下纯黑笔画看不见：默认笔色跟随当前正文色（浅色主题=深灰，深色主题=浅灰） */
@@ -658,7 +660,7 @@
   function paint(bank, q) {
     if (!bank || !q) return;
     var cv = viewLayer();
-    var rec = inkAll()[keyOf(bank, q)];
+    var rec = INK_MEM[keyOf(bank, q)] || inkAll()[keyOf(bank, q)];
     if (!rec || !rec.ops || !rec.ops.length || !inkShow()) { cv.style.display = 'none'; var L0 = document.getElementById('inkImgLayer'); if (L0) { L0.innerHTML = ''; L0._im = {}; L0.style.display = 'none'; } return; }
     var editing = !!EDIT;
     cv.style.display = editing ? 'none' : 'block';
@@ -730,7 +732,7 @@
         var r0 = card.getBoundingClientRect();
         var cr = { x: Math.round(r0.left + scrollX), y: Math.round(r0.top + scrollY), w: Math.round(r0.width), h: Math.round(r0.height) };
         if (dirty || (prevRec && prevRec.ops) || o.length) {
-          if (o.length) all[keyOf(bank, q)] = {
+          if (o.length) INK_MEM[keyOf(bank, q)] = {
             ops: o, vw: Math.max(document.documentElement.scrollWidth, innerWidth),
             vh: Math.max(document.documentElement.scrollHeight, innerHeight),
             cr: cr, ts: Date.now()
