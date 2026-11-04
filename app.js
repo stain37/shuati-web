@@ -3371,6 +3371,10 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
+        <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
+        <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
+        <button class="btn" id="btnRedo2" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
+        <button class="btn" id="btnExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
         <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
         <button class="btn qd-grip" id="qdGrip" title="拖动题目区块（右下角可拉大小）；再点一下回到正常排版">⠿</button>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
@@ -3458,6 +3462,8 @@ function renderQuiz(bankId) {
      题目有预存参考资料时直接显示，没有就收起来。 */
   if (typeof aiSrcShowSaved === 'function') { try { aiSrcShowSaved(fk); } catch (e) {} }
   else if (typeof paintSrcJump === 'function') { try { paintSrcJump(); } catch (e) {} }
+  if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
+  paintInkDot();
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
@@ -3477,6 +3483,10 @@ function renderQuiz(bankId) {
   });
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
+  on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('btnRedo2', () => { qSheetToggle(false); redoSheet(bank, q); });
+  on('btnExport', () => { if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
   /* 答题条最左边两颗：重做题库 / 仅重做错题（定义在 redo() 底下） */
   on('redoBank', () => { qSheetToggle(false); redoBankAll(bank); });
   on('redoWrong', () => { qSheetToggle(false); redoWrongOnly(bank); });
@@ -4315,6 +4325,53 @@ function redo(bank, q) {
    · 重做题库：整库全部退回未答，顺序照题库原序，从第一题开始；
    · 仅重做错题：只挑当前错题组成一轮，答对＝订正（打上 fixed → 从错题集/错题 chip/答题卡里移出），
      答错＝留着（commitAnswer 会把 fixed 清掉）。「累计错了几次」照旧看得到。 */
+function paintInkDot() {
+  const b = $('btnInk'); if (!b) return;
+  try {
+    const bk = (typeof bankById === 'function' && QZ.bankId) ? bankById(QZ.bankId) : null;
+    const q = bk ? (bk.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
+    b.classList.toggle('has-ink', !!(window.INK && bk && q && INK.hasInk(bk, q)));
+  } catch (e) { b.classList.remove('has-ink'); }
+}
+
+function redoSheet(bank, q) {
+  const n = (bank.questions || []).length;
+  let w = 0;
+  try { w = (bank.questions || []).filter(x => isWrongRec(ANS[kOf(bank, x)])).length; } catch (e) {}
+  const m = document.createElement('div');
+  m.className = 'exp-mask';
+  m.innerHTML = '<div class="exp-box" style="max-width:460px">' +
+    '<div class="exp-head"><b>重做这道题库</b><span class="exp-sub">' + esc(bank.title || '') + '</span>' +
+    '<span class="spacer-grow"></span><button class="rd-x">✕</button></div>' +
+    '<div class="exp-body" style="padding:14px 16px 16px">' +
+    '<button class="rd-opt" data-a="all"><b>↻ 重做整库</b><span>' + n + ' 题 · 从头再做一遍</span></button>' +
+    '<button class="rd-opt" data-a="wrong" ' + (w ? '' : 'disabled') + '><b>✗ 仅重做错题</b><span>' + (w ? w + ' 题 · 答对就移出错题本' : '现在没有错题') + '</span></button>' +
+    '<div class="rd-note">作答记录和累计错次都会保留，可以撤销。</div>' +
+    '<div class="rd-confirm" hidden><span class="rd-ct"></span><span class="spacer-grow"></span>' +
+    '<button class="btn rd-no">取消</button><button class="btn primary rd-yes">开始重做</button></div>' +
+    '</div></div>';
+  document.body.appendChild(m);
+  const box = m.querySelector('.exp-box');
+  const close = () => m.remove();
+  m.querySelector('.rd-x').onclick = close;
+  m.onclick = (ev) => { if (ev.target === m) close(); };
+  const conf = box.querySelector('.rd-confirm'), ct = box.querySelector('.rd-ct');
+  box.querySelectorAll('.rd-opt').forEach(b => b.onclick = () => {
+    if (b.disabled) return;
+    const a = b.dataset.a;
+    box.querySelectorAll('.rd-opt').forEach(x => x.classList.toggle('sel', x === b));
+    ct.textContent = a === 'all'
+      ? '重做整库（' + n + ' 题）？作答次数、错题次数都留着继续累计，可撤销。'
+      : '仅重做错题（' + w + ' 题）？答对的移出错题本，答错的保留，可撤销。';
+    conf.hidden = false;
+    box.querySelector('.rd-yes').onclick = () => {
+      close();
+      if (a === 'all') redoBankAll(bank); else redoWrongOnly(bank);
+    };
+  });
+  box.querySelector('.rd-no').onclick = () => { conf.hidden = true; };
+}
+
 function redoBankAll(bank) {
   if (!bank || !bank.questions || !bank.questions.length) return;
   const todo = bank.questions.filter(q => { const a = ANS[kOf(bank, q)]; return a && !a.redo; });
