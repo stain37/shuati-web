@@ -476,7 +476,10 @@
     var all = filtered().filter(function (r) { return sel[r.key]; });
     if (!all.length) { try { toast2('先勾选要导出的题', 1800, 'bad'); } catch (e) {} return; }
     try { toast2('正在生成…', 1200); } catch (e) {}
-    var go = function () { doExportNow(all); };
+    /* 必须在点击的同步阶段就开窗：等烤完图再 window.open 会被弹窗拦截，表现就是“没反应” */
+    var preWin = null;
+    try { preWin = window.open('', '_blank'); } catch (e) {}
+    var go = function () { doExportNow(all, preWin); };
     if (!(window.INK && INK.bake && bank0)) return go();
     /* 点导出的这一刻现场烤图：等每道题的批注（含图片）都画进 canvas 再生成文档 */
     var jobs = all.map(function (r) {
@@ -489,7 +492,7 @@
     }, function () { go(); });
   }
 
-  function doExportNow(all) {
+  function doExportNow(all, preWin) {
     var rs = all;
     if (!rs.length) { toast2('先勾选要导出的题', 1800, 'bad'); return; }
     var html = '';
@@ -502,13 +505,13 @@
     if (!html) { try { toast2('导出内容为空（批注数据可能异常）', 2600, 'bad'); } catch (e4) {} return; }
     if (fmt === 'pdf') {
       /* PDF：先在新窗口打开同一份 HTML，再调起打印（iframe 的 srcdoc 在部分浏览器里 onload 不触发，点了没反应） */
-      var wp = window.open('', '_blank');
+      var wp = preWin || window.open('', '_blank');
       if (!wp) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
       try { wp.document.open(); wp.document.write(html); wp.document.close(); } catch (e) {}
       try { wp.focus(); } catch (e) {}
       setTimeout(function () { try { wp.print(); } catch (e) { toast2('打印被拦了：在打开的页面里按 Ctrl+P', 2600, 'bad'); } }, 700);
     } else {
-      var w = window.open('', '_blank');
+      var w = preWin || window.open('', '_blank');
       if (!w) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
       w.document.open(); w.document.write(html); w.document.close();
     }
