@@ -96,13 +96,6 @@
   }
 
   function open(b) {
-    try {
-      var allQ = ((bank && bank.questions) || []).slice(0, 60);
-      allQ.forEach(function (q) {
-        if (!window.INK || !INK.bake) return;
-        INK.bake(bank, q).then(function (b) { if (b && b.url) BAKED[q.id] = b.url; }).catch(function () {});
-      });
-    } catch (e) {}
 
     if (!b) return;
     bank = b; sel = {}; F = { subj: [], type: [], state: [], knows: [], q: '' };
@@ -332,20 +325,98 @@
     return z < 0.995 ? ' style="zoom:' + z.toFixed(3) + '"' : '';
   }
 
-  var BAKED = {};   /* qid -> 已烤好的批注整图（题目+批注对齐，导出不再算框） */
-  function docHtml(rs, baked) {
-    BAKED = baked || BAKED;
-    var ans = host.querySelector('.exp-ans').checked;
-    var exp = host.querySelector('.exp-exp').checked;
+  function dateStr() {
     var d = new Date();
-    var date = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-    var de = document.documentElement, db = document.body;
-    var attrStyle = de.getAttribute('data-style') || '', attrTheme = de.getAttribute('data-theme') || '';
-    var attrBig = de.getAttribute('data-big') || '';
-    var fsCls = (db.className.match(/\bfs-[a-z]+\b/) || [''])[0];
-    /* 用站点自己的样式表，导出的题目排版和答题页一模一样（批注才对得上位置） */
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function metaStr(rs, withAns, withExp, noteMode) {
+    return '共 ' + rs.length + ' 题　' + dateStr() +
+      (noteMode === 'ink' ? '　含题目批注' : noteMode === 'board' ? '　附白板手稿' : '') +
+      (withAns ? '　含答案' : '') + (withExp ? '　含解析' : '');
+  }
+
+  /* ============ 一道题 → 一段可测量的 HTML ============
+     web237：不再把整题换成一张「只有批注」的图（老版 bake 画了笔迹没画题目，
+     导出就只剩墨迹）。现在永远输出真题干 + 选项 + 解析，笔迹作为绝对定位的
+     透明 PNG 叠回同一个盒子里。 */
+  function blockHtml(r, i, withAns, withExp, noteMode) {
+    var q = r.q, rec = null;
+    try { rec = (window.INK && INK.inkRec) ? INK.inkRec(bank, q) : null; } catch (e) {}
+    var png = null;
+    if (noteMode === 'ink' && rec && rec.ops && rec.ops.length) {
+      try { png = INK.pngOf(bank, q, { paper: 'light' }); } catch (e) {}
+    }
+    /* 有批注时，外面再套一层「画布盒」：盒子尺寸＝题目卡片 ∪ 笔迹范围，
+       题目卡片居中放进去，批注整张图铺在盒子上——这样画到题目外面的笔迹不会被页边裁掉 */
+    var W = 718, geo = null;
+    var imgs = [];
+    try { imgs = (window.INK && INK.imgList) ? (INK.imgList(bank, q) || []) : []; } catch (e) {}
+    /* cr 缺失时兜底：旧记录可能只有 vw/vh；再不行用 pngOf 的 cr 或 0,0 */
+    if (rec && (!rec.cr)) {
+      if (png && png.cr) rec.cr = png.cr;
+      else {
+        var cc = document.querySelector('#view .card');
+        var cr1 = cc ? cc.getBoundingClientRect() : null;
+        rec.cr = cr1 ? { x: Math.round(cr1.left + scrollX), y: Math.round(cr1.top + scrollY), w: Math.round(cr1.width), h: Math.round(cr1.height) }
+                     : { x: 0, y: 0, w: 718, h: 600 };
+      }
+    }
+    if (rec && rec.ops && rec.ops.length && rec.cr) {
+      /* 外框 = 题目卡片 ∪ 笔迹图 ∪ 每张图片；哪怕只有图片、没有笔画也要出框 */
+      var cr0 = rec.cr;
+      var bx = cr0.x, by = cr0.y, bw = cr0.w, bh = cr0.h;
+      if (png) {
+        bx = Math.min(bx, png.x); by = Math.min(by, png.y);
+        bw = Math.max(cr0.x + cr0.w, png.x + png.w) - bx;
+        bh = Math.max(cr0.y + cr0.h, png.y + png.h) - by;
+      }
+      imgs.forEach(function (m) {
+        bx = Math.min(bx, m.x); by = Math.min(by, m.y);
+        bw = Math.max(cr0.x + cr0.w, m.x + m.w) - bx;
+        bh = Math.max(cr0.y + cr0.h, m.y + m.h) - by;
+      });
+      var K = W / Math.max(1, cr0.w);
+      geo = {
+        w: Math.round(bw * K), h: Math.round(bh * K),
+        cl: Math.round((cr0.x - bx) * K), ct: Math.round((cr0.y - by) * K),
+        iw: png ? Math.round(png.w * K) : 0, url: png ? png.url : '',
+        bx: bx, by: by, K: K
+      };
+      geo.z = Math.min(1, 700 / Math.max(1, geo.w), 1000 / Math.max(1, geo.h));
+    }
+    var h = (geo ? '<div class="qbox" data-no="' + (i + 1) + '" style="width:' + geo.w + 'px;height:' + Math.round(geo.h) +
+      'px;zoom:' + (geo.z || 1).toFixed(3) + '">' : '<div class="qwrap" data-no="' + (i + 1) + '">') +
+      '<div class="card qcard"' + (geo ? ' style="margin-left:' + geo.cl + 'px;margin-top:' + geo.ct + 'px;width:' + W + 'px"' : '') + '>' +
+      '<div class="qhead"><span class="qno">第 ' + (i + 1) + ' 题</span>' +
+      '<span class="tag">' + esc(typeName(r.type)) + '</span>' +
+      (r.tries ? '<span class="tag g">错误率 ' + r.pct + '%</span>' : '') +
+      '<span class="tag g">' + esc(r.subj.join('、') || '未分科') + '</span></div>';
+    if (q.group) h += '<div class="gstem"><b>共用题干：</b>' + esc(q.group) + '</div>';
+    h += '<div class="stem">' + esc(q.stem || '') + '</div>';
+    h += '<div class="opts">';
+    (q.options || []).forEach(function (o, j) {
+      h += '<div class="opt"><span class="k">' + 'ABCDEFGHIJKL'[j] + '</span><span>' + esc(o) + '</span></div>';
+    });
+    h += '</div>';
+    if (withAns) h += '<div class="exp" style="border-left-color:var(--primary)">答案：' + esc((q.answer || []).join('')) + '</div>';
+    if (withExp && q.explain) h += '<div class="exp">' + esc(q.explain) + '</div>';
+    h += '</div>';
+    if (geo) {
+      if (geo.url) h += '<img class="inkimg" src="' + geo.url + '" style="left:0;top:0;width:' + geo.iw + 'px">';
+      /* 图片笔迹不走 canvas，单独按同一套坐标叠上去；盒子已把图片外框算进去 */
+      imgs.forEach(function (m) {
+        h += '<img class="inkimg" src="' + m.data + '"' +
+          ' style="left:' + Math.round((m.x - geo.bx) * geo.K) + 'px;top:' + Math.round((m.y - geo.by) * geo.K) + 'px;' +
+          'width:' + Math.round(m.w * geo.K) + 'px;opacity:' + (m.op == null ? 1 : m.op) + '">';
+      });
+    }
+    return h + '</div>';
+  }
+
+  /* ============ 导出文档样式：屏幕预览与 A4 打印共用一套 ============ */
+  function docCss(paged) {
     var css = [
-      '@page{size:A4;margin:10mm}',
+      '@page{size:A4;margin:' + (paged ? '0' : '10mm') + '}',
       'html,body{background:#fff!important}',
       'body::before,body::after{display:none!important}',
       '.doc{width:190mm;margin:0 auto;padding:4mm 0 8mm;background:#fff}',
@@ -361,95 +432,44 @@
       '.doc .opts{margin-top:10px}',
       '.wpage{break-inside:avoid;page-break-inside:avoid;margin:0 0 6mm}',
       '.wpage>img{width:100%;border:1px solid var(--line);border-radius:8px;display:block}',
-      '.wcap{font-size:12px;color:var(--sub,#64748b);margin:0 0 4px}',
-      '@media print{.doc{width:auto;padding:0}}'
-    ].join('\n');
-    var dbgN = 0, dbgRec = 0, dbgGeo = 0;
-    var body = rs.map(function (r, i) {
-      var q = r.q, rec = null;
-      if (BAKED && BAKED[q.id]) {
-        var bk = BAKED[q.id];
-        var hb = '<div class="qwrap"><img src="' + bk + '" style="width:718px;display:block;border-radius:10px"></div>';
-        if (ans && false) hb += '';
-        return hb;
-      }
-      try { rec = (window.INK && INK.inkRec) ? INK.inkRec(bank, q) : null; } catch (e) {}
-      var png = null;
-      if (note === 'ink' && rec && rec.ops && rec.ops.length) {
-        try { png = INK.pngOf(bank, q, { paper: 'light' }); } catch (e) {}
-      }
-      /* 有批注时，外面再套一层「画布盒」：盒子尺寸＝题目卡片 ∪ 笔迹范围，
-         题目卡片居中放进去，批注整张图铺在盒子上——这样画到题目外面的笔迹不会被页边裁掉 */
-      var W = 718, geo = null;
-      var imgs = [];
-      try { imgs = (window.INK && INK.imgList) ? (INK.imgList(bank, q) || []) : []; } catch (e) {}
-      /* cr 缺失时兜底：旧记录可能只有 vw/vh；再不行用 pngOf 的 cr 或 0,0 */
-      if (rec && (!rec.cr)) {
-        if (png && png.cr) rec.cr = png.cr;
-        else {
-          var cc = document.querySelector('#view .card');
-          var cr1 = cc ? cc.getBoundingClientRect() : null;
-          rec.cr = cr1 ? { x: Math.round(cr1.left + scrollX), y: Math.round(cr1.top + scrollY), w: Math.round(cr1.width), h: Math.round(cr1.height) }
-                       : { x: 0, y: 0, w: 718, h: 600 };
-        }
-      }
-      if (rec && rec.ops && rec.ops.length && rec.cr) {
-        /* 外框 = 题目卡片 ∪ 笔迹图 ∪ 每张图片；哪怕只有图片、没有笔画也要出框 */
-        var cr0 = rec.cr;
-        var bx = cr0.x, by = cr0.y, bw = cr0.w, bh = cr0.h;
-        if (png) {
-          bx = Math.min(bx, png.x); by = Math.min(by, png.y);
-          bw = Math.max(cr0.x + cr0.w, png.x + png.w) - bx;
-          bh = Math.max(cr0.y + cr0.h, png.y + png.h) - by;
-        }
-        imgs.forEach(function (m) {
-          bx = Math.min(bx, m.x); by = Math.min(by, m.y);
-          bw = Math.max(cr0.x + cr0.w, m.x + m.w) - bx;
-          bh = Math.max(cr0.y + cr0.h, m.y + m.h) - by;
-        });
-        var K = W / Math.max(1, cr0.w);
-        geo = {
-          w: Math.round(bw * K), h: Math.round(bh * K),
-          cl: Math.round((cr0.x - bx) * K), ct: Math.round((cr0.y - by) * K),
-          iw: png ? Math.round(png.w * K) : 0, url: png ? png.url : '',
-          bx: bx, by: by, K: K
-        };
-        geo.z = Math.min(1, 700 / Math.max(1, geo.w), 1000 / Math.max(1, geo.h));
-      }
-      if (rec) dbgRec++; if (rec && rec.ops) dbgN += rec.ops.length; if (geo) dbgGeo++;
-      var h = (geo ? '<div class="qbox" style="width:' + geo.w + 'px;height:' + Math.round(geo.h) +
-        'px;zoom:' + (geo.z || 1).toFixed(3) + '">' : '<div class="qwrap">') +
-        '<div class="card qcard"' + (geo ? ' style="margin-left:' + geo.cl + 'px;margin-top:' + geo.ct + 'px;width:' + W + 'px"' : '') + '>' +
-        '<div class="qhead"><span class="qno">第 ' + (i + 1) + ' 题</span>' +
-        '<span class="tag">' + esc(typeName(r.type)) + '</span>' +
-        (r.tries ? '<span class="tag g">错误率 ' + r.pct + '%</span>' : '') +
-        '<span class="tag g">' + esc(r.subj.join('、') || '未分科') + '</span></div>';
-      if (q.group) h += '<div class="gstem"><b>共用题干：</b>' + esc(q.group) + '</div>';
-      h += '<div class="stem">' + esc(q.stem || '') + '</div>';
-      h += '<div class="opts">';
-      (q.options || []).forEach(function (o, j) {
-        h += '<div class="opt"><span class="k">' + 'ABCDEFGHIJKL'[j] + '</span><span>' + esc(o) + '</span></div>';
-      });
-      h += '</div>';
-      if (ans) h += '<div class="exp" style="border-left-color:var(--primary)">答案：' + esc((q.answer || []).join('')) + '</div>';
-      if (exp && q.explain) h += '<div class="exp">' + esc(q.explain) + '</div>';
-      h += '</div>';
-      if (geo) {
-        if (geo.url) h += '<img class="inkimg" src="' + geo.url + '" style="left:0;top:0;width:' + geo.iw + 'px">';
-        /* 图片笔迹不走 canvas，单独按同一套坐标叠上去；盒子已把图片外框算进去 */
-        var imgs2 = [];
-        try { imgs2 = (window.INK && INK.imgList) ? (INK.imgList(bank, q) || []) : []; } catch (e) {}
-        imgs2.forEach(function (m) {
-          h += '<img class="inkimg" src="' + m.data + '"' +
-            ' style="left:' + Math.round((m.x - geo.bx) * geo.K) + 'px;top:' + Math.round((m.y - geo.by) * geo.K) + 'px;' +
-            'width:' + Math.round(m.w * geo.K) + 'px;opacity:' + (m.op == null ? 1 : m.op) + '">';
-        });
-      }
-      return h + '</div>';
-    }).join('\n');
+      '.wcap{font-size:12px;color:var(--sub,#64748b);margin:0 0 4px}'
+    ];
+    if (paged) {
+      /* 固定页盒：每页自己带页眉页脚和页码，打印时不再靠浏览器猜分页点 */
+      css.push('.doc.paged{width:auto;margin:0;padding:0}');
+      css.push('.pg{width:210mm;height:297mm;padding:10mm 10mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;background:#fff;page-break-after:always;break-after:page;overflow:hidden}');
+      css.push('.pg:last-of-type{page-break-after:auto;break-after:auto}');
+      css.push('.phead{flex:0 0 auto;display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:11px;color:var(--sub,#64748b);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:10px}');
+      css.push('.pbody{flex:1 1 auto;position:relative;overflow:hidden}');
+      css.push('.pbody>div{margin-bottom:22px}');
+      css.push('.pbody>div:last-child{margin-bottom:0}');
+      css.push('.pfoot{flex:0 0 auto;display:flex;justify-content:space-between;font-size:10.5px;color:#94a3b8;border-top:1px solid var(--line);padding-top:5px;margin-top:8px}');
+      css.push('.pg.flow{height:auto;min-height:297mm}');
+      css.push('.pg.flow .pbody{overflow:visible}');
+    } else {
+      css.push('@media print{.doc{width:auto;padding:0}}');
+    }
+    return css.join('\n');
+  }
+
+  /* ============ 整篇导出文档（流式：先给 HTML 导出 / 再交给分页器） ============ */
+  function docHtml(rs, opt) {
+    opt = opt || {};
+    var ansEl = host && host.querySelector('.exp-ans');
+    var expEl = host && host.querySelector('.exp-exp');
+    var withAns = opt.ans != null ? !!opt.ans : !!(ansEl && ansEl.checked);
+    var withExp = opt.exp != null ? !!opt.exp : (expEl ? !!expEl.checked : true);
+    var noteMode = opt.note != null ? opt.note : note;
+    var de = document.documentElement, db = document.body;
+    var attrStyle = de.getAttribute('data-style') || '', attrTheme = de.getAttribute('data-theme') || '';
+    var attrBig = de.getAttribute('data-big') || '';
+    var fsCls = (db.className.match(/\bfs-[a-z]+\b/) || [''])[0];
+    /* 用站点自己的样式表，导出的题目排版和答题页一模一样（批注才对得上位置） */
+    var css = docCss(!!opt.paged);
+    var body = rs.map(function (r, i) { return blockHtml(r, i, withAns, withExp, noteMode); }).join('\n');
     var wb = '';
-    if (note === 'board') {
-      var sel = host.querySelector('.exp-board'), bid = sel && sel.value;
+    if (noteMode === 'board') {
+      var sel1 = host && host.querySelector('.exp-board'), bid = sel1 && sel1.value;
       var bs = [];
       try { bs = (window.INK && INK.boards) ? INK.boards() : []; } catch (e) {}
       var b = null;
@@ -460,46 +480,276 @@
         if (bp) wb = '<div class="wpage"><div class="wcap">白板手稿 · ' + esc(b.name || '未命名') + '</div><img src="' + bp + '"></div>';
       }
     }
+    var title = (bank && bank.title) || '题目导出';
     var head = '<!doctype html><html lang="zh-CN" data-style="' + esc(attrStyle) + '" data-theme="' + esc(attrTheme) + '"' +
-      (attrBig ? ' data-big="' + esc(attrBig) + '"' : '') + '><head><meta charset="utf-8"><title>刷题站 · ' + esc(bank.title || '题目导出') + '</title>' +
+      (attrBig ? ' data-big="' + esc(attrBig) + '"' : '') + '><head><meta charset="utf-8"><title>刷题站 · ' + esc(title) + '</title>' +
       '<link rel="stylesheet" href="style.css"><style>' + css + '</style></head>';
     var bd = '<body class="' + esc(fsCls) + '"><div class="doc">' +
-      '<h1>' + esc(bank.title || '题目导出') + '</h1>' +
-      '<div class="meta">共 ' + rs.length + ' 题　' + date +
-      (note === 'ink' ? '　含题目批注' : note === 'board' ? '　附白板手稿' : '') +
-      (ans ? '　含答案' : '') + (exp ? '　含解析' : '') + '</div>' +
-      body + wb + '<div style="text-align:center;font-size:11px;color:#94a3b8;margin-top:10px">— 由刷题站导出 —</div></div></body></html>';
+      '<h1>' + esc(title) + '</h1>' +
+      '<div class="meta">' + esc(metaStr(rs, withAns, withExp, noteMode)) + '</div>' +
+      body + wb + '<div class="doc-end" style="text-align:center;font-size:11px;color:#94a3b8;margin-top:10px">— 由刷题站导出 —</div></div></body></html>';
     return head + bd;
+  }
+
+  /* ============ 资源就绪：字体 + 图片都到位再量高度 ============ */
+  function rafN(win, n) {
+    return new Promise(function (res) {
+      var k = 0;
+      (function step() { k++; if (k >= n) res(); else (win.requestAnimationFrame ? win.requestAnimationFrame(step) : setTimeout(step, 16)); })();
+    });
+  }
+  function whenReady(doc) {
+    var jobs = [];
+    try {
+      if (doc.fonts && doc.fonts.ready) jobs.push(Promise.resolve(doc.fonts.ready).catch(function () {}));
+    } catch (e) {}
+    var imgs = [];
+    try { imgs = Array.prototype.slice.call(doc.images || []); } catch (e) {}
+    imgs.forEach(function (im) {
+      if (im.complete) return;
+      jobs.push(new Promise(function (res) {
+        im.addEventListener('load', res);
+        im.addEventListener('error', res);
+        setTimeout(res, 6000);
+      }));
+    });
+    return Promise.all(jobs).then(function () { return rafN(doc.defaultView || window, 2); });
+  }
+
+  /* ============ 内容感知分页 ============
+     SeamlessPDF 那套是「先栅格化再按像素找干净切割线」；我们是文字文档，
+     直接把每道题当一个不可切的块，量出真实高度后装箱，比像素扫描更准，
+     而且导出仍然是可选中的文字（不是一张大图）。
+       ① 用空页量「一页正文能放多高」
+       ② 量每道题的高度（整题不切断）
+       ③ 装箱：装不下就换页；单题比一页还高时，给它单独一页并允许自然续页
+       ④ 生成带页眉页脚的固定页盒，页码已知，不用等浏览器排版 */
+  function paginateDoc(doc, title, meta) {
+    var root = doc.querySelector('.doc') || doc.body;
+    var all = Array.prototype.slice.call(root.children);
+    var h1 = null, metaEl = null, blocks = [];
+    all.forEach(function (el) {
+      if (!h1 && el.tagName === 'H1') { h1 = el; return; }
+      if (!metaEl && el.className === 'meta') { metaEl = el; return; }
+      if (el.className === 'doc-end') return;   /* 落款不单独占一页，页脚已经有了 */
+      blocks.push(el);
+    });
+    if (!blocks.length) return { pages: 0, oversized: 0, avail: 0, used: [] };
+
+    /* ① 空页量正文高度 */
+    var probe = doc.createElement('div');
+    probe.className = 'pg';
+    probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden';
+    probe.innerHTML = '<div class="phead">x</div><div class="pbody"></div><div class="pfoot">y</div>';
+    doc.body.appendChild(probe);
+    var avail = Math.floor(probe.querySelector('.pbody').getBoundingClientRect().height);
+    probe.parentNode.removeChild(probe);
+    if (!avail || avail < 200) avail = 960;   /* 兜底：A4 版心 275mm≈1039px，减掉页眉页脚 */
+    avail = Math.max(200, avail - 8);         /* 留 8px 安全边：别让四舍五入把最后一题顶出页 */
+
+    /* ② 量高度（含下外边距；区块间距在 .pbody 里由 CSS 再给一层） */
+    var items = blocks.map(function (el) {
+      var h = el.getBoundingClientRect().height;
+      var mb = 0;
+      try { mb = parseFloat(doc.defaultView.getComputedStyle(el).marginBottom) || 0; } catch (e) {}
+      var total = Math.ceil(h + mb) + 1;
+      return { el: el, h: total, tall: total > avail };
+    });
+
+    /* ③ 装箱：装不下的题先试「题干+选项留本页、解析续到下一页」，
+       实在连题干都放不下才整题换页；单题比一页还高时独占一页并允许自然续页。
+       留白太多是打印稿最显眼的毛病，这一步就是用来把它压下去的。 */
+    var pages = [], cur = null, used = 0, oversized = 0;
+    function flush() {
+      if (cur && cur.length) pages.push({ items: cur, flow: false });
+      cur = null; used = 0;
+    }
+    var queue = items.slice(), guard = 0;
+    while (queue.length && guard++ < 5000) {
+      var it = queue.shift();
+      if (it.tall) {
+        oversized++;
+        flush();
+        pages.push({ items: [it], flow: true });
+        continue;
+      }
+      if (!cur) cur = [];
+      if (used + it.h <= avail) { cur.push(it); used += it.h; continue; }
+      var sp = trySplitTail(it, avail - used, queue[0]);
+      if (sp) {
+        cur.push({ el: sp.head, h: sp.headH });
+        used += sp.headH;
+        flush();
+        queue.unshift(sp.tail);
+        continue;
+      }
+      flush();
+      queue.unshift(it);
+    }
+    flush();
+
+    /* 把「解析」这几块拆到续页（题干和选项留在原页，批注也跟着原页）
+       只有本页剩余空间够放下题干才拆，否则宁可整题换页 */
+    function trySplitTail(item, room, next) {
+      /* 拆了必须能省页：续页还要接得住下一块，接不住就是白白多一页 */
+      if (room < 300 || !next || next.tall) return null;
+      var el = item.el, card = el.querySelector('.qcard');
+      if (!card) return null;
+      var exps = [], c = card.firstElementChild;
+      for (; c; c = c.nextElementSibling) if (c.className === 'exp') exps.push(c);
+      if (!exps.length) return null;
+      var old = exps.map(function (e) { return e.style.display; });
+      exps.forEach(function (e) { e.style.display = 'none'; });
+      /* 量的是卡片本身：带批注的 .qbox 有固定高度，量外壳会永远量成整题高度 */
+      var headH = Math.ceil(card.getBoundingClientRect().height) + 22;
+      exps.forEach(function (e, k) { e.style.display = old[k]; });
+      if (headH > room) return null;
+
+      var tail = el.cloneNode(false);
+      if (tail.style) { tail.style.height = 'auto'; tail.style.zoom = ''; }
+      var card2 = card.cloneNode(false);
+      if (card2.style) { card2.style.marginLeft = '0'; card2.style.marginTop = '0'; }
+      exps.forEach(function (e) { card2.appendChild(e); });
+      var tip = doc.createElement('div');
+      tip.className = 'qno';
+      tip.textContent = '第 ' + (el.getAttribute('data-no') || '') + ' 题 · 解析（接上页）';
+      card2.insertBefore(tip, card2.firstChild);
+      tail.appendChild(card2);
+      root.appendChild(tail);                     /* 先挂回文档里，才量得到高度 */
+      var h2 = Math.ceil(tail.getBoundingClientRect().height) + 22;
+      if (h2 + next.h > avail) {                  /* 续页接不住下一块，撤销这次拆分 */
+        if (tail.parentNode) tail.parentNode.removeChild(tail);
+        exps.forEach(function (e) { card.appendChild(e); });
+        return null;
+      }
+      return { head: el, headH: headH, tail: { el: tail, h: h2, tall: h2 > avail } };
+    }
+
+    /* ④ 落成页盒（页码按「空盒数 + 续页数」累加） */
+    function mk(tag, cls, text) {
+      var e = doc.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+    var total = 0;
+    pages.forEach(function (p) { p.span = p.flow ? Math.max(1, Math.ceil(p.items[0].h / avail)) : 1; total += p.span; });
+
+    var frag = doc.createDocumentFragment();
+    var n = 0;
+    pages.forEach(function (p) {
+      var box = mk('div', 'pg' + (p.flow ? ' flow' : ''));
+      var hd = mk('div', 'phead');
+      hd.appendChild(mk('span', '', title));
+      hd.appendChild(mk('span', '', meta));
+      var bd = mk('div', 'pbody');
+      p.items.forEach(function (it) { bd.appendChild(it.el); });
+      var ft = mk('div', 'pfoot');
+      ft.appendChild(mk('span', '', '刷题站导出'));
+      var startNo = n + 1;
+      n += p.span;
+      ft.appendChild(mk('span', '', p.flow ? ('第 ' + startNo + ' 页起，跨 ' + p.span + ' 页') : ('第 ' + startNo + ' / ' + total + ' 页')));
+      box.appendChild(hd); box.appendChild(bd); box.appendChild(ft);
+      frag.appendChild(box);
+    });
+
+    if (h1 && h1.parentNode) h1.parentNode.removeChild(h1);
+    if (metaEl && metaEl.parentNode) metaEl.parentNode.removeChild(metaEl);
+    root.innerHTML = '';
+    root.className = 'doc paged';
+    root.appendChild(frag);
+
+    return {
+      pages: pages.length,
+      totalPages: total,
+      oversized: oversized,
+      avail: avail,
+      used: pages.map(function (p) { return Math.round(p.items.reduce(function (s, it) { return s + it.h; }, 0)); })
+    };
+  }
+
+  /* ============ PDF 导出：iframe 里排版 → 调起打印 ============ */
+  function printPaged(html, title, meta) {
+    var fr = document.createElement('iframe');
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none;z-index:-1';
+    document.body.appendChild(fr);
+    var printed = false;
+    fr.onload = function () {
+      var doc = null;
+      try { doc = fr.contentDocument; } catch (e) {}
+      if (!doc) { toast2('导出文档打不开，换 HTML 再打印', 2600, 'bad'); return; }
+      whenReady(doc).then(function () {
+        var info;
+        try { info = paginateDoc(doc, title, meta); } catch (e) {
+          try { console.warn('[exp] 分页失败，退回整篇打印', e); } catch (e2) {}
+          info = { pages: 0, totalPages: 0, err: String((e && e.message) || e) };
+        }
+        return new Promise(function (r) { setTimeout(r, 200); }).then(function () { return info; });
+      }).then(function (info) {
+        if (printed) return;
+        printed = true;
+        try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+        catch (e) { toast2('打印被浏览器拦了，换 HTML 打开再打印', 2600, 'bad'); }
+        var np = info && info.totalPages ? info.totalPages : 1;
+        toast2('已排好 ' + np + ' 页，正在调起打印（另存为 PDF）' + (info && info.oversized ? '　有 ' + info.oversized + ' 题超一页' : ''), 3000, 'good');
+        setTimeout(function () { fr.remove(); }, 60000);
+      }).catch(function (e) {
+        try { console.warn('[exp] 排版异常', e); } catch (e2) {}
+        if (printed) return;
+        printed = true;
+        try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e3) { toast2('打印被浏览器拦了，换 HTML 打开再打印', 2600, 'bad'); }
+        setTimeout(function () { fr.remove(); }, 60000);
+      });
+    };
+    fr.srcdoc = html;
+    return fr;
+  }
+
+  function openHtmlDoc(html) {
+    var w = window.open('', '_blank');
+    if (!w) return false;
+    w.document.open();
+    try { w.document.charset = 'utf-8'; } catch (e) {}
+    w.document.write('<!DOCTYPE html><meta charset="utf-8">' + html);
+    w.document.close();
+    return true;
   }
 
   function doExport() {
     var rs = filtered().filter(function (r) { return sel[r.key]; });
     if (!rs.length) { toast2('先勾选要导出的题', 1800, 'bad'); return; }
+    var ansEl = host && host.querySelector('.exp-ans');
+    var expEl = host && host.querySelector('.exp-exp');
+    var withAns = !!(ansEl && ansEl.checked);
+    var withExp = expEl ? !!expEl.checked : true;
     var html = '';
-    try { html = docHtml(rs); } catch (e) {
+    try { html = docHtml(rs, { ans: withAns, exp: withExp, paged: fmt === 'pdf' }); } catch (e) {
       try { console.error('[exp] docHtml failed', e); } catch (e2) {}
       try { window.__expErr = String((e && e.stack) || e); } catch (e5) {}
       try { toast2('导出失败：' + ((e && e.message) || e), 3200, 'bad'); } catch (e3) {}
       return;
     }
     if (!html) { try { toast2('导出内容为空（批注数据可能异常）', 2600, 'bad'); } catch (e4) {} return; }
+    var title = (bank && bank.title) || '题目导出';
+    var meta = metaStr(rs, withAns, withExp, note);
     if (fmt === 'pdf') {
-      var fr = document.createElement('iframe');
-      fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
-      document.body.appendChild(fr);
-      fr.srcdoc = html;
-      fr.onload = function () {
-        setTimeout(function () {
-          try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { toast2('打印被浏览器拦了，换 HTML 打开再打印', 2600, 'bad'); }
-          setTimeout(function () { fr.remove(); }, 60000);
-        }, 250);
-      };
+      toast2('正在排版 ' + rs.length + ' 题…', 1200);
+      printPaged(html, title, meta);
     } else {
-      var w = window.open('', '_blank');
-      if (!w) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
-      w.document.open(); try { w.document.charset = 'utf-8'; } catch (e) {} w.document.write('<!DOCTYPE html><meta charset="utf-8">' + html); w.document.close();
+      if (openHtmlDoc(html)) toast2('已在新标签打开 ' + rs.length + ' 题', 2400, 'good');
+      else {
+        /* 弹窗被拦时退一步：直接把 HTML 存成文件，用户双击也能看能打印 */
+        try {
+          var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = (title || '题目导出') + '.html';
+          document.body.appendChild(a); a.click();
+          setTimeout(function () { URL.revokeObjectURL(a.href); if (a.parentNode) a.remove(); }, 4000);
+          toast2('新窗口被拦了，已下载 HTML 文件：双击就能看，浏览器里 Ctrl+P 存 PDF', 3600, 'good');
+        } catch (e) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); }
+      }
     }
-    toast2(fmt === 'pdf' ? '已生成 ' + rs.length + ' 题，正在调起打印（另存为 PDF）' : '已在新标签打开 ' + rs.length + ' 题', 2400, 'good');
   }
 
   function close() {
@@ -508,34 +758,73 @@
     host = null;
   }
 
-  /* 自检：不用手点，一句话跑完「全选 → 导出 → 看批注进没进去」 */
+  function pageRows(b, n) {
+    var qs = (b && b.questions) || [];
+    return qs.slice(0, n).map(function (q) {
+      return { q: q, key: (q && q.id) || '', subj: [], type: 'A1', tries: 0, pct: 0 };
+    });
+  }
+
+  /* 自检：不用手点，跑完「建文档 → 真实分页 → 看题干/批注在不在」 */
   function selfTest(cb) {
-    var out = { sel: 0, baked: 0, inkimg: 0, len: 0, hasInk: false, err: '', hasBake: false };
-    out.hasBake = !!(window.INK && typeof INK.bake === 'function');
-    var bank = (typeof bankById === 'function' && QZ.bankId) ? bankById(QZ.bankId) : null;
-    var qs = (bank && bank.questions) || [];
-    var rs = qs.slice(0, 8).map(function (q) {
-      return { q: q, key: q.id, subj: [], type: 'A1', tries: 0, pct: 0 };
-    });
+    var out = { sel: 0, hasStem: false, hasCard: false, inkimg: 0, len: 0, pages: 0, totalPages: 0, oversized: 0, avail: 0, err: '' };
+    var b = bank || ((typeof bankById === 'function' && window.QZ && QZ.bankId) ? bankById(QZ.bankId) : null);
+    if (!b) { out.err = 'no bank'; if (cb) cb(out); return out; }
+    var old = bank; bank = b;
+    var rs = pageRows(b, 8);
     out.sel = rs.length;
-    if (!out.hasBake) { if (cb) cb(out); return out; }
-    var jobs = rs.map(function (r) {
-      try { return INK.bake(bank, r.q).catch(function () { return null; }); } catch (e) { return Promise.resolve(null); }
-    });
-    Promise.all(jobs).then(function (arr) {
-      arr.forEach(function (b, k) {
-        if (b && b.url) { BAKED[rs[k].q.id] = b.url; out.baked++; }
+    try {
+      var html = docHtml(rs, { paged: true });
+      out.len = html.length;
+      out.inkimg = html.split('data:image/png').length - 1;
+      out.hasStem = html.indexOf('class="stem"') >= 0;
+      out.hasCard = html.indexOf('qcard') >= 0;
+      paginateTest(rs.length, {}, function (info) {
+        if (info) {
+          out.pages = info.pages || 0;
+          out.totalPages = info.totalPages || 0;
+          out.oversized = info.oversized || 0;
+          out.avail = info.avail || 0;
+          if (info.err) out.err = String(info.err);
+        }
+        bank = old;
+        if (cb) cb(out);
       });
-      try {
-        var html = docHtml(rs, BAKED);
-        out.len = html ? html.length : 0;
-        out.inkimg = html ? (html.split('data:image/png').length - 1) : 0;
-        out.hasInk = html ? html.indexOf('qwrap') >= 0 : false;
-      } catch (e) { out.err = String((e && e.stack) || e); }
+    } catch (e) {
+      out.err = String((e && e.stack) || e);
+      bank = old;
       if (cb) cb(out);
-    });
+    }
     return out;
   }
 
-  window.EXP = { selfTest: selfTest, open: open, close: close };
+  /* 排版测试：跑一遍真实分页，返回页数 / 超页题数 / 每页用量。
+     opt.show=true 时把 iframe 显示出来（210mm×297mm），方便截图看效果 */
+  function paginateTest(n, opt, cb) {
+    opt = opt || {};
+    var b = bank || ((typeof bankById === 'function' && window.QZ && QZ.bankId) ? bankById(QZ.bankId) : null);
+    if (!b) { if (cb) cb({ err: 'no bank' }); return null; }
+    bank = b;
+    var rs = pageRows(b, n || 8);
+    var html = docHtml(rs, { paged: true });
+    var fr = document.createElement('iframe');
+    fr.style.cssText = opt.show
+      ? 'position:fixed;left:8px;top:8px;width:210mm;height:297mm;border:1px solid #94a3b8;background:#fff;z-index:2147483000;box-shadow:0 8px 30px rgba(0,0,0,.25)'
+      : 'position:fixed;right:0;bottom:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none;z-index:-1';
+    document.body.appendChild(fr);
+    fr.onload = function () {
+      var doc = null;
+      try { doc = fr.contentDocument; } catch (e) {}
+      whenReady(doc).then(function () {
+        var info = paginateDoc(doc, (b && b.title) || '题目导出', metaStr(rs, false, true, note));
+        if (cb) cb(info, fr);
+      }).catch(function (e) {
+        if (cb) cb({ err: String((e && e.message) || e) }, fr);
+      });
+    };
+    fr.srcdoc = html;
+    return fr;
+  }
+
+  window.EXP = { selfTest: selfTest, open: open, close: close, paginateTest: paginateTest, doExport: doExport };
 })();

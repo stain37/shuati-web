@@ -122,5 +122,3 @@ html.motion-ok .resume{animation:motionRise .5s .04s cubic-bezier(.2,.8,.2,1) bo
   .bank,.btn,.hero{transition:none !important}
   .bank:hover,.btn:hover:not(:disabled),.btn:active:not(:disabled){transform:none !important}
 }
-tn:hover:not(:disabled),.btn:active:not(:disabled){transform:none !important}
-}

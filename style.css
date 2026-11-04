@@ -10044,3 +10044,131 @@ body.ink-on .ink-txt{cursor:text}
 .exp-box{position:relative;z-index:3}
 .exp-go{position:relative;z-index:5}
 
+
+/* ---- 白板工具条（web253）---- */
+.ink-tb .ink-seg{gap:4px;flex-wrap:wrap}
+.ink-tb .ink-seg button{min-width:30px;height:28px;padding:0 6px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--sub);font-size:12.5px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.ink-tb .ink-seg button:hover{color:var(--text);border-color:var(--line2)}
+.ink-tb .ink-seg button.on{background:var(--primary-soft);border-color:var(--primary);color:var(--text)}
+.ink-tb .ink-seg button.pri{min-width:auto;padding:0 13px;background:var(--primary);border-color:var(--primary);color:#04211a;font-weight:600}
+.ink-tb .ink-seg button.pri:hover{filter:brightness(1.06)}
+.ink-tb .ink-seg button.off{opacity:.3;pointer-events:none}
+.ink-vsep{width:1px;height:18px;background:var(--line);display:inline-block;margin:0 2px}
+.ink-alab{font-size:11.5px;color:var(--sub)}
+.ink-ws,.ink-sws,.ink-bgs{display:inline-flex;gap:5px;align-items:center}
+.ink-w{width:25px;height:25px;border-radius:7px;border:1px solid var(--line);background:var(--card2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ink-w i{display:block;background:var(--sub);border-radius:50%}
+.ink-w.on{border-color:var(--primary);background:var(--primary-soft)}
+.ink-w.on i{background:var(--primary)}
+.ink-sw{width:20px;height:20px;border-radius:50%;border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset;cursor:pointer;padding:0}
+.ink-sw.on{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--primary)}
+.ink-tg{border:1px solid var(--line);background:var(--card2);color:var(--sub);border-radius:8px;padding:4px 9px;font-size:11.5px;cursor:pointer}
+.ink-tg.on{background:var(--primary-soft);border-color:var(--primary);color:var(--text)}
+.ink-bg{border:1px solid var(--line);background:var(--card2);color:var(--sub);border-radius:7px;padding:2px 8px;font-size:11.5px;cursor:pointer}
+.ink-bg.on{border-color:var(--primary);color:var(--text)}
+.ink-inline{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--sub)}
+.ink-tb .ink-alpha{width:84px;accent-color:var(--primary)}
+.ink-txtrow{margin-top:2px;gap:6px;flex-wrap:wrap;align-items:center}
+@media (max-width:620px){
+  .ink-tb .ink-seg button{min-width:26px;height:26px}
+  .ink-tb .ink-alpha{width:60px}
+  .ink-tg,.ink-bg{padding:3px 7px;font-size:11px}
+}
+/* 批注层是整屏 canvas，工具条必须不透光，否则笔迹会透过来影响看清按钮 */
+.ink-wrap .ink-tools{background:var(--bg);background:color-mix(in srgb, var(--bg) 94%, var(--text));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+/* ===== web255 · 手机答题页改为「单手规格」（借 EXAM-MASTER 的实测参数） =====
+   ① 题目工具行不再折成 3–4 行：改成单行横向滑动，题干与选项因此提前一屏
+   ② 选项触控区 ≥56px、字号 16px（对应 EXAM-MASTER 的 .answer-option 规格）
+   ③ 题干 16px/1.7，长题只滚动不缩字号
+   只在小屏生效，桌面与平板布局完全不动。 */
+/* 顶栏「筛选」开关：桌面端不显示，只在手机答题页出现（web256） */
+.chips-toggle { display: none; }
+
+@media (max-width: 620px) {
+  .qhead {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .qhead::-webkit-scrollbar { display: none; }
+  /* 右缘渐隐，提示这一行还能往右滑 */
+  .qhead { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+           mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent); }
+  .qhead > * { flex: 0 0 auto; }
+  .qhead .spacer-grow { flex: 1 1 0; min-width: 0; }
+  .qhead .btn, .qhead .tag, .qhead .qno { white-space: nowrap; }
+
+  .qmode {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .qmode::-webkit-scrollbar { display: none; }
+  .qmode > * { flex: 0 0 auto; }
+  .qmode .qm-hint { display: none; }
+
+  .qcard { padding: 12px 11px !important; }
+
+  .stem { font-size: 16px !important; line-height: 1.7 !important; margin-bottom: 10px !important; }
+  .gstem { font-size: 15.5px !important; line-height: 1.65 !important; }
+
+  .opts .opt {
+    min-height: 56px !important;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    padding: 13px 14px !important;
+    margin-bottom: 8px !important;
+    display: flex;
+    align-items: center;
+  }
+  .opts .opt:last-child { margin-bottom: 0 !important; }
+
+  /* ⑤ 手机答题页：两行筛选默认收起，顶栏一个「筛选」开关展开；点任意 chip 自动收起。
+     收起后首屏多出约 70–90px 给题干与选项（EXAM-MASTER「题库首屏保留集合、搜索和题目，统计默认折叠」）。 */
+  body.quiz .chips-toggle { display: inline-flex; align-items: center; }
+  body.quiz:not(.chips-open) #subjchips,
+  body.quiz:not(.chips-open) #chips { display: none !important; }
+  body.quiz.chips-open #subjchips,
+  body.quiz.chips-open #chips { max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; }
+  .chips-toggle[aria-expanded="true"] { background: var(--primary-soft); border-color: var(--primary-line); color: var(--primary); }
+
+  /* ④ 输入框字号 >= 16px：iOS Safari 对 <16px 的输入框会在聚焦时自动放大整页（EXAM-MASTER 同样的处理） */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+    max-width: 100%;
+  }
+}
+
+/* ===================== 掌握度复盘（mastery.js，web258） ===================== */
+.mv-kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+.mv-kpi { flex: 1 1 120px; min-width: 110px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--card2); }
+.mv-kpi b { display: block; font-size: 20px; line-height: 1.25; color: var(--text); font-variant-numeric: tabular-nums; }
+.mv-kpi span { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
+.mv-kpi i { display: block; font-size: 11px; color: var(--sub); font-style: normal; margin-top: 2px; opacity: .8; }
+.mv-subj, .mv-tags { padding: 6px 12px 10px; }
+.mv-row { display: grid; grid-template-columns: minmax(0,1fr) 92px; grid-template-areas: "name meta" "bar meta"; gap: 2px 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); align-items: center; }
+.mv-row:last-child { border-bottom: 0; }
+.mv-name { grid-area: name; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.mv-name > span.mv-sub { font-weight: 400; font-size: 11.5px; color: var(--sub); white-space: nowrap; }
+.mv-bar { grid-area: bar; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.mv-bar > i { display: block; height: 100%; border-radius: 999px; opacity: .8; transition: width .35s var(--ease); }
+.mv-meta { grid-area: meta; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: var(--sub); white-space: nowrap; }
+.mv-meta b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.mv-go { padding: 4px 9px; }
+@media (max-width: 620px) {
+  .mv-row { grid-template-columns: minmax(0,1fr); grid-template-areas: "name" "bar" "meta"; }
+  .mv-meta { justify-content: flex-start; }
+  .mv-kpis { gap: 8px; }
+  .mv-kpi { flex: 1 1 calc(50% - 4px); min-width: 0; padding: 8px 10px; }
+  .mv-kpi b { font-size: 18px; }
+}

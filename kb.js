@@ -1099,30 +1099,54 @@ function kbReadFile(f) {
 }
 
 /* ---------- 界面：知识库管理 + 试检索（由 ai.js 的 #/kb 页面调用） ---------- */
-function kbRowHtml(k) {
+/* ---------- 界面：知识库管理（文件管理器式） ----------
+   只重画 ② 知识库这一块：搜索 / 排序 / 网格-列表 / 多选批量 / 删除可撤销 / 容量条 / 空态。
+   原来那些 DOM id（#kbUsage #kbRows #kbSkipped #kbTarget …）照旧保留，ai.js 和探针不用改。 */
+var KB_UI = { q: '', sort: 'default', view: 'grid' };
+(function () {
+  var s = null;
+  try { s = readLS('qbank.kbui.v1', null); } catch (e) {}
+  if (s && typeof s === 'object') {
+    KB_UI.q = String(s.q || '');
+    KB_UI.sort = s.sort || 'default';
+    KB_UI.view = s.view === 'list' ? 'list' : 'grid';
+  }
+})();
+function kbUiSave() { try { writeLS('qbank.kbui.v1', KB_UI); } catch (e) {} }
+var KB_UI_COLORS = ['var(--primary)', 'var(--a2)', 'var(--a3)', 'var(--ok)', 'var(--warn)', 'var(--bad)', 'var(--sub)'];
+
+function kbRowHtml(k, idx) {
   const sel = new Set(kbSelected());
   const on = sel.has(k.id);
   const open = !!KB_OPEN[k.id];
-  let html = '<div class="kbrow' + (on ? ' on' : '') + '" data-id="' + k.id + '">'
-    + '<label class="kbchk"><input type="checkbox" data-kbsel="' + k.id + '"' + (on ? ' checked' : '') + '><span>' + esc(k.name) + '</span></label>'
-    + '<span class="mini-tag' + (k.src === 'file' ? ' ok' : '') + '">' + (k.src === 'file' ? '文件' : '网页导入') + '</span>'
-    + '<span class="kbinfo small muted">' + (k.docs || 0) + ' 篇 · ' + (k.chars || 0).toLocaleString() + ' 字 · ' + (k.chunks || 0) + ' 段</span>'
-    + (function () {
-      let em = '';
-      try { em = (typeof kbEmbModel === 'function') ? kbEmbModel() : ''; } catch (e) {}
-      if (!em) return '';
+  let emb = '';
+  try {
+    const em = (typeof kbEmbModel === 'function') ? kbEmbModel() : '';
+    if (em) {
       let t = 0, d = 0;
       try { t = kbEmbCount(k.id); d = kbEmbDoneN(k.id); } catch (e) {}
-      if (!t) return '';
-      const ok = d >= t;
-      return '<span class="mini-tag' + (ok ? ' ok' : '') + '" title="语义向量：' + (ok ? '已建好' : '还没建完，点上面「一键建向量」') + '">'
-        + (ok ? '向量 ✓' : '向量 ' + Math.round(d * 100 / t) + '%') + '</span>';
-    })()
-    + '<span class="spacer-grow"></span>'
+      if (t) {
+        const ok = d >= t;
+        emb = '<span class="mini-tag' + (ok ? ' ok' : '') + '" title="语义向量：' + (ok ? '已建好' : '还没建完，点上面「一键建向量」') + '">'
+          + (ok ? '向量 ✓' : '向量 ' + Math.round(d * 100 / t) + '%') + '</span>';
+      }
+    }
+  } catch (e) {}
+  let html = '<div class="kbrow' + (on ? ' on' : '') + '" data-id="' + esc(k.id) + '" data-i="' + (idx || 0) + '"'
+    + ' data-name="' + esc(k.name) + '" data-chars="' + (k.chars || 0) + '" data-chunks="' + (k.chunks || 0) + '"'
+    + ' data-docs="' + (k.docs || 0) + '" data-added="' + (k.addedAt || 0) + '" data-src="' + (k.src || 'local') + '">'
+    + '<label class="kbchk" title="勾上 = 让 AI 检索这个库"><input type="checkbox" data-kbsel="' + esc(k.id) + '"' + (on ? ' checked' : '') + '></label>'
+    + '<div class="kbmain">'
+    + '<div class="kbtitle"><span class="kbname">' + esc(k.name) + '</span>'
+    + '<span class="mini-tag' + (k.src === 'file' ? ' ok' : '') + '">' + (k.src === 'file' ? '文件' : '网页导入') + '</span>' + emb + '</div>'
+    + '<div class="kbmeta">' + (k.docs || 0) + ' 篇 · ' + (k.chars || 0).toLocaleString() + ' 字 · ' + (k.chunks || 0) + ' 段</div>'
+    + '</div>'
+    + '<div class="kbacts">'
     + '<button class="btn tiny" data-kbact="open">' + (open ? '收起' : '明细') + '</button>'
     + '<button class="btn tiny" data-kbact="rename">改名</button>'
     + '<button class="btn tiny" data-kbact="export">导出</button>'
-    + '<button class="btn tiny danger" data-kbact="del"' + (k.auto ? ' title="删掉后刷新也不会再自动挂载，页面下方可以恢复"' : '') + '>删除</button>';
+    + '<button class="btn tiny danger" data-kbact="del"' + (k.auto ? ' title="删掉后刷新不会再自动挂载，可用「撤销」恢复"' : '') + '>删除</button>'
+    + '</div>';
   if (open) {
     html += '<div class="kbdocs">';
     if (KB_MEM[k.id]) {
@@ -1130,38 +1154,136 @@ function kbRowHtml(k) {
         return '<div class="kbDoc"><span>' + esc(d.name || '资料') + '</span><span class="small muted">' + (d.chunks || []).length + ' 段</span>'
           + (k.auto ? '' : '<button class="btn tiny danger" data-kbdoc="' + i + '">删</button>') + '</div>';
       }).join('') || '<div class="small muted">空的</div>';
-    if (k.auto) html += '<div class="small muted">文件知识库是只读的：单篇删不掉，要减内容请重新生成 知识库.js；整个库不想用就点这一行的「删除」。</div>';
+      if (k.auto) html += '<div class="small muted">文件知识库是只读的：单篇删不掉，要减内容请重新生成 知识库.js；整个库不想用就点这一行的「删除」。</div>';
     } else html += '<div class="small muted">正在读取正文…</div>';
     html += '</div>';
   }
   return html + '</div>';
 }
+/* 一行里的统计条：库数 / 字数 / 段数 / 勾选数 + 各库段数占比 */
+function kbUiStatsHtml() {
+  const chars = KB_LIST.reduce((a, b) => a + (b.chars || 0), 0);
+  const chunks = KB_LIST.reduce((a, b) => a + (b.chunks || 0), 0);
+  const selN = kbSelected().length;
+  const total = chunks || 1;
+  const ranked = KB_LIST.slice().sort((x, y) => (y.chunks || 0) - (x.chunks || 0));
+  const top = ranked.slice(0, 6);
+  const rest = ranked.slice(6);
+  const restChunks = rest.reduce((a, b) => a + (b.chunks || 0), 0);
+  const seg = [];
+  top.forEach(function (k, i) {
+    const w = (k.chunks || 0) * 100 / total;
+    if (w <= 0) return;
+    seg.push('<i class="seg" style="width:' + w.toFixed(2) + '%;background:' + KB_UI_COLORS[i % KB_UI_COLORS.length]
+      + '" title="' + esc(k.name) + '：' + (k.chunks || 0).toLocaleString() + ' 段 ' + w.toFixed(1) + '%"></i>');
+  });
+  if (restChunks > 0) {
+    const w = restChunks * 100 / total;
+    seg.push('<i class="seg" style="width:' + w.toFixed(2) + '%;background:var(--sub)" title="其余 ' + rest.length + ' 个库：' + restChunks.toLocaleString() + ' 段"></i>');
+  }
+  return '<div class="kbtop">'
+    + '<div class="kbstat"><b id="kbNLib">' + KB_LIST.length + '</b><span>个知识库</span></div>'
+    + '<div class="kbstat"><b>' + chars.toLocaleString() + '</b><span>字</span></div>'
+    + '<div class="kbstat"><b>' + chunks.toLocaleString() + '</b><span>段</span></div>'
+    + '<div class="kbstat"><b id="kbNSel">' + selN + '</b><span>用于检索</span></div>'
+    + '<div class="kbstack"><div class="kbstack-h"><span class="small muted">各库段数占比</span><span class="small muted">' + chunks.toLocaleString() + ' 段</span></div>'
+    + '<div class="track">' + (seg.join('') || '<i class="seg" style="width:100%;background:var(--card3)"></i>') + '</div></div>'
+    + '</div>';
+}
 /* ② 知识库：列表 + 导入/粘贴 + 选择。单独一个函数，好让 #/kb 把它放进「② 知识库」标签页 */
 function kbLibHtml() {
-  const rows = KB_LIST.map(kbRowHtml).join('') || '<div class="small muted">还没有知识库。导入 txt / md 文件，或把资料直接粘进来。</div>';
+  const rows = KB_LIST.map((k, i) => kbRowHtml(k, i)).join('');
   const opts = KB_LIST.map(k => '<option value="' + k.id + '">' + esc(k.name) + '</option>').join('');
+  const sortOpts = [['default', '默认顺序'], ['chars', '字数最多'], ['chunks', '段数最多'], ['docs', '篇数最多'], ['name', '名字 A→Z'], ['added', '最近添加']]
+    .map(o => '<option value="' + o[0] + '"' + (KB_UI.sort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
   const L = [];
-  L.push('<div class="card kbcard">');
+  L.push('<div class="card kbcard kbui">');
+  L.push('<style>'
+    + '.kbui .kbtop{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 10px}'
+    + '.kbui .kbstat{flex:0 0 auto;min-width:86px;padding:8px 12px;border-radius:var(--r-m);background:var(--card2);border:1px solid var(--line)}'
+    + '.kbui .kbstat b{display:block;font-size:17px;line-height:1.25;color:var(--text)}'
+    + '.kbui .kbstat span{font-size:12px;color:var(--sub)}'
+    + '.kbui .kbstack{flex:1 1 260px;min-width:200px;padding:8px 12px;border-radius:var(--r-m);background:var(--card2);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:6px}'
+    + '.kbui .kbstack-h{display:flex;justify-content:space-between;align-items:center}'
+    + '.kbui .kbstack .track{display:flex;height:8px;border-radius:var(--r-pill);overflow:hidden;background:var(--card3)}'
+    + '.kbui .kbstack .seg{height:100%;display:block}'
+    + '.kbui .kbbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}'
+    + '.kbui .kbsearch{flex:1 1 240px;display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:var(--r-pill);background:var(--card2);border:1px solid var(--line)}'
+    + '.kbui .kbsearch input{flex:1;border:0;background:transparent;color:var(--text);font-size:14px;outline:none;min-width:60px}'
+    + '.kbui .kbsearch button{border:0;background:transparent;color:var(--sub);cursor:pointer;font-size:13px;display:none}'
+    + '.kbui .kbsearch.has-q button{display:block}'
+    + '.kbui .kbseg{display:flex;border:1px solid var(--line);border-radius:var(--r-pill);overflow:hidden;background:var(--card2)}'
+    + '.kbui .kbseg button{border:0;background:transparent;color:var(--sub);padding:5px 11px;cursor:pointer;font-size:13px}'
+    + '.kbui .kbseg button.on{background:var(--primary-soft);color:var(--primary);font-weight:600}'
+    + '.kbui #kbSort{padding:6px 8px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:13px}'
+    + '.kbui #kbRows{display:grid;gap:10px}'
+    + '.kbui #kbRows[data-view="grid"]{grid-template-columns:repeat(auto-fill,minmax(268px,1fr))}'
+    + '.kbui #kbRows[data-view="list"]{grid-template-columns:1fr}'
+    + '.kbui .kbrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:11px 12px;border-radius:var(--r-m);background:var(--card2);border:1px solid var(--line);position:relative;transition:box-shadow .16s,border-color .16s}'
+    + '.kbui .kbrow:hover{box-shadow:var(--sh-2);border-color:var(--primary-line)}'
+    + '.kbui .kbrow.on{border-color:var(--primary-line);background:var(--primary-soft)}'
+    + '.kbui #kbRows[data-view="grid"] .kbrow{padding-right:40px}'
+    + '.kbui #kbRows[data-view="grid"] .kbmain{flex:1 1 100%;order:1}'
+    + '.kbui #kbRows[data-view="grid"] .kbchk{position:absolute;right:12px;top:12px;order:9}'
+    + '.kbui #kbRows[data-view="grid"] .kbacts{order:2;flex:1 1 100%;justify-content:flex-end}'
+    + '.kbui #kbRows[data-view="grid"] .kbdocs{order:3;flex:1 1 100%}'
+    + '.kbui .kbchk{display:flex;align-items:center;flex:0 0 auto;cursor:pointer;padding:2px 0}'
+    + '.kbui .kbchk input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer}'
+    + '.kbui .kbmain{flex:1 1 auto;min-width:0}'
+    + '.kbui .kbtitle{display:flex;align-items:center;gap:6px;flex-wrap:wrap}'
+    + '.kbui .kbname{font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}'
+    + '.kbui .kbmeta{font-size:12px;color:var(--sub);margin-top:3px}'
+    + '.kbui .kbacts{display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap}'
+    + '.kbui .kbdocs{flex:1 1 100%;width:100%;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));max-height:264px;overflow:auto}'
+    + '.kbui .kbempty{padding:28px 12px;text-align:center;color:var(--sub);font-size:14px}'
+    + '.kbui .kbbulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;padding:7px 8px 7px 14px;'
+    + 'border-radius:var(--r-m);background:var(--primary-soft);border:1px solid var(--primary-line)}'
+    + '.kbui .kbbulk .t{font-size:13px;color:var(--text);font-weight:600}'
+    + '.kbui #kbVisCount{font-size:12px;color:var(--sub)}'
+    + '@media(max-width:560px){.kbui .kbacts .btn{padding:4px 8px}}'
+    + '</style>');
   L.push('<div class="kbhead">② 知识库 <span class="small muted" id="kbUsage">' + esc(kbUsageText()) + '</span></div>');
   L.push('<div class="hint">资料只存在本机浏览器里。<b>大资料</b>更推荐把文件放进站点的 <code>资料/</code> 文件夹，双击 <code>转知识库.bat</code> 生成 <code>知识库.js</code>，本站会自动挂载（不受浏览器 5 MB 限制）。</div>');
+  L.push(kbUiStatsHtml());
   /* 一键建向量（傻瓜式）：状态 + 按钮 + 进度条，配置和分段全自动 */
-  L.push('<div id="kbEmbBox" style="margin:12px 0;padding:10px 12px;border:1px solid #dbe4f0;border-radius:10px;background:#f7fafd">'
+  L.push('<div id="kbEmbBox" style="margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--card2)">'
     + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
     + '<b style="flex:0 0 auto">向量检索</b>'
     + '<div class="small" id="kbEmbState" style="flex:1 1 240px;min-width:180px">正在读状态…</div>'
     + '<button class="btn primary" id="kbEmbAll">一键建向量</button>'
     + '</div>'
-    + '<div id="kbEmbBarTrack" style="height:6px;background:#e6edf7;border-radius:3px;margin-top:8px;overflow:hidden">'
-    + '<i id="kbEmbFill" style="display:block;height:100%;width:0;background:#4c8dff;border-radius:3px;transition:width .25s"></i></div>'
+    + '<div id="kbEmbBarTrack" style="height:6px;background:var(--card3);border-radius:3px;margin-top:8px;overflow:hidden">'
+    + '<i id="kbEmbFill" style="display:block;height:100%;width:0;background:var(--primary);border-radius:3px;transition:width .25s"></i></div>'
     + '<div class="small muted" id="kbEmbTip" style="margin-top:6px">点上面的按钮就行：自动分段、自动调本机向量服务、自动存进浏览器；中途关掉也不怕，下次接着建剩下的。</div>'
     + '</div>');
-  L.push('<div class="kbList" id="kbRows">' + rows + '</div>');
+  /* 工具栏：搜索 / 排序 / 视图 / 全选 */
+  L.push('<div class="kbbar">');
+  L.push('<label class="kbsearch' + (KB_UI.q ? ' has-q' : '') + '" id="kbSearchBox">'
+    + '<span style="color:var(--sub)">🔍</span>'
+    + '<input id="kbQ2" placeholder="搜索知识库名字…" value="' + esc(KB_UI.q) + '">'
+    + '<button id="kbQClear" type="button" title="清空">✕</button></label>');
+  L.push('<select id="kbSort" title="排序">' + sortOpts + '</select>');
+  L.push('<div class="kbseg"><button type="button" data-kbview="grid" class="' + (KB_UI.view === 'grid' ? 'on' : '') + '" title="网格">▦</button>'
+    + '<button type="button" data-kbview="list" class="' + (KB_UI.view === 'list' ? 'on' : '') + '" title="列表">☰</button></div>');
+  L.push('<button class="btn tiny" id="kbAll">全选</button>');
+  L.push('<button class="btn tiny" id="kbNone">清空选择</button>');
+  L.push('<span id="kbVisCount"></span>');
+  L.push('</div>');
+  L.push('<div class="kbbulk" id="kbBulk" style="display:none">'
+    + '<span class="t" id="kbBulkTxt">已选 0 个</span>'
+    + '<span class="small muted">勾上 = 让 AI 检索这个库</span>'
+    + '<button class="btn tiny" data-kbbulk="none">取消勾选</button>'
+    + '<button class="btn tiny" data-kbbulk="export">导出所选</button>'
+    + '<button class="btn tiny danger" data-kbbulk="del">删除所选</button>'
+    + '</div>');
+  L.push('<div class="kbList" id="kbRows" data-view="' + (KB_UI.view === 'list' ? 'list' : 'grid') + '">' + rows + '</div>');
+  L.push('<div class="kbempty" id="kbEmpty" style="display:none"></div>');
   if (KB_SKIP.length) {
     L.push('<div class="kbSkipped small muted" id="kbSkipped" style="margin-top:10px">已删掉、刷新也不再自动挂载：'
       + KB_SKIP.map(f => '<span style="display:inline-block;margin:4px 10px 0 0">' + esc(kbSkipName(f))
         + ' <button class="btn tiny" data-kbskipres="' + esc(f) + '">恢复</button></span>').join('') + '</div>');
   }
-  L.push('<div class="tools" style="margin-top:12px">');
+  L.push('<div class="tools" style="margin-top:14px">');
   L.push('<span class="tl">目标知识库</span>');
   L.push('<select class="num" id="kbTarget"><option value="__new">＋ 新建知识库</option>' + opts + '</select>');
   L.push('<input class="num" id="kbNewName" placeholder="新知识库名字，如：民法笔记">');
@@ -1175,11 +1297,147 @@ function kbLibHtml() {
   L.push('<div class="actions">');
   L.push('<input class="num" id="kbPasteName" placeholder="这段资料的名字（可留空）">');
   L.push('<button class="btn" id="kbPasteAdd">加入知识库</button>');
-  L.push('<button class="btn" id="kbAll">全选</button>');
-  L.push('<button class="btn" id="kbNone">清空选择</button>');
   L.push('</div></div>');
   return L.join('\n');
 }
+/* 过滤 + 排序 + 空态：只动 DOM，不整页重画（否则搜索框会失焦） */
+function kbUiApply() {
+  const host = $('kbRows');
+  if (!host) return;
+  const q = (KB_UI.q || '').trim().toLowerCase();
+  let rows = Array.prototype.slice.call(host.querySelectorAll('.kbrow'));
+  const num = (r, k) => parseInt(r.getAttribute(k) || '0', 10) || 0;
+  const key = KB_UI.sort;
+  rows.sort(function (a, b) {
+    if (key === 'chars') return num(b, 'data-chars') - num(a, 'data-chars');
+    if (key === 'chunks') return num(b, 'data-chunks') - num(a, 'data-chunks');
+    if (key === 'docs') return num(b, 'data-docs') - num(a, 'data-docs');
+    if (key === 'added') return num(b, 'data-added') - num(a, 'data-added');
+    if (key === 'name') return String(a.dataset.name || '').localeCompare(String(b.dataset.name || ''), 'zh');
+    return num(a, 'data-i') - num(b, 'data-i');
+  });
+  rows.forEach(r => host.appendChild(r));
+  let shown = 0;
+  rows.forEach(function (r) {
+    const hit = !q || String(r.dataset.name || '').toLowerCase().indexOf(q) >= 0;
+    r.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+  const emp = $('kbEmpty');
+  if (emp) {
+    if (shown) emp.style.display = 'none';
+    else {
+      emp.style.display = '';
+      emp.innerHTML = !rows.length
+        ? '还没有知识库。<br>下面可以导入 txt / md 文件，或把讲义直接粘进来。'
+        : ('没有名字含「' + esc(KB_UI.q) + '」的知识库。');
+    }
+  }
+  const vc = $('kbVisCount');
+  if (vc) vc.textContent = (shown === rows.length ? rows.length + ' 个' : shown + ' / ' + rows.length + ' 个');
+  kbUiPaint();
+}
+/* 勾选态联动：卡片高亮、统计数字、底部批量条 */
+function kbUiPaint() {
+  const sel = kbSelected();
+  const host = $('kbRows');
+  if (host) Array.prototype.forEach.call(host.querySelectorAll('.kbrow'), function (r) {
+    const on = sel.indexOf(r.dataset.id) >= 0;
+    r.classList.toggle('on', on);
+    const cb = r.querySelector('input[data-kbsel]');
+    if (cb && cb.checked !== on) cb.checked = on;
+  });
+  const n = sel.length;
+  const nSel = $('kbNSel');
+  if (nSel) nSel.textContent = n;
+  const bar = $('kbBulk');
+  if (bar) {
+    bar.style.display = n ? '' : 'none';
+    const t = $('kbBulkTxt');
+    if (t) t.textContent = '已选 ' + n + ' 个';
+  }
+}
+/* 批量删除：先记住快照，删完给「撤销」（撤销=按原样重建 / 移出黑名单） */
+async function kbUiDel(ids) {
+  const snaps = [];
+  for (const id of ids) {
+    const k = KB_LIST.find(x => x.id === id);
+    if (!k) continue;
+    const s = { id: id, name: k.name, auto: !!k.auto, wasSel: KB_SEL.indexOf(id) >= 0, docs: null };
+    if (!k.auto) {
+      try {
+        await kbEnsure(id);
+        const mem = KB_MEM[id];
+        s.docs = ((mem && mem.docs) || []).map(d => ({ name: d.name, text: (d.chunks || []).map(c => c.t).join('\n') }));
+      } catch (e) {}
+    }
+    snaps.push(s);
+  }
+  if (!snaps.length) return;
+  for (const s of snaps) { try { await kbRemove(s.id); } catch (e) {} }
+  render();
+  const what = snaps.length === 1 ? ('《' + snaps[0].name + '》') : (snaps.length + ' 个知识库');
+  toast('已删除' + what, 9000, 'ok', { label: '撤销', fn: function () { kbUiUndo(snaps); } });
+}
+/* 撤销删除时把文件知识库原地挂回去：优先用清单里的数字，不做整库重切段，
+   否则重切出来的字数/段数会和清单对不上（看起来像资料变了）。 */
+function kbUiRemount(s) {
+  if (KB_LIST.some(x => x.id === s.id)) return true;
+  const fid = kbFileIdOf(s.id);
+  const arr = window.__KBS__ || [];
+  const meta = window.__KBM__ || [];
+  const b = arr.find(x => String(x.id) === fid) || meta.find(x => String(x.id) === fid);
+  if (!b) return false;
+  if (b.docs) {
+    const docs = b.docs.map(d => ({
+      name: d.name || '资料', page: d.page, pages: d.pages, pdfp: d.pdfp, file: d.file,
+      text: d.text || '', chunks: Array.isArray(d.chunks) ? d.chunks : kbChunk(d.text || '')
+    }));
+    KB_MEM[s.id] = { docs: docs };
+    const st = kbStats({ docs: docs });
+    KB_LIST.push({ id: s.id, name: b.name || s.name, src: 'file', addedAt: Date.now(), auto: true,
+      chars: +b.chars || st.chars, docs: b.docs.length, chunks: +b.chunks || st.chunks });
+  } else {
+    if (b.url) KB_LAZY[s.id] = b.url;
+    KB_LIST.push({ id: s.id, name: b.name || s.name, src: 'file', addedAt: Date.now(), auto: true,
+      lazy: b.url || '', chars: +b.chars || 0, docs: +b.docs || 0, chunks: +b.chunks || 0 });
+  }
+  return true;
+}
+async function kbUiUndo(snaps) {
+  for (const s of snaps) {
+    try {
+      if (s.auto) { kbSkipRemove(s.id); kbUiRemount(s); }
+      else if (s.docs && s.docs.length) {
+        const nid = await kbCreate(s.name, s.docs, 'local');
+        if (!s.wasSel) kbSetSel(nid, false);
+      }
+      if (s.wasSel) kbSetSel(s.id, true);
+    } catch (e) {}
+  }
+  render();
+  toast('已撤销删除');
+}
+async function kbUiExport(ids) {
+  const list = KB_LIST.filter(k => ids.indexOf(k.id) >= 0);
+  if (!list.length) return;
+  const all = [];
+  for (const k of list) {
+    try {
+      await kbEnsure(k.id);
+      const docs = ((KB_MEM[k.id] && KB_MEM[k.id].docs) || []).map(d => ({ name: d.name, text: (d.chunks || []).map(c => c.t).join('\n') }));
+      all.push({ name: k.name, docs: docs });
+    } catch (e) {}
+  }
+  if (!all.length) { toast('没导出成，资料还没读出来'); return; }
+  const name = all.length === 1 ? (all[0].name + '.知识库.json') : ('知识库-' + all.length + '个.json');
+  const body = all.length === 1
+    ? { app: 'shuati-kb', name: all[0].name, docs: all[0].docs }
+    : { app: 'shuati-kb', libs: all };
+  download(name, JSON.stringify(body, null, 0), 'application/json');
+  toast('已导出 ' + all.length + ' 个知识库');
+}
+
 /* ③ 试检索：只用关键词检索，不花 token */
 function kbTryHtml() {
   const L = [];
@@ -1205,8 +1463,7 @@ function kbBind(host) {
     const id = e.target.dataset && e.target.dataset.kbsel;
     if (!id) return;
     kbSetSel(id, e.target.checked);
-    const row = e.target.closest('.kbrow');
-    if (row) row.classList.toggle('on', e.target.checked);
+    kbUiPaint();
   });
   if (rows) rows.addEventListener('click', async e => {
     const row = e.target.closest('.kbrow');
@@ -1241,12 +1498,49 @@ function kbBind(host) {
       download(k.name + '.知识库.json', JSON.stringify({ app: 'shuati-kb', name: k.name, docs: docs }), 'application/json');
       toast('已导出，可以换台电脑再导入');
     } else if (act === 'del') {
-      if (!confirm(k.auto
-        ? ('删掉《' + k.name + '》？它是 知识库.js 里的资料库：删掉后刷新不会再自动挂载，需要时在列表下方点「恢复」。')
-        : ('删除知识库《' + k.name + '》？资料只存在本机，删了就没了。'))) return;
-      await kbRemove(id); render();
-      toast(k.auto ? '已删除，刷新也不会再挂载' : '已删除');
+      await kbUiDel([id]);
     }
+  });
+  /* 搜索（只过滤 DOM，不失焦） */
+  const q = host.querySelector('#kbQ2');
+  if (q) {
+    q.addEventListener('input', function () {
+      KB_UI.q = this.value || '';
+      const box = host.querySelector('#kbSearchBox');
+      if (box) box.classList.toggle('has-q', !!KB_UI.q);
+      kbUiSave(); kbUiApply();
+    });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Escape') { this.value = ''; KB_UI.q = ''; kbUiSave(); kbUiApply(); } });
+  }
+  const qc = host.querySelector('#kbQClear');
+  if (qc) qc.addEventListener('click', function () {
+    const box = host.querySelector('#kbQ2');
+    if (box) box.value = '';
+    KB_UI.q = '';
+    const sw = host.querySelector('#kbSearchBox');
+    if (sw) sw.classList.remove('has-q');
+    kbUiSave(); kbUiApply();
+  });
+  /* 排序 / 视图 */
+  const sort = host.querySelector('#kbSort');
+  if (sort) sort.addEventListener('change', function () { KB_UI.sort = this.value; kbUiSave(); kbUiApply(); });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-kbview]'), function (b) {
+    b.addEventListener('click', function () {
+      KB_UI.view = b.dataset.kbview;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-kbview]'), x => x.classList.toggle('on', x === b));
+      if (rows) rows.setAttribute('data-view', KB_UI.view);
+      kbUiSave();
+    });
+  });
+  /* 批量条 */
+  Array.prototype.forEach.call(host.querySelectorAll('[data-kbbulk]'), function (b) {
+    b.addEventListener('click', function () {
+      const act = b.dataset.kbbulk;
+      const ids = kbSelected();
+      if (act === 'none') { kbSelAll(false); kbUiPaint(); render(); }
+      else if (act === 'export') kbUiExport(ids);
+      else if (act === 'del') kbUiDel(ids);
+    });
   });
   const sk = host.querySelector('#kbSkipped');
   if (sk) sk.addEventListener('click', e => {
@@ -1269,7 +1563,9 @@ function kbBind(host) {
   on('kbSearchBtn', () => kbRunTest());
   on('kbEvalBtn', () => kbRunEval());
   on('kbQ', e => { if (e.key === 'Enter') kbRunTest(); }, 'keydown');
+  try { kbUiApply(); } catch (e) {}
 }
+
 async function kbImportFiles(files) {
   const target = $('kbTarget') ? $('kbTarget').value : '__new';
   const newName = $('kbNewName') ? $('kbNewName').value.trim() : '';

@@ -1,0 +1,186 @@
+/* ============================================================
+   anim.css — 动效层（web254）
+   ------------------------------------------------------------
+   思路取自 animate.css 4.1.1（fade / zoom / backOut / heartBeat /
+   headShake 的曲线与节奏），但只挑刷题站真用得上的几种，
+   不整包引 95 KB，也不给每个元素挂无意义的入场动画。
+
+   三条原则：
+   1) 只动 transform / opacity，不动 width/height/top/left → 不触发重排；
+   2) 时长 0.12 ~ 0.4s，全局 easeOutQuint（--an-ease），只在高光处用
+      backOut（--an-back）做一次轻微回弹，不喧宾夺主；
+   3) 一切都在 prefers-reduced-motion: reduce 下退回静态。
+   ============================================================ */
+
+:root{
+  --an-1: .12s;                                  /* 按下 / 悬停 */
+  --an-2: .24s;                                  /* 列表入场 */
+  --an-3: .36s;                                  /* 面板弹出 */
+  --an-step: 24ms;                               /* 列表错峰步长 */
+  --an-ease: cubic-bezier(.22, 1, .36, 1);       /* easeOutQuint */
+  --an-back: cubic-bezier(.34, 1.56, .64, 1);    /* 轻微回弹 */
+}
+
+/* ---------- keyframes ---------- */
+@keyframes anFadeIn{ from{opacity:0} to{opacity:1} }
+
+@keyframes anRise{
+  from{opacity:0; transform:translate3d(0,12px,0) scale(.995)}
+  to  {opacity:1; transform:none}
+}
+
+@keyframes anZoomIn{
+  0%  {opacity:0; transform:scale(.92)}
+  60% {opacity:1; transform:scale(1.012)}
+  100%{opacity:1; transform:none}
+}
+
+@keyframes anPop{
+  0%,100%{transform:scale(1)}
+  35%    {transform:scale(1.14)}
+  68%    {transform:scale(.98)}
+}
+
+/* animate.css 的 heartBeat，压到 0.5s、幅度收一半 */
+@keyframes anBeat{
+  0%    {transform:scale(1)}
+  14%   {transform:scale(1.07)}
+  28%   {transform:scale(1)}
+  42%   {transform:scale(1.05)}
+  70%   {transform:scale(1)}
+  100%  {transform:scale(1)}
+}
+
+/* animate.css 的 headShake，去掉 rotate，只留横移 */
+@keyframes anShakeX{
+  0%,100%{transform:translateX(0)}
+  20%    {transform:translateX(-5px)}
+  40%    {transform:translateX(4px)}
+  60%    {transform:translateX(-3px)}
+  80%    {transform:translateX(2px)}
+}
+
+@keyframes anFloat{
+  0%,100%{transform:translateY(0)}
+  50%    {transform:translateY(-4px)}
+}
+
+@keyframes anSheetIn{
+  from{opacity:0; transform:translate3d(0,26px,0) scale(.985)}
+  to  {opacity:1; transform:none}
+}
+
+@keyframes anToastIn{
+  from{opacity:0; transform:translate(-50%,18px) scale(.96)}
+  to  {opacity:1; transform:translate(-50%,0) scale(1)}
+}
+
+@keyframes anPageIn{
+  from{opacity:0; transform:translate3d(0,6px,0)}
+  to  {opacity:1; transform:none}
+}
+
+@keyframes anShimmer{
+  from{background-position:200% 0}
+  to  {background-position:-60% 0}
+}
+
+/* ---------- 通用工具类（想手动挂的时候用） ---------- */
+.an-in{animation:anFadeIn var(--an-2) var(--an-ease) both}
+.an-rise{animation:anRise var(--an-2) var(--an-ease) both}
+.an-pop{animation:anZoomIn var(--an-2) var(--an-ease) both}
+.an-beat{animation:anBeat .5s var(--an-ease) both}
+.an-shake{animation:anShakeX .4s var(--an-ease) both}
+.an-float{animation:anFloat 3.2s ease-in-out infinite}
+.an-stagger>*{animation:anRise var(--an-2) var(--an-ease) both}
+.an-stagger>*:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
+.an-stagger>*:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
+.an-stagger>*:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
+.an-stagger>*:nth-child(4){animation-delay:calc(var(--an-step) * 3)}
+.an-stagger>*:nth-child(5){animation-delay:calc(var(--an-step) * 4)}
+.an-stagger>*:nth-child(6){animation-delay:calc(var(--an-step) * 5)}
+.an-stagger>*:nth-child(7){animation-delay:calc(var(--an-step) * 6)}
+.an-stagger>*:nth-child(8){animation-delay:calc(var(--an-step) * 7)}
+.an-stagger>*:nth-child(9){animation-delay:calc(var(--an-step) * 8)}
+.an-stagger>*:nth-child(10){animation-delay:calc(var(--an-step) * 9)}
+.an-stagger>*:nth-child(n+11){animation-delay:calc(var(--an-step) * 10)}
+
+/* ============================================================
+   接到既有界面上（只用选择器，不改 JS 结构）
+   ============================================================ */
+
+/* 换页：原来只有 4px 位移，给它一点点缩放入场，像纸张落桌。
+   注意要写成 #view.view-enter —— style.css 里 #view{animation:viewIn} 的
+   ID 特异性更高，只用 .view-enter 会被它盖掉（旧 .view-enter 规则其实是失效的）。 */
+#view.view-enter{animation:anPageIn var(--t-slow, .28s) var(--an-ease) both}
+
+/* 底部导航：切页时当前项轻轻弹一下；按下有回弹 */
+.bnav .btn{transition:transform var(--an-1) var(--an-ease), background var(--an-1), color var(--an-1)}
+.bnav .btn.on{animation:anPop .32s var(--an-back)}
+.bnav .btn:active{transform:scale(.92)}
+
+/* 首页统计块 / 快捷卡：按下有肉感（只补 transform，其他过渡照旧保留） */
+.hs, .vb-q, .vb-card, .nb-card{
+  transition:transform var(--an-1) var(--an-ease),
+             background-color .15s, border-color .15s, box-shadow .15s;
+}
+.hs:active, .vb-q:active, .vb-card:active{transform:scale(.985)}
+
+/* 面板（弹层 / 抽屉）：从下往上带一点缩放，别硬闪 */
+.mask.show .sheet{animation:anSheetIn var(--an-3) var(--an-ease) both}
+
+/* toast：从下方弹入并轻微回弹 */
+.toast.show{animation:anToastIn .32s var(--an-back) both}
+
+/* 知识库卡片：入场错峰（最多错 10 个，超出就同步进场，避免长列表拖沓） */
+#kbRows > .kbrow{animation:anRise var(--an-2) var(--an-ease) both}
+#kbRows > .kbrow:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
+#kbRows > .kbrow:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
+#kbRows > .kbrow:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
+#kbRows > .kbrow:nth-child(4){animation-delay:calc(var(--an-step) * 3)}
+#kbRows > .kbrow:nth-child(5){animation-delay:calc(var(--an-step) * 4)}
+#kbRows > .kbrow:nth-child(6){animation-delay:calc(var(--an-step) * 5)}
+#kbRows > .kbrow:nth-child(7){animation-delay:calc(var(--an-step) * 6)}
+#kbRows > .kbrow:nth-child(8){animation-delay:calc(var(--an-step) * 7)}
+#kbRows > .kbrow:nth-child(9){animation-delay:calc(var(--an-step) * 8)}
+#kbRows > .kbrow:nth-child(10){animation-delay:calc(var(--an-step) * 9)}
+#kbRows > .kbrow:nth-child(n+11){animation-delay:calc(var(--an-step) * 10)}
+
+/* 首页题库树 / 目录：同样错峰 */
+#nbTree > *{animation:anRise var(--an-2) var(--an-ease) both}
+#nbTree > *:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
+#nbTree > *:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
+#nbTree > *:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
+#nbTree > *:nth-child(4){animation-delay:calc(var(--an-step) * 3)}
+#nbTree > *:nth-child(5){animation-delay:calc(var(--an-step) * 4)}
+#nbTree > *:nth-child(6){animation-delay:calc(var(--an-step) * 5)}
+#nbTree > *:nth-child(n+7){animation-delay:calc(var(--an-step) * 6)}
+
+/* 空态：轻轻呼吸，提示「这里还能用」 */
+.empty{animation:anFadeIn var(--an-3) var(--an-ease) both}
+.empty svg{animation:anFloat 3.4s ease-in-out infinite}
+
+/* 骨架屏：从「明暗呼吸」换成 animate.css 那种扫光，等待时更像在加载 */
+.skel .sk-bl{
+  background-image:linear-gradient(100deg,
+    transparent 24%,
+    color-mix(in srgb, var(--text) 9%, transparent) 46%,
+    transparent 68%);
+  background-size:220% 100%;
+  background-repeat:no-repeat;
+  animation:anShimmer 1.3s linear infinite;
+}
+
+/* ============================================================
+   减少动态偏好：整套退回静态（与 motion.css 保持一致）
+   ============================================================ */
+@media (prefers-reduced-motion: reduce){
+  .an-in, .an-rise, .an-pop, .an-beat, .an-shake, .an-float,
+  .an-stagger > *, #view.view-enter, .mask.show .sheet, .toast.show,
+  .bnav .btn.on, #kbRows > .kbrow, #nbTree > *, .empty, .empty svg,
+  .skel .sk-bl{
+    animation:none !important;
+  }
+  .bnav .btn, .hs, .vb-q, .vb-card, .nb-card{transition:none !important}
+  .bnav .btn:active, .hs:active, .vb-q:active, .vb-card:active{transform:none !important}
+}

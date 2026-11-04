@@ -11,13 +11,14 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261204a">
+<link rel="stylesheet" href="style.css?v=20261221d">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
 <link rel="stylesheet" href="chat.css?v=20261105c">
 <link rel="stylesheet" href="diagram.css?v=20261031a">
 <link rel="stylesheet" href="motion.css?v=20261030c">
+<link rel="stylesheet" href="anim.css?v=20261104a">
 <link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
@@ -46,6 +47,7 @@ var iv=setInterval(function(){n++;
     <span class="stat" id="stat"></span>
     <button class="btn" id="btnTheme" title="切换外观：跟随系统 / 浅色 / 深色">◐</button>
     <button class="btn" id="btnGrid" style="display:none">题号</button>
+    <button class="btn chips-toggle" id="btnChips" title="展开 / 收起科目与筛选题目的两行">筛选</button>
     <button class="btn" id="btnQuizSet" style="display:none">设置</button>
   </div>
   <div class="bar"><i id="bar"></i></div>
@@ -281,18 +283,20 @@ var iv=setInterval(function(){n++;
      这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
-<script src="app.js?v=20261220b"></script>
+<script src="csv.js?v=20261104a"></script>
+<script src="mastery.js?v=20261104a"></script>
+<script src="app.js?v=20261221b"></script>
 <script src="collection.js?v=20261203a"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261130i"></script>
-<script src="kb.js?v=20261111c"></script>
+<script src="kb.js?v=20261221f"></script>
 <script src="ai.js?v=20261130e"></script>
 
 <!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261203a"></script>
+<script src="cat.js?v=20261221a"></script>
 <script src="bf.js?v=20261123a"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
@@ -324,8 +328,8 @@ var iv=setInterval(function(){n++;
 <script src="ai-ops.js?v=20261105c"></script>
 <script src="motion.js?v=20261030b"></script>
 <script src="pip.js?v=20261130b"></script>
-<script src="ink.js?v=20261220b"></script>
-<script src="exp.js?v=20261208b"></script>
+<script src="ink.js?v=20261221e"></script>
+<script src="exp.js?v=20261220d"></script>
 
 <script>
   /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。

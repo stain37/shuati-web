@@ -2355,6 +2355,7 @@ function route() {
   if (parts[0] === 'kb') return { name: 'kb' };
   if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
+  if (parts[0] === 'mastery') return { name: 'mastery' };   /* 掌握度复盘（mastery.js，web258） */
   if (parts[0] === 'cal') return { name: 'cal' };             /* 复习日历（web184）：按月翻页看哪天到期 */
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
@@ -2517,6 +2518,7 @@ function renderInner() {
   else if (r.name === 'fav') { if (typeof renderFav === 'function') renderFav(); }
   else if (r.name === 'search') { if (typeof renderSearch === 'function') renderSearch(); }
   else if (r.name === 'stats') renderStats();
+  else if (r.name === 'mastery') { if (window.MASTERY) MASTERY.render(); else $('view').innerHTML = '<div class="card"><div class="empty">掌握度模块没加载（mastery.js）。</div></div>'; }
   else if (r.name === 'cal') renderCal();
   else if (r.name === 'report') { if (typeof renderReport === 'function') renderReport(); }
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
@@ -4780,7 +4782,7 @@ function renderImport() {
       </div>
       <div class="actions">
         <button class="btn" id="pickFile">从文件读取</button>
-        <input type="file" id="fileInput" accept=".txt,.json,.md" style="display:none">
+        <input type="file" id="fileInput" accept=".txt,.json,.md,.csv" style="display:none">
         <button class="btn" id="aiFormat" title="用设置里的 AI 把原始题目整理成站点格式；只改格式，不改答案">✨ AI 一键标准化</button>
         <button class="btn" id="doPreview">解析预览</button>
         <button class="btn primary" id="doSave">保存题库</button>
@@ -4790,7 +4792,7 @@ function renderImport() {
     </div>
 
     <details class="card" style="margin-top:14px">
-      <summary style="cursor:pointer;font-weight:700">支持的文本格式（点开看模板）</summary>
+      <summary style="cursor:pointer;font-weight:700">支持的格式（点开看模板：纯文本 / JSON / CSV）</summary>
       <pre class="fmt"># 生化 第一章 蛋白质
 
 1. 蛋白质分子中四级结构的特征是
@@ -4812,7 +4814,9 @@ D. …
         · 题号 <b>1.</b> / <b>1、</b> 可写可省；选项行必须用 <b>A.</b> / <b>A、</b> / <b>A)</b> 开头。<br>
         · <b># 名称</b> 设为题库名；<b>## 说明</b> 会成为后面题目的「共用题干」（病例题、B 型题很好用）。<br>
         · <b>答案：</b> 单选写 <b>D</b>，多选写 <b>ABD</b>；<b>解析：</b> 后面可以写多行。<br>
-        · 也支持 JSON：<b>[{"stem":"…","options":["…"],"answer":["D"],"explain":"…"}]</b>
+        · 也支持 JSON：<b>[{"stem":"…","options":["…"],"answer":["D"],"explain":"…"}]</b><br>
+        · <b>CSV</b>：上面「从文件读取」可以直接选 <b>.csv</b>。表头认 <b>题干 / 选项A…选项H / 答案 / 解析 / 共用题干</b>（也认 题目、正确答案、explanation 这些写法）；<b>答案</b>列写 <b>A</b> 或 <b>ABD</b>；Excel 存的 GBK 文件会自动转码，不用另存 UTF-8。<br>
+        · 题库卡片右上角 <b>⋯ → 导出这个题库（CSV）</b> 可以把题库导成表格，改完再导回来。
       </div>
     </details>`;
 
@@ -4823,6 +4827,19 @@ D. …
   on('pickFile', () => $('fileInput').click());
   on('fileInput', e => {
     const f = e.target.files[0]; if (!f) return;
+    /* .csv 走 CSVQ 先转成站点纯文本题格式，再交给「解析预览 / 保存题库」的老流程 */
+    if (/\.csv$/i.test(f.name) && window.CSVQ) {
+      CSVQ.readFile(f).then(txt => {
+        const r = CSVQ.toText(txt, ($('bankTitle') || {}).value || '');
+        if (r.error) { toast('CSV 读取失败：' + r.error, 4200, 'bad'); return; }
+        $('ta').value = r.text;
+        const t = $('bankTitle');
+        if (t && !t.value) t.value = f.name.replace(/\.csv$/i, '');
+        toast('已读取 ' + f.name + '：' + r.count + ' 题' + (r.skipped ? '（跳过 ' + r.skipped + ' 行空题干）' : '') + '，点「解析预览」看看对不对');
+      }).catch(err => toast('CSV 读取失败：' + err.message, 4200, 'bad'));
+      e.target.value = '';
+      return;
+    }
     const r = new FileReader();
     r.onload = () => { $('ta').value = r.result; toast('已读取 ' + f.name); };
     r.readAsText(f, 'utf-8');
@@ -5459,7 +5476,11 @@ function renderStats() {
   tops.sort((x, y) => (y.a.wrong || 0) - (x.a.wrong || 0) || (y.a.tries || 0) - (x.a.tries || 0));
 
   const none = !recN && !sumN;
+  /* web258：统计页顶部给「掌握度复盘」一个入口（按科目 / 考点看哪儿最薄） */
   $('view').innerHTML = `
+    <div class="actions" style="margin:0 0 12px;justify-content:flex-start">
+      <button class="btn primary" id="mvEntry">📊 掌握度复盘 · 按科目和考点看哪儿最薄</button>
+    </div>
     <div class="card">
       <div class="stats">
         <button class="hst" data-jump="secBanks" title="看下面各题库的正确率"><b>${recN}</b><span>累计做题</span></button>
@@ -5540,6 +5561,7 @@ function renderStats() {
   if (typeof bindTagStats === 'function') { try { bindTagStats($('view')); } catch (e) {} }
   /* 「学情诊断」区块：切时间窗、生成、停止、历史报告 */
   if (typeof bindReport === 'function') { try { bindReport($('view')); } catch (e) {} }
+  if ($('mvEntry')) $('mvEntry').onclick = function () { go('#/mastery'); };
 }
 
 /* ============================================================
@@ -6136,3 +6158,36 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') step(-1);
   if (e.key === 'ArrowRight') step(1);
 });
+
+
+/* ==== web256：手机答题页把「六科 / 全部·没做·单选…」两行收进一个「筛选」开关 ====
+   默认收起（一屏多出约 70px 给题干和选项），点「筛选」展开；
+   在展开的两行里点任意 chip（选了科目 / 换了筛法）就自动收起，不用再点一次。 */
+(function () {
+  var btn = document.getElementById('btnChips');
+  var top = document.querySelector('.top');
+  if (!btn || !top) return;
+  function sync() {
+    var open = document.body.classList.contains('chips-open');
+    btn.textContent = open ? '筛选 ▲' : '筛选';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    document.body.classList.toggle('chips-open');
+    sync();
+  });
+  /* 用捕获阶段：app.js 自己的 chip 处理器在冒泡阶段就会重画这两行（节点被换掉），
+     冒泡到 .top 时已经来不及，所以这里要抢在前面。 */
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest && e.target.closest('#subjchips .subjchip, #chips .chip');
+    if (!chip) return;
+    if (chip.hasAttribute('data-qz-shuffle')) return;   /* 「随机」是开关，不收起面板 */
+    document.body.classList.remove('chips-open');
+    sync();
+  }, true);
+  window.addEventListener('hashchange', function () {
+    if (!document.body.classList.contains('quiz')) { document.body.classList.remove('chips-open'); sync(); }
+  });
+  sync();
+})();

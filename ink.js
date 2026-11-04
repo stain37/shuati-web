@@ -75,6 +75,124 @@
     return { lines: lines, w: (o.w > 10 ? o.w : mw), h: (14 + o.s * 2.2) * 1.35 * lines.length };
   }
 
+  /* ---------- 几何：任何一笔的外接框（模块级，导出/缩略图/选择都要用） ---------- */
+  function boxOf(o) {
+    if (!o) return { x: 0, y: 0, w: 0, h: 0 };
+    if (o.t === 'img') {
+      var w = o.w || 200, h = w * ((o._el && o._el.naturalWidth) ? (o._el.naturalHeight / o._el.naturalWidth) : 0.6);
+      return { x: o.p[0][0], y: o.p[0][1], w: w, h: h };
+    }
+    if (o.t === 'text') { var tm = textMetrics(o); return { x: o.p[0][0], y: o.p[0][1], w: tm.w, h: tm.h }; }
+    var p = o.p || [], x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, i;
+    for (i = 0; i < p.length; i++) {
+      if (p[i][0] < x0) x0 = p[i][0];
+      if (p[i][0] > x1) x1 = p[i][0];
+      if (p[i][1] < y0) y0 = p[i][1];
+      if (p[i][1] > y1) y1 = p[i][1];
+    }
+    if (x0 > x1) return { x: 0, y: 0, w: 0, h: 0 };
+    var pad = Math.max(5, (o.s || 2) * (o.t === 'hl' ? 2.2 : 0.9));
+    return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
+  }
+
+  /* ---------- 自由笔迹引擎 ----------
+     思路取自 Excalidraw 的 freedraw：把指针轨迹重采样成等距点，按「压力/速度」给每点算粗细，
+     再沿法线左右各偏一份，围成一条闭合轮廓一次性填充，最后用二次贝塞尔把拐点磨圆。
+     比直接 stroke 折线顺滑得多，起笔收笔还自带尖锋。老数据（点里没有第三位压力值）也照样能画。 */
+  var FR_SMOOTH = 0.55;     /* 追踪平滑：越小越贴手，越大越顺滑（Excalidraw 默认 0.5） */
+  var FR_STEP = 1.6;        /* 重采样步长（px） */
+  var FR_TAPER = 3;         /* 起收笔各用几个点收尖 */
+
+  function resample(p, step) {
+    if (!p || !p.length) return [];
+    if (p.length === 1) return [[p[0][0], p[0][1], p[0][2] == null ? 1 : p[0][2]]];
+    var out = [[p[0][0], p[0][1], p[0][2] == null ? 1 : p[0][2]]];
+    var next = step, i;
+    for (i = 1; i < p.length; i++) {
+      var a = p[i - 1], b = p[i];
+      var dx = b[0] - a[0], dy = b[1] - a[1];
+      var d = Math.sqrt(dx * dx + dy * dy);
+      var fa = a[2] == null ? 1 : a[2], fb = b[2] == null ? fa : b[2];
+      if (d < 1e-6) continue;
+      var pos = 0;
+      while (pos + next <= d) {
+        pos += next; next = step;
+        var t = pos / d;
+        out.push([a[0] + dx * t, a[1] + dy * t, fa + (fb - fa) * t]);
+      }
+      next -= (d - pos);
+      if (next < 0.01) next = step;
+    }
+    var lp = p[p.length - 1], last = out[out.length - 1];
+    if (Math.abs(lp[0] - last[0]) > 0.4 || Math.abs(lp[1] - last[1]) > 0.4) {
+      out.push([lp[0], lp[1], lp[2] == null ? 1 : lp[2]]);
+    }
+    return out;
+  }
+
+  /* 把一串点画成「经过各点的圆滑曲线」（中线过控制点、线段中点做锚点） */
+  function traceSmooth(ctx, arr, cont) {
+    var n = arr.length;
+    if (!n) return;
+    if (cont) ctx.lineTo(arr[0][0], arr[0][1]); else ctx.moveTo(arr[0][0], arr[0][1]);
+    if (n === 1) return;
+    if (n === 2) { ctx.lineTo(arr[1][0], arr[1][1]); return; }
+    for (var i = 1; i < n - 1; i++) {
+      var mx = (arr[i][0] + arr[i + 1][0]) / 2, my = (arr[i][1] + arr[i + 1][1]) / 2;
+      ctx.quadraticCurveTo(arr[i][0], arr[i][1], mx, my);
+    }
+    ctx.quadraticCurveTo(arr[n - 1][0], arr[n - 1][1], arr[n - 1][0], arr[n - 1][1]);
+  }
+
+  function widthAt(i, n, sz, f) {
+    var edge = Math.min(i, n - 1 - i);
+    var taper = edge >= FR_TAPER ? 1 : 0.42 + 0.58 * (edge / FR_TAPER);
+    return Math.max(0.28, (sz / 2) * taper * (0.45 + 0.55 * f));
+  }
+
+  /* 一笔画成「面」：sz 是视觉笔宽（px），butt=true 时不加圆头（荧光笔要的是平头） */
+  function freehandFill(ctx, pts, sz, color, alpha, sx, sy, butt) {
+    var raw = [], i;
+    for (i = 0; i < pts.length; i++) raw.push([pts[i][0] * sx, pts[i][1] * sy, pts[i][2] == null ? 1 : pts[i][2]]);
+    var q = resample(raw, Math.max(1, FR_STEP * Math.min(sx, sy)));
+    if (!q.length) return;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    if (q.length < 3) {
+      ctx.beginPath();
+      ctx.arc(q[0][0], q[0][1], Math.max(0.4, sz / 2), 0, Math.PI * 2);
+      ctx.fill(); ctx.restore(); return;
+    }
+    var N = q.length, lf = [], rt = [];
+    for (i = 0; i < N; i++) {
+      var a = q[i > 0 ? i - 1 : 0], b = q[i < N - 1 ? i + 1 : N - 1];
+      var dx = b[0] - a[0], dy = b[1] - a[1];
+      var L = Math.sqrt(dx * dx + dy * dy) || 1;
+      var nx = -dy / L, ny = dx / L;
+      var r = widthAt(i, N, sz, q[i][2]);
+      lf.push([q[i][0] + nx * r, q[i][1] + ny * r]);
+      rt.push([q[i][0] - nx * r, q[i][1] - ny * r]);
+    }
+    ctx.beginPath();
+    traceSmooth(ctx, lf, false);
+    ctx.lineTo(rt[N - 1][0], rt[N - 1][1]);
+    var rev = [];
+    for (i = N - 1; i >= 0; i--) rev.push(rt[i]);
+    traceSmooth(ctx, rev, true);
+    ctx.closePath();
+    ctx.fill();
+    if (!butt) {
+      ctx.beginPath();
+      ctx.arc(q[0][0], q[0][1], widthAt(0, N, sz, q[0][2]), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(q[N - 1][0], q[N - 1][1], widthAt(N - 1, N, sz, q[N - 1][2]), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawOp(ctx, o, sx, sy) {
     sx = sx || 1; sy = sy || 1;
     if (!o) return;
@@ -126,36 +244,68 @@
       return;
     }
     var p = o.p || []; if (!p.length) return;
+    var k = (sx + sy) / 2;
+    var W = Math.max(0.8, (o.s || 2) * k);
+    var col = o.c || '#111827';
+    var al = (o.a == null ? 1 : o.a);
+
+    if (o.t === 'eraser') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(12, W * 3);
+      ctx.beginPath();
+      ctx.moveTo(p[0][0] * sx, p[0][1] * sy);
+      for (var ei = 1; ei < p.length; ei++) ctx.lineTo(p[ei][0] * sx, p[ei][1] * sy);
+      ctx.stroke();
+      ctx.restore(); return;
+    }
+    if (o.t === 'hl') { freehandFill(ctx, p, Math.max(12, W * 4), col, Math.min(0.42, al), sx, sy, true); return; }
+    if (o.t === 'pencil') { freehandFill(ctx, p, Math.max(0.8, W * 0.82), col, Math.min(1, al * 0.72), sx, sy, false); return; }
+    if (!SHAPES[o.t]) { freehandFill(ctx, p, W, col, al, sx, sy, false); return; }
+
+    /* 直线 / 箭头 / 矩形 / 椭圆 */
     ctx.save();
-    ctx.lineJoin = 'round'; ctx.lineCap = o.t === 'hl' ? 'butt' : 'round';
-    var w = Math.max(1, o.s * sx);
-    if (o.t === 'eraser') { ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = Math.max(12, w * 3); }
-    else if (o.t === 'hl') { ctx.strokeStyle = o.c; ctx.globalAlpha = Math.min(0.4, o.a == null ? 1 : o.a); ctx.lineWidth = Math.max(14, w * 4.5); }
-    else if (o.t === 'pencil') { ctx.strokeStyle = o.c; ctx.globalAlpha = (o.a == null ? 1 : o.a) * 0.55; ctx.lineWidth = Math.max(1, w * 0.7); }
-    else { ctx.strokeStyle = o.c; ctx.globalAlpha = o.a == null ? 1 : o.a; ctx.lineWidth = w; }
+    ctx.strokeStyle = col; ctx.globalAlpha = al;
+    ctx.lineWidth = W; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (ctx.setLineDash) ctx.setLineDash(o.dash ? [Math.max(4, W * 2.4), Math.max(3, W * 1.8)] : []);
+    var a0 = p[0], b0 = p[1] || p[0];
+    var X0 = a0[0] * sx, Y0 = a0[1] * sy, X1 = b0[0] * sx, Y1 = b0[1] * sy;
     ctx.beginPath();
     if (o.t === 'line' || o.t === 'arrow') {
-      var a0 = p[0], b0 = p[1] || p[0];
-      ctx.moveTo(a0[0] * sx, a0[1] * sy); ctx.lineTo(b0[0] * sx, b0[1] * sy);
-      if (o.t === 'arrow') {
-        var ang = Math.atan2(b0[1] * sy - a0[1] * sy, b0[0] * sx - a0[0] * sx), L = (6 + w * 1.8);
-        ctx.moveTo(b0[0] * sx, b0[1] * sy); ctx.lineTo(b0[0] * sx - L * Math.cos(ang - 0.4), b0[1] * sy - L * Math.sin(ang - 0.4));
-        ctx.moveTo(b0[0] * sx, b0[1] * sy); ctx.lineTo(b0[0] * sx - L * Math.cos(ang + 0.4), b0[1] * sy - L * Math.sin(ang + 0.4));
-      }
+      ctx.moveTo(X0, Y0); ctx.lineTo(X1, Y1);
     } else if (o.t === 'rect') {
-      var r0 = p[0], r1 = p[1] || p[0];
-      ctx.rect(r0[0] * sx, r0[1] * sy, (r1[0] - r0[0]) * sx, (r1[1] - r0[1]) * sy);
+      var rx = Math.min(X0, X1), ry = Math.min(Y0, Y1), rw = Math.abs(X1 - X0), rh = Math.abs(Y1 - Y0);
+      var rr = Math.min(o.rt == null ? 6 : o.rt, rw / 2, rh / 2);
+      if (o.fill) {
+        ctx.save(); ctx.fillStyle = o.fill; ctx.globalAlpha = al * 0.85;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, rr); else ctx.rect(rx, ry, rw, rh);
+        ctx.fill(); ctx.restore();
+        ctx.beginPath();
+      }
+      if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, rr); else ctx.rect(rx, ry, rw, rh);
     } else if (o.t === 'ellipse') {
-      var e0 = p[0], e1 = p[1] || p[0];
-      ctx.ellipse(((e0[0] + e1[0]) / 2) * sx, ((e0[1] + e1[1]) / 2) * sy,
-        Math.abs(e1[0] - e0[0]) / 2 * sx, Math.abs(e1[1] - e0[1]) / 2 * sy, 0, 0, Math.PI * 2);
-    } else {
-      ctx.moveTo(p[0][0] * sx, p[0][1] * sy);
-      for (var i = 1; i < p.length; i++) ctx.lineTo(p[i][0] * sx, p[i][1] * sy);
-      if (p.length === 1) ctx.lineTo(p[0][0] * sx + 0.1, p[0][1] * sy);
+      var cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2, rr2 = Math.abs(X1 - X0) / 2, rh2 = Math.abs(Y1 - Y0) / 2;
+      if (o.fill) {
+        ctx.save(); ctx.fillStyle = o.fill; ctx.globalAlpha = al * 0.85;
+        ctx.beginPath(); ctx.ellipse(cx, cy, rr2, rh2, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        ctx.beginPath();
+      }
+      ctx.ellipse(cx, cy, rr2, rh2, 0, 0, Math.PI * 2);
     }
-    ctx.stroke(); ctx.restore();
+    ctx.stroke();
+    if (o.t === 'arrow') {
+      var ang = Math.atan2(Y1 - Y0, X1 - X0), AL = Math.max(8, W * 3.2);
+      if (ctx.setLineDash) ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(X1, Y1); ctx.lineTo(X1 - AL * Math.cos(ang - 0.42), Y1 - AL * Math.sin(ang - 0.42));
+      ctx.moveTo(X1, Y1); ctx.lineTo(X1 - AL * Math.cos(ang + 0.42), Y1 - AL * Math.sin(ang + 0.42));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
+
 
   function fitCanvas(cv, cw, ch) {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -169,50 +319,96 @@
 
   /* ---------- 工具栏 ---------- */
   /* simple=true：批注只要笔/橡皮（用户要求批注里不要图片、文字、形状） */
+  var WIDTHS = [2, 4.5, 8.5, 14];      /* 四档笔宽（视觉像素）：细 / 中 / 粗 / 特粗 */
+  var COLORS8 = ['#111827', '#dc2626', '#ea580c', '#f59e0b', '#16a34a', '#2563eb', '#7c3aed', '#db2777'];
+
+  function ico(d) {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+  }
+  var ICON = {
+    pen: ico('<path d="M3 21l1.2-4.2L15.4 5.6a2.1 2.1 0 013 3L7.2 19.8 3 21z"/><path d="M13.8 7.2l3 3"/>'),
+    pencil: ico('<path d="M4 20l4-1L19 8a1.9 1.9 0 00-2.7-2.7L5.3 16.3 4 20z"/><path d="M14.3 6.7l3 3"/>'),
+    hl: ico('<path d="M6 14l8-9 4.5 3.6-7 9H6z"/><path d="M4 20h16"/>'),
+    eraser: ico('<path d="M4 15l7-7 7 7-4 4H8z"/><path d="M9 20h11"/>'),
+    sel: ico('<path d="M5 3v14l3.7-3.4 2.6 5.4 2.7-1.2-2.6-5.3H16z"/>'),
+    line: ico('<path d="M4 20L20 4"/>'),
+    rect: ico('<rect x="4" y="6" width="16" height="12" rx="2"/>'),
+    ellipse: ico('<circle cx="12" cy="12" r="7.5"/>'),
+    arrow: ico('<path d="M4 20L19.5 4.5"/><path d="M11 4.5h8.5V13"/>'),
+    text: ico('<path d="M5 6h14"/><path d="M12 6v13"/><path d="M9 19h6"/>'),
+    img: ico('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.4"/><path d="M4.5 17l5-5 4 4 3-3 3.5 3.5"/>'),
+    undo: ico('<path d="M7 5L2.5 9.5 7 14"/><path d="M2.5 9.5H13a5.5 5.5 0 010 11H9"/>'),
+    redo: ico('<path d="M17 5l4.5 4.5L17 14"/><path d="M21.5 9.5H11a5.5 5.5 0 000 11h4"/>'),
+    trash: ico('<path d="M4 7h16"/><path d="M9.5 7V4.2h5V7"/><path d="M6.2 7l1 13h9.6l1-13"/>'),
+    png: ico('<path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4 20h16"/>')
+  };
+
+  function tbtn(m, icon, tip, key) {
+    return '<button type="button" data-m="' + m + '" title="' + tip + (key ? '（' + key + '）' : '') + '">' + icon + '</button>';
+  }
+
   function toolsHtml(simple) {
-    var penOnly = !!simple;
-    return '<div class="ink-tools' + (penOnly ? ' ink-simple' : '') + '">' +
-      '<div class="ink-row ink-seg">' +
-      '<button data-m="pen" class="on" title="钢笔">✒ 钢笔</button>' +
-      '<button data-m="pencil" title="铅笔">✎ 铅笔</button>' +
-      '<button data-m="hl" title="荧光笔（半透明，不挡字）">▮ 荧光</button>' +
-      '<button data-m="eraser" title="橡皮">◻ 橡皮</button>' +
-      (penOnly ? '' :
-        '<button data-m="sel" title="鼠标：点中文字/图片直接拖动，拖右下角改大小">✥ 鼠标</button>' +
-        '<button data-m="line" title="直线">╱</button>' +
-        '<button data-m="rect" title="矩形">▭</button>' +
-        '<button data-m="ellipse" title="椭圆">◯</button>' +
-        '<button data-m="arrow" title="箭头">↗</button>' +
-        '<button data-m="text" title="文字：点画布就地输入">T</button>' +
-        '<button data-m="img" title="导入图片">⤒</button>') +
-      '</div>' +
-      '<div class="ink-row"><span class="ink-sws"></span></div>' +
-      (penOnly ? '' : '<div class="ink-row"><span class="ink-lbl">文字底色</span><span class="ink-bgs"></span>' +
-      '<label class="ink-chk"><input type="checkbox" class="ink-bgtrans" checked><span>半透明</span></label></div>') +
-      '<div class="ink-row ink-sl">' +
-      '<span class="ink-lab">粗细</span><input type="range" min="1" max="26" step="1" value="2" class="ink-size">' +
-      '<span class="ink-lab">透明</span><input type="range" min="15" max="100" value="100" class="ink-alpha">' +
-      '</div>' +
-      '<div class="ink-row ink-acts">' +
-      '<button class="ink-undo" title="撤销">↶ 撤销</button>' +
-      '<button class="ink-clear" title="清空">清空</button>' +
-      '<button class="ink-done pri">' + (penOnly ? '退出' : '完成') + '</button>' +
-      '</div>' +
-      (penOnly ? '' : '<input type="file" accept="image/*" hidden>') +
-      '</div>';
+    var line1 = [tbtn('pen', ICON.pen, '钢笔', 'P'), tbtn('pencil', ICON.pencil, '铅笔', 'N'),
+      tbtn('hl', ICON.hl, '荧光笔', 'H'), tbtn('eraser', ICON.eraser, '橡皮', 'E')];
+    if (!simple) {
+      line1.push('<span class="ink-vsep"></span>');
+      line1.push(tbtn('sel', ICON.sel, '选择 / 移动', 'V'), tbtn('line', ICON.line, '直线', 'L'),
+        tbtn('rect', ICON.rect, '矩形', 'R'), tbtn('ellipse', ICON.ellipse, '椭圆', 'O'),
+        tbtn('arrow', ICON.arrow, '箭头', 'A'), tbtn('text', ICON.text, '文字', 'T'),
+        tbtn('img', ICON.img, '插入图片'));
+    }
+    line1.push('<span class="spacer-grow"></span>');
+    line1.push('<button type="button" class="ink-undo" title="撤销（Ctrl+Z）">' + ICON.undo + '</button>');
+    line1.push('<button type="button" class="ink-redo" title="重做（Ctrl+Shift+Z）">' + ICON.redo + '</button>');
+    line1.push('<button type="button" class="ink-clear" title="清空这一页">' + ICON.trash + '</button>');
+    if (!simple) line1.push('<button type="button" class="ink-png" title="导出 PNG">' + ICON.png + '</button>');
+    line1.push('<button type="button" class="ink-done pri">完成</button>');
+
+    var line2 = '<span class="ink-sws"></span><span class="ink-vsep"></span><span class="ink-ws"></span>' +
+      '<span class="ink-vsep"></span><label class="ink-alab">透明</label>' +
+      '<input type="range" class="ink-alpha" min="15" max="100" step="5" value="100">';
+    if (!simple) {
+      line2 += '<span class="ink-vsep"></span>' +
+        '<button type="button" class="ink-tg ink-dash" title="虚线（作用于直线/矩形/椭圆）">虚线</button>' +
+        '<button type="button" class="ink-tg ink-fill" title="填充（矩形/椭圆）">填充</button>' +
+        '<button type="button" class="ink-tg ink-erw on" title="整笔擦：一笔整条删掉，关掉则是像素擦">整笔擦</button>';
+    }
+
+    var extra = '';
+    if (!simple) {
+      extra = '<div class="ink-row ink-txtrow"><span class="ink-alab">文字底色</span>' +
+        '<span class="ink-bgs"></span>' +
+        '<label class="ink-inline"><input type="checkbox" class="ink-bgtrans"> 半透明</label>' +
+        '<input type="file" class="ink-file" accept="image/*" style="display:none"></div>';
+    }
+
+    return '<div class="ink-tools ink-tb' + (simple ? ' ink-simple' : '') + '">' +
+      '<div class="ink-row ink-seg">' + line1.join('') + '</div>' +
+      '<div class="ink-row">' + line2 + '</div>' +
+      extra + '</div>';
   }
 
   /* 一套画板：cv 画布；getSize 返回逻辑宽高；ops 初始笔迹；onCommit(ops,w,h) 完成时回调 */
   function Studio(opt) {
-    var cv = opt.cv, wrap = opt.wrap, st = { tool: 'pen', color: inkAuto(), size: 2, alpha: 1, bg: '', bgA: 1 };
+    var cv = opt.cv, wrap = opt.wrap;
+    var GEN = (window.__inkGen = (window.__inkGen || 0) + 1);
+    function alive() { return GEN === window.__inkGen; }
+    var penOnly = !!(wrap.querySelector && wrap.querySelector('.ink-simple'));
+    var st = { tool: 'pen', color: (opt.ink || inkAuto()), size: 2, alpha: 1, bg: '', bgA: 1, dash: 0, fill: 0, eraseWhole: 1 };
     /* 记一下「刚点过工具栏」，用来阻止文字框被 blur 提前提交 */
     wrap.addEventListener('pointerdown', function () { window.__inkTbDown = Date.now(); }, true);
-    if (opt.state) { st.tool = opt.state.tool || st.tool; st.color = opt.state.color || st.color;
-      st.size = opt.state.size || st.size; st.alpha = opt.state.alpha == null ? st.alpha : opt.state.alpha; }
+    if (opt.state) {
+      st.tool = opt.state.tool || st.tool;
+      st.color = opt.state.color || st.color;
+      st.size = opt.state.size || st.size;
+      st.alpha = opt.state.alpha == null ? st.alpha : opt.state.alpha;
+      if (opt.state.dash != null) st.dash = opt.state.dash;
+      if (opt.state.fill != null) st.fill = opt.state.fill;
+      if (opt.state.eraseWhole != null) st.eraseWhole = opt.state.eraseWhole;
+    }
     var ops = (opt.ops || []).slice(), cur = null, drag = false, dirty = false;
     var ctx = cv.getContext('2d');
     var size = { w: 1, h: 1 };
-    /* 画板是浮动窗口，用户拖着改大小时要重算画布尺寸 */
     if (window.ResizeObserver) {
       var __ro = null;
       try {
@@ -222,6 +418,33 @@
         });
         __ro.observe(wrap);
       } catch (e) {}
+    }
+
+    /* ---------- 历史（撤销 / 重做） ---------- */
+    var hist = [], redoSt = [];
+    function shallow(o) {
+      var c = {}, k;
+      for (k in o) if (k !== '_el') c[k] = o[k];
+      if (o._el) c._el = o._el;
+      return c;
+    }
+    function snap() {
+      hist.push(ops.map(shallow));
+      if (hist.length > 60) hist.shift();
+      redoSt.length = 0;
+      syncBtns();
+    }
+    function undoFn() {
+      if (!hist.length) return;
+      redoSt.push(ops.map(shallow));
+      ops = hist.pop();
+      SEL = -1; dirty = true; paint(); syncBtns();
+    }
+    function redoFn() {
+      if (!redoSt.length) return;
+      hist.push(ops.map(shallow));
+      ops = redoSt.pop();
+      SEL = -1; dirty = true; paint(); syncBtns();
     }
 
     function resize() {
@@ -239,7 +462,6 @@
       for (var i = 0; i < ops.length; i++) drawOp(ctx, ops[i], sx, sy);
       if (cur) drawOp(ctx, cur, sx, sy);
       if (opt.handles) {
-        /* 每条文字/图片自带两个把手：顶部圆点＝整块移动，右下角方块＝调大小 */
         for (var hi = 0; hi < ops.length; hi++) {
           var ho = ops[hi]; if (ho.t !== 'text' && ho.t !== 'img') continue;
           var hb = boxOf(ho);
@@ -249,7 +471,6 @@
           ctx.strokeStyle = 'rgba(14,165,233,.75)'; ctx.lineWidth = 1.2 / k;
           ctx.strokeRect(hb.x * sx - 2, hb.y * sy - 2, hb.w * sx + 4, hb.h * sy + 4);
           ctx.setLineDash && ctx.setLineDash([]);
-          /* 右下角方块：拖它调大小 */
           ctx.fillStyle = '#0ea5e9';
           ctx.fillRect(hb.x * sx + hb.w * sx - 5, hb.y * sy + hb.h * sy - 5, 11 / k, 11 / k);
           ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / k;
@@ -259,13 +480,16 @@
       }
       if (SEL >= 0 && ops[SEL]) {
         var bb = boxOf(ops[SEL]);
+        var kk = Math.max(1, sx);
         ctx.save();
-        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 1.5 / Math.max(1, sx);
-        if (ctx.setLineDash) ctx.setLineDash([5 / Math.max(1, sx), 4 / Math.max(1, sx)]);
+        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 1.5 / kk;
+        if (ctx.setLineDash) ctx.setLineDash([5 / kk, 4 / kk]);
         ctx.strokeRect(bb.x * sx - 3, bb.y * sy - 3, bb.w * sx + 6, bb.h * sy + 6);
         ctx.setLineDash && ctx.setLineDash([]);
         ctx.fillStyle = '#0ea5e9';
-        ctx.fillRect(bb.x * sx + bb.w * sx - 2, bb.y * sy + bb.h * sy - 2, 11 / Math.max(1, sx), 11 / Math.max(1, sx));
+        [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(function (q) {
+          ctx.fillRect(bb.x * sx + bb.w * sx * q[0] - 4, bb.y * sy + bb.h * sy * q[1] - 4, 8 / kk, 8 / kk);
+        });
         ctx.restore();
       }
     }
@@ -278,10 +502,25 @@
     }
     function cfg(o) { o.c = st.color; o.s = st.size; o.a = st.alpha; if (st.bg) o.bg = st.bg; if (st.bgA != null) o.ba = st.bgA; return o; }
 
+    /* 笔压：真笔用 ev.pressure；鼠标按速度模拟（写快了细、写慢了粗） */
+    var lastP = null, lastT = 0, lastF = 0.82;
+    function pressOf(ev, p) {
+      var now = ev.timeStamp || Date.now();
+      if (ev.pointerType === 'pen' && ev.pressure > 0.01) return Math.max(0.15, Math.min(1, ev.pressure * 1.35));
+      if (ev.pointerType === 'touch' && ev.pressure > 0.01) return Math.max(0.2, Math.min(1, 0.5 + ev.pressure * 0.5));
+      if (!lastP) { lastP = p; lastT = now; return lastF; }
+      var d = Math.sqrt((p[0] - lastP[0]) * (p[0] - lastP[0]) + (p[1] - lastP[1]) * (p[1] - lastP[1]));
+      var dt = Math.max(1, now - lastT);
+      var v = d / dt;
+      var target = Math.max(0.35, Math.min(1, 1 - v * 0.42));
+      lastF = lastF + (target - lastF) * 0.3;
+      lastP = p; lastT = now;
+      return lastF;
+    }
+    function resetPress() { lastP = null; lastT = 0; lastF = 0.82; }
+
     function openText(p, editIdx) {
       var old = editIdx >= 0 ? ops[editIdx] : null;
-      /* 输入框要贴在「点下去的那个位置」，所以挂到画布所在容器（题目卡片）里，
-         不能挂进底部工具条——那样会跑到工具条上面去，看着像没反应 */
       var host = document.body;
       var ir = cv.getBoundingClientRect(), cr = host.getBoundingClientRect();
       var kx = ir.width / (opt.w0 || size.w || 1), ky = ir.height / (opt.h0 || size.h || 1);
@@ -310,15 +549,13 @@
       function commit() {
         if (closed) return; closed = true;
         var v = inp.value.replace(/\s+$/, ''); inp.remove();
-        if (v.trim()) { ops.push(cfg({ t: 'text', txt: v, p: [[p0[0], p0[1]]] })); dirty = true; paint(); }
+        if (v.trim()) { snap(); ops.push(cfg({ t: 'text', txt: v, p: [[p0[0], p0[1]]] })); dirty = true; paint(); }
       }
       inp.addEventListener('blur', function () {
-        /* 点工具栏（换色、改字号）不该把文字框提交掉 */
         if (Date.now() - (window.__inkTbDown || 0) < 400) { try { setTimeout(function () { inp.focus(); }, 0); } catch (e) {} return; }
         commit();
       });
       inp.addEventListener('keydown', function (e) {
-        /* 回车换行，Ctrl/⌘+回车或点「完成」才落字 */
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
         else if (e.key === 'Escape') { e.preventDefault(); closed = true; inp.remove(); if (old) { ops.push(old); paint(); } }
       });
@@ -331,43 +568,83 @@
       }
       return -1;
     }
-    var SEL = -1;                       /* 选中的图片下标，用来拖动 / 改大小 */
+    var SEL = -1;
     function hitHandle(p) {
-    for (var i = ops.length - 1; i >= 0; i--) {
-      var o = ops[i]; if (o.t !== 'text' && o.t !== 'img') continue;
-      var b = boxOf(o);
-      if (p[0] >= b.x + b.w - 9 && p[0] <= b.x + b.w + 9 && p[1] >= b.y + b.h - 9 && p[1] <= b.y + b.h + 9) return { i: i, mode: 'resize' };
+      for (var i = ops.length - 1; i >= 0; i--) {
+        var o = ops[i]; if (o.t !== 'text' && o.t !== 'img') continue;
+        var b = boxOf(o);
+        if (p[0] >= b.x + b.w - 9 && p[0] <= b.x + b.w + 9 && p[1] >= b.y + b.h - 9 && p[1] <= b.y + b.h + 9) return { i: i, mode: 'resize' };
+      }
+      return null;
     }
-    return null;
-  }
-
-  function hitImg(p) {
+    function hitImg(p) {
       for (var i = ops.length - 1; i >= 0; i--) {
         var o = ops[i]; if (o.t !== 'img') continue;
-        var w = o.w || 200, h = w * ((o._el && o._el.naturalWidth) ? (o._el.naturalHeight / o._el.naturalWidth) : 0.6);
-        if (p[0] >= o.p[0][0] - 6 && p[0] <= o.p[0][0] + w + 6 && p[1] >= o.p[0][1] - 6 && p[1] <= o.p[0][1] + h + 6) return i;
+        var b = boxOf(o);
+        if (p[0] >= b.x - 6 && p[0] <= b.x + b.w + 6 && p[1] >= b.y - 6 && p[1] <= b.y + b.h + 6) return i;
       }
       return -1;
     }
-    var imgDrag = null, textDrag = null, selDrag = null;
-    function boxOf(o) {
-      if (!o) return { x: 0, y: 0, w: 0, h: 0 };
-      if (o.t === 'img') {
-        var w = o.w || 200, h = w * ((o._el && o._el.naturalWidth) ? (o._el.naturalHeight / o._el.naturalWidth) : 0.6);
-        return { x: o.p[0][0], y: o.p[0][1], w: w, h: h };
+    /* 任意一笔的点命中（用于选择/整笔擦） */
+    function hitAny(p, tol) {
+      tol = tol || 8;
+      for (var i = ops.length - 1; i >= 0; i--) {
+        var b = boxOf(ops[i]);
+        if (p[0] >= b.x - tol && p[0] <= b.x + b.w + tol && p[1] >= b.y - tol && p[1] <= b.y + b.h + tol) return i;
       }
-      var tm = textMetrics(o);
-      return { x: o.p[0][0], y: o.p[0][1], w: tm.w, h: tm.h };
+      return -1;
+    }
+    function nearStroke(o, p, tol) {
+      var q = o.p || [], i, j;
+      if (SHAPES[o.t] && q.length > 1) {
+        var a = q[0], b = q[1];
+        var dx = b[0] - a[0], dy = b[1] - a[1];
+        var L2 = dx * dx + dy * dy || 1;
+        var t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2));
+        var ddx = p[0] - (a[0] + dx * t), ddy = p[1] - (a[1] + dy * t);
+        return Math.sqrt(ddx * ddx + ddy * ddy) <= tol + (o.s || 2);
+      }
+      for (i = 0; i < q.length; i++) {
+        var d = Math.abs(q[i][0] - p[0]) + Math.abs(q[i][1] - p[1]);
+        if (d <= tol + (o.s || 2)) return true;
+        if (i) {
+          var p0 = q[i - 1];
+          var ax = p0[0], ay = p0[1], bx = q[i][0], by = q[i][1];
+          var vx = bx - ax, vy = by - ay, LL = vx * vx + vy * vy || 1;
+          var tt = Math.max(0, Math.min(1, ((p[0] - ax) * vx + (p[1] - ay) * vy) / LL));
+          var dx2 = p[0] - (ax + vx * tt), dy2 = p[1] - (ay + vy * tt);
+          if (Math.sqrt(dx2 * dx2 + dy2 * dy2) <= tol + (o.s || 2)) return true;
+        }
+      }
+      return false;
+    }
+    var imgDrag = null, textDrag = null, selDrag = null, moveDrag = null;
+    function cloneGeo(o) {
+      var c = shallow(o);
+      if (o.p) c.p = o.p.map(function (q) { return q.slice(); });
+      return c;
     }
 
     cv.addEventListener('pointerdown', function (ev) {
+      if (!alive()) return;
       if (ev.button !== 0) return;
       var p = pt(ev);
+      resetPress();
+
+      /* 整笔擦：只删碰到的那几笔 */
+      if (st.tool === 'eraser' && st.eraseWhole && !penOnly) {
+        var hit = -1, k;
+        for (k = ops.length - 1; k >= 0; k--) { if (ops[k].t !== 'eraser' && nearStroke(ops[k], p, 6)) { hit = k; break; } }
+        if (hit >= 0) { snap(); ops.splice(hit, 1); dirty = true; paint(); syncBtns(); }
+        eraseDrag = true;
+        try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+        return;
+      }
+
       if (st.tool === 'text') {
         ev.preventDefault();
         var ii = hitImg(p);
         if (ii >= 0) {
-          /* 图片：按住本体直接拖动 */
           imgDrag = { i: ii, dx: p[0] - ops[ii].p[0][0], dy: p[1] - ops[ii].p[0][1] };
           try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
           cv.style.cursor = 'move';
@@ -375,7 +652,6 @@
         }
         var ti = hitText(p);
         if (ti >= 0) {
-          /* 按住已有的字拖动＝挪位置；只是点一下＝改字 */
           textDrag = { i: ti, x0: p[0], y0: p[1], moved: 0, org: [[ops[ti].p[0][0], ops[ti].p[0][1]]] };
           try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
           cv.style.cursor = 'move';
@@ -387,61 +663,77 @@
       if (st.tool === 'sel' || hitHandle(p) != null) {
         var hh = hitHandle(p);
         if (hh) {
-          ev.preventDefault();
+          var so0 = ops[hh.i], b0 = boxOf(so0);
+          selDrag = { i: hh.i, x0: p[0], y0: p[1], org: { w: b0.w, h: b0.h, s: so0.s, iw: so0.w } };
           SEL = hh.i;
-          var hb2 = boxOf(ops[hh.i]);
-          selDrag = { i: hh.i, handle: true, mode: hh.mode, x0: p[0], y0: p[1],
-                      org: { x: hb2.x, y: hb2.y, w: hb2.w, h: hb2.h, s: ops[hh.i].s || 2 } };
-          if (ops[hh.i].t === 'text' && !(ops[hh.i].w > 10)) ops[hh.i].w = Math.round(hb2.w);
           try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
-          cv.style.cursor = hh.mode === 'resize' ? 'nwse-resize' : 'move';
-          paint();
+          cv.style.cursor = 'nwse-resize';
           return;
         }
-      }
-      if (st.tool === 'sel') {
-        ev.preventDefault();
-        var si = hitImg(p); if (si < 0) si = hitText(p);
-        SEL = si;
+        var si = hitAny(p, 10);
         if (si >= 0) {
-          var bb = boxOf(ops[si]);
-          var onCorner = p[0] > bb.x + bb.w - 22 && p[1] > bb.y + bb.h - 22;
-          selDrag = { i: si, mode: onCorner ? 'resize' : 'move', x0: p[0], y0: p[1],
-                      org: { x: bb.x, y: bb.y, w: bb.w, h: bb.h, s: ops[si].s || 2 } };
+          SEL = si;
+          var src = ops[si];
+          snap();
+          moveDrag = { i: si, x0: p[0], y0: p[1], org: cloneGeo(src), moved: 0 };
+          dirty = true; paint(); syncSize();
           try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
-          var so = ops[si];
-          if (so && so.t === 'text') {
-            st.color = so.c || st.color; st.size = so.s || st.size;
-            st.bg = so.bg || ''; st.bgA = so.ba == null ? 1 : so.ba;
-            var sl0 = tb.querySelector('.ink-size'); if (sl0) sl0.value = st.size;
-          }
-          syncSize();
+          cv.style.cursor = 'move';
+        } else {
+          SEL = -1; paint();
         }
-        paint();
         return;
       }
       ev.preventDefault();
-      try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+      snap();
       drag = true;
-      cur = cfg({ t: st.tool, p: [p] });
+      cur = { t: st.tool, p: [p.slice()] };
+      cfg(cur);
+      if (SHAPES[cur.t]) cur.p.push(p.slice()); else cur.p[0][2] = pressOf(ev, p);
+      if (cur.t === 'rect' || cur.t === 'ellipse') { if (st.dash) cur.dash = 1; if (st.fill) cur.fill = shadeOf(st.color); }
+      else if (cur.t === 'line' || cur.t === 'arrow') { if (st.dash) cur.dash = 1; }
+      if (cur.t === 'hl') cur.p[0][2] = 1;
+      try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
       paint();
     });
+
+    var eraseDrag = false;
+
     cv.addEventListener('pointermove', function (ev) {
+      if (!alive()) return;
+      if (eraseDrag) {
+        var pe = pt(ev);
+        for (var k = ops.length - 1; k >= 0; k--) {
+          if (ops[k].t === 'eraser') continue;
+          if (nearStroke(ops[k], pe, 6)) { ops.splice(k, 1); dirty = true; }
+        }
+        paint(); return;
+      }
+      if (moveDrag) {
+        var mp = pt(ev), mo = ops[moveDrag.i], og = moveDrag.org;
+        if (mo) {
+          var dx = mp[0] - moveDrag.x0, dy = mp[1] - moveDrag.y0;
+          if (Math.abs(dx) + Math.abs(dy) > 2) moveDrag.moved = 1;
+          if (ev.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }   /* Shift 锁水平/垂直 */
+          if (mo.t === 'img' || mo.t === 'text') {
+            mo.p = [[Math.round(og.p[0][0] + dx), Math.round(og.p[0][1] + dy)]];
+          } else {
+            mo.p = og.p.map(function (q) { return [Math.round(q[0] + dx), Math.round(q[1] + dy), q[2]]; });
+          }
+          dirty = true; paint();
+        }
+        return;
+      }
       if (selDrag) {
         var sp = pt(ev), so = ops[selDrag.i];
         if (so) {
-          if (selDrag.mode === 'move') {
-            so.p[0][0] = Math.round(selDrag.org.x + (sp[0] - selDrag.x0));
-            so.p[0][1] = Math.round(selDrag.org.y + (sp[1] - selDrag.y0));
+          var dxr = sp[0] - selDrag.x0;
+          if (so.t === 'img') {
+            so.w = Math.max(48, Math.round(selDrag.org.iw + dxr));
           } else {
-            var dxr = sp[0] - selDrag.x0;
-            if (so.t === 'img') so.w = Math.max(24, Math.round(selDrag.org.w + dxr));
-            else {
-              var nw = Math.max(48, Math.round(selDrag.org.w + dxr));
-              var ratio = nw / Math.max(1, selDrag.org.w);
-              so.w = nw;
-              so.s = Math.max(1, Math.min(40, Math.round((selDrag.org.s || 2) * ratio)));
-            }
+            var nw = Math.max(48, Math.round(selDrag.org.w + dxr));
+            var ratio = nw / Math.max(1, selDrag.org.w);
+            so.w = nw;
           }
           dirty = true; paint();
         }
@@ -449,14 +741,10 @@
       }
       if (textDrag) {
         var tp = pt(ev);
-        var dx = tp[0] - textDrag.x0, dy = tp[1] - textDrag.y0;
-        textDrag.moved = Math.max(textDrag.moved, Math.abs(dx) + Math.abs(dy));
+        var ddx = tp[0] - textDrag.x0, ddy = tp[1] - textDrag.y0;
+        if (Math.abs(ddx) + Math.abs(ddy) > 3) textDrag.moved += 1;
         var to = ops[textDrag.i];
-        if (to && textDrag.moved > 3) {
-          to.p[0][0] = Math.round(textDrag.org[0][0] + dx);
-          to.p[0][1] = Math.round(textDrag.org[0][1] + dy);
-          dirty = true; paint();
-        }
+        if (to) { to.p = [[textDrag.org[0][0] + ddx, textDrag.org[0][1] + ddy]]; paint(); }
         return;
       }
       if (imgDrag) {
@@ -466,9 +754,25 @@
       }
       if (!drag || !cur) return;
       var p = pt(ev);
-      if (SHAPES[cur.t]) cur.p[1] = p; else cur.p.push(p);
+      if (SHAPES[cur.t]) {
+        if (ev.shiftKey && (cur.t === 'line' || cur.t === 'arrow')) {
+          var a0 = cur.p[0], dxs = p[0] - a0[0], dys = p[1] - a0[1];
+          var ang = Math.atan2(dys, dxs), L = Math.sqrt(dxs * dxs + dys * dys);
+          var snap45 = Math.round(ang / (Math.PI / 4)) * (Math.PI / 4);
+          cur.p[1] = [Math.round(a0[0] + Math.cos(snap45) * L), Math.round(a0[1] + Math.sin(snap45) * L)];
+        } else if (ev.shiftKey && (cur.t === 'rect' || cur.t === 'ellipse')) {
+          var s0 = cur.p[0], w0 = p[0] - s0[0], h0 = p[1] - s0[1];
+          var m = Math.max(Math.abs(w0), Math.abs(h0));
+          cur.p[1] = [s0[0] + (w0 < 0 ? -m : m), s0[1] + (h0 < 0 ? -m : m)];
+        } else {
+          cur.p[1] = p;
+        }
+      } else {
+        var lastq = cur.p[cur.p.length - 1];
+        if (Math.abs(p[0] - lastq[0]) + Math.abs(p[1] - lastq[1]) < 1.2) return;   /* 太密就丢，省点也省运算 */
+        cur.p.push([p[0], p[1], cur.t === 'hl' ? 1 : pressOf(ev, p)]);
+      }
       if (cur.t === 'eraser') {
-        /* 橡皮只在「新擦过的那一段」上打洞，不回重放整页——大页面上也能跟手 */
         var ssx = size.w / (opt.w0 || size.w), ssy = size.h / (opt.h0 || size.h);
         var a1 = cur.p[cur.p.length - 2] || cur.p[cur.p.length - 1], b1 = cur.p[cur.p.length - 1];
         ctx.save();
@@ -481,152 +785,217 @@
       }
       paint();
     });
+
     ['pointerup', 'pointercancel'].forEach(function (t) {
       cv.addEventListener(t, function () {
-        if (selDrag) { selDrag = null; cv.style.cursor = 'default'; paint(); return; }
+        if (!alive()) return;
+        if (eraseDrag) { eraseDrag = false; return; }
+        if (moveDrag) { if (!moveDrag.moved) { hist.pop(); syncBtns(); } moveDrag = null; cv.style.cursor = 'move'; paint(); return; }
+        if (selDrag) { selDrag = null; cv.style.cursor = 'default'; paint(); syncBtns(); return; }
         if (textDrag) {
           var td = textDrag; textDrag = null;
           cv.style.cursor = 'text';
           if (td.moved <= 3) {
-            /* 没拖动＝改字：沿用原来的颜色和字号 */
             var op0 = ops[td.i];
             if (op0) { st.color = op0.c || st.color; st.size = op0.s || st.size; }
             openText([td.x0, td.y0], td.i);
-          } else { paint(); }
+          } else { paint(); snap(); }
           return;
         }
-        if (imgDrag) { imgDrag = null; return; }
+        if (imgDrag) { imgDrag = null; snap(); return; }
         if (!drag) return;
         drag = false;
         if (cur) { ops.push(cur); dirty = true; }
-        cur = null; paint();
+        cur = null; paint(); syncBtns();
       });
     });
 
+    /* ---------- 工具栏 ---------- */
     var tb = wrap.querySelector('.ink-tools');
+    function syncBtns() {
+      if (!tb) return;
+      var u = tb.querySelector('.ink-undo'), r = tb.querySelector('.ink-redo');
+      if (u) u.classList.toggle('off', !hist.length);
+      if (r) r.classList.toggle('off', !redoSt.length);
+    }
+    function setTool(m) {
+      st.tool = m;
+      if (seg) Array.prototype.forEach.call(seg.children, function (x) { if (x.dataset && x.dataset.m) x.classList.toggle('on', x.dataset.m === m); });
+      cv.style.cursor = m === 'text' ? 'text' : (m === 'sel' ? 'default' : 'crosshair');
+    }
     function syncSize() {
-      if (SEL < 0) return;
-      var im = ops[SEL]; if (!im || im.t !== 'img') return;
-      var v = Math.max(1, Math.min(26, Math.round((im.w || 288) / 24)));
-      st.size = v;
-      var sl = tb.querySelector('.ink-size'); if (sl) sl.value = v;
+      if (!tb) return;
+      Array.prototype.forEach.call(tb.querySelectorAll('.ink-w'), function (b, i) {
+        b.classList.toggle('on', Math.abs(WIDTHS[i] - st.size) < 0.01);
+      });
     }
     var seg = tb.querySelector('.ink-seg');
-    seg.onclick = function (ev) {
+    if (seg) seg.onclick = function (ev) {
       var b = ev.target.closest('button'); if (!b) return;
       if (b.dataset.m === 'img') { var fi = tb.querySelector('input[type=file]'); if (fi) fi.click(); return; }
-      Array.prototype.forEach.call(seg.children, function (x) { x.classList.remove('on'); });
-      b.classList.add('on'); st.tool = b.dataset.m;
-      cv.style.cursor = st.tool === 'text' ? 'text' : 'crosshair';
+      setTool(b.dataset.m);
     };
     var sws = tb.querySelector('.ink-sws');
-    var pal = [inkAuto()].concat(COLORS);
+    var pal = (opt.pal && opt.pal.length) ? opt.pal : [inkAuto()].concat(COLORS8);
+    function sameC(a, b2) { return String(a || '').toLowerCase() === String(b2 || '').toLowerCase(); }
     if (sws) pal.forEach(function (c, i) {
       var b = document.createElement('button');
-      b.className = 'ink-sw' + (i === 0 ? ' on' : '');
-      b.title = i === 0 ? '跟随主题（深色主题下就是这个浅色）' : '';
+      b.className = 'ink-sw' + (sameC(c, st.color) ? ' on' : '');
+      b.title = c === '#ffffff' ? '白色（在白板/深色批注上当橡皮用）'
+        : (pal.length > COLORS8.length && i === 0 ? '跟随主题' : '');
       b.style.background = c;
       b.onclick = function () {
         st.color = c;
         Array.prototype.forEach.call(sws.children, function (x) { x.classList.remove('on'); });
         b.classList.add('on');
-        /* 正在打字的文字框也跟着换色 */
-        Array.prototype.forEach.call(document.querySelectorAll('.ink-txt'), function (x) { x.style.color = c; });
-        /* 已经选中的文字也跟着换色 */
-        if (SEL >= 0 && ops[SEL] && ops[SEL].t === 'text') { ops[SEL].c = c; dirty = true; paint(); }
+        if (SEL >= 0 && ops[SEL] && (ops[SEL].t === 'text' || ops[SEL].t === 'rect' || ops[SEL].t === 'ellipse')) {
+          snap(); ops[SEL].c = c; dirty = true; paint();
+        }
       };
       sws.appendChild(b);
     });
-    /* 文字底色：无 / 白 / 黄 / 绿 / 蓝 / 黑（配下面的「半透明」开关） */
-    var bgs = tb.querySelector('.ink-bgs');
-    var BGS = [['', '无'], ['#ffffff', '白'], ['#fff3a3', '黄'], ['#d1fae5', '绿'], ['#dbeafe', '蓝'], ['#111827', '黑']];
-    if (bgs) BGS.forEach(function (pair, i) {
+    var ws = tb.querySelector('.ink-ws');
+    if (ws) WIDTHS.forEach(function (w, i) {
       var b = document.createElement('button');
-      b.className = 'ink-bg' + (i === 0 ? ' on' : '');
-      b.title = pair[1] + '底';
-      b.style.background = pair[0] || 'transparent';
-      if (!pair[0]) b.textContent = '∅';
+      b.className = 'ink-w' + (Math.abs(w - st.size) < 0.01 ? ' on' : '');
+      b.title = ['细', '中', '粗', '特粗'][i];
+      b.innerHTML = '<i style="width:' + Math.round(w + 3) + 'px;height:' + Math.round(w + 3) + 'px"></i>';
       b.onclick = function () {
-        st.bg = pair[0] || '';
-        Array.prototype.forEach.call(bgs.children, function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        if (SEL >= 0 && ops[SEL] && ops[SEL].t === 'text') {
-          if (st.bg) ops[SEL].bg = st.bg; else delete ops[SEL].bg;
-          ops[SEL].ba = st.bgA;
-          dirty = true; paint();
+        st.size = w; syncSize();
+        if (SEL >= 0 && ops[SEL]) {
+          var so = ops[SEL];
+          if (so.t === 'text') { so.s = w; dirty = true; paint(); }
+          else if (so.t === 'img') { so.w = Math.round(w * 24); dirty = true; paint(); }
         }
       };
-      bgs.appendChild(b);
+      ws.appendChild(b);
     });
+    var bgs = tb.querySelector('.ink-bgs');
+    if (bgs) {
+      var BGS = [['', '无'], ['#ffffff', '白'], ['#fff3a3', '黄'], ['#d1fae5', '绿'], ['#dbeafe', '蓝'], ['#111827', '黑']];
+      BGS.forEach(function (bg, i) {
+        var b = document.createElement('button');
+        b.className = 'ink-bg' + (i === 0 ? ' on' : '');
+        b.textContent = bg[1];
+        if (bg[0]) b.style.background = bg[0];
+        b.onclick = function () {
+          st.bg = bg[0];
+          Array.prototype.forEach.call(bgs.children, function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+          if (SEL >= 0 && ops[SEL] && ops[SEL].t === 'text') {
+            snap(); if (bg[0]) ops[SEL].bg = bg[0]; else delete ops[SEL].bg;
+            dirty = true; paint();
+          }
+        };
+        bgs.appendChild(b);
+      });
+    }
     var bgt = tb.querySelector('.ink-bgtrans');
     if (bgt) bgt.onchange = function () {
       st.bgA = bgt.checked ? 0.45 : 1;
       if (SEL >= 0 && ops[SEL] && ops[SEL].t === 'text') { ops[SEL].ba = st.bgA; dirty = true; paint(); }
     };
-    tb.querySelector('.ink-size').oninput = function (e) {
-      st.size = +e.target.value;
-      /* 正在打的字也跟着变大小 */
-      Array.prototype.forEach.call(document.querySelectorAll('.ink-txt'), function (x) {
-        x.style.fontSize = Math.round(14 + st.size * 2.2) + 'px';
-      });
-      if (SEL < 0 || !ops[SEL]) return;
-      var so = ops[SEL];
-      if (so.t === 'img') so.w = Math.round(st.size * 24);
-      else if (so.t === 'text') so.s = st.size;
-      else return;
-      dirty = true; paint();
+    var alphaEl = tb.querySelector('.ink-alpha');
+    if (alphaEl) {
+      alphaEl.value = Math.round(st.alpha * 100);
+      alphaEl.oninput = function (e) { st.alpha = +e.target.value / 100; };
+    }
+    var dEl = tb.querySelector('.ink-dash');
+    if (dEl) dEl.onclick = function () {
+      st.dash = st.dash ? 0 : 1;
+      dEl.classList.toggle('on', !!st.dash);
+      if (SEL >= 0 && ops[SEL] && SHAPES[ops[SEL].t]) { snap(); if (st.dash) ops[SEL].dash = 1; else delete ops[SEL].dash; dirty = true; paint(); }
     };
-    tb.querySelector('.ink-alpha').oninput = function (e) { st.alpha = +e.target.value / 100; };
-    tb.querySelector('.ink-undo').onclick = function () { if (ops.length) { ops.pop(); dirty = true; paint(); } };
-    /* Ctrl/⌘ + Z 撤销（白板和批注通用）；输入文字时不抢快捷键 */
-    document.addEventListener('keydown', function (ke) {
-      if (!ke || (ke.key !== 'z' && ke.key !== 'Z')) return;
-      if (!(ke.ctrlKey || ke.metaKey)) return;
-      if (!document.body.contains(wrap)) return;
+    var fEl = tb.querySelector('.ink-fill');
+    if (fEl) fEl.onclick = function () {
+      st.fill = st.fill ? 0 : 1;
+      fEl.classList.toggle('on', !!st.fill);
+      if (SEL >= 0 && ops[SEL] && (ops[SEL].t === 'rect' || ops[SEL].t === 'ellipse')) {
+        snap();
+        if (st.fill) ops[SEL].fill = shadeOf(ops[SEL].c || st.color); else delete ops[SEL].fill;
+        dirty = true; paint();
+      }
+    };
+    var eEl = tb.querySelector('.ink-erw');
+    if (eEl) eEl.onclick = function () {
+      st.eraseWhole = st.eraseWhole ? 0 : 1;
+      eEl.classList.toggle('on', !!st.eraseWhole);
+      eEl.textContent = st.eraseWhole ? '整笔擦' : '像素擦';
+    };
+    var undoEl = tb.querySelector('.ink-undo');
+    if (undoEl) undoEl.onclick = undoFn;
+    var redoEl = tb.querySelector('.ink-redo');
+    if (redoEl) redoEl.onclick = redoFn;
+    var clearEl = tb.querySelector('.ink-clear');
+    if (clearEl) clearEl.onclick = function () {
+      if (!ops.length) return;
+      if (!confirm('清空这一层的全部笔迹？')) return;
+      snap(); ops = []; SEL = -1; dirty = true; paint(); syncBtns();
+    };
+    var pngEl = tb.querySelector('.ink-png');
+    if (pngEl) pngEl.onclick = function () { exportPng(); };
+
+    function exportPng() {
+      var W = Math.max(1, Math.round(opt.w0 || size.w)), H = Math.max(1, Math.round(opt.h0 || size.h));
+      var c = document.createElement('canvas');
+      var cc = fitCanvas(c, W, H);
+      cc.fillStyle = '#fff'; cc.fillRect(0, 0, W, H);
+      ops.forEach(function (o) { try { drawOp(cc, o, 1, 1); } catch (e) {} });
+      var url = '';
+      try { url = c.toDataURL('image/png'); } catch (e) { return; }
+      var d = new Date();
+      var name = '白板-' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '-' +
+        ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2) + '.png';
+      if (typeof window.download === 'function') { window.download(name, url, 'image/png'); }
+      else { var a = document.createElement('a'); a.href = url; a.download = name; a.click(); }
+      if (typeof toast === 'function') toast('已导出 ' + name, 2200, 'good');
+    }
+
+    /* ---------- 快捷键 ---------- */
+    function onKey(ke) {
+      if (!alive() || !ke || !document.body.contains(wrap)) return;
       var ae = document.activeElement;
       if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
-      ke.preventDefault();
-      if (ops.length) { ops.pop(); SEL = -1; dirty = true; paint(); }
-    });
-    tb.querySelector('.ink-clear').onclick = function () { if (!ops.length) return; if (confirm('清空这一层的全部笔迹？')) { ops = []; dirty = true; paint(); } };
-    var file = tb.querySelector('input[type=file]');
-    if (file) file.addEventListener('change', function () {
-      var f = file.files && file.files[0]; if (!f) return;
-      var r = new FileReader();
-      r.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          /* 存进 localStorage 前先压到 900px 宽的 JPEG，别把本地存储撑爆 */
-          var mw = Math.min(900, img.naturalWidth), mh = Math.round(img.naturalHeight * mw / img.naturalWidth);
-          var c2 = document.createElement('canvas'); c2.width = mw; c2.height = mh;
-          c2.getContext('2d').drawImage(img, 0, 0, mw, mh);
-          var data = c2.toDataURL('image/jpeg', 0.72);
-          var W = (opt.w0 || size.w), H = (opt.h0 || size.h);
-          ops.push({ t: 'img', data: data, x: 0, y: 0, w: Math.min(420, mw), nw: mw, nh: mh, _el: img, p: [[Math.round(W * 0.16), Math.round(H * 0.12)]], a: 1 });
-          SEL = ops.length - 1; syncSize(); hydrate(ops); dirty = true; paint();
-        };
-        img.src = r.result;
-      };
-      r.readAsDataURL(f); file.value = '';
-    });
-
-    function hydrate(list) {      list.forEach(function (o) {
-        if (o.t === 'img' && o.data && !o._el) {
-          var im = new Image(); im.onload = function () { paint(); }; im.src = o.data; o._el = im;
-        }
-      });
+      var meta = ke.ctrlKey || ke.metaKey;
+      var k = String(ke.key || '').toLowerCase();
+      if (meta && k === 'z') { ke.preventDefault(); if (ke.shiftKey) redoFn(); else undoFn(); return; }
+      if (meta && k === 'y') { ke.preventDefault(); redoFn(); return; }
+      if (k === 'delete' || k === 'backspace') {
+        if (SEL >= 0 && ops[SEL]) { ke.preventDefault(); snap(); ops.splice(SEL, 1); SEL = -1; dirty = true; paint(); syncBtns(); }
+        return;
+      }
+      if (meta || ke.altKey) return;
+      if (k === 'escape') { SEL = -1; paint(); return; }
+      if (penOnly) return;
+      var map = { p: 'pen', n: 'pencil', h: 'hl', e: 'eraser', v: 'sel', l: 'line', r: 'rect', o: 'ellipse', a: 'arrow', t: 'text' };
+      if (map[k]) { setTool(map[k]); }
     }
-    hydrate(ops);
+    if (window.__inkKey) document.removeEventListener('keydown', window.__inkKey);
+    window.__inkKey = onKey;
+    document.addEventListener('keydown', onKey);
 
     tb.querySelector('.ink-done').onclick = function () {
       opt.onDone(ops, opt.w0 || size.w, opt.h0 || size.h, dirty);
     };
+    setTool(st.tool);
+    syncSize(); syncBtns();
     window.addEventListener('resize', function () { setTimeout(resize, 60); });
     setTimeout(resize, 20);
-    return { resize: resize, paint: paint, ops: function () { return ops; },
-      state: function () { return { tool: st.tool, color: st.color, size: st.size, alpha: st.alpha }; } };
+    return {
+      resize: resize, paint: paint, ops: function () { return ops; },
+      state: function () { return { tool: st.tool, color: st.color, size: st.size, alpha: st.alpha, dash: st.dash, fill: st.fill, eraseWhole: st.eraseWhole }; }
+    };
   }
 
+  /* 从某个颜色派生出浅一号的填充色 */
+  function shadeOf(c) {
+    var m = String(c || '').match(/(\d+)\D+(\d+)\D+(\d+)/);
+    if (!m) return 'rgba(37,99,235,.18)';
+    var r = Math.round(+m[1] + (255 - +m[1]) * 0.72),
+      g = Math.round(+m[2] + (255 - +m[2]) * 0.72),
+      b = Math.round(+m[3] + (255 - +m[3]) * 0.72);
+    return 'rgba(' + r + ',' + g + ',' + b + ',.55)';
+  }
   /* ---------- 批注 ---------- */
   var liveCv = null, liveStudio = null;
 
@@ -745,7 +1114,7 @@
 
     var wrap = document.createElement('div');
     wrap.className = 'ink-wrap';
-    wrap.innerHTML = toolsHtml(true);
+    wrap.innerHTML = toolsHtml();   /* 批注也用全套工具：直线/箭头/文字在讲题时最常用 */
     document.body.appendChild(wrap);
 
 
@@ -765,15 +1134,17 @@
         var all = inkAll(), prevRec = all[keyOf(bank, q)];
         var r0 = card.getBoundingClientRect();
         var cr = { x: Math.round(r0.left + scrollX), y: Math.round(r0.top + scrollY), w: Math.round(r0.width), h: Math.round(r0.height) };
-        if (dirty || (prevRec && prevRec.ops) || o.length) {
-          if (false) INK_MEM[keyOf(bank, q)] = {
+        var k0 = keyOf(bank, q);
+        if (o.length) {
+          all[k0] = {
             ops: o, vw: Math.max(document.documentElement.scrollWidth, innerWidth),
             vh: Math.max(document.documentElement.scrollHeight, innerHeight),
             cr: cr, ts: Date.now()
           };
-          else delete all[keyOf(bank, q)];
-          if (!lsSet(INK_KEY, all)) toast('本地存储满了，这条批注没存下', 2600, 'bad');
+        } else if (all[k0]) {
+          delete all[k0];     /* 全擦光了就把这条批注一起删掉，别留空记录 */
         }
+        if (!lsSet(INK_KEY, all)) toast('本地存储满了，这条批注没存下', 2600, 'bad');
         closeAll();
         paint(bank, q);
         if (typeof window.paintInkDot === 'function') window.paintInkDot();
@@ -852,7 +1223,9 @@
     }
     sizeIt();
     st = Studio({
-      cv: cv, wrap: wrap, ops: [], w0: Math.round(stage.getBoundingClientRect().width), h0: Math.round(stage.getBoundingClientRect().height),
+      cv: cv, wrap: wrap, ops: [], ink: '#111827',
+      pal: COLORS8.concat(['#ffffff']),
+      w0: Math.round(stage.getBoundingClientRect().width), h0: Math.round(stage.getBoundingClientRect().height),
       onDone: function (ops, w, h) {
         if (!ops.length) { closeAll(); return; }
         var all = boardAll();
@@ -901,7 +1274,7 @@
       cap.className = 'ink-hcap';
       var dt = new Date(b.ts);
       cap.innerHTML = '<b>' + (b.name || '手稿') + '</b><span>' +
-        dt.getMonth() + 1 + '/' + dt.getDate() + ' ' + ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2) + '</span>';
+        (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2) + '</span>';
       d.appendChild(cap);
       var del = document.createElement('button');
       del.className = 'ink-hdel'; del.textContent = '🗑';
@@ -1026,6 +1399,8 @@
   }
 
   function closeAll() {
+    try { window.__inkGen = (window.__inkGen || 0) + 1; } catch (e) {}
+    try { if (window.__inkKey) { document.removeEventListener('keydown', window.__inkKey); window.__inkKey = null; } } catch (e) {}
     try { if (window.__inkEsc) { document.removeEventListener('keydown', window.__inkEsc); window.__inkEsc = null; } } catch (e) {}
     try { document.body.classList.remove('ink-on'); } catch (e) {}
     /* 退出批注后，右上角那颗按钮要立刻变回「隐藏/显示批注」 */

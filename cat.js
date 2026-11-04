@@ -2151,7 +2151,8 @@
       { value: 'modeRecite', label: '📖 背题模式', note: '直接看答案 + 解析，不记作答' },
       { value: 'modeExam', label: '⏱ 模拟考试', note: b.questions.length + ' 题 · 限时 ' + b.questions.length + ' 分钟' },
       { value: 'move', label: '移动到其它目录…' },
-      { value: 'export', label: '导出这个题库（JSON）' }
+      { value: 'export', label: '导出这个题库（JSON）' },
+        { value: 'csv', label: '导出这个题库（CSV，表格软件可打开）' }
     ];
     if (isLocal) {
       items.push({ value: 'rename', label: '改名 / 改说明' });
@@ -2168,6 +2169,7 @@
         else if (v === 'modeExam') startExam(id);
         else if (v === 'move') askMoveBank(id);
         else if (v === 'export') { if (typeof exportBank === 'function') exportBank(b); }
+        else if (v === 'csv') { if (window.CSVQ && CSVQ.exportBank) CSVQ.exportBank(b); else T('CSV 模块没加载上'); }
         else if (v === 'rename') askRenameBank(id);
         else if (v === 'edit') editBank(id);
         else if (v === 'del') askDelBank(id);
