@@ -497,7 +497,7 @@
     } else {
       var w = window.open('', '_blank');
       if (!w) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
-      w.document.open(); w.document.write(html); w.document.close();
+      w.document.open(); try { w.document.charset = 'utf-8'; } catch (e) {} w.document.write('<!DOCTYPE html><meta charset="utf-8">' + html); w.document.close();
     }
     toast2(fmt === 'pdf' ? '已生成 ' + rs.length + ' 题，正在调起打印（另存为 PDF）' : '已在新标签打开 ' + rs.length + ' 题', 2400, 'good');
   }
