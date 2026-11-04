@@ -1,16 +1,16 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>鍒烽绔?路 棰樺簱</title>
-<meta name="description" content="鍙嚜瀹氫箟鐨勫埛棰樼綉绔欙細閫夋嫨棰樺嵆鏃跺垽鍒嗐€佺瓟閿欏嚭瑙ｆ瀽锛岄敊棰樻湰甯︾粺璁′笌闂撮殧閲嶅澶嶄範锛屾敮鎸佹ā鑰冧笌鎼滅储銆?>
+<title>刷题站 · 题库</title>
+<meta name="description" content="可自定义的刷题网站：选择题即时判分、答错出解析，错题本带统计与间隔重复复习，支持模考与搜索。">
 <meta name="theme-color" content="#2563eb">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="鍒烽绔?>
-<meta name="application-name" content="鍒烽绔?>
+<meta name="apple-mobile-web-app-title" content="刷题站">
+<meta name="application-name" content="刷题站">
 <link rel="stylesheet" href="style.css?v=20261204a">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
@@ -23,7 +23,7 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <script>
-  /* 棰樺簱娉ㄥ唽鍏ュ彛锛歜anks/*.js 閫氳繃杩欎簺鍑芥暟鎶婇搴撲氦缁欑珯鐐?*/
+  /* 题库注册入口：banks/*.js 通过这些函数把题库交给站点 */
   window.__BANKS__ = [];
   window.registerBank = function (b) { window.__BANKS__.push(b); };
 </script>
@@ -40,20 +40,20 @@ var iv=setInterval(function(){n++;
 
 <div class="top">
   <div class="row">
-    <button class="btn" id="backFix" style="display:none" title="杩斿洖涓婁竴椤?>鈫?杩斿洖</button>
-    <button class="btn" id="btnHome" style="display:none">鈱?涓婚〉</button>
-    <span class="title" id="appTitle">鍒烽绔?/span>
+    <button class="btn" id="backFix" style="display:none" title="返回上一页">← 返回</button>
+    <button class="btn" id="btnHome" style="display:none">⌂ 主页</button>
+    <span class="title" id="appTitle">刷题站</span>
     <span class="stat" id="stat"></span>
-    <button class="btn" id="btnTheme" title="鍒囨崲澶栬锛氳窡闅忕郴缁?/ 娴呰壊 / 娣辫壊">鈼?/button>
-    <button class="btn" id="btnGrid" style="display:none">棰樺彿</button>
-    <button class="btn" id="btnQuizSet" style="display:none">璁剧疆</button>
+    <button class="btn" id="btnTheme" title="切换外观：跟随系统 / 浅色 / 深色">◐</button>
+    <button class="btn" id="btnGrid" style="display:none">题号</button>
+    <button class="btn" id="btnQuizSet" style="display:none">设置</button>
   </div>
   <div class="bar"><i id="bar"></i></div>
   <div class="subjchips" id="subjchips" style="display:none"></div>
   <div class="chips" id="chips" style="display:none"></div>
 </div>
 
-<div class="wrap" id="view"><!-- 搂3.6-P2鈶?棣栧睆楠ㄦ灦锛欽S 鍜屽嚑 MB 鐨勭煡璇嗗簱杩樺湪瑙ｆ瀽鏃跺厛缁欎釜褰㈢姸锛屽埆鐧藉睆锛涚湡鍐呭涓€鐢诲ソ灏辫椤舵帀 -->
+<div class="wrap" id="view"><!-- §3.6-P2⑥ 首屏骨架：JS 和几 MB 的知识库还在解析时先给个形状，别白屏；真内容一画好就被顶掉 -->
   <div class="skel" aria-hidden="true">
     <div class="sk-hero"><i class="sk-bl" style="width:38%"></i><i class="sk-bl" style="width:72%"></i><i class="sk-bl" style="width:54%"></i></div>
     <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:76%"></i></div>
@@ -64,220 +64,221 @@ var iv=setInterval(function(){n++;
   </div>
 </div>
 
-<!-- 搂3.6-P0鈶?涓撴敞妯″紡锛氬彧鍦?body.focus 鏃舵诞鍑烘潵锛堥偅鏃堕《鏍?搴曟爮閮芥敹璧锋潵浜嗭級锛岀偣瀹冩垨鎸?Esc 閫€鍑?-->
-<button class="btn focus-exit" id="btnFocusExit" title="閫€鍑轰笓娉ㄦā寮忥紙Esc锛?>鉀?閫€鍑轰笓娉?/button>
+<!-- §3.6-P0① 专注模式：只在 body.focus 时浮出来（那时顶栏/底栏都收起来了），点它或按 Esc 退出 -->
+<button class="btn focus-exit" id="btnFocusExit" title="退出专注模式（Esc）">⛶ 退出专注</button>
 
 <div class="nav" id="nav" style="display:none">
-  <button class="btn" id="prev" title="涓婁竴棰橈紙鈫愶級">鈥?涓婁竴棰?/button>
-  <button class="btn mid" id="jumpInfo" title="鐐瑰紑绛旈鍗★紙K锛?>鈥?/button>
-  <button class="btn primary" id="next" title="涓嬩竴棰橈紙鈫?鎴?Enter锛?>涓嬩竴棰?鈥?/button>
+  <button class="btn" id="prev" title="上一题（←）">‹ 上一题</button>
+  <button class="btn mid" id="jumpInfo" title="点开答题卡（K）">—</button>
+  <button class="btn primary" id="next" title="下一题（→ 或 Enter）">下一题 ›</button>
 </div>
 
-<!-- 搴曢儴缁熶竴瀵艰埅锛氬叚涓幓澶勩€傜瓟棰樻椂瀹冧細鍦ㄣ€屼笂涓€棰?/ 绛旈鍗?/ 涓嬩竴棰樸€嶉偅鏉′笂闈㈠啀鍙犱竴琛岋紙瑙?body.quiz锛夈€?-->
+<!-- 底部统一导航：六个去处。答题时它会在「上一题 / 答题卡 / 下一题」那条上面再叠一行（见 body.quiz）。 -->
 <div class="bnav" id="bnav">
-  <button class="btn" id="bnHome" title="棣栭〉"><i class="bn-ic">鈱?/i><span>棣栭〉</span></button>
-  <button class="btn" id="btnGoWrong" title="閿欓鏈?><i class="bn-ic">鉁?/i><span>閿欓</span></button>
-  <button class="btn" id="btnGoFav" title="鎴戠殑鏀惰棌"><i class="bn-ic">鈽?/i><span>鏀惰棌</span></button>
-  <button class="btn" id="btnGoSearch" title="鎼滅储棰樼洰锛堝揩鎹烽敭 /锛?><i class="bn-ic">鈱?/i><span>鎼滅储</span></button>
-  <button class="btn" id="btnGoKb" title="AI 瑙ｆ瀽涓庣煡璇嗗簱"><i class="bn-ic">鉁?/i><span>AI</span></button>
-  <button class="btn" id="btnSetAll" title="璁剧疆 / 娣辫壊妯″紡 / 瀛楀彿"><i class="bn-ic">鈿?/i><span>璁剧疆</span></button>
+  <button class="btn" id="bnHome" title="首页"><i class="bn-ic">⌂</i><span>首页</span></button>
+  <button class="btn" id="btnGoWrong" title="错题本"><i class="bn-ic">✗</i><span>错题</span></button>
+  <button class="btn" id="btnGoFav" title="我的收藏"><i class="bn-ic">★</i><span>收藏</span></button>
+  <button class="btn" id="btnGoSearch" title="搜索题目（快捷键 /）"><i class="bn-ic">⌕</i><span>搜索</span></button>
+  <button class="btn" id="btnGoKb" title="AI 解析与知识库"><i class="bn-ic">✦</i><span>AI</span></button>
+  <button class="btn" id="btnSetAll" title="设置 / 深色模式 / 字号"><i class="bn-ic">⚙</i><span>设置</span></button>
 </div>
 
 <div class="mask" id="gridMask"><div class="sheet">
-  <div class="shead"><h3>绛旈鍗?/h3><span class="spacer-grow"></span><button class="btn tiny" id="gridClose">鍏抽棴</button></div>
+  <div class="shead"><h3>答题卡</h3><span class="spacer-grow"></span><button class="btn tiny" id="gridClose">关闭</button></div>
   <div class="legend">
-    <span><i class="lg-done"></i>鍋氬</span>
-    <span><i class="lg-err"></i>鍋氶敊</span>
-    <span><i></i>娌″仛</span>
-    <span><i class="lg-cur"></i>褰撳墠棰?/span>
+    <span><i class="lg-done"></i>做对</span>
+    <span><i class="lg-err"></i>做错</span>
+    <span><i></i>没做</span>
+    <span><i class="lg-cur"></i>当前题</span>
   </div>
   <div class="gridf" id="gridFilter"></div>
   <div id="gridBody"></div>
 </div></div>
 
 <div class="mask" id="setMask"><div class="sheet">
-  <h3>璁剧疆</h3>
-  <div class="hint">浣滅瓟璁板綍銆侀敊棰樸€佹敹钘忋€佽嚜瀹氫箟瑙ｆ瀽銆佸涔犳帓鏈熼兘淇濆瓨鍦ㄦ湰鏈烘祻瑙堝櫒閲岋紝鍏虫帀椤甸潰涓嶄細涓€?/div>
+  <h3>设置</h3>
+  <div class="hint">作答记录、错题、收藏、自定义解析、复习排期都保存在本机浏览器里，关掉页面不会丢。</div>
   <div class="tools" style="margin-top:12px">
-    <span class="tl">澶栬</span>
+    <span class="tl">外观</span>
     <select class="num" id="setTheme">
-      <option value="auto">璺熼殢绯荤粺</option>
-      <option value="light">娴呰壊</option>
-      <option value="dark">娣辫壊</option>
+      <option value="auto">跟随系统</option>
+      <option value="light">浅色</option>
+      <option value="dark">深色</option>
     </select>
-    <span class="tl">瀛楀彿</span>
+    <span class="tl">字号</span>
     <select class="num" id="setFs">
-      <option value="s">灏?/option>
-      <option value="m">鏍囧噯</option>
-      <option value="l">澶?/option>
-      <option value="xl">鐗瑰ぇ</option>
+      <option value="s">小</option>
+      <option value="m">标准</option>
+      <option value="l">大</option>
+      <option value="xl">特大</option>
     </select>
-    <span class="tl" title="鍙斁澶ч骞层€侀€夐」銆佽В鏋愮殑瀛楋紝鎸夐挳鍜屽鑸繚鎸佸師鏍?>澶у瓧妯″紡</span>
-    <select class="num" id="setBig" title="鍙斁澶ч骞?/ 閫夐」 / 瑙ｆ瀽鐨勫瓧锛岀灞忓箷杩滀篃鐪嬪緱娓咃紱鎸夐挳鍜屽鑸笉鍙?>
-      <option value="0">鍏?/option>
-      <option value="1">澶у瓧 脳1.22</option>
-      <option value="2">鐗瑰ぇ 脳1.45</option>
+    <span class="tl" title="只放大题干、选项、解析的字，按钮和导航保持原样">大字模式</span>
+    <select class="num" id="setBig" title="只放大题干 / 选项 / 解析的字，离屏幕远也看得清；按钮和导航不变">
+      <option value="0">关</option>
+      <option value="1">大字 ×1.22</option>
+      <option value="2">特大 ×1.45</option>
     </select>
-    <span class="tl">姝ｆ枃棰滆壊</span>
-    <select class="num" id="setTextColor" title="棰樺共 / 閫夐」 / 瑙ｆ瀽姝ｆ枃鐨勫瓧鑹诧紱涓嶅姩鎸夐挳鍜屾爣棰?>
-      <option value="auto">璺熼殢涓婚</option>
-      <option value="ink">澧ㄩ粦</option>
-      <option value="blue">娣辫摑</option>
-      <option value="brown">妫曡</option>
-      <option value="green">澧ㄧ豢</option>
-      <option value="custom">鑷畾涔夆€?/option>
+    <span class="tl">正文颜色</span>
+    <select class="num" id="setTextColor" title="题干 / 选项 / 解析正文的字色；不动按钮和标题">
+      <option value="auto">跟随主题</option>
+      <option value="ink">墨黑</option>
+      <option value="blue">深蓝</option>
+      <option value="brown">棕褐</option>
+      <option value="green">墨绿</option>
+      <option value="custom">自定义…</option>
     </select>
-    <input type="color" id="setTextColorPick" value="#334155" title="鑷畾涔夋鏂囬鑹?>
-    <span class="tl">涓婚鑹?/span>
-    <select class="num" id="setColor" title="鎸夐挳 / 閾炬帴 / 杩涘害鏉?/ 楂樹寒 / 鐑姏鍥?/ 棣栭〉涓诲崱閮戒細璺熺潃鍙?>
-      <option value="teal">鍐烽潤闈掞紙榛樿锛?/option>
-      <option value="indigo">闈涜摑</option>
-      <option value="warm">钃?+ 鏆栨</option>
-      <option value="violet">绱?/option>
-      <option value="rose">鐜懓</option>
-      <option value="amber">鐞ョ弨</option>
-      <option value="emerald">妫灄</option>
-      <option value="ocean">娴锋磱</option>
-      <option value="graphite">鐭冲ⅷ閲?/option>
-      <option value="candy">绯栨灉</option>
+    <input type="color" id="setTextColorPick" value="#334155" title="自定义正文颜色">
+    <span class="tl">主题色</span>
+    <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
+      <option value="teal">冷静青（默认）</option>
+      <option value="indigo">靛蓝</option>
+      <option value="warm">蓝 + 暖橙</option>
+      <option value="violet">紫</option>
+      <option value="rose">玫瑰</option>
+      <option value="amber">琥珀</option>
+      <option value="emerald">森林</option>
+      <option value="ocean">海洋</option>
+      <option value="graphite">石墨金</option>
+      <option value="candy">糖果</option>
     </select>
-    <span class="tl">鑳屾櫙</span>
-    <select class="num" id="setBg" title="鏁撮〉搴曠汗锛氬彧鎹㈣儗鏅紝涓嶅奖鍝嶅唴瀹瑰拰鎸夐挳澶у皬">
-      <option value="default">榛樿寰厜</option>
-      <option value="aurora">鏋佸厜</option>
-      <option value="grid">缁嗙綉鏍?/option>
-      <option value="dots">鍦嗙偣</option>
-      <option value="lines">鏂滅汗</option>
-      <option value="rings">娑熸吉</option>
-      <option value="paper">绾告劅</option>
-      <option value="plain">绾壊</option>
-      <option value="custom">鑷畾涔夊浘鐗団€?/option>
-      <option value="video">瑙嗛鑳屾櫙鈥?/option>
+    <span class="tl">背景</span>
+    <select class="num" id="setBg" title="整页底纹：只换背景，不影响内容和按钮大小">
+      <option value="default">默认微光</option>
+      <option value="aurora">极光</option>
+      <option value="grid">细网格</option>
+      <option value="dots">圆点</option>
+      <option value="lines">斜纹</option>
+      <option value="rings">涟漪</option>
+      <option value="paper">纸感</option>
+      <option value="plain">纯色</option>
+      <option value="custom">自定义图片…</option>
+      <option value="video">视频背景…</option>
     </select>
-    <select class="num" id="setStyle" title="鏁寸珯鐨勭毊鑲わ細杈规 / 鍦嗚 / 闃村奖 / 瀛椾綋姘旇川锛涘拰涓婚鑹层€佹繁娴呰壊銆佽儗鏅彲浠ラ殢渚挎惌" style="display:none">
-      <option value="default">娓呯埥锛堥粯璁わ級</option>
-      <option value="neo">鏂伴噹鍏芥淳</option>
-      <option value="glass">姣涚幓鐠?/option>
-      <option value="clay">绮樺湡鎷熸€?/option>
-      <option value="mag">缂栬緫鏉傚織</option>
-      <option value="pixel">鍍忕礌 8-bit</option>
-      <option value="flat">鏋佺畝鎵佸钩</option>
-      <option value="y2k">Y2K 鍗冪Η</option>
-      <option value="memphis">瀛熻彶鏂?/option>
-      <option value="bauhaus">鍖呰豹鏂?/option>
+    <select class="num" id="setStyle" title="整站的皮肤：边框 / 圆角 / 阴影 / 字体气质；和主题色、深浅色、背景可以随便搭" style="display:none">
+      <option value="default">清爽（默认）</option>
+      <option value="neo">新野兽派</option>
+      <option value="glass">毛玻璃</option>
+      <option value="clay">粘土拟态</option>
+      <option value="mag">编辑杂志</option>
+      <option value="pixel">像素 8-bit</option>
+      <option value="flat">极简扁平</option>
+      <option value="y2k">Y2K 千禧</option>
+      <option value="memphis">孟菲斯</option>
+      <option value="bauhaus">包豪斯</option>
       <option value="riso">Risograph</option>
-      <option value="retro">澶嶅彜鎬€鏃?/option>
-      <option value="cyber">璧涘崥闇撹櫣</option>
-      <option value="pencil">閾呯瑪鎵嬬粯</option>
-      <option value="water">姘村僵鏅曟煋</option>
-      <option value="gothic">鍝ョ壒</option>
-      <option value="acid">閰告€у钩闈?/option>
+      <option value="retro">复古怀旧</option>
+      <option value="cyber">赛博霓虹</option>
+      <option value="pencil">铅笔手绘</option>
+      <option value="water">水彩晕染</option>
+      <option value="gothic">哥特</option>
+      <option value="acid">酸性平面</option>
     </select>
-    <button class="btn small" id="setBgPick" title="閫変竴寮犳湰鏈哄浘鐗囧綋鏁撮〉鑳屾櫙">閫夊浘</button>
-    <button class="btn small" id="setBgVideoPick" title="閫変竴娈佃棰戯紙mp4 / webm锛夊綋鍔ㄦ€佽儗鏅?>閫夎棰?/button>
-    <button class="btn small" id="setBgClear" title="鍒犳帀鏈満瀛樼殑鑳屾櫙鍥惧拰瑙嗛">娓呴櫎</button>
+    <button class="btn small" id="setBgPick" title="选一张本机图片当整页背景">选图</button>
+    <button class="btn small" id="setBgVideoPick" title="选一段视频（mp4 / webm）当动态背景">选视频</button>
+    <button class="btn small" id="setBgClear" title="删掉本机存的背景图和视频">清除</button>
     <input type="file" id="setBgFile" accept="image/*" style="display:none">
     <input type="file" id="setBgVideo" accept="video/*" style="display:none">
   </div>
-  <div class="hint" style="margin-top:10px;margin-bottom:0">鐐逛笅闈换鎰忎竴寮犲崱灏辨崲椋庢牸锛?4 濂楋紝缂╃暐鍥惧氨鏄繖濂楃殑杈规锛忓渾瑙掞紡闃村奖锛忓瓧鑹叉皵璐紝涓婇潰鍙寜澶х被绛涳級锛?/div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（74 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
   <div class="sty-tabs" id="styleTabs"></div>
       <div class="stylegrid" id="styleGrid"></div>
   <div class="hint" id="styleHint" style="margin-top:2px"></div>
-  <label class="chk"><input type="checkbox" id="setStyleAuto" checked> 鎹㈤鏍兼椂鑷姩閰嶄竴濂椾富鎺ㄤ富棰樿壊锛堜笉鍕惧氨涓€鐩寸敤浣犻€夌殑棰滆壊锛?/label>
+  <label class="chk"><input type="checkbox" id="setStyleAuto" checked> 换风格时自动配一套主推主题色（不勾就一直用你选的颜色）</label>
   <div class="tools" style="margin-top:8px">
-    <span class="tl">闈㈡澘涓嶉€忔槑搴?/span>
+    <span class="tl">面板不透明度</span>
     <input type="range" id="setUiAlpha" min="30" max="100" step="5" value="100" style="width:120px;vertical-align:middle">
     <span class="small muted" id="setUiAlphaVal">100%</span>
-    <span class="tl">纾ㄧ爞寮哄害</span>
+    <span class="tl">磨砂强度</span>
     <input type="range" id="setFrostPx" min="0" max="30" step="2" value="14" style="width:100px;vertical-align:middle">
     <span class="small muted" id="setFrostPxVal">14px</span>
   </div>
     <div class="tools" style="margin-top:6px">
-      <span class="tl">鍗＄墖/棣栧睆澶栧彂鍏?/span>
-      <select class="num" id="setGlowMode" title="璺熼殢椋庢牸锛濊繖濂楅鏍兼湰鏉ユ槸浠€涔堥槾褰卞氨鏄粈涔堬紱寮€锛濈粺涓€鎹㈡垚浣犻€夌殑棰滆壊锛涘叧锛濊繛褰╄壊闃村奖涓€璧锋敹鎺?>
-        <option value="auto">璺熼殢椋庢牸锛堥粯璁わ級</option>
-        <option value="on">寮€锛堢敤涓嬮潰鐨勯鑹诧級</option>
-        <option value="off">鍏筹紙涓嶅彂鍏夛級</option>
+      <span class="tl">卡片/首屏外发光</span>
+      <select class="num" id="setGlowMode" title="跟随风格＝这套风格本来是什么阴影就是什么；开＝统一换成你选的颜色；关＝连彩色阴影一起收掉">
+        <option value="auto">跟随风格（默认）</option>
+        <option value="on">开（用下面的颜色）</option>
+        <option value="off">关（不发光）</option>
       </select>
     </div>
     <div class="tools" style="margin-top:6px">
-      <span class="tl">鍏夋檿棰滆壊</span>
-      <input type="color" class="num" id="setGlowPick" value="#0d9488" title="閫変竴涓鑹?>
-      <button class="btn small" type="button" id="setGlowReset">璺熼殢涓昏壊</button>
+      <span class="tl">光晕颜色</span>
+      <input type="color" class="num" id="setGlowPick" value="#0d9488" title="选一个颜色">
+      <button class="btn small" type="button" id="setGlowReset">跟随主色</button>
       <span class="hint" id="glowHint" style="margin-top:0"></span>
     </div>
-  <label class="chk"><input type="checkbox" id="setFrost" checked> 闈㈡澘纾ㄧ爞锛堣儗鏅ā绯婏紝鍏虫帀灏辨槸绾崐閫忔槑锛?/label>
-  <label class="chk"><input type="checkbox" id="setExpOnOk"> 绛斿鏃朵篃鏄剧ず瑙ｆ瀽</label>
-  <label class="chk"><input type="checkbox" id="setAutoNext"> 绛斿鍚庤嚜鍔ㄨ烦涓嬩竴棰?/label>
+  <label class="chk"><input type="checkbox" id="setFrost" checked> 面板磨砂（背景模糊，关掉就是纯半透明）</label>
+  <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
+  <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
   <div class="tools" style="margin-top:6px">
-    <span class="tl">鈿?閫熷埛闄愭椂</span>
+    <span class="tl">⚡ 速刷限时</span>
     <input class="num" type="number" id="setSpeedSec" min="0" max="300" step="5" style="width:78px">
-    <span class="small muted">绉?/ 棰橈紙0 = 涓嶉檺鏃讹級鈥斺€?鍙湪銆屸殹 閫熷埛妯″紡銆嶇敓鏁堬紝瓒呮椂绠楃瓟閿欏苟鑷姩璺?/span>
+    <span class="small muted">秒 / 题（0 = 不限时）—— 只在「⚡ 速刷模式」生效，超时算答错并自动跳</span>
   </div>
-  <label class="chk"><input type="checkbox" id="setShuffle"> 闅忔満椤哄簭鍑洪</label>
-  <label class="chk"><input type="checkbox" id="setFxConfetti"> 鍋氬畬涓€濂楅 / 浜ゅ嵎鏃舵斁褰╁甫锛堭煄猴級</label>
-  <label class="chk"><input type="checkbox" id="setMinimal"> 鏋佺畝妯″紡锛堝叧鎺夎儗鏅皼鍥?/ 鍔ㄦ晥 / 棣栭〉寮曞鍗★紝鍙暀鍒烽鍜岀鐞嗙殑鐣岄潰锛?/label>
-  <label class="chk"><input type="checkbox" id="setReduceMotion"> 鍑忓皯鍔ㄦ€佹晥鏋滐紙鍏虫帀鍏ㄧ珯鍔ㄧ敾 / 杩囨浮 / 褰╁甫锛屽拰绯荤粺銆屽噺灏戝姩鎬佹晥鏋溿€嶅悓鏁堬級</label>
+  <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
+  <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
+  <label class="chk"><input type="checkbox" id="setMinimal"> 极简模式（关掉背景氛围 / 动效 / 首页引导卡，只留刷题和管理的界面）</label>
+  <label class="chk"><input type="checkbox" id="setReduceMotion"> 减少动态效果（关掉全站动画 / 过渡 / 彩带，和系统「减少动态效果」同效）</label>
   <div class="tools" style="margin-top:12px">
-    <span class="tl">澶嶄範鏇茬嚎</span>
+    <span class="tl">复习曲线</span>
     <select class="num" id="srsMode"></select>
-    <span class="small muted">鏉撅紳闀挎湡璁板繂锛屾爣鍑嗭紳缁忓吀 / Anki锛屽嫟蹇紳鑰冨墠鍐插埡</span>
+    <span class="small muted">松＝长期记忆，标准＝经典 / Anki，勤快＝考前冲刺</span>
   </div>
   <div class="small muted" id="srsDesc" style="margin-top:6px"></div>
   <div class="srsline" id="srsPreview"></div>
   <details class="fold" id="setAdv">
-    <summary>楂樼骇锛氬涔犲弬鏁?路 搴嗙鑼冨洿 路 蹇嵎閿?/summary>
+    <summary>高级：复习参数 · 庆祝范围 · 快捷键</summary>
     <div class="fold-body">
-      <label class="chk"><input type="checkbox" id="setFocus"> 涓撴敞妯″紡锛氬埛棰樻椂鎶婇《鏍忓拰搴曟爮鏀惰捣鏉ワ紝鍙湅棰樼洰锛堢瓟棰橀〉鍙充笂瑙掋€屸浂 涓撴敞銆嶏紝Esc 閫€鍑猴級</label>
-      <label class="chk"><input type="checkbox" id="setFxNormalBank"> 鏅€氶搴撳埛瀹屼篃搴嗙锛堥粯璁ゅ彧鍦ㄥ鍗?/ 妯¤€冩椂鏀撅級</label>
-      <div class="small muted" style="margin-top:10px">涓嬮潰杩欎簺鏁板瓧灏辨槸銆屽涔犳洸绾裤€嶇殑鍙傛暟銆傞€夋。浣嶏紳涓€娆℃妸瀹冧滑濉ソ锛屼箣鍚庤繕鑳介€愰」寰皟锛堟敼浠讳綍涓€椤逛細鑷姩鍙樻垚銆岃嚜瀹氫箟銆嶏級銆傛敼妗ｄ綅鍙奖鍝?b>浠ュ悗</b>鐨勬帓鏈熴€?/div>
+      <label class="chk"><input type="checkbox" id="setFocus"> 专注模式：刷题时把顶栏和底栏收起来，只看题目（答题页右上角「⛶ 专注」，Esc 退出）</label>
+      <label class="chk"><input type="checkbox" id="setFxNormalBank"> 普通题库刷完也庆祝（默认只在套卷 / 模考时放）</label>
+      <div class="small muted" style="margin-top:10px">下面这些数字就是「复习曲线」的参数。选档位＝一次把它们填好，之后还能逐项微调（改任何一项会自动变成「自定义」）。改档位只影响<b>以后</b>的排期。</div>
       <div class="srsbox">
         <div class="srsgrid">
-          <label>棣栨绛斿锛堝ぉ锛?input type="number" id="srsFirst" min="0" max="60" step="1"></label>
-          <label>绗簩娆＄瓟瀵癸紙澶╋級<input type="number" id="srsSecond" min="0" max="120" step="1"></label>
-          <label>闂撮殧澧為暱
+          <label>首次答对（天）<input type="number" id="srsFirst" min="0" max="60" step="1"></label>
+          <label>第二次答对（天）<input type="number" id="srsSecond" min="0" max="120" step="1"></label>
+          <label>间隔增长
             <select id="srsFactor">
-              <option value="ease">脳 褰撴椂鏄撳害</option>
-              <option value="1.5">脳 1.5</option>
-              <option value="2">脳 2</option>
-              <option value="2.5">脳 2.5</option>
-              <option value="3">脳 3</option>
+              <option value="ease">× 当时易度</option>
+              <option value="1.5">× 1.5</option>
+              <option value="2">× 2</option>
+              <option value="2.5">× 2.5</option>
+              <option value="3">× 3</option>
             </select>
           </label>
-          <label>鍒濆鏄撳害<input type="number" id="srsEase0" min="1.3" max="3" step="0.05"></label>
-          <label>绛斿鍔犳槗搴?input type="number" id="srsEaseUp" min="0" max="0.5" step="0.05"></label>
-          <label>绛旈敊鍑忔槗搴?input type="number" id="srsEaseDown" min="0" max="0.5" step="0.05"></label>
-          <label>鏄撳害涓嬮檺<input type="number" id="srsMinEase" min="1.1" max="3" step="0.05"></label>
-          <label>鏈€闀块棿闅旓紙澶╋級<input type="number" id="srsMaxIvl" min="1" max="3650" step="1"></label>
-          <label>绛旈敊鍚庨棿闅旓紙澶╋級<input type="number" id="srsWrongIvl" min="0" max="30" step="1"></label>
-          <label>姣忔棩澶嶄範涓婇檺<input type="number" id="srsDaily" min="0" max="999" step="1"></label>
+          <label>初始易度<input type="number" id="srsEase0" min="1.3" max="3" step="0.05"></label>
+          <label>答对加易度<input type="number" id="srsEaseUp" min="0" max="0.5" step="0.05"></label>
+          <label>答错减易度<input type="number" id="srsEaseDown" min="0" max="0.5" step="0.05"></label>
+          <label>易度下限<input type="number" id="srsMinEase" min="1.1" max="3" step="0.05"></label>
+          <label>最长间隔（天）<input type="number" id="srsMaxIvl" min="1" max="3650" step="1"></label>
+          <label>答错后间隔（天）<input type="number" id="srsWrongIvl" min="0" max="30" step="1"></label>
+          <label>每日复习上限<input type="number" id="srsDaily" min="0" max="999" step="1"></label>
         </div>
-        <label class="chk"><input type="checkbox" id="srsWrongToday"> 绛旈敊鐨勯褰撳ぉ缁х画鎺掕繘澶嶄範锛堜笉鍕惧氨鎸変笂闈㈢殑銆岀瓟閿欏悗闂撮殧銆嶏級</label>
-        <label class="chk"><input type="checkbox" id="srsPile"> 閫炬湡鍗＄墖鍫嗗埌褰撳ぉ锛堜笉鍕撅細閫炬湡鐨勪笉鑷姩杩涗粖鏃ュ涔狅紝鍙湪銆屽涔犳棩鍘嗐€嶉噷鏍囧嚭鏉ワ級</label>
+        <label class="chk"><input type="checkbox" id="srsWrongToday"> 答错的题当天继续排进复习（不勾就按上面的「答错后间隔」）</label>
+        <label class="chk"><input type="checkbox" id="srsPile"> 逾期卡片堆到当天（不勾：逾期的不自动进今日复习，只在「复习日历」里标出来）</label>
         <div class="actions" style="margin-top:10px">
-          <button class="btn small" id="srsReset">濉洖鎺ㄨ崘鍊?/button>
-          <button class="btn small" id="srsSyncEase">缁熶竴鏄撳害</button>
-          <button class="btn small" id="fixAllRe">鎸変慨姝ｇ瓟妗堥噸鍒?/button>
+          <button class="btn small" id="srsReset">填回推荐值</button>
+          <button class="btn small" id="srsSyncEase">统一易度</button>
+          <button class="btn small" id="fixAllRe">按修正答案重判</button>
         </div>
-        <div class="small muted" style="margin-top:8px">鏀规。浣嶅彧褰卞搷<b>浠ュ悗</b>鐨勬帓鏈燂紱鎯崇珛鍒婚噸鎺掑巻鍙茶褰曪紝鐢ㄤ笂闈€岀粺涓€鏄撳害銆嶃€屾寜淇绛旀閲嶅垽銆嶏紝鎴栬€呯瓟棰樻椂鐐广€屾敼绛旀銆嶃€?/div>
+        <div class="small muted" style="margin-top:8px">改档位只影响<b>以后</b>的排期；想立刻重排历史记录，用上面「统一易度」「按修正答案重判」，或者答题时点「改答案」。</div>
       </div>
-      <div class="small muted" style="margin-top:10px">蹇嵎閿細A鈥揌 鎴?1鈥? 閫夐€夐」锛孍nter 鎻愪氦 / 涓嬩竴棰橈紝鈫?鈫?缈婚〉锛?b>S</b> 鏀惰棌鏈锛?b>K</b> 鎵撳紑绛旈鍗★紝<b>/</b> 鎼滅储锛?b>?</b> 鎵撳紑甯姪锛孍sc 鍏冲脊绐椼€傞《鏍忕殑 <b>鈼?/b> 鍙互涓€閿垏鎹㈡繁娴呰壊銆?/div>
+      <div class="small muted" style="margin-top:10px">快捷键：A–H 或 1–8 选选项，Enter 提交 / 下一题，← → 翻页，<b>S</b> 收藏本题，<b>K</b> 打开答题卡，<b>/</b> 搜索，<b>?</b> 打开帮助，Esc 关弹窗。顶栏的 <b>◐</b> 可以一键切换深浅色。</div>
     </div>
   </details>
   <div class="actions" style="margin-top:16px">
-    <button class="btn" id="goKb2" title="閰嶇疆 AI 涓庢湰鍦扮煡璇嗗簱">AI 瑙ｆ瀽 / 鐭ヨ瘑搴?/button>
-    <button class="btn" id="goSync2" title="鐢?GitHub 绉佹湁浠撳簱鍦ㄧ數鑴戝拰鎵嬫満涔嬮棿鍚屾璁板綍">浜戝悓姝ワ紙鐢佃剳 鈫?鎵嬫満锛?/button>
-    <button class="btn" id="goGuide2" title="鏂版墜寮曞锛氬鍏ラ搴?/ 鍒朵綔棰樺簱 / 鐭ヨ瘑搴?/ API / 浜戝悓姝ワ紝鐐瑰摢娈电湅鍝">馃帗 鏂版墜寮曞 / 鍩虹鐢ㄦ硶</button>
-    <button class="btn" id="expAll2">瀵煎嚭鍏ㄩ儴鏁版嵁锛堝浠斤級</button>
-    <button class="btn danger" id="resetAll">娓呯┖浣滅瓟璁板綍</button>
-    <button class="btn" id="closeSet">鍏抽棴</button>
+    <button class="btn" id="goKb2" title="配置 AI 与本地知识库">AI 解析 / 知识库</button>
+    <button class="btn" id="goSync2" title="用 GitHub 私有仓库在电脑和手机之间同步记录">云同步（电脑 ↔ 手机）</button>
+    <button class="btn" id="goGuide2" title="新手引导：导入题库 / 制作题库 / 知识库 / API / 云同步，点哪段看哪段">🎓 新手引导 / 基础用法</button>
+    <button class="btn" id="expAll2">导出全部数据（备份）</button>
+    <button class="btn danger" id="resetAll">清空作答记录</button>
+    <button class="btn" id="closeSet">关闭</button>
   </div>
-  <div class="hint" style="margin-top:10px">銆屾竻绌轰綔绛旇褰曘€嶅彧娓呯┖瀵归敊銆佹鏁板拰澶嶄範鎺掓湡锛?b>涓嶄細鍐嶅姩</b>鏀惰棌鍜岃嚜瀹氫箟瑙ｆ瀽銆?/div>
+  <div class="hint" style="margin-top:10px">「清空作答记录」只清空对错、次数和复习排期，<b>不会再动</b>收藏和自定义解析。</div>
 </div></div>
 
-<!-- 棰樺簱锛氫竴涓?.js 鏂囦欢涓€涓搴擄紝鏀捐繘 banks/ 鍚庡啀鍦ㄤ笅闈㈠姞涓€琛屽嵆鍙姞杞斤紝渚嬪
-     <script src="banks/浣犵殑棰樺簱.js"></script>
-     涔熷彲浠ュ畬鍏ㄤ笉鍔ㄦ枃浠讹紝鐩存帴鍦ㄧ綉椤典笂鐢ㄣ€屽鍏ラ搴撱€嶅姞鑷繁鐨勯锛堝瓨鍦ㄦ祻瑙堝櫒閲岋級銆?     杩欎竴浠斤紙鍦ㄧ嚎鐗堬級宸茬粡鎶婂師浣滆€呯殑鍐呯疆妯¤€冨嵎绉婚櫎锛宐anks/ 閲屾槸绌虹殑銆?-->
+<!-- 题库：一个 .js 文件一个题库，放进 banks/ 后再在下面加一行即可加载，例如
+     <script src="banks/你的题库.js"></script>
+     也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
+     这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
 <script src="app.js?v=20261204a"></script>
@@ -287,28 +288,35 @@ var iv=setInterval(function(){n++;
 <script src="kb.js?v=20261111c"></script>
 <script src="ai.js?v=20261130e"></script>
 
-<!-- 鐩綍寮忛搴擄紙cat.js锛変笌鏈満棰樺簱鏂囦欢锛坆f.js / bfui.js锛?     鏀惧湪鏈€鍚庯細瀹冧滑鍙仛銆岀粰宸叉湁棣栭〉鍔犱竴灞傜洰褰曡鍥俱€嶅拰銆屾妸棰樺簱瀛樻垚鏂囦欢銆嶏紝
-     鐢?window.CAT / window.BF 鏆撮湶鎺ュ彛锛宎pp.js 閲屽彧鍋氫簡鍑犺鏈€灏忔敼鍔ㄣ€?-->
+<!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
+     放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
+     用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
 <script src="cat.js?v=20261203a"></script>
 <script src="bf.js?v=20261123a"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
 
-<!-- 浜戝悓姝ワ紙sync.js锛夛細鐢ㄣ€愮鏈夈€戜粨搴撳綋浜戠洏锛圙itHub / 鐮佷簯 Gitee 鍙€夛級锛岀數鑴?鈫?鎵嬫満鍏辩敤涓€浠借褰曘€?     瀹冨彧鍔犱竴涓?#/sync 椤甸潰銆侀《鏍忋€屽悓姝ャ€嶆寜閽拰棣栭〉灏忓崱鐗囷紝鍏朵綑鍔熻兘涓嶅彈褰卞搷銆?-->
+<!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
+     它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
 <script src="sync.js?v=20261130g"></script>
 
-<!-- 鍋氬畬涓€濂楅 / 浜ゅ嵎鏃剁殑灏忓簡绁濓紙fx.js锛夛細鑷啓 canvas 褰╁甫 + 馃幒锛屽彧鍔?transform/opacity锛?     4 绉掑唴鑷繁鏀跺熬锛屽皧閲嶇郴缁熴€屽噺灏戝姩鎬佹晥鏋溿€嶏紱寮€鍏冲湪銆岃缃€嶉噷銆?-->
+<!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
+     4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->
 <script src="fx.js?v=20261018d"></script>
 
-<!-- AI 鍙樺紡棰橈紙variant.js锛夛細鍩轰簬涓€閬撻锛堝挨鍏堕敊棰橈級璁?AI 鍑哄悓鑰冪偣鏂伴锛?     鍐嶈窡搴撻噷鐨勭浉浼奸骞舵帓瀵规瘮锛涚敓鎴愮粨鏋滃彲涓€閿瓨鎴愭柊棰樺簱銆?     瀹冨鐢?ai.js 鐨?aiChat/aiContext 鍜?app.js 鐨?parseInput锛岃嚜宸卞彧鍔犻潰鏉垮拰鐩镐技搴︽瘮瀵广€?-->
+<!-- AI 变式题（variant.js）：基于一道题（尤其错题）让 AI 出同考点新题，
+     再跟库里的相似题并排对比；生成结果可一键存成新题库。
+     它复用 ai.js 的 aiChat/aiContext 和 app.js 的 parseInput，自己只加面板和相似度比对。 -->
 <script src="variant.js?v=20261110b"></script>
 
-<!-- 鑰冪偣鏍囩锛坱ags.js锛屾柟妗堜簲锛夛細鑰冪偣璇嶈〃鍙互鐢变綘鎵归噺瀵煎叆锛堜竴琛屼竴涓級鎴栬 AI 璧蜂竴浠斤紝
-     鐒跺悗璁?AI 璇绘瘡閬撻銆佷粠璇嶈〃閲屾寫鏍囩璐翠笂鍘伙紱缁熻椤电殑銆屾寜鑰冪偣銆嶅彧姹囨€昏繖浜涜创濂界殑鏍囩銆?     鏍囩鐙珛瀛樺湪 qbank.tags.v1 / qbank.tagvocab.v1锛屼笉濉炶繘棰樺簱瀵硅薄銆?-->
+<!-- 考点标签（tags.js，方案五）：考点词表可以由你批量导入（一行一个）或让 AI 起一份，
+     然后让 AI 读每道题、从词表里挑标签贴上去；统计页的「按考点」只汇总这些贴好的标签。
+     标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
 <script src="tags.js?v=20261123a"></script>
 
-<!-- AI 瀛︽儏璇婃柇锛坮eport.js锛屾柟妗堜竷锛夛細鎶婁綔绛旇褰?/ 閿欐 / 鑰冪偣鏍囩 / 澶嶄範鎺掓湡鑱氬悎鎴愪竴灏忔鎽樿锛?     璁╂ā鍨嬪啓鎴愩€岃繖鍛ㄦ€庝箞鏍枫€佹渶寮卞湪鍝€佷笅鍛ㄥ共浠€涔堛€嶇殑鍛ㄦ姤锛涚粺璁￠〉鏈夋姌鍙犲尯鍧楋紝涔熻兘璧?#/report 鐪嬪巻鍙层€?-->
+<!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
+     让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->
 <script src="report.js?v=20261018h"></script>
 <script src="guide.js?v=20261024a"></script>
 <script src="chat.js?v=20261111b"></script>
@@ -320,36 +328,41 @@ var iv=setInterval(function(){n++;
 <script src="exp.js?v=20261208b"></script>
 
 <script>
-  /* 绛?app.js / collection.js / exam.js / kb.js / ai.js 鍏ㄩ儴鍔犺浇瀹屽啀娓叉煋銆?     浠ュ墠杩欒鍦?collection.js 鏈熬锛岄偅鏃?exam.js / kb.js 杩樻病鍔犺浇锛?     鐩存帴鎵撳紑 #/exam/... 鎴?#/kb 浼氱┖鐧姐€?
-     绗旇涓庤嚜寤洪搴撶幇鍦ㄥ瓨鍦?IndexedDB 閲岋紙localStorage 鍙湁 5MB锛岃涓嶄笅锛夛紝
-     鎵€浠ヨ绛夊畠浠杩涘唴瀛樺啀鐢荤涓€灞忥紝鍚﹀垯浼氬厛闂竴涓嬬┖棰樺簱/绌鸿В鏋愩€?*/
-  /* 鎺㈤拡/鑷姩鍖栫幆澧冿細鐢ㄨ繛缁殑 204 璇锋眰鎶婅櫄鎷熸椂閽熸嫋浣忥紝鍚﹀垯鏃犲ご娴忚鍣ㄧ殑
-     virtual-time 浼氭妸璁℃椂鍣ㄤ竴娆℃€ц窇瀹岋紝IndexedDB 鐨勫洖璋冭繕娌¤疆鍒板氨琚垽瀹氳秴鏃躲€?     鍙湪 window.__PUMP 琚樉寮忔墦寮€鏃跺惎鐢紝鐪熷疄鐢ㄦ埛瀹屽叏涓嶅彈褰卞搷銆?*/
+  /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。
+     以前这行在 collection.js 末尾，那时 exam.js / kb.js 还没加载，
+     直接打开 #/exam/... 或 #/kb 会空白。
+
+     笔记与自建题库现在存在 IndexedDB 里（localStorage 只有 5MB，装不下），
+     所以要等它们读进内存再画第一屏，否则会先闪一下空题库/空解析。 */
+  /* 探针/自动化环境：用连续的 204 请求把虚拟时钟拖住，否则无头浏览器的
+     virtual-time 会把计时器一次性跑完，IndexedDB 的回调还没轮到就被判定超时。
+     只在 window.__PUMP 被显式打开时启用，真实用户完全不受影响。 */
   if (window.__PUMP) {
     (function pump() {
       var n = 0;
       (function step() {
-        if (n++ > 120) return;   /* 鍙湪鍓?~2.4s 铏氭嫙鏃堕棿閲屾嫋浣忔椂閽燂紝澶?IndexedDB 寮€搴撳嵆鍙?*/
+        if (n++ > 120) return;   /* 只在前 ~2.4s 虚拟时间里拖住时钟，够 IndexedDB 开库即可 */
         fetch('__pump').catch(function () {}).finally(function () { setTimeout(step, 20); });
       })();
     })();
   }
 
   (function boot() {
-    /* 鍏堢敾涓€灞忥紙鏈湴鏁版嵁鏈潵灏卞湪鍐呭瓨閲岋級锛孖ndexedDB 璇诲畬鍐嶈ˉ鐢讳竴娆°€?       鍒绘剰涓嶈銆屾渶澶氱瓑 1.5 绉掋€嶉偅绉嶅畾鏃跺櫒锛氭棤澶?铏氭嫙鏃堕挓涓嬪畾鏃跺櫒浼氭姠璺戯紝
-       鐪熷疄鐢ㄦ埛閭ｈ竟鍙堟病蹇呰涓轰竴娆¤鐩樻嫋浣忛灞忋€?*/
-    try { render(); } catch (e) { console.log('[boot] 棣栧睆澶辫触', e); }
+    /* 先画一屏（本地数据本来就在内存里），IndexedDB 读完再补画一次。
+       刻意不设「最多等 1.5 秒」那种定时器：无头/虚拟时钟下定时器会抢跑，
+       真实用户那边又没必要为一次读盘拖住首屏。 */
+    try { render(); } catch (e) { console.log('[boot] 首屏失败', e); }
     if (typeof window.__bigLoad !== 'function') { window.__bootBl = 'no-idb'; return; }
     window.__bigLoad().then(function (r) {
       window.__bootBl = r;
       try { if (typeof invalidateBanks === 'function') invalidateBanks(); } catch (e) {}
-      try { render(); } catch (e) { console.log('[boot] 浜屾娓叉煋澶辫触', e); }
+      try { render(); } catch (e) { console.log('[boot] 二次渲染失败', e); }
     }, function (e) {
       window.__bootBl = 'ERR ' + ((e && e.message) || e);
     });
   })();
 
-  /* PWA锛氬彧鍦?http(s) 涓嬫敞鍐岋紙鍙屽嚮鏈湴鎵撳紑鏃舵祻瑙堝櫒涓嶆敮鎸?Service Worker锛?*/
+  /* PWA：只在 http(s) 下注册（双击本地打开时浏览器不支持 Service Worker） */
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function () {});
@@ -364,10 +377,10 @@ var iv=setInterval(function(){n++;
 <feComposite in="SourceGraphic" in2="soft" operator="arithmetic" k1="0" k2="0.55" k3="0.45" k4="0"/>
 </filter></svg>
 
-<div class="oilpick" id="oilPick" aria-label="鍒囨崲鐢讳綔">
-  <button type="button" data-oil="1" class="on"><i class="dot"></i>鐫¤幉</button>
-  <button type="button" data-oil="2"><i class="dot"></i>鎾戦槼浼?/button>
-  <button type="button" data-oil="3"><i class="dot"></i>鏃ュ嚭</button>
+<div class="oilpick" id="oilPick" aria-label="切换画作">
+  <button type="button" data-oil="1" class="on"><i class="dot"></i>睡莲</button>
+  <button type="button" data-oil="2"><i class="dot"></i>撑阳伞</button>
+  <button type="button" data-oil="3"><i class="dot"></i>日出</button>
 </div>
 <script>
 (function(){
