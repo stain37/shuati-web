@@ -837,6 +837,7 @@
       '<div class="ink-stage"><canvas></canvas></div>' + toolsHtml();
     document.body.appendChild(wrap);
     document.body.classList.add('ink-on');
+    dragHead(wrap);
 
     var stage = wrap.querySelector('.ink-stage');
     var cv = wrap.querySelector('.ink-stage canvas');
