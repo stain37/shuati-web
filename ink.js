@@ -154,23 +154,27 @@
   }
 
   /* ---------- 工具栏 ---------- */
-  function toolsHtml() {
-    return '<div class="ink-tools">' +
+  /* simple=true：批注只要笔/橡皮（用户要求批注里不要图片、文字、形状） */
+  function toolsHtml(simple) {
+    var penOnly = !!simple;
+    return '<div class="ink-tools' + (penOnly ? ' ink-simple' : '') + '">' +
       '<div class="ink-row ink-seg">' +
       '<button data-m="pen" class="on" title="钢笔">✒ 钢笔</button>' +
       '<button data-m="pencil" title="铅笔">✎ 铅笔</button>' +
       '<button data-m="hl" title="荧光笔（半透明，不挡字）">▮ 荧光</button>' +
       '<button data-m="eraser" title="橡皮">◻ 橡皮</button>' +
-      '<button data-m="sel" title="鼠标：点中文字/图片直接拖动，拖右下角改大小">✥ 鼠标</button>' + '<button data-m="line" title="直线">╱</button>' +
-      '<button data-m="rect" title="矩形">▭</button>' +
-      '<button data-m="ellipse" title="椭圆">◯</button>' +
-      '<button data-m="arrow" title="箭头">↗</button>' +
-      '<button data-m="text" title="文字：点画布就地输入">T</button>' +
-      '<button data-m="img" title="导入图片">⤒</button>' +
+      (penOnly ? '' :
+        '<button data-m="sel" title="鼠标：点中文字/图片直接拖动，拖右下角改大小">✥ 鼠标</button>' +
+        '<button data-m="line" title="直线">╱</button>' +
+        '<button data-m="rect" title="矩形">▭</button>' +
+        '<button data-m="ellipse" title="椭圆">◯</button>' +
+        '<button data-m="arrow" title="箭头">↗</button>' +
+        '<button data-m="text" title="文字：点画布就地输入">T</button>' +
+        '<button data-m="img" title="导入图片">⤒</button>') +
       '</div>' +
       '<div class="ink-row"><span class="ink-sws"></span></div>' +
-      '<div class="ink-row"><span class="ink-lbl">文字底色</span><span class="ink-bgs"></span>' +
-      '<label class="ink-chk"><input type="checkbox" class="ink-bgtrans" checked><span>半透明</span></label></div>' +
+      (penOnly ? '' : '<div class="ink-row"><span class="ink-lbl">文字底色</span><span class="ink-bgs"></span>' +
+      '<label class="ink-chk"><input type="checkbox" class="ink-bgtrans" checked><span>半透明</span></label></div>') +
       '<div class="ink-row ink-sl">' +
       '<span class="ink-lab">粗细</span><input type="range" min="1" max="26" step="1" value="2" class="ink-size">' +
       '<span class="ink-lab">透明</span><input type="range" min="15" max="100" value="100" class="ink-alpha">' +
@@ -180,7 +184,7 @@
       '<button class="ink-clear" title="清空">清空</button>' +
       '<button class="ink-done pri">完成</button>' +
       '</div>' +
-      '<input type="file" accept="image/*" hidden>' +
+      (penOnly ? '' : '<input type="file" accept="image/*" hidden>') +
       '</div>';
   }
 
@@ -194,6 +198,17 @@
     var ops = (opt.ops || []).slice(), cur = null, drag = false, dirty = false;
     var ctx = cv.getContext('2d');
     var size = { w: 1, h: 1 };
+    /* 画板是浮动窗口，用户拖着改大小时要重算画布尺寸 */
+    if (window.ResizeObserver) {
+      var __ro = null;
+      try {
+        __ro = new ResizeObserver(function () {
+          clearTimeout(__ro._t);
+          __ro._t = setTimeout(function () { try { resize(); } catch (e) {} }, 60);
+        });
+        __ro.observe(wrap);
+      } catch (e) {}
+    }
 
     function resize() {
       var r = cv.getBoundingClientRect();
@@ -699,17 +714,9 @@
 
     var wrap = document.createElement('div');
     wrap.className = 'ink-wrap';
-    wrap.innerHTML = toolsHtml();
+    wrap.innerHTML = toolsHtml(true);
     document.body.appendChild(wrap);
 
-    /* 右上角大号「关批注」：批注整页铺满时，工具条可能被挡住，留一个永远点得到的出口 */
-    var xb = document.createElement('button');
-    xb.type = 'button'; xb.className = 'ink-x'; xb.innerHTML = '<b>✕</b> 关批注';
-    document.body.appendChild(xb);
-    xb.onclick = function () {
-      var dn = wrap.querySelector('.ink-done');
-      if (dn) dn.click();
-    };
 
     var s = vpSize(cv, 1);
     fitCanvas(cv, s.cw, s.ch);
