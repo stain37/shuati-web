@@ -316,8 +316,8 @@ var iv=setInterval(function(){n++;
 <script src="ai-ops.js?v=20261105c"></script>
 <script src="motion.js?v=20261030b"></script>
 <script src="pip.js?v=20261130b"></script>
-<script src="ink2.js?v=20261207a"></script>
-<script src="exp2.js?v=20261207a"></script>
+<script src="ink.js?v=20261208a"></script>
+<script src="exp.js?v=20261208a"></script>
 
 <script>
   /* 绛?app.js / collection.js / exam.js / kb.js / ai.js 鍏ㄩ儴鍔犺浇瀹屽啀娓叉煋銆?     浠ュ墠杩欒鍦?collection.js 鏈熬锛岄偅鏃?exam.js / kb.js 杩樻病鍔犺浇锛?     鐩存帴鎵撳紑 #/exam/... 鎴?#/kb 浼氱┖鐧姐€?
@@ -385,20 +385,6 @@ var iv=setInterval(function(){n++;
   if(box){ box.addEventListener('click', function(ev){
     var b=ev.target.closest('button[data-oil]'); if(!b) return; paint(b.getAttribute('data-oil'));
   }); }
-})();
-</script>
-<script>
-(function(){
-  try {
-    var stamp = '?nc=' + Date.now();
-    ['ink2.js', 'exp2.js'].forEach(function (f) {
-      var old = document.querySelectorAll('script[src^="' + f + '"]');
-      for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
-      var s = document.createElement('script');
-      s.src = f + stamp; s.async = false;
-      document.body.appendChild(s);
-    });
-  } catch (e) {}
 })();
 </script>
 </body>
