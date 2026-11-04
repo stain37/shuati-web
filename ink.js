@@ -14,6 +14,18 @@
   var INK_KEY = 'qbank.ink.v1';
   /* 实时圈画：批注只在内存里，刷新/关页就没了（不再写 localStorage） */
   var INK_MEM = {};
+
+  /* 一次性迁移：批注改成「实时圈画、不保存」之后，把以前存下来的老批注全清掉，
+     否则旧笔迹会一直叠在题目上（用户已确认要清） */
+  (function () {
+    try {
+      var WIPE = 'qbank.ink.wiped.v2';
+      if (!localStorage.getItem(WIPE)) {
+        localStorage.removeItem(INK_KEY);
+        localStorage.setItem(WIPE, '1');
+      }
+    } catch (e) {}
+  })();
   var BOARD_KEY = 'qbank.board.v1';
   var COLORS = ['#111827', '#e11d48', '#f59e0b', '#0f9d58', '#2563eb', '#7c3aed'];
   /* 深色主题下纯黑笔画看不见：默认笔色跟随当前正文色（浅色主题=深灰，深色主题=浅灰） */
