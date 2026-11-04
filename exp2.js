@@ -500,6 +500,14 @@
       try { console.error('[exp] docHtml failed', e); } catch (e2) {}
       try { window.__expErr = String((e && e.stack) || e); } catch (e5) {}
       try { toast2('导出失败：' + ((e && e.message) || e), 3200, 'bad'); } catch (e3) {}
+      try {
+        if (preWin) {
+          preWin.document.open();
+          preWin.document.write('<meta charset=utf-8><pre style="padding:20px;font:14px/1.7 monospace;white-space:pre-wrap">导出失败：' + String((e && e.stack) || e).replace(/</g, '&lt;') + '</pre>');
+          preWin.document.close();
+        }
+      } catch (e9) {}
+
       return;
     }
     if (!html) { try { toast2('导出内容为空（批注数据可能异常）', 2600, 'bad'); } catch (e4) {} return; }
