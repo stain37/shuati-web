@@ -366,12 +366,6 @@
     var dbgN = 0, dbgRec = 0, dbgGeo = 0;
     var body = rs.map(function (r, i) {
       var q = r.q, rec = null;
-      if (BAKED && BAKED[q.id]) {
-        var bk = BAKED[q.id];
-        var hb = '<div class="qwrap"><img src="' + bk + '" style="width:718px;display:block;border-radius:10px"></div>';
-        if (ans && false) hb += '';
-        return hb;
-      }
       try { rec = (window.INK && INK.inkRec) ? INK.inkRec(bank, q) : null; } catch (e) {}
       var png = null;
       if (note === 'ink' && rec && rec.ops && rec.ops.length) {
