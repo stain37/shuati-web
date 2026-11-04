@@ -501,13 +501,13 @@
       /* PDF：先在新窗口打开同一份 HTML，再调起打印（iframe 的 srcdoc 在部分浏览器里 onload 不触发，点了没反应） */
       var wp = preWin || window.open('', '_blank');
       if (!wp) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
-      try { wp.document.open(); wp.document.write(html); wp.document.close(); } catch (e) {}
+      try { wp.document.open(); try { wp.document.charset = 'utf-8'; } catch (e) {} wp.document.write('<!DOCTYPE html><meta charset="utf-8">' + html); wp.document.close(); } catch (e) {}
       try { wp.focus(); } catch (e) {}
       setTimeout(function () { try { wp.print(); } catch (e) { toast2('打印被拦了：在打开的页面里按 Ctrl+P', 2600, 'bad'); } }, 700);
     } else {
       var w = preWin || window.open('', '_blank');
       if (!w) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
-      w.document.open(); w.document.write(html); w.document.close();
+      w.document.open(); try { w.document.charset = 'utf-8'; } catch (e) {} w.document.write('<!DOCTYPE html><meta charset="utf-8">' + html); w.document.close();
     }
     toast2(fmt === 'pdf' ? '已生成 ' + rs.length + ' 题，正在调起打印（另存为 PDF）' : '已在新标签打开 ' + rs.length + ' 题', 2400, 'good');
   }
