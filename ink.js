@@ -760,7 +760,7 @@
     window.__inkEsc = escFn;
     liveStudio = Studio({
       cv: cv, wrap: wrap, ops: ops || [], state: state || null,
-      w0: s.cw, h0: s.ch, handles: true,
+      w0: vw, h0: vh, handles: true,
       onDone: function (o, w, h, dirty) {
         var all = inkAll(), prevRec = all[keyOf(bank, q)];
         var r0 = card.getBoundingClientRect();
