@@ -1,28 +1,23 @@
-/* Service Worker：让刷题站能离线打开、能装到手机主屏
-   策略：
-     · 页面导航：网络优先，断网回落首页；
-     · 静态资源（js/css/图标）：stale-while-revalidate —— 先用缓存立刻出页面，
-       同时在后台拉最新的写回缓存（下一次打开就是新的）；
-     · 知识库.js / AI配置.js（可能几 MB）：网络优先，成功写缓存，断网时吃缓存 ——
-       这样第一次加载不会白等，离线也能用资料；知识库.js 同时在安装时预缓存一份，
-       所以装到手机主屏之后断网打开，资料库照样能搜。
-   改了 app.js / style.css 等内容后，把 VERSION 加一即可让旧缓存失效。 */
-const VERSION = 'shuati-v68-web231';  // web227: 题目右上角新增批注/白板/重做/导出，批注跟着题走、空白板存本机手稿历史，可导出 HTML/PDF；web226: 答题条左侧新增「重做题库 / 仅错题」，错题可被订正（fixed），累计错次仍保留；web224: 删掉正在考的那份套卷会同时结束考试，不再反复提示；web223: 模拟考试离开不再弹确认框、倒计时真的暂停并可续；web222: 云同步合并按时间戳取新（旧云端不再冲掉刚做的复习排期）；web221: 文件夹墓碑（删了不再复活）、SRS 不再反复重入；web220: 「📎 看资料」按钮挪到「⋯ 更多」旁边、小章不再丢；web219 只看资料；web218 大字模式
-// web217: SRS 认识/模糊/忘记三档各自算间隔 + 更多抽屉居中且速刷也有 + win95开始按钮不再压科目栏 + 解析就地粘贴表格 + 题库删除账本
+﻿/* Service Worker锛氳鍒烽绔欒兘绂荤嚎鎵撳紑銆佽兘瑁呭埌鎵嬫満涓诲睆
+   绛栫暐锛?     路 椤甸潰瀵艰埅锛氱綉缁滀紭鍏堬紝鏂綉鍥炶惤棣栭〉锛?     路 闈欐€佽祫婧愶紙js/css/鍥炬爣锛夛細stale-while-revalidate 鈥斺€?鍏堢敤缂撳瓨绔嬪埢鍑洪〉闈紝
+       鍚屾椂鍦ㄥ悗鍙版媺鏈€鏂扮殑鍐欏洖缂撳瓨锛堜笅涓€娆℃墦寮€灏辨槸鏂扮殑锛夛紱
+     路 鐭ヨ瘑搴?js / AI閰嶇疆.js锛堝彲鑳藉嚑 MB锛夛細缃戠粶浼樺厛锛屾垚鍔熷啓缂撳瓨锛屾柇缃戞椂鍚冪紦瀛?鈥斺€?       杩欐牱绗竴娆″姞杞戒笉浼氱櫧绛夛紝绂荤嚎涔熻兘鐢ㄨ祫鏂欙紱鐭ヨ瘑搴?js 鍚屾椂鍦ㄥ畨瑁呮椂棰勭紦瀛樹竴浠斤紝
+       鎵€浠ヨ鍒版墜鏈轰富灞忎箣鍚庢柇缃戞墦寮€锛岃祫鏂欏簱鐓ф牱鑳芥悳銆?   鏀逛簡 app.js / style.css 绛夊唴瀹瑰悗锛屾妸 VERSION 鍔犱竴鍗冲彲璁╂棫缂撳瓨澶辨晥銆?*/
+const VERSION = 'shuati-v68-web232';  // web227: 棰樼洰鍙充笂瑙掓柊澧炴壒娉?鐧芥澘/閲嶅仛/瀵煎嚭锛屾壒娉ㄨ窡鐫€棰樿蛋銆佺┖鐧芥澘瀛樻湰鏈烘墜绋垮巻鍙诧紝鍙鍑?HTML/PDF锛泈eb226: 绛旈鏉″乏渚ф柊澧炪€岄噸鍋氶搴?/ 浠呴敊棰樸€嶏紝閿欓鍙璁㈡锛坒ixed锛夛紝绱閿欐浠嶄繚鐣欙紱web224: 鍒犳帀姝ｅ湪鑰冪殑閭ｄ唤濂楀嵎浼氬悓鏃剁粨鏉熻€冭瘯锛屼笉鍐嶅弽澶嶆彁绀猴紱web223: 妯℃嫙鑰冭瘯绂诲紑涓嶅啀寮圭‘璁ゆ銆佸€掕鏃剁湡鐨勬殏鍋滃苟鍙画锛泈eb222: 浜戝悓姝ュ悎骞舵寜鏃堕棿鎴冲彇鏂帮紙鏃т簯绔笉鍐嶅啿鎺夊垰鍋氱殑澶嶄範鎺掓湡锛夛紱web221: 鏂囦欢澶瑰纰戯紙鍒犱簡涓嶅啀澶嶆椿锛夈€丼RS 涓嶅啀鍙嶅閲嶅叆锛泈eb220: 銆岎煋?鐪嬭祫鏂欍€嶆寜閽尓鍒般€屸嫰 鏇村銆嶆梺杈广€佸皬绔犱笉鍐嶄涪锛泈eb219 鍙湅璧勬枡锛泈eb218 澶у瓧妯″紡
+// web217: SRS 璁よ瘑/妯＄硦/蹇樿涓夋。鍚勮嚜绠楅棿闅?+ 鏇村鎶藉眽灞呬腑涓旈€熷埛涔熸湁 + win95寮€濮嬫寜閽笉鍐嶅帇绉戠洰鏍?+ 瑙ｆ瀽灏卞湴绮樿创琛ㄦ牸 + 棰樺簱鍒犻櫎璐︽湰
 const CORE = [
-  /* 只预缓存「能打开页面」的最小一组：装到主屏后断网也能进站。
-     其它 js/css/字体第一次用到时由下面的 stale-while-revalidate 自动进缓存，
-     不再每次升版本都把整套（约 2 MB）重下一遍 —— 那是手机上流量掉得快的真凶。 */
+  /* 鍙缂撳瓨銆岃兘鎵撳紑椤甸潰銆嶇殑鏈€灏忎竴缁勶細瑁呭埌涓诲睆鍚庢柇缃戜篃鑳借繘绔欍€?     鍏跺畠 js/css/瀛椾綋绗竴娆＄敤鍒版椂鐢变笅闈㈢殑 stale-while-revalidate 鑷姩杩涚紦瀛橈紝
+     涓嶅啀姣忔鍗囩増鏈兘鎶婃暣濂楋紙绾?2 MB锛夐噸涓嬩竴閬?鈥斺€?閭ｆ槸鎵嬫満涓婃祦閲忔帀寰楀揩鐨勭湡鍑躲€?*/
   './',
     './style.css',
   './app.js'
 ];
 
-const SITE_CACHE = 'shuati-site-' + VERSION;   /* 站点资源：升版本时清空 */
-const DATA_CACHE = 'shuati-data-v1';           /* 资料 / 配置：跨版本保留 */
+const SITE_CACHE = 'shuati-site-' + VERSION;   /* 绔欑偣璧勬簮锛氬崌鐗堟湰鏃舵竻绌?*/
+const DATA_CACHE = 'shuati-data-v1';           /* 璧勬枡 / 閰嶇疆锛氳法鐗堟湰淇濈暀 */
 
-/* 条件重验：带 no-cache 让浏览器用 If-None-Match 问服务器，没变就是 304（几乎不耗流量） */
-/* 静态资源按 pathname 存取：index.html 里 js/css 都带 ?v=戳，带参就用不上缓存 */
+/* 鏉′欢閲嶉獙锛氬甫 no-cache 璁╂祻瑙堝櫒鐢?If-None-Match 闂湇鍔″櫒锛屾病鍙樺氨鏄?304锛堝嚑涔庝笉鑰楁祦閲忥級 */
+/* 闈欐€佽祫婧愭寜 pathname 瀛樺彇锛歩ndex.html 閲?js/css 閮藉甫 ?v=鎴筹紝甯﹀弬灏辩敤涓嶄笂缂撳瓨 */
 const STATIC_RE = /\.(js|css|mjs|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf)$/i;
 function cacheKey(req) {
   try {
@@ -69,22 +64,18 @@ self.addEventListener('fetch', e => {
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== location.origin) return;
 
-  /* PDF 一律不管（直接放给服务器）：
-     ① 站点目录里的 pdf\ 是本机几十 MB 的精编版，不该进 SW 缓存；
-     ② 导航到 PDF 如果被 SW 接管，一旦取不到就会回落成缓存的 index.html ——
-        用户看到的是「刷题站首页」而不是 PDF（2026-10-16 踩到的坑）；
-     ③ Chrome 的 PDF 阅读器需要 Range 请求原生处理，绕开 SW 最稳。 */
+  /* PDF 涓€寰嬩笉绠★紙鐩存帴鏀剧粰鏈嶅姟鍣級锛?     鈶?绔欑偣鐩綍閲岀殑 pdf\ 鏄湰鏈哄嚑鍗?MB 鐨勭簿缂栫増锛屼笉璇ヨ繘 SW 缂撳瓨锛?     鈶?瀵艰埅鍒?PDF 濡傛灉琚?SW 鎺ョ锛屼竴鏃﹀彇涓嶅埌灏变細鍥炶惤鎴愮紦瀛樼殑 index.html 鈥斺€?        鐢ㄦ埛鐪嬪埌鐨勬槸銆屽埛棰樼珯棣栭〉銆嶈€屼笉鏄?PDF锛?026-10-16 韪╁埌鐨勫潙锛夛紱
+     鈶?Chrome 鐨?PDF 闃呰鍣ㄩ渶瑕?Range 璇锋眰鍘熺敓澶勭悊锛岀粫寮€ SW 鏈€绋炽€?*/
   let isPdf = false;
   try { isPdf = /\.pdf$/i.test(decodeURIComponent(url.pathname)); } catch (err) {}
   if (isPdf) return;
 
-  /* 站内网页阅读器（pdfjs\，手机看原页用的）：它是个**普通网页**，只是常常以 iframe 的形式被打开。
-     ① 它的导航请求不能走下面那条「取不到就回落 index.html」——不然阅读器框里会跳出整个刷题站首页（跟 PDF 那条红线同一类坑）；
-     ② 它的静态资源（viewer.mjs / pdf.worker.mjs 那 4 MB）走普通静态资源的缓存策略就对了。*/
+  /* 绔欏唴缃戦〉闃呰鍣紙pdfjs\锛屾墜鏈虹湅鍘熼〉鐢ㄧ殑锛夛細瀹冩槸涓?*鏅€氱綉椤?*锛屽彧鏄父甯镐互 iframe 鐨勫舰寮忚鎵撳紑銆?     鈶?瀹冪殑瀵艰埅璇锋眰涓嶈兘璧颁笅闈㈤偅鏉°€屽彇涓嶅埌灏卞洖钀?index.html銆嶁€斺€斾笉鐒堕槄璇诲櫒妗嗛噷浼氳烦鍑烘暣涓埛棰樼珯棣栭〉锛堣窡 PDF 閭ｆ潯绾㈢嚎鍚屼竴绫诲潙锛夛紱
+     鈶?瀹冪殑闈欐€佽祫婧愶紙viewer.mjs / pdf.worker.mjs 閭?4 MB锛夎蛋鏅€氶潤鎬佽祫婧愮殑缂撳瓨绛栫暐灏卞浜嗐€?/
   let isViewer = false;
   try { isViewer = /\/pdfjs\//.test(decodeURIComponent(url.pathname)); } catch (err) {}
 
-  /* 页面导航：网络优先，断网回落首页（阅读器除外） */
+  /* 椤甸潰瀵艰埅锛氱綉缁滀紭鍏堬紝鏂綉鍥炶惤棣栭〉锛堥槄璇诲櫒闄ゅ锛?*/
   if (req.mode === 'navigate' && !isViewer) {
     e.respondWith(
       fetch(req).catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
@@ -92,15 +83,15 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  /* 资料 / 配置（可能几 MB）：网络优先（本地服务器上很快），成功就更新缓存，断网回落缓存 */
+  /* 璧勬枡 / 閰嶇疆锛堝彲鑳藉嚑 MB锛夛細缃戠粶浼樺厛锛堟湰鍦版湇鍔″櫒涓婂緢蹇級锛屾垚鍔熷氨鏇存柊缂撳瓨锛屾柇缃戝洖钀界紦瀛?*/
   let dataFile = false;
-  try { dataFile = /\/(知识库|AI配置)\.js$/.test(decodeURIComponent(url.pathname)); } catch (err) {}
+  try { dataFile = /\/(鐭ヨ瘑搴搢AI閰嶇疆)\.js$/.test(decodeURIComponent(url.pathname)); } catch (err) {}
 
   if (dataFile) {
     e.respondWith((async () => {
       const dc = await caches.open(DATA_CACHE);
       const hit = await dc.match(cacheKey(req));
-      /* 先问服务器变没变：304 就继续用缓存（几乎不耗流量）；200 才整份重下 */
+      /* 鍏堥棶鏈嶅姟鍣ㄥ彉娌″彉锛?04 灏辩户缁敤缂撳瓨锛堝嚑涔庝笉鑰楁祦閲忥級锛?00 鎵嶆暣浠介噸涓?*/
       let fresh = null;
       try {
         const r = await fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }));
@@ -113,7 +104,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  /* 其它静态资源：缓存优先；后台只做条件重验（没变 304，几乎不耗流量） */
+  /* 鍏跺畠闈欐€佽祫婧愶細缂撳瓨浼樺厛锛涘悗鍙板彧鍋氭潯浠堕噸楠岋紙娌″彉 304锛屽嚑涔庝笉鑰楁祦閲忥級 */
   e.respondWith((async () => {
     const hit = await caches.match(cacheKey(req));
     const netP = revalidate(req);
@@ -123,7 +114,7 @@ self.addEventListener('fetch', e => {
     }
     const res = await netP;
     if (res) return res;
-    if (isViewer) return new Response('离线，而且阅读器还没缓存过', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    if (isViewer) return new Response('绂荤嚎锛岃€屼笖闃呰鍣ㄨ繕娌＄紦瀛樿繃', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     return (await caches.match('./index.html')) || Response.error();
   })());
 });
