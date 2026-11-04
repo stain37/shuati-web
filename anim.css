@@ -76,7 +76,7 @@
 }
 
 @keyframes anPageIn{
-  from{opacity:0; transform:translate3d(0,6px,0)}
+  from{opacity:.55; transform:translate3d(0,6px,0)}
   to  {opacity:1; transform:none}
 }
 
@@ -112,7 +112,11 @@
 /* 换页：原来只有 4px 位移，给它一点点缩放入场，像纸张落桌。
    注意要写成 #view.view-enter —— style.css 里 #view{animation:viewIn} 的
    ID 特异性更高，只用 .view-enter 会被它盖掉（旧 .view-enter 规则其实是失效的）。 */
-#view.view-enter{animation:anPageIn var(--t-slow, .28s) var(--an-ease) both}
+#view.view-enter{animation:anPageIn var(--an-2, .24s) var(--an-ease) both}
+/* 关键：动画播完 JS 会把 .view-enter 摘掉，这时元素会回落到 style.css 的
+   #view{animation:viewIn} —— 等于又从头淡入一次，用户看到的是「闪两下」。
+   下面这条用 ID+类 的特异性把回落动画按住，只播 anPageIn 这一遍。 */
+#view:not(.view-enter){animation:none}
 
 /* 底部导航：切页时当前项轻轻弹一下；按下有回弹 */
 .bnav .btn{transition:transform var(--an-1) var(--an-ease), background var(--an-1), color var(--an-1)}
