@@ -578,6 +578,16 @@
     };
     tb.querySelector('.ink-alpha').oninput = function (e) { st.alpha = +e.target.value / 100; };
     tb.querySelector('.ink-undo').onclick = function () { if (ops.length) { ops.pop(); dirty = true; paint(); } };
+    /* Ctrl/⌘ + Z 撤销（白板和批注通用）；输入文字时不抢快捷键 */
+    document.addEventListener('keydown', function (ke) {
+      if (!ke || (ke.key !== 'z' && ke.key !== 'Z')) return;
+      if (!(ke.ctrlKey || ke.metaKey)) return;
+      if (!document.body.contains(wrap)) return;
+      var ae = document.activeElement;
+      if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
+      ke.preventDefault();
+      if (ops.length) { ops.pop(); SEL = -1; dirty = true; paint(); }
+    });
     tb.querySelector('.ink-clear').onclick = function () { if (!ops.length) return; if (confirm('清空这一层的全部笔迹？')) { ops = []; dirty = true; paint(); } };
     var file = tb.querySelector('input[type=file]');
     if (file) file.addEventListener('change', function () {
