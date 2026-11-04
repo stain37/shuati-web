@@ -9867,6 +9867,9 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .ink-tools{display:flex;flex-direction:column;gap:7px;background:var(--card);border:1px solid var(--line);
   border-radius:16px;padding:9px 10px;box-shadow:var(--sh-2)}
 .ink-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ink-grip{cursor:grab;touch-action:none;user-select:none;border:1px solid var(--line);background:var(--card2);
+  color:var(--sub);border-radius:8px;padding:5px 7px;font-size:12px;line-height:1}
+.ink-grip:active{cursor:grabbing}
 .ink-seg button{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 9px;font-size:12.5px;cursor:pointer;min-width:0}
 .ink-seg button.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}

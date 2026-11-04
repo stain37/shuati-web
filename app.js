@@ -3325,6 +3325,7 @@ function renderQuiz(bankId) {
   const k = kOf(bank, q);
   const speed = SET.quizMode === 'speed';
   const recite = SET.quizMode === 'recite';
+  let inkShown = (() => { try { return localStorage.getItem('qbank.ink.show.v1') !== '0'; } catch (e) { return true; } })();
   uiSpeedStop();                                  // 换题 / 重画：先把上一题的速刷浮层和待跳计时收掉
   const locked = !recite && answered(k);
   const rec = recOf(k);
@@ -3372,6 +3373,7 @@ function renderQuiz(bankId) {
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
+        <button class="btn" id="btnInkEye" title="显示 / 隐藏题目上的批注（不删除）">${inkShown ? '👁 批注' : '🚫 批注'}</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
         <button class="btn" id="btnRedo2" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
         <button class="btn" id="btnExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
@@ -3486,6 +3488,16 @@ function renderQuiz(bankId) {
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('btnInkEye', () => {
+    try {
+      const off = localStorage.getItem('qbank.ink.show.v1') === '0';
+      localStorage.setItem('qbank.ink.show.v1', off ? '1' : '0');
+    } catch (e) {}
+    inkShown = !inkShown;
+    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
+    render();
+    toast(inkShown ? '批注已显示' : '批注已隐藏（笔迹还在）', 1600);
+  });
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('btnRedo2', () => { qSheetToggle(false); redoSheet(bank, q); });
   on('btnExport', () => { if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });

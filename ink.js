@@ -110,10 +110,12 @@
   function toolsHtml() {
     return '<div class="ink-tools">' +
       '<div class="ink-row ink-seg">' +
+      '<button class="ink-grip" title="按住这里可以拖动整条工具条">⠿</button>' +
       '<button data-m="pen" class="on" title="钢笔">✒ 钢笔</button>' +
       '<button data-m="pencil" title="铅笔">✎ 铅笔</button>' +
       '<button data-m="hl" title="荧光笔（半透明，不挡字）">▮ 荧光</button>' +
       '<button data-m="eraser" title="橡皮">◻ 橡皮</button>' +
+      '<button data-m="sel" title="选择：点中文字/图片拖动位置，拖右下角改大小">✥ 选择</button>' +
       '<button data-m="line" title="直线">╱</button>' +
       '<button data-m="rect" title="矩形">▭</button>' +
       '<button data-m="ellipse" title="椭圆">◯</button>' +
@@ -157,6 +159,17 @@
       var sx = size.w / (opt.w0 || size.w), sy = size.h / (opt.h0 || size.h);
       for (var i = 0; i < ops.length; i++) drawOp(ctx, ops[i], sx, sy);
       if (cur) drawOp(ctx, cur, sx, sy);
+      if (SEL >= 0 && ops[SEL]) {
+        var bb = boxOf(ops[SEL]);
+        ctx.save();
+        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 1.5 / Math.max(1, sx);
+        if (ctx.setLineDash) ctx.setLineDash([5 / Math.max(1, sx), 4 / Math.max(1, sx)]);
+        ctx.strokeRect(bb.x * sx - 3, bb.y * sy - 3, bb.w * sx + 6, bb.h * sy + 6);
+        ctx.setLineDash && ctx.setLineDash([]);
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fillRect(bb.x * sx + bb.w * sx - 2, bb.y * sy + bb.h * sy - 2, 11 / Math.max(1, sx), 11 / Math.max(1, sx));
+        ctx.restore();
+      }
     }
     function pt(ev) {
       var r = cv.getBoundingClientRect();
@@ -229,7 +242,19 @@
       }
       return -1;
     }
-    var imgDrag = null, textDrag = null;
+    var imgDrag = null, textDrag = null, selDrag = null;
+    function boxOf(o) {
+      if (!o) return { x: 0, y: 0, w: 0, h: 0 };
+      if (o.t === 'img') {
+        var w = o.w || 200, h = w * ((o._el && o._el.naturalWidth) ? (o._el.naturalHeight / o._el.naturalWidth) : 0.6);
+        return { x: o.p[0][0], y: o.p[0][1], w: w, h: h };
+      }
+      var c = document.createElement('canvas').getContext('2d');
+      c.font = fontOf(o, 1);
+      var lines = String(o.txt || '').split('\n'), mw = 0;
+      lines.forEach(function (L) { mw = Math.max(mw, c.measureText(L).width); });
+      return { x: o.p[0][0], y: o.p[0][1], w: mw, h: (14 + o.s * 2.2) * 1.35 * lines.length };
+    }
 
     cv.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0) return;
@@ -247,12 +272,15 @@
         }
         return;
       }
-      if (st.tool === 'img') {
+      if (st.tool === 'sel') {
         ev.preventDefault();
-        var ii = hitImg(p);
-        SEL = ii;
-        if (ii >= 0) {
-          imgDrag = { i: ii, dx: p[0] - ops[ii].p[0][0], dy: p[1] - ops[ii].p[0][1] };
+        var si = hitImg(p); if (si < 0) si = hitText(p);
+        SEL = si;
+        if (si >= 0) {
+          var bb = boxOf(ops[si]);
+          var onCorner = p[0] > bb.x + bb.w - 22 && p[1] > bb.y + bb.h - 22;
+          selDrag = { i: si, mode: onCorner ? 'resize' : 'move', x0: p[0], y0: p[1],
+                      org: { x: bb.x, y: bb.y, w: bb.w, h: bb.h, s: ops[si].s || 2 } };
           try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
           syncSize();
         }
@@ -266,6 +294,21 @@
       paint();
     });
     cv.addEventListener('pointermove', function (ev) {
+      if (selDrag) {
+        var sp = pt(ev), so = ops[selDrag.i];
+        if (so) {
+          if (selDrag.mode === 'move') {
+            so.p[0][0] = Math.round(selDrag.org.x + (sp[0] - selDrag.x0));
+            so.p[0][1] = Math.round(selDrag.org.y + (sp[1] - selDrag.y0));
+          } else {
+            var dxr = sp[0] - selDrag.x0;
+            if (so.t === 'img') so.w = Math.max(24, Math.round(selDrag.org.w + dxr));
+            else so.s = Math.max(1, Math.min(40, Math.round(selDrag.org.s + dxr / 12)));
+          }
+          dirty = true; paint();
+        }
+        return;
+      }
       if (textDrag) {
         var tp = pt(ev);
         var dx = tp[0] - textDrag.x0, dy = tp[1] - textDrag.y0;
@@ -290,6 +333,7 @@
     });
     ['pointerup', 'pointercancel'].forEach(function (t) {
       cv.addEventListener(t, function () {
+        if (selDrag) { selDrag = null; cv.style.cursor = 'default'; paint(); return; }
         if (textDrag) {
           var td = textDrag; textDrag = null;
           cv.style.cursor = 'text';
@@ -310,6 +354,27 @@
     });
 
     var tb = wrap.querySelector('.ink-tools');
+    (function () {
+      var grip = tb.querySelector('.ink-grip'); if (!grip) return;
+      try {
+        var sp = JSON.parse(localStorage.getItem('qbank.ink.pos.v1') || 'null');
+        if (sp && sp.l) { wrap.style.left = sp.l; wrap.style.top = sp.t; wrap.style.right = 'auto'; wrap.style.bottom = 'auto'; }
+      } catch (e) {}
+      grip.addEventListener('pointerdown', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var r = wrap.getBoundingClientRect(), x0 = ev.clientX, y0 = ev.clientY;
+        function mv(e) {
+          wrap.style.left = Math.max(4, r.left + e.clientX - x0) + 'px';
+          wrap.style.top = Math.max(4, r.top + e.clientY - y0) + 'px';
+          wrap.style.right = 'auto'; wrap.style.bottom = 'auto';
+        }
+        function up() {
+          document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+          try { localStorage.setItem('qbank.ink.pos.v1', JSON.stringify({ l: wrap.style.left, t: wrap.style.top })); } catch (e) {}
+        }
+        document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+      });
+    })();
     function syncSize() {
       if (SEL < 0) return;
       var im = ops[SEL]; if (!im || im.t !== 'img') return;
@@ -393,7 +458,7 @@
 
   function cardOf() { return document.querySelector('#view .card') || null; }
 
-  var PAD = 90;   /* 画布比题目卡片四周各多 90px：允许把字 / 图片画到框外，导出时也不裁 */
+  var PAD = 150;   /* 画布比题目卡片四周各多 150px：允许把字 / 图片画到框外，导出时也不裁 */
 
   function layerBox(card, pad) {
     var r = card.getBoundingClientRect();
@@ -405,6 +470,10 @@
     cv.style.top = (-pad * k) + 'px';
     cv.style.width = Math.round(w * k) + 'px';
     cv.style.height = Math.round(h * k) + 'px';
+  }
+
+  function inkShow() {
+    try { return localStorage.getItem('qbank.ink.show.v1') !== '0'; } catch (e) { return true; }
   }
 
   function ensureLayer() {
@@ -429,6 +498,7 @@
       return;
     }
     cv.style.display = 'block';
+    if (!inkShow()) { cv.style.display = 'none'; return; }
     var card = cv.parentElement, r = card.getBoundingClientRect();
     var pad = rec.pad == null ? 0 : +rec.pad;
     var k = r.width / Math.max(1, (rec.w || r.width) - 2 * pad);

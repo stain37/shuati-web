@@ -296,6 +296,14 @@
   }
   function typeName(t) { return ({ A1: 'A1 单选', A2: 'A2 病例', B1: 'B1 配伍', X: 'X 多选', C: 'C 型' })[t] || t; }
 
+  function zoomStyle(png, rec) {
+    if (!png || !rec) return '';
+    var pad = rec.pad == null ? 0 : +rec.pad;
+    var need = 718 + 2 * pad + 10;
+    var z = Math.min(1, 748 / need);
+    return z < 0.995 ? ' style="zoom:' + z.toFixed(3) + '"' : '';
+  }
+
   function docHtml(rs) {
     var ans = host.querySelector('.exp-ans').checked;
     var exp = host.querySelector('.exp-exp').checked;
@@ -330,7 +338,7 @@
       if (note === 'ink' && rec && rec.ops && rec.ops.length) {
         try { png = INK.pngOf(bank, q, { paper: 'light' }); } catch (e) {}
       }
-      var h = '<div class="qwrap" data-k="' + esc(r.key) + '"><div class="card qcard">' +
+      var h = '<div class="qwrap" data-k="' + esc(r.key) + '"' + (png ? zoomStyle(png, rec) : '') + '><div class="card qcard">' +
         '<div class="qhead"><span class="qno">第 ' + (i + 1) + ' 题</span>' +
         '<span class="tag">' + esc(typeName(r.type)) + '</span>' +
         (r.tries ? '<span class="tag g">错误率 ' + r.pct + '%</span>' : '') +
