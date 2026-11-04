@@ -501,16 +501,12 @@
     }
     if (!html) { try { toast2('导出内容为空（批注数据可能异常）', 2600, 'bad'); } catch (e4) {} return; }
     if (fmt === 'pdf') {
-      var fr = document.createElement('iframe');
-      fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
-      document.body.appendChild(fr);
-      fr.srcdoc = html;
-      fr.onload = function () {
-        setTimeout(function () {
-          try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { toast2('打印被浏览器拦了，换 HTML 打开再打印', 2600, 'bad'); }
-          setTimeout(function () { fr.remove(); }, 60000);
-        }, 250);
-      };
+      /* PDF：先在新窗口打开同一份 HTML，再调起打印（iframe 的 srcdoc 在部分浏览器里 onload 不触发，点了没反应） */
+      var wp = window.open('', '_blank');
+      if (!wp) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
+      try { wp.document.open(); wp.document.write(html); wp.document.close(); } catch (e) {}
+      try { wp.focus(); } catch (e) {}
+      setTimeout(function () { try { wp.print(); } catch (e) { toast2('打印被拦了：在打开的页面里按 Ctrl+P', 2600, 'bad'); } }, 700);
     } else {
       var w = window.open('', '_blank');
       if (!w) { toast2('被浏览器拦了新窗口，允许弹出后再试', 2400, 'bad'); return; }
