@@ -43,6 +43,7 @@
   function fontOf(o, scale) { return '600 ' + Math.round((14 + o.s * 2.2) * scale) + 'px system-ui,"Microsoft YaHei",sans-serif'; }
 
   function textMetrics(o) {
+  if (!o.w) o.w = 1e6;   /* 没给框宽就当作不换行，避免 NaN 让文字一行都排不出来 */
     var c = document.createElement('canvas').getContext('2d');
     c.font = fontOf(o, 1);
     var lines = [];
@@ -160,7 +161,7 @@
       '<button data-m="pencil" title="铅笔">✎ 铅笔</button>' +
       '<button data-m="hl" title="荧光笔（半透明，不挡字）">▮ 荧光</button>' +
       '<button data-m="eraser" title="橡皮">◻ 橡皮</button>' +
-      '<button data-m="line" title="直线">╱</button>' +
+      '<button data-m="sel" title="鼠标：点中文字/图片直接拖动，拖右下角改大小">✥ 鼠标</button>' + '<button data-m="line" title="直线">╱</button>' +
       '<button data-m="rect" title="矩形">▭</button>' +
       '<button data-m="ellipse" title="椭圆">◯</button>' +
       '<button data-m="arrow" title="箭头">↗</button>' +
