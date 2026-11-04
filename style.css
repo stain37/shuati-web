@@ -10037,3 +10037,7 @@ body.ink-on .ink-txt{cursor:text}
 .exp-mask,.exp-mask *{user-select:none;-webkit-user-select:none}
 .exp-grid{user-select:none;touch-action:none}
 
+.exp-marq{display:none!important;pointer-events:none!important}
+.exp-box{position:relative;z-index:3}
+.exp-go{position:relative;z-index:5}
+
