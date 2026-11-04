@@ -4360,14 +4360,12 @@ function inkEyeSync() {
   const q = bk ? (bk.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
   let has = false;
   try { has = !!(window.INK && bk && q && INK.hasInk(bk, q)); } catch (e) { has = false; }
-  const editing = document.body.classList.contains('ink-on');
-  if (!has && !editing) { if (b) b.style.display = 'none'; return; }
+  if (!has) { if (b) b.style.display = 'none'; return; }
   if (!b) {
     b = document.createElement('button');
     b.id = 'inkEyeBig'; b.type = 'button'; b.className = 'ink-eye';
     document.body.appendChild(b);
     b.onclick = function () {
-      if (document.body.classList.contains('ink-on')) { try { INK.close(); } catch (e) {} document.body.classList.remove('ink-on'); render(); return; }
       const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
       localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1');
       const bk2 = bankById(QZ.bankId), q2 = bk2 ? (bk2.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
@@ -4377,8 +4375,8 @@ function inkEyeSync() {
   }
   b.style.display = '';
   const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
-  b.innerHTML = editing ? '<b>✕</b> 关批注' : (on ? '<b>🚫</b> 隐藏批注' : '<b>👁</b> 显示批注');
-  b.className = 'ink-eye' + (editing ? ' editing' : (on ? '' : ' off'));
+  b.innerHTML = on ? '<b>🚫</b> 隐藏批注' : '<b>👁</b> 显示批注';
+  b.className = 'ink-eye' + (on ? '' : ' off');
 }
 
 function paintInkDot() {
