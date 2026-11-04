@@ -4,7 +4,7 @@
   'use strict';
   var host = null, bank = null;
   var sel = {}, F = { subj: [], type: [], state: [], knows: [], q: '' };
-  var sortBy = 'def', view = 'list', cellW = 120, ai = true, fmt = 'html';
+  var sortBy = 'def', view = 'list', cellW = 120, ai = true, fmt = 'html', note = 'ink';
   var press = null, suppressClick = false;
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -133,7 +133,7 @@
       '</div>' +
       '<div class="exp-foot">' +
       '<span class="exp-lab">格式</span><span class="exp-fmt"><button data-v="html" class="on">HTML</button><button data-v="pdf">PDF</button></span>' +
-      '<label class="exp-ck"><input type="checkbox" class="exp-ink" checked> 带批注</label>' +
+      '<span class="exp-lab">附注</span><span class="exp-note"><button data-v="none">无</button><button data-v="ink" class="on">题目批注</button><button data-v="board">白板手稿</button><select class="exp-board" hidden></select></span>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-ans"> 带答案</label>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-exp" checked> 带解析</label>' +
       '<button class="exp-go btn primary" style="margin-left:auto">导出 0 题</button>' +
@@ -159,6 +159,21 @@
       Array.prototype.forEach.call(this.children, function (x) { x.classList.remove('on'); });
       b3.classList.add('on'); fmt = b3.dataset.v;
     };
+    host.querySelector('.exp-note').onclick = function (ev) {
+      var b4 = ev.target.closest('button'); if (!b4) return;
+      Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+      b4.classList.add('on'); note = b4.dataset.v;
+      var sel1 = host.querySelector('.exp-board');
+      sel1.hidden = note !== 'board';
+    };
+    (function () {
+      var sel1 = host.querySelector('.exp-board');
+      var bs = [];
+      try { bs = (window.INK && INK.boards) ? INK.boards() : []; } catch (e) {}
+      sel1.innerHTML = bs.length ? bs.map(function (b, i) {
+        return '<option value="' + b.id + '">' + (b.name || ('手稿 ' + (i + 1))) + '</option>';
+      }).join('') : '<option value="">（还没有白板手稿）</option>';
+    })();
     host.querySelector('.exp-go').onclick = doExport;
 
     var kq = host.querySelector('.exp-kq'), sug = host.querySelector('.exp-ksug');
@@ -282,51 +297,85 @@
   function typeName(t) { return ({ A1: 'A1 单选', A2: 'A2 病例', B1: 'B1 配伍', X: 'X 多选', C: 'C 型' })[t] || t; }
 
   function docHtml(rs) {
-    var ink = host.querySelector('.exp-ink').checked;
     var ans = host.querySelector('.exp-ans').checked;
     var exp = host.querySelector('.exp-exp').checked;
     var d = new Date();
     var date = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var de = document.documentElement, db = document.body;
+    var attrStyle = de.getAttribute('data-style') || '', attrTheme = de.getAttribute('data-theme') || '';
+    var attrBig = de.getAttribute('data-big') || '';
+    var fsCls = (db.className.match(/\bfs-[a-z]+\b/) || [''])[0];
+    /* 用站点自己的样式表，导出的题目排版和答题页一模一样（批注才对得上位置） */
     var css = [
-      '@page{size:A4;margin:14mm 12mm}',
-      'body{font:14px/1.8 "Microsoft YaHei",system-ui,sans-serif;color:#0f172a;margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
-      '.wrap{max-width:760px;margin:0 auto;padding:8px 0 24px}',
-      'h1{font-size:19px;margin:0 0 4px}',
-      '.meta{font-size:12px;color:#64748b;margin:0 0 16px;padding-bottom:10px;border-bottom:2px solid #0f172a}',
-      '.q{page-break-inside:avoid;break-inside:avoid;margin:0 0 14px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;position:relative}',
-      '.qn{font-size:12px;color:#64748b;font-weight:600;margin-bottom:2px}',
-      '.stem{font-size:14.5px;font-weight:600;line-height:1.75;margin:0 0 8px}',
-      '.gstem{font-size:13.5px;color:#334155;background:#f8fafc;border-radius:6px;padding:6px 9px;margin:0 0 8px}',
-      '.opt{font-size:14px;line-height:1.7;margin:0 0 3px}',
-      '.opt b{display:inline-block;width:20px;color:#475569}',
-      '.ans{font-size:13px;color:#0f766e;margin-top:8px;font-weight:600}',
-      '.exp{font-size:13.5px;line-height:1.75;color:#334155;margin-top:6px;padding:7px 10px;border-left:3px solid #5eead4;background:#f0fdfa;border-radius:0 6px 6px 0;white-space:pre-wrap}',
-      '.inkbox{position:absolute;inset:0;pointer-events:none}',
-      '.inkbox img{width:100%;height:100%;object-fit:contain}',
-      '.pad{height:14px}'
+      '@page{size:A4;margin:10mm}',
+      'html,body{background:#fff!important}',
+      'body::before,body::after{display:none!important}',
+      '.doc{width:190mm;margin:0 auto;padding:4mm 0 8mm;background:#fff}',
+      '.doc>h1{font-size:18px;margin:0 0 4px}',
+      '.doc>.meta{font-size:12px;color:var(--sub,#64748b);margin:0 0 8mm;padding-bottom:6px;border-bottom:1px solid var(--line)}',
+      '.qwrap{position:relative;margin:0 0 6mm;break-inside:avoid;page-break-inside:avoid}',
+      '.qwrap>.card{box-shadow:none;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:14px 16px}',
+      '.qwrap .inkimg{position:absolute;pointer-events:none;max-width:none;z-index:2}',
+      '.qwrap .qhead{flex-wrap:wrap;gap:6px}',
+      '.doc .opts{margin-top:10px}',
+      '.wpage{break-inside:avoid;page-break-inside:avoid;margin:0 0 6mm}',
+      '.wpage>img{width:100%;border:1px solid var(--line);border-radius:8px;display:block}',
+      '.wcap{font-size:12px;color:var(--sub,#64748b);margin:0 0 4px}',
+      '@media print{.doc{width:auto;padding:0}}'
     ].join('\n');
     var body = rs.map(function (r, i) {
-      var q = r.q;
-      var h = '<div class="q"><div class="qn">第 ' + (i + 1) + ' 题 · ' + esc(r.subj.join('、') || '未分科') + ' · ' + esc(typeName(r.type)) +
-        (r.tries ? ' · 错误率 ' + r.pct + '%' : '') + '</div>';
+      var q = r.q, rec = null;
+      try { rec = (window.INK && INK.inkRec) ? INK.inkRec(bank, q) : null; } catch (e) {}
+      var png = '';
+      if (note === 'ink' && rec && rec.ops && rec.ops.length) {
+        try { png = INK.pngOf(bank, q, { paper: 'light' }); } catch (e) {}
+      }
+      var h = '<div class="qwrap" data-k="' + esc(r.key) + '"><div class="card qcard">' +
+        '<div class="qhead"><span class="qno">第 ' + (i + 1) + ' 题</span>' +
+        '<span class="tag">' + esc(typeName(r.type)) + '</span>' +
+        (r.tries ? '<span class="tag g">错误率 ' + r.pct + '%</span>' : '') +
+        '<span class="tag g">' + esc(r.subj.join('、') || '未分科') + '</span></div>';
       if (q.group) h += '<div class="gstem"><b>共用题干：</b>' + esc(q.group) + '</div>';
       h += '<div class="stem">' + esc(q.stem || '') + '</div>';
+      h += '<div class="opts">';
       (q.options || []).forEach(function (o, j) {
-        h += '<div class="opt"><b>' + 'ABCDEFGHIJKL'[j] + '</b>' + esc(o) + '</div>';
+        h += '<div class="opt"><span class="k">' + 'ABCDEFGHIJKL'[j] + '</span><span>' + esc(o) + '</span></div>';
       });
-      if (ans) h += '<div class="ans">答案：' + esc((q.answer || []).join('')) + '</div>';
+      h += '</div>';
+      if (ans) h += '<div class="exp" style="border-left-color:var(--primary)">答案：' + esc((q.answer || []).join('')) + '</div>';
       if (exp && q.explain) h += '<div class="exp">' + esc(q.explain) + '</div>';
-      if (ink && r.ink) {
-        var png = '';
-        try { png = INK.pngOf(bank, q); } catch (e) {}
-        if (png) h += '<div class="inkbox"><img src="' + png + '"></div>';
+      h += '</div>';
+      if (png) {
+        var pad = rec.pad == null ? 0 : +rec.pad;
+        var W = 718, K = W / Math.max(1, (rec.w || W) - 2 * pad);
+        h += '<img class="inkimg" src="' + png + '" style="left:' + Math.round(-pad * K) + 'px;top:' + Math.round(-pad * K) +
+          'px;width:' + Math.round((rec.w || W) * K) + 'px">';
       }
       return h + '</div>';
     }).join('\n');
-    return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>刷题站 · 题目导出</title><style>' + css + '</style></head><body><div class="wrap">' +
+    var wb = '';
+    if (note === 'board') {
+      var sel = host.querySelector('.exp-board'), bid = sel && sel.value;
+      var bs = [];
+      try { bs = (window.INK && INK.boards) ? INK.boards() : []; } catch (e) {}
+      var b = null;
+      for (var i2 = 0; i2 < bs.length; i2++) if (String(bs[i2].id) === String(bid)) b = bs[i2];
+      if (b) {
+        var bp = '';
+        try { bp = INK.boardPng(b); } catch (e) {}
+        if (bp) wb = '<div class="wpage"><div class="wcap">白板手稿 · ' + esc(b.name || '未命名') + '</div><img src="' + bp + '"></div>';
+      }
+    }
+    var head = '<!doctype html><html lang="zh-CN" data-style="' + esc(attrStyle) + '" data-theme="' + esc(attrTheme) + '"' +
+      (attrBig ? ' data-big="' + esc(attrBig) + '"' : '') + '><head><meta charset="utf-8"><title>刷题站 · ' + esc(bank.title || '题目导出') + '</title>' +
+      '<link rel="stylesheet" href="style.css"><style>' + css + '</style></head>';
+    var bd = '<body class="' + esc(fsCls) + '"><div class="doc">' +
       '<h1>' + esc(bank.title || '题目导出') + '</h1>' +
-      '<div class="meta">共 ' + rs.length + ' 题　' + date + '　' + (ink ? '含批注　' : '') + (ans ? '含答案　' : '') + (exp ? '含解析' : '') + '</div>' +
-      body + '<div style="text-align:center;font-size:11px;color:#94a3b8;margin-top:14px">— 由刷题站导出 —</div></div></body></html>';
+      '<div class="meta">共 ' + rs.length + ' 题　' + date +
+      (note === 'ink' ? '　含题目批注' : note === 'board' ? '　附白板手稿' : '') +
+      (ans ? '　含答案' : '') + (exp ? '　含解析' : '') + '</div>' +
+      body + wb + '<div style="text-align:center;font-size:11px;color:#94a3b8;margin-top:10px">— 由刷题站导出 —</div></div></body></html>';
+    return head + bd;
   }
 
   function doExport() {

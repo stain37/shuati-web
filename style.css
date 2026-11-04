@@ -9942,9 +9942,10 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .exp-sq{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:6px 10px;font-size:13px;flex:1 1 200px;min-width:140px}
 .exp-sort{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;padding:6px 8px;font-size:12.5px}
-.exp-view,.exp-fmt{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-.exp-view button,.exp-fmt button{border:0;background:transparent;color:var(--sub);padding:5px 10px;font-size:12.5px;cursor:pointer}
-.exp-view button.on,.exp-fmt button.on{background:var(--primary);color:#fff;font-weight:600}
+.exp-view,.exp-fmt,.exp-note{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.exp-view button,.exp-fmt button,.exp-note button{border:0;background:transparent;color:var(--sub);padding:5px 10px;font-size:12.5px;cursor:pointer}
+.exp-view button.on,.exp-fmt button.on,.exp-note button.on{background:var(--primary);color:#fff;font-weight:600}
+.exp-board{border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font-size:12px;padding:4px 8px;max-width:150px}
 .exp-all,.exp-inv{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 10px;font-size:12.5px;cursor:pointer}
 .exp-hint{font-size:11.5px;color:var(--sub)}

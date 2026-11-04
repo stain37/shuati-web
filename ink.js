@@ -14,6 +14,15 @@
   var INK_KEY = 'qbank.ink.v1';
   var BOARD_KEY = 'qbank.board.v1';
   var COLORS = ['#111827', '#e11d48', '#f59e0b', '#0f9d58', '#2563eb', '#7c3aed'];
+  /* 深色主题下纯黑笔画看不见：默认笔色跟随当前正文色（浅色主题=深灰，深色主题=浅灰） */
+  function inkAuto() {
+    try {
+      var c = getComputedStyle(document.body).color || '';
+      if (/rgba?\(/.test(c)) return c;
+      if (/^#/.test(c)) return c;
+    } catch (e) {}
+    return '#111827';
+  }
   var SHAPES = { line: 1, rect: 1, ellipse: 1, arrow: 1 };
   var MAX_BOARDS = 30;
 
@@ -29,7 +38,7 @@
   function boardAll() { var a = lsGet(BOARD_KEY, []); return Array.isArray(a) ? a : []; }
 
   /* ---------- 画 ---------- */
-  function fontOf(o, scale) { return '600 ' + Math.round((12 + o.s * 1.6) * scale) + 'px system-ui,"Microsoft YaHei",sans-serif'; }
+  function fontOf(o, scale) { return '600 ' + Math.round((14 + o.s * 2.2) * scale) + 'px system-ui,"Microsoft YaHei",sans-serif'; }
 
   function drawOp(ctx, o, sx, sy) {
     sx = sx || 1; sy = sy || 1;
@@ -37,8 +46,13 @@
     if (o.t === 'text') {
       ctx.save();
       ctx.fillStyle = o.c; ctx.globalAlpha = o.a == null ? 1 : o.a;
+      var fs = Math.round((14 + o.s * 2.2) * sx);
       ctx.font = fontOf(o, sx); ctx.textBaseline = 'top';
-      ctx.fillText(o.txt, o.p[0][0] * sx, o.p[0][1] * sy);
+      var lines = String(o.txt || '').split('\n');
+      var lh = fs * 1.35;
+      for (var li = 0; li < lines.length; li++) {
+        ctx.fillText(lines[li], o.p[0][0] * sx, o.p[0][1] * sy + li * lh);
+      }
       ctx.restore(); return;
     }
     if (o.t === 'img') {
@@ -123,7 +137,9 @@
 
   /* 一套画板：cv 画布；getSize 返回逻辑宽高；ops 初始笔迹；onCommit(ops,w,h) 完成时回调 */
   function Studio(opt) {
-    var cv = opt.cv, wrap = opt.wrap, st = { tool: 'pen', color: COLORS[0], size: 2, alpha: 1 };
+    var cv = opt.cv, wrap = opt.wrap, st = { tool: 'pen', color: inkAuto(), size: 2, alpha: 1 };
+    if (opt.state) { st.tool = opt.state.tool || st.tool; st.color = opt.state.color || st.color;
+      st.size = opt.state.size || st.size; st.alpha = opt.state.alpha == null ? st.alpha : opt.state.alpha; }
     var ops = (opt.ops || []).slice(), cur = null, drag = false, dirty = false;
     var ctx = cv.getContext('2d');
     var size = { w: 1, h: 1 };
@@ -153,27 +169,42 @@
 
     function openText(p, editIdx) {
       var old = editIdx >= 0 ? ops[editIdx] : null;
-      var host = wrap; var ir = cv.getBoundingClientRect(), cr = host.getBoundingClientRect();
-      var sx = (size.w) / (opt.w0 || size.w);
-      var inp = document.createElement('input');
+      /* 输入框要贴在「点下去的那个位置」，所以挂到画布所在容器（题目卡片）里，
+         不能挂进底部工具条——那样会跑到工具条上面去，看着像没反应 */
+      var host = cv.parentElement || wrap;
+      var ir = cv.getBoundingClientRect(), cr = host.getBoundingClientRect();
+      var kx = ir.width / (opt.w0 || size.w || 1), ky = ir.height / (opt.h0 || size.h || 1);
+      var p0 = old ? old.p[0] : p;
+      var inp = document.createElement('textarea');
       inp.className = 'ink-txt';
-      inp.style.left = Math.max(2, ((old ? old.p[0][0] : p[0]) / (opt.w0 || size.w)) * size.w) + 'px';
-      inp.style.top = Math.max(2, ((old ? old.p[0][1] : p[1]) / (opt.h0 || size.h)) * size.h) + 'px';
+      inp.rows = 1;
+      inp.style.left = Math.max(2, (ir.left - cr.left) + p0[0] * kx) + 'px';
+      inp.style.top = Math.max(2, (ir.top - cr.top) + p0[1] * ky) + 'px';
       inp.style.color = st.color;
-      inp.style.fontSize = Math.round((12 + st.size * 1.6) * 1) + 'px';
+      inp.style.fontSize = Math.round(14 + st.size * 2.2) + 'px';
       host.appendChild(inp);
       inp.value = old ? old.txt : '';
       if (old) { ops.splice(editIdx, 1); paint(); }
-      setTimeout(function () { try { inp.focus(); inp.select(); } catch (e) {} }, 0);
+      function fit() { inp.style.height = 'auto'; inp.style.height = Math.max(24, inp.scrollHeight) + 'px'; }
+      function put(v) {
+        var lines = String(v || '').split('\n');
+        var w = 0, c2 = document.createElement('canvas').getContext('2d');
+        c2.font = fontOf({ s: st.size }, 1);
+        lines.forEach(function (L) { w = Math.max(w, c2.measureText(L).width); });
+        inp.style.width = Math.max(96, Math.ceil(w) + 18) + 'px';
+      }
+      inp.addEventListener('input', function () { fit(); put(inp.value); });
+      setTimeout(function () { try { inp.focus(); } catch (e) {} fit(); put(inp.value); }, 0);
       var closed = false;
       function commit() {
         if (closed) return; closed = true;
-        var v = inp.value.trim(); inp.remove();
-        if (v) { ops.push(cfg({ t: 'text', txt: v, p: [old ? old.p[0] : p[0], old ? old.p[0][1] : p[1]] })); dirty = true; paint(); }
+        var v = inp.value.replace(/\s+$/, ''); inp.remove();
+        if (v.trim()) { ops.push(cfg({ t: 'text', txt: v, p: [[p0[0], p0[1]]] })); dirty = true; paint(); }
       }
       inp.addEventListener('blur', commit);
       inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        /* 回车换行，Ctrl/⌘+回车或点「完成」才落字 */
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
         else if (e.key === 'Escape') { e.preventDefault(); closed = true; inp.remove(); if (old) { ops.push(old); paint(); } }
       });
     }
@@ -182,16 +213,52 @@
         var o = ops[i]; if (o.t !== 'text') continue;
         var c = document.createElement('canvas').getContext('2d');
         c.font = fontOf(o, 1);
-        var w = c.measureText(o.txt).width, h = (12 + o.s * 1.6);
+        var lines = String(o.txt || '').split('\n'), w = 0;
+        lines.forEach(function (L) { w = Math.max(w, c.measureText(L).width); });
+        var h = (14 + o.s * 2.2) * 1.35 * lines.length;
         if (p[0] >= o.p[0][0] - 6 && p[0] <= o.p[0][0] + w + 6 && p[1] >= o.p[0][1] - 6 && p[1] <= o.p[0][1] + h + 6) return i;
       }
       return -1;
     }
+    var SEL = -1;                       /* 选中的图片下标，用来拖动 / 改大小 */
+    function hitImg(p) {
+      for (var i = ops.length - 1; i >= 0; i--) {
+        var o = ops[i]; if (o.t !== 'img') continue;
+        var w = o.w || 200, h = w * ((o._el && o._el.naturalWidth) ? (o._el.naturalHeight / o._el.naturalWidth) : 0.6);
+        if (p[0] >= o.p[0][0] - 6 && p[0] <= o.p[0][0] + w + 6 && p[1] >= o.p[0][1] - 6 && p[1] <= o.p[0][1] + h + 6) return i;
+      }
+      return -1;
+    }
+    var imgDrag = null, textDrag = null;
 
     cv.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0) return;
       var p = pt(ev);
-      if (st.tool === 'text') { ev.preventDefault(); openText(p, hitText(p)); return; }
+      if (st.tool === 'text') {
+        ev.preventDefault();
+        var ti = hitText(p);
+        if (ti >= 0) {
+          /* 按住已有的字拖动＝挪位置；只是点一下＝改字 */
+          textDrag = { i: ti, x0: p[0], y0: p[1], moved: 0, org: [[ops[ti].p[0][0], ops[ti].p[0][1]]] };
+          try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+          cv.style.cursor = 'move';
+        } else {
+          openText(p, -1);
+        }
+        return;
+      }
+      if (st.tool === 'img') {
+        ev.preventDefault();
+        var ii = hitImg(p);
+        SEL = ii;
+        if (ii >= 0) {
+          imgDrag = { i: ii, dx: p[0] - ops[ii].p[0][0], dy: p[1] - ops[ii].p[0][1] };
+          try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+          syncSize();
+        }
+        paint();
+        return;
+      }
       ev.preventDefault();
       try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
       drag = true;
@@ -199,6 +266,23 @@
       paint();
     });
     cv.addEventListener('pointermove', function (ev) {
+      if (textDrag) {
+        var tp = pt(ev);
+        var dx = tp[0] - textDrag.x0, dy = tp[1] - textDrag.y0;
+        textDrag.moved = Math.max(textDrag.moved, Math.abs(dx) + Math.abs(dy));
+        var to = ops[textDrag.i];
+        if (to && textDrag.moved > 3) {
+          to.p[0][0] = Math.round(textDrag.org[0][0] + dx);
+          to.p[0][1] = Math.round(textDrag.org[0][1] + dy);
+          dirty = true; paint();
+        }
+        return;
+      }
+      if (imgDrag) {
+        var ip = pt(ev), im = ops[imgDrag.i];
+        if (im) { im.p[0][0] = Math.round(ip[0] - imgDrag.dx); im.p[0][1] = Math.round(ip[1] - imgDrag.dy); dirty = true; paint(); }
+        return;
+      }
       if (!drag || !cur) return;
       var p = pt(ev);
       if (SHAPES[cur.t]) cur.p[1] = p; else cur.p.push(p);
@@ -206,6 +290,18 @@
     });
     ['pointerup', 'pointercancel'].forEach(function (t) {
       cv.addEventListener(t, function () {
+        if (textDrag) {
+          var td = textDrag; textDrag = null;
+          cv.style.cursor = 'text';
+          if (td.moved <= 3) {
+            /* 没拖动＝改字：沿用原来的颜色和字号 */
+            var op0 = ops[td.i];
+            if (op0) { st.color = op0.c || st.color; st.size = op0.s || st.size; }
+            openText([td.x0, td.y0], td.i);
+          } else { paint(); }
+          return;
+        }
+        if (imgDrag) { imgDrag = null; return; }
         if (!drag) return;
         drag = false;
         if (cur) { ops.push(cur); dirty = true; }
@@ -214,6 +310,13 @@
     });
 
     var tb = wrap.querySelector('.ink-tools');
+    function syncSize() {
+      if (SEL < 0) return;
+      var im = ops[SEL]; if (!im || im.t !== 'img') return;
+      var v = Math.max(1, Math.min(26, Math.round((im.w || 288) / 24)));
+      st.size = v;
+      var sl = tb.querySelector('.ink-size'); if (sl) sl.value = v;
+    }
     var seg = tb.querySelector('.ink-seg');
     seg.onclick = function (ev) {
       var b = ev.target.closest('button'); if (!b) return;
@@ -223,18 +326,27 @@
       cv.style.cursor = st.tool === 'text' ? 'text' : 'crosshair';
     };
     var sws = tb.querySelector('.ink-sws');
-    COLORS.forEach(function (c, i) {
+    var pal = [inkAuto()].concat(COLORS);
+    pal.forEach(function (c, i) {
       var b = document.createElement('button');
       b.className = 'ink-sw' + (i === 0 ? ' on' : '');
+      b.title = i === 0 ? '跟随主题（深色主题下就是这个浅色）' : '';
       b.style.background = c;
       b.onclick = function () {
         st.color = c;
         Array.prototype.forEach.call(sws.children, function (x) { x.classList.remove('on'); });
         b.classList.add('on');
+        /* 正在打字的文字框也跟着换色 */
+        Array.prototype.forEach.call(document.querySelectorAll('.ink-txt'), function (x) { x.style.color = c; });
       };
       sws.appendChild(b);
     });
-    tb.querySelector('.ink-size').oninput = function (e) { st.size = +e.target.value; };
+    tb.querySelector('.ink-size').oninput = function (e) {
+      st.size = +e.target.value;
+      if (SEL >= 0 && ops[SEL] && ops[SEL].t === 'img') {
+        ops[SEL].w = Math.round(st.size * 24); dirty = true; paint();
+      }
+    };
     tb.querySelector('.ink-alpha').oninput = function (e) { st.alpha = +e.target.value / 100; };
     tb.querySelector('.ink-undo').onclick = function () { if (ops.length) { ops.pop(); dirty = true; paint(); } };
     tb.querySelector('.ink-clear').onclick = function () { if (!ops.length) return; if (confirm('清空这一层的全部笔迹？')) { ops = []; dirty = true; paint(); } };
@@ -251,16 +363,15 @@
           c2.getContext('2d').drawImage(img, 0, 0, mw, mh);
           var data = c2.toDataURL('image/jpeg', 0.72);
           var W = (opt.w0 || size.w), H = (opt.h0 || size.h);
-          ops.push({ t: 'img', data: data, x: 0, y: 0, w: W * 0.42, p: [[W * 0.16, H * 0.12]], a: 1 });
-          hydrate(ops); dirty = true; paint();
+          ops.push({ t: 'img', data: data, x: 0, y: 0, w: Math.round(st.size * 24), p: [[Math.round(W * 0.16), Math.round(H * 0.12)]], a: 1 });
+          SEL = ops.length - 1; syncSize(); hydrate(ops); dirty = true; paint();
         };
         img.src = r.result;
       };
       r.readAsDataURL(f); file.value = '';
     });
 
-    function hydrate(list) {
-      list.forEach(function (o) {
+    function hydrate(list) {      list.forEach(function (o) {
         if (o.t === 'img' && o.data && !o._el) {
           var im = new Image(); im.onload = function () { paint(); }; im.src = o.data; o._el = im;
         }
@@ -273,13 +384,28 @@
     };
     window.addEventListener('resize', function () { setTimeout(resize, 60); });
     setTimeout(resize, 20);
-    return { resize: resize, paint: paint, ops: function () { return ops; } };
+    return { resize: resize, paint: paint, ops: function () { return ops; },
+      state: function () { return { tool: st.tool, color: st.color, size: st.size, alpha: st.alpha }; } };
   }
 
   /* ---------- 批注 ---------- */
   var liveCv = null, liveStudio = null;
 
   function cardOf() { return document.querySelector('#view .card') || null; }
+
+  var PAD = 90;   /* 画布比题目卡片四周各多 90px：允许把字 / 图片画到框外，导出时也不裁 */
+
+  function layerBox(card, pad) {
+    var r = card.getBoundingClientRect();
+    return { w: Math.round(r.width) + 2 * pad, h: Math.round(r.height) + 2 * pad, pad: pad };
+  }
+  function placeLayer(cv, card, w, h, pad, k) {
+    k = k || 1;
+    cv.style.left = (-pad * k) + 'px';
+    cv.style.top = (-pad * k) + 'px';
+    cv.style.width = Math.round(w * k) + 'px';
+    cv.style.height = Math.round(h * k) + 'px';
+  }
 
   function ensureLayer() {
     var card = cardOf(); if (!card) return null;
@@ -297,15 +423,18 @@
     if (!bank || !q) return;
     var cv = ensureLayer(); if (!cv) return;
     var rec = inkAll()[keyOf(bank, q)];
+    if (cv.classList.contains('editing')) { cv.style.display = 'block'; return; }
     if (!rec || !rec.ops || !rec.ops.length) {
       cv.style.display = 'none';
       return;
     }
     cv.style.display = 'block';
-    var r = cv.parentElement.getBoundingClientRect();
-    var ctx = fitCanvas(cv, r.width, r.height);
-    ctx.clearRect(0, 0, r.width, r.height);
-    var sx = r.width / (rec.w || r.width), sy = r.height / (rec.h || r.height);
+    var card = cv.parentElement, r = card.getBoundingClientRect();
+    var pad = rec.pad == null ? 0 : +rec.pad;
+    var k = r.width / Math.max(1, (rec.w || r.width) - 2 * pad);
+    placeLayer(cv, card, rec.w || r.width, rec.h || r.height, pad, k);
+    var ctx = fitCanvas(cv, (rec.w || r.width) * k, (rec.h || r.height) * k);
+    var sx = k, sy = k;
     rec.ops.forEach(function (o) {
       if (o.t === 'img' && o.data && !o._el) { var im = new Image(); im.onload = function () { paint(bank, q); }; im.src = o.data; o._el = im; }
       drawOp(ctx, o, sx, sy);
@@ -317,11 +446,12 @@
     return !!(rec && rec.ops && rec.ops.length);
   }
 
-  function annotation(bank, q) {
-    if (!bank || !q) return;
-    closeAll();
-    var card = cardOf(); if (!card) return;
-    var cv = ensureLayer();
+  var EDIT = null;
+
+  /* 统一的「开始在题目上画」；rebind 也走这里，保证重画后工具条与笔迹都还在 */
+  function startEditing(bank, q, ops, state, w0, h0) {
+    var card = cardOf(); if (!card) return false;
+    var cv = ensureLayer(); if (!cv) return false;
     cv.classList.add('editing');
     cv.style.display = 'block';
     document.body.classList.add('ink-on');
@@ -331,15 +461,19 @@
     wrap.innerHTML = toolsHtml();
     document.body.appendChild(wrap);
 
-    var rec = inkAll()[keyOf(bank, q)] || null;
     var r = card.getBoundingClientRect();
+    var box = layerBox(card, PAD);
+    placeLayer(cv, card, box.w, box.h, PAD, 1);
+    EDIT = { bankId: bank.id, qid: q.id, w0: w0 || box.w, h0: h0 || box.h, pad: PAD };
+    var rec = inkAll()[keyOf(bank, q)] || null;
+    liveCv = cv;
     liveStudio = Studio({
-      cv: cv, wrap: wrap, ops: (rec && rec.ops) || [],
-      w0: (rec && rec.w) || Math.round(r.width), h0: (rec && rec.h) || Math.round(r.height),
-      onDone: function (ops, w, h, dirty) {
+      cv: cv, wrap: wrap, ops: ops || [], state: state || null,
+      w0: EDIT.w0, h0: EDIT.h0,
+      onDone: function (o, w, h, dirty) {
         var all = inkAll();
-        if (dirty || (rec && rec.ops) || ops.length) {
-          if (ops.length) all[keyOf(bank, q)] = { ops: ops, w: w, h: h, ts: Date.now() };
+        if (dirty || (rec && rec.ops) || o.length) {
+          if (o.length) all[keyOf(bank, q)] = { ops: o, w: w, h: h, pad: PAD, ts: Date.now() };
           else delete all[keyOf(bank, q)];
           if (!lsSet(INK_KEY, all)) toast('本地存储满了，这条批注没存下', 2600, 'bad');
         }
@@ -348,8 +482,30 @@
         if (typeof window.paintInkDot === 'function') window.paintInkDot();
       }
     });
-    liveCv = cv;
-    setTimeout(function () { liveStudio.resize(); }, 30);
+    setTimeout(function () { if (liveStudio) liveStudio.resize(); }, 30);
+    return true;
+  }
+
+  /* 答题页整页重画会把 <canvas.ink-layer> 一起换掉：把笔迹和工具状态搬到新画布上 */
+  function rebind() {
+    if (!EDIT || !liveStudio) return false;
+    var bank = (typeof bankById === 'function') ? bankById(EDIT.bankId) : null;
+    if (!bank) { closeAll(); return false; }
+    var q = (bank.questions || []).filter(function (x) { return String(x.id) === String(EDIT.qid); })[0];
+    if (!q) { closeAll(); return false; }
+    var ops = liveStudio.ops().slice(), state = liveStudio.state(), w0 = EDIT.w0, h0 = EDIT.h0;
+    closeAll();
+    return startEditing(bank, q, ops, state, w0, h0);
+  }
+
+  function isEditing() { return !!EDIT; }
+
+  function annotation(bank, q) {
+    if (!bank || !q) return;
+    closeAll();
+    var rec = inkAll()[keyOf(bank, q)] || null;
+    startEditing(bank, q, (rec && rec.ops) || [], null,
+      (rec && rec.w) || 0, (rec && rec.h) || 0);
   }
 
   /* ---------- 空白板 ---------- */
@@ -468,12 +624,40 @@
     setTimeout(function () { st.resize(); }, 30);
   }
 
-  function pngOf(bank, q) {
+  function lumOf(c) {
+    var m = String(c || '').match(/(\d+)\D+(\d+)\D+(\d+)/);
+    if (!m) return 0;
+    return (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+  }
+  /* 白纸导出时，把「跟随主题」那种很浅的笔色换成深色，否则打印出来看不见 */
+  function onPaper(o) {
+    var c2 = {};
+    for (var k in o) c2[k] = o[k];
+    if (o.c && lumOf(o.c) > 0.72) c2.c = '#111827';
+    return c2;
+  }
+
+  function pngOf(bank, q, opt) {
     var rec = inkAll()[keyOf(bank, q)];
     if (!rec || !rec.ops || !rec.ops.length) return '';
     var c = document.createElement('canvas');
     var ctx = fitCanvas(c, rec.w || 800, rec.h || 600);
     rec.ops.forEach(function (o) {
+      if (o.t === 'img' && o.data && !o._el) { var im = new Image(); im.src = o.data; o._el = im; }
+      drawOp(ctx, (opt && opt.paper === 'light') ? onPaper(o) : o, 1, 1);
+    });
+    try { return c.toDataURL('image/png'); } catch (e) { return ''; }
+  }
+
+  function inkRec(bank, q) { return inkAll()[keyOf(bank, q)] || null; }
+
+  function boardPng(b) {
+    if (!b || !b.ops || !b.ops.length) return '';
+    var c = document.createElement('canvas');
+    var ctx = fitCanvas(c, b.w || 900, b.h || 600);
+    c.getContext('2d').fillStyle = '#fff';
+    c.getContext('2d').fillRect(0, 0, b.w || 900, b.h || 600);
+    b.ops.forEach(function (o) {
       if (o.t === 'img' && o.data && !o._el) { var im = new Image(); im.src = o.data; o._el = im; }
       drawOp(ctx, o, 1, 1);
     });
@@ -485,12 +669,14 @@
     document.body.classList.remove('ink-on');
     var cv = document.querySelector('#view .card > canvas.ink-layer');
     if (cv) cv.classList.remove('editing');
-    liveStudio = null; liveCv = null;
+    liveStudio = null; liveCv = null; EDIT = null;
   }
 
   window.INK = {
     paint: paint, annotation: annotation, board: board, history: history,
-    hasInk: hasInk, pngOf: pngOf, close: closeAll, keyOf: keyOf,
+    hasInk: hasInk, pngOf: pngOf, boardPng: boardPng, inkRec: inkRec, boards: boardAll,
+    close: closeAll, keyOf: keyOf,
+    rebind: rebind, isEditing: isEditing,
     count: function () { return Object.keys(inkAll()).length; }
   };
 })();

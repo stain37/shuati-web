@@ -3462,7 +3462,9 @@ function renderQuiz(bankId) {
      题目有预存参考资料时直接显示，没有就收起来。 */
   if (typeof aiSrcShowSaved === 'function') { try { aiSrcShowSaved(fk); } catch (e) {} }
   else if (typeof paintSrcJump === 'function') { try { paintSrcJump(); } catch (e) {} }
-  if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
+  if (window.INK) {
+    try { if (INK.isEditing && INK.isEditing()) INK.rebind(); else INK.paint(bank, q); } catch (e) {}
+  }
   paintInkDot();
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
