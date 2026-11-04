@@ -474,20 +474,8 @@
     var preWin = null;
     try { preWin = window.open('', '_blank'); } catch (e) {}
     var go = function () { doExportNow(all, preWin); };
-    if (!(window.INK && INK.bake && bank0)) return go();
-    /* 点导出的这一刻现场烤图：等每道题的批注（含图片）都画进 canvas 再生成文档 */
-    var jobs = all.map(function (r) {
-      try {
-        var pr = INK.bake(bank0, r.q).catch(function () { return null; });
-        /* 烤图可能卡在图片解码上永远不 resolve：1.5 秒等不到就先用空图继续，不能把整个导出拖死 */
-        return Promise.race([pr, new Promise(function (res) { setTimeout(function () { res(null); }, 1500); })]);
-      }
-      catch (e) { return Promise.resolve(null); }
-    });
-    Promise.all(jobs).then(function (arr) {
-      arr.forEach(function (bb, i) { if (bb && bb.url) BAKED[all[i].q.id] = bb.url; });
-      go();
-    }, function () { go(); });
+    /* 不再烤图：导出直接用页面 DOM 生成（题目 + 批注叠加），避免异步卡住 */
+    return go();
   }
 
   function doExportNow(all, preWin) {
