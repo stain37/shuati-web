@@ -3373,10 +3373,10 @@ function renderQuiz(bankId) {
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
-        <button class="btn" id="btnInkEye" title="显示 / 隐藏题目上的批注（不删除）">${inkShown ? '👁 批注' : '🚫 批注'}</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
-        <button class="btn" id="btnRedo2" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
-        <button class="btn" id="btnExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
+        <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
+        <button class="btn" id="doExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
+        <button class="btn" id="doInkEye" title="显示 / 隐藏题目上的批注（不删除笔迹）">${inkShown ? '👁' : '🚫'}</button>
         <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
         <button class="btn qd-grip" id="qdGrip" title="拖动题目区块（右下角可拉大小）；再点一下回到正常排版">⠿</button>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
@@ -3403,7 +3403,7 @@ function renderQuiz(bankId) {
           <div class="grip"></div>
           <div class="qsheet-cap">这题还能做什么</div>
           <div class="qsheet-grid">
-            ${rec ? `<button class="btn" id="doRedo">再答一次</button>` : ''}
+            <button class="btn" id="doRedo">再答一次</button>
             <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
             <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
             ${delT ? '<button class="btn" id="doEditQ" title="直接改这道题的题干 / 选项 / 答案 / 解析（写回题库，内置题库只读）">✎ 改题目</button>' : ''}
@@ -3468,6 +3468,7 @@ function renderQuiz(bankId) {
     try { if (INK.isEditing && INK.isEditing()) INK.rebind(); else INK.paint(bank, q); } catch (e) {}
   }
   paintInkDot();
+  try { inkEyeSync(); } catch (e) {}
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
@@ -3488,7 +3489,7 @@ function renderQuiz(bankId) {
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
-  on('btnInkEye', () => {
+  const inkEye = () => {
     try {
       const off = localStorage.getItem('qbank.ink.show.v1') === '0';
       localStorage.setItem('qbank.ink.show.v1', off ? '1' : '0');
@@ -3497,13 +3498,20 @@ function renderQuiz(bankId) {
     if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
     render();
     toast(inkShown ? '批注已显示' : '批注已隐藏（笔迹还在）', 1600);
-  });
+  };
+  on('doInkEye', () => { qSheetToggle(false); inkEye(); });
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('doRedoBank', () => { qSheetToggle(false); redoSheet(bank, q); });
+  on('doExport', () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
+  on('btnExport', () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
   on('btnRedo2', () => { qSheetToggle(false); redoSheet(bank, q); });
-  on('btnExport', () => { if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
-  /* 答题条最左边两颗：重做题库 / 仅重做错题（定义在 redo() 底下） */
-  on('redoBank', () => { qSheetToggle(false); redoBankAll(bank); });
-  on('redoWrong', () => { qSheetToggle(false); redoWrongOnly(bank); });
+  on('btnInkEye', () => {
+    const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
+    try { localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1'); } catch (e) {}
+    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
+    inkEyeSync(); render();
+    toast(on ? '批注已隐藏（笔迹还在）' : '批注已显示', 1600);
+  });
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
      不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
   /* 点抽屉里的动作先把抽屉收掉：不然遮罩（.qsheet 固定全屏）还盖着，
@@ -4339,6 +4347,33 @@ function redo(bank, q) {
    · 重做题库：整库全部退回未答，顺序照题库原序，从第一题开始；
    · 仅重做错题：只挑当前错题组成一轮，答对＝订正（打上 fixed → 从错题集/错题 chip/答题卡里移出），
      答错＝留着（commitAnswer 会把 fixed 清掉）。「累计错了几次」照旧看得到。 */
+function inkEyeSync() {
+  let b = document.getElementById('inkEyeBig');
+  const bk = (typeof bankById === 'function' && QZ.bankId) ? bankById(QZ.bankId) : null;
+  const q = bk ? (bk.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
+  let has = false;
+  try { has = !!(window.INK && bk && q && INK.hasInk(bk, q)); } catch (e) { has = false; }
+  const editing = document.body.classList.contains('ink-on');
+  if (!has && !editing) { if (b) b.style.display = 'none'; return; }
+  if (!b) {
+    b = document.createElement('button');
+    b.id = 'inkEyeBig'; b.type = 'button'; b.className = 'ink-eye';
+    document.body.appendChild(b);
+    b.onclick = function () {
+      if (document.body.classList.contains('ink-on')) { try { INK.close(); } catch (e) {} document.body.classList.remove('ink-on'); render(); return; }
+      const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
+      localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1');
+      const bk2 = bankById(QZ.bankId), q2 = bk2 ? (bk2.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
+      if (bk2 && q2) { try { INK.paint(bk2, q2); } catch (e) {} }
+      render();
+    };
+  }
+  b.style.display = '';
+  const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
+  b.innerHTML = editing ? '<b>✕</b> 关批注' : (on ? '<b>🚫</b> 隐藏批注' : '<b>👁</b> 显示批注');
+  b.className = 'ink-eye' + (editing ? ' editing' : (on ? '' : ' off'));
+}
+
 function paintInkDot() {
   const b = $('btnInk'); if (!b) return;
   try {

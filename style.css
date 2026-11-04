@@ -9870,6 +9870,19 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .ink-grip{cursor:grab;touch-action:none;user-select:none;border:1px solid var(--line);background:var(--card2);
   color:var(--sub);border-radius:8px;padding:5px 7px;font-size:12px;line-height:1}
 .ink-grip:active{cursor:grabbing}
+.ink-lbl{font-size:12px;color:var(--sub)}
+.ink-bgs{display:inline-flex;gap:5px;align-items:center}
+.ink-bg{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);cursor:pointer;font-size:10px;
+  line-height:1;color:var(--sub);display:inline-flex;align-items:center;justify-content:center;padding:0}
+.ink-bg.on{outline:2px solid var(--primary);outline-offset:1px}
+.ink-chk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);margin-left:4px}
+/* 整页批注：铺满整个文档（不是视口），所以笔迹会跟着页面一起滚动 */
+.ink-view{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:12;display:none}
+.ink-fix{position:absolute;left:0;top:0;width:100%;touch-action:none;pointer-events:auto;z-index:12;display:none;cursor:crosshair}
+body.ink-on{user-select:none;-webkit-user-select:none}
+body.ink-on *{cursor:crosshair}
+body.ink-on .ink-wrap,body.ink-on .ink-wrap *{cursor:pointer;user-select:none}
+body.ink-on .ink-txt{cursor:text}
 .ink-seg button{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 9px;font-size:12.5px;cursor:pointer;min-width:0}
 .ink-seg button.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
@@ -9881,7 +9894,7 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .ink-acts button{border:1px solid var(--line);background:var(--card2);color:var(--text);border-radius:9px;
   padding:5px 11px;font-size:12.5px;cursor:pointer}
 .ink-acts .pri{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
-.ink-txt{position:absolute;z-index:7;background:var(--card);border:1px dashed var(--primary);border-radius:5px;
+.ink-txt{position:fixed;z-index:46;background:var(--card);border:1px dashed var(--primary);border-radius:5px;
   padding:1px 4px;outline:none;min-width:96px;font-family:inherit}
 
 .ink-full{position:fixed;inset:0;z-index:1200;background:var(--card);display:flex;flex-direction:column;
@@ -10002,3 +10015,25 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
   .exp-chip{padding:3px 9px;font-size:12px}
   .exp-kq{flex:1 1 100%;min-width:0}
 }
+.ink-imgs{position:absolute;left:0;top:0;width:0;height:0;z-index:13;pointer-events:none}
+.ink-img{position:absolute;max-width:none;height:auto;pointer-events:none}
+
+.ink-x{position:fixed;right:14px;top:70px;z-index:82;display:flex;align-items:center;gap:6px;
+  border:0;border-radius:12px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer;
+  color:#fff;background:#ef4444;box-shadow:0 6px 18px rgba(239,68,68,.35)}
+.ink-x b{font-size:17px;line-height:1}
+.ink-x:active{transform:translateY(1px)}
+@media (max-width:620px){.ink-x{right:10px;top:62px;padding:9px 13px;font-size:14px}}
+
+.ink-eye{position:fixed;right:14px;top:64px;z-index:82;display:inline-flex;align-items:center;gap:7px;
+  border:1px solid var(--line);border-radius:12px;padding:9px 15px;font-size:14.5px;font-weight:600;
+  cursor:pointer;color:#fff;background:#2563eb;box-shadow:0 6px 18px rgba(37,99,235,.32)}
+.ink-eye b{font-size:16px;line-height:1}
+.ink-eye.editing{background:#ef4444;box-shadow:0 6px 18px rgba(239,68,68,.35)}
+.ink-eye.off{background:var(--card);color:var(--ink);border-color:var(--primary);box-shadow:none}
+.ink-eye:active{transform:translateY(1px)}
+@media (max-width:620px){.ink-eye{right:10px;top:56px;padding:8px 12px;font-size:13.5px}}
+
+.exp-mask,.exp-mask *{user-select:none;-webkit-user-select:none}
+.exp-grid{user-select:none;touch-action:none}
+

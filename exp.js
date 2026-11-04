@@ -96,6 +96,14 @@
   }
 
   function open(b) {
+    try {
+      var allQ = ((bank && bank.questions) || []).slice(0, 60);
+      allQ.forEach(function (q) {
+        if (!window.INK || !INK.bake) return;
+        INK.bake(bank, q).then(function (b) { if (b && b.url) BAKED[q.id] = b.url; }).catch(function () {});
+      });
+    } catch (e) {}
+
     if (!b) return;
     bank = b; sel = {}; F = { subj: [], type: [], state: [], knows: [], q: '' };
     close();
@@ -136,6 +144,7 @@
       '<span class="exp-lab">附注</span><span class="exp-note"><button data-v="none">无</button><button data-v="ink" class="on">题目批注</button><button data-v="board">白板手稿</button><select class="exp-board" hidden></select></span>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-ans"> 带答案</label>' +
       '<label class="exp-ck"><input type="checkbox" class="exp-exp" checked> 带解析</label>' +
+      '<button class="btn" id="expSelf" style="margin-left:auto" title="检查批注有没有进导出">自检</button>' +
       '<button class="exp-go btn primary" style="margin-left:auto">导出 0 题</button>' +
       '</div></div>';
     document.body.appendChild(host);
@@ -175,6 +184,25 @@
       }).join('') : '<option value="">（还没有白板手稿）</option>';
     })();
     host.querySelector('.exp-go').onclick = doExport;
+    try {
+      var runSelf = function () {
+        selfTest(function (r) {
+          var m = document.createElement('div'); m.className = 'exp-mask';
+          m.innerHTML = '<div class="exp-box" style="max-width:520px">' +
+            '<div class="exp-head"><b>批注自检</b><button class="exp-x" title="关闭">✕</button></div>' +
+            '<div style="padding:10px 14px"><textarea readonly style="width:100%;height:180px;font:12px/1.6 ui-monospace,Consolas,monospace;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card2);color:var(--ink)"></textarea></div></div>';
+          document.body.appendChild(m);
+          var ta = m.querySelector('textarea');
+          ta.value = JSON.stringify(r, null, 2);
+          ta.onclick = function () { ta.select(); };
+          ta.focus(); ta.select();
+          m.querySelector('.exp-x').onclick = function () { m.remove(); };
+          m.onclick = function (ev) { if (ev.target === m) m.remove(); };
+        });
+      };
+      try { host.querySelector('#expSelf').onclick = runSelf; } catch (e) {}
+      setTimeout(function () { try { runSelf(); } catch (e) {} }, 400);
+    } catch (e) {}
 
     var kq = host.querySelector('.exp-kq'), sug = host.querySelector('.exp-ksug');
     kq.oninput = function () {
@@ -213,6 +241,7 @@
     var grid = host.querySelector('.exp-grid');
     grid.addEventListener('pointerdown', function (ev) {
       if (ev.button !== 0) return;
+      try { ev.preventDefault(); } catch (e) {}
       press = { x: ev.clientX, y: ev.clientY, moved: false, id: ev.pointerId };
     });
     grid.addEventListener('pointermove', function (ev) {
@@ -297,14 +326,15 @@
   function typeName(t) { return ({ A1: 'A1 单选', A2: 'A2 病例', B1: 'B1 配伍', X: 'X 多选', C: 'C 型' })[t] || t; }
 
   function zoomStyle(png, rec) {
-    if (!png || !rec) return '';
-    var pad = rec.pad == null ? 0 : +rec.pad;
-    var need = 718 + 2 * pad + 10;
+    if (!png) return '';
+    var need = 718 + Math.max(0, (png.cr.x - png.x)) + Math.max(0, (png.x + png.w) - (png.cr.x + png.cr.w)) + 10;
     var z = Math.min(1, 748 / need);
     return z < 0.995 ? ' style="zoom:' + z.toFixed(3) + '"' : '';
   }
 
-  function docHtml(rs) {
+  var BAKED = {};   /* qid -> 已烤好的批注整图（题目+批注对齐，导出不再算框） */
+  function docHtml(rs, baked) {
+    BAKED = baked || BAKED;
     var ans = host.querySelector('.exp-ans').checked;
     var exp = host.querySelector('.exp-exp').checked;
     var d = new Date();
@@ -322,6 +352,9 @@
       '.doc>h1{font-size:18px;margin:0 0 4px}',
       '.doc>.meta{font-size:12px;color:var(--sub,#64748b);margin:0 0 8mm;padding-bottom:6px;border-bottom:1px solid var(--line)}',
       '.qwrap{position:relative;margin:0 0 6mm;break-inside:avoid;page-break-inside:avoid}',
+      '.qbox{position:relative;margin:0 0 6mm;break-inside:avoid;page-break-inside:avoid}',
+      '.qbox>.qcard{position:relative;z-index:0}',
+      '.qbox>.inkimg{position:absolute;left:0;top:0;z-index:5;pointer-events:none;max-width:none}',
       '.qwrap>.card{box-shadow:none;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:14px 16px}',
       '.qwrap .inkimg{position:absolute;pointer-events:none;max-width:none;z-index:2}',
       '.qwrap .qhead{flex-wrap:wrap;gap:6px}',
@@ -331,14 +364,62 @@
       '.wcap{font-size:12px;color:var(--sub,#64748b);margin:0 0 4px}',
       '@media print{.doc{width:auto;padding:0}}'
     ].join('\n');
+    var dbgN = 0, dbgRec = 0, dbgGeo = 0;
     var body = rs.map(function (r, i) {
       var q = r.q, rec = null;
+      if (BAKED && BAKED[q.id]) {
+        var bk = BAKED[q.id];
+        var hb = '<div class="qwrap"><img src="' + bk + '" style="width:718px;display:block;border-radius:10px"></div>';
+        if (ans && false) hb += '';
+        return hb;
+      }
       try { rec = (window.INK && INK.inkRec) ? INK.inkRec(bank, q) : null; } catch (e) {}
-      var png = '';
+      var png = null;
       if (note === 'ink' && rec && rec.ops && rec.ops.length) {
         try { png = INK.pngOf(bank, q, { paper: 'light' }); } catch (e) {}
       }
-      var h = '<div class="qwrap" data-k="' + esc(r.key) + '"' + (png ? zoomStyle(png, rec) : '') + '><div class="card qcard">' +
+      /* 有批注时，外面再套一层「画布盒」：盒子尺寸＝题目卡片 ∪ 笔迹范围，
+         题目卡片居中放进去，批注整张图铺在盒子上——这样画到题目外面的笔迹不会被页边裁掉 */
+      var W = 718, geo = null;
+      var imgs = [];
+      try { imgs = (window.INK && INK.imgList) ? (INK.imgList(bank, q) || []) : []; } catch (e) {}
+      /* cr 缺失时兜底：旧记录可能只有 vw/vh；再不行用 pngOf 的 cr 或 0,0 */
+      if (rec && (!rec.cr)) {
+        if (png && png.cr) rec.cr = png.cr;
+        else {
+          var cc = document.querySelector('#view .card');
+          var cr1 = cc ? cc.getBoundingClientRect() : null;
+          rec.cr = cr1 ? { x: Math.round(cr1.left + scrollX), y: Math.round(cr1.top + scrollY), w: Math.round(cr1.width), h: Math.round(cr1.height) }
+                       : { x: 0, y: 0, w: 718, h: 600 };
+        }
+      }
+      if (rec && rec.ops && rec.ops.length && rec.cr) {
+        /* 外框 = 题目卡片 ∪ 笔迹图 ∪ 每张图片；哪怕只有图片、没有笔画也要出框 */
+        var cr0 = rec.cr;
+        var bx = cr0.x, by = cr0.y, bw = cr0.w, bh = cr0.h;
+        if (png) {
+          bx = Math.min(bx, png.x); by = Math.min(by, png.y);
+          bw = Math.max(cr0.x + cr0.w, png.x + png.w) - bx;
+          bh = Math.max(cr0.y + cr0.h, png.y + png.h) - by;
+        }
+        imgs.forEach(function (m) {
+          bx = Math.min(bx, m.x); by = Math.min(by, m.y);
+          bw = Math.max(cr0.x + cr0.w, m.x + m.w) - bx;
+          bh = Math.max(cr0.y + cr0.h, m.y + m.h) - by;
+        });
+        var K = W / Math.max(1, cr0.w);
+        geo = {
+          w: Math.round(bw * K), h: Math.round(bh * K),
+          cl: Math.round((cr0.x - bx) * K), ct: Math.round((cr0.y - by) * K),
+          iw: png ? Math.round(png.w * K) : 0, url: png ? png.url : '',
+          bx: bx, by: by, K: K
+        };
+        geo.z = Math.min(1, 700 / Math.max(1, geo.w), 1000 / Math.max(1, geo.h));
+      }
+      if (rec) dbgRec++; if (rec && rec.ops) dbgN += rec.ops.length; if (geo) dbgGeo++;
+      var h = (geo ? '<div class="qbox" style="width:' + geo.w + 'px;height:' + Math.round(geo.h) +
+        'px;zoom:' + (geo.z || 1).toFixed(3) + '">' : '<div class="qwrap">') +
+        '<div class="card qcard"' + (geo ? ' style="margin-left:' + geo.cl + 'px;margin-top:' + geo.ct + 'px;width:' + W + 'px"' : '') + '>' +
         '<div class="qhead"><span class="qno">第 ' + (i + 1) + ' 题</span>' +
         '<span class="tag">' + esc(typeName(r.type)) + '</span>' +
         (r.tries ? '<span class="tag g">错误率 ' + r.pct + '%</span>' : '') +
@@ -353,11 +434,16 @@
       if (ans) h += '<div class="exp" style="border-left-color:var(--primary)">答案：' + esc((q.answer || []).join('')) + '</div>';
       if (exp && q.explain) h += '<div class="exp">' + esc(q.explain) + '</div>';
       h += '</div>';
-      if (png) {
-        var pad = rec.pad == null ? 0 : +rec.pad;
-        var W = 718, K = W / Math.max(1, (rec.w || W) - 2 * pad);
-        h += '<img class="inkimg" src="' + png + '" style="left:' + Math.round(-pad * K) + 'px;top:' + Math.round(-pad * K) +
-          'px;width:' + Math.round((rec.w || W) * K) + 'px">';
+      if (geo) {
+        if (geo.url) h += '<img class="inkimg" src="' + geo.url + '" style="left:0;top:0;width:' + geo.iw + 'px">';
+        /* 图片笔迹不走 canvas，单独按同一套坐标叠上去；盒子已把图片外框算进去 */
+        var imgs2 = [];
+        try { imgs2 = (window.INK && INK.imgList) ? (INK.imgList(bank, q) || []) : []; } catch (e) {}
+        imgs2.forEach(function (m) {
+          h += '<img class="inkimg" src="' + m.data + '"' +
+            ' style="left:' + Math.round((m.x - geo.bx) * geo.K) + 'px;top:' + Math.round((m.y - geo.by) * geo.K) + 'px;' +
+            'width:' + Math.round(m.w * geo.K) + 'px;opacity:' + (m.op == null ? 1 : m.op) + '">';
+        });
       }
       return h + '</div>';
     }).join('\n');
@@ -389,7 +475,14 @@
   function doExport() {
     var rs = filtered().filter(function (r) { return sel[r.key]; });
     if (!rs.length) { toast2('先勾选要导出的题', 1800, 'bad'); return; }
-    var html = docHtml(rs);
+    var html = '';
+    try { html = docHtml(rs); } catch (e) {
+      try { console.error('[exp] docHtml failed', e); } catch (e2) {}
+      try { window.__expErr = String((e && e.stack) || e); } catch (e5) {}
+      try { toast2('导出失败：' + ((e && e.message) || e), 3200, 'bad'); } catch (e3) {}
+      return;
+    }
+    if (!html) { try { toast2('导出内容为空（批注数据可能异常）', 2600, 'bad'); } catch (e4) {} return; }
     if (fmt === 'pdf') {
       var fr = document.createElement('iframe');
       fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
@@ -415,5 +508,34 @@
     host = null;
   }
 
-  window.EXP = { open: open, close: close };
+  /* 自检：不用手点，一句话跑完「全选 → 导出 → 看批注进没进去」 */
+  function selfTest(cb) {
+    var out = { sel: 0, baked: 0, inkimg: 0, len: 0, hasInk: false, err: '', hasBake: false };
+    out.hasBake = !!(window.INK && typeof INK.bake === 'function');
+    var bank = (typeof bankById === 'function' && QZ.bankId) ? bankById(QZ.bankId) : null;
+    var qs = (bank && bank.questions) || [];
+    var rs = qs.slice(0, 8).map(function (q) {
+      return { q: q, key: q.id, subj: [], type: 'A1', tries: 0, pct: 0 };
+    });
+    out.sel = rs.length;
+    if (!out.hasBake) { if (cb) cb(out); return out; }
+    var jobs = rs.map(function (r) {
+      try { return INK.bake(bank, r.q).catch(function () { return null; }); } catch (e) { return Promise.resolve(null); }
+    });
+    Promise.all(jobs).then(function (arr) {
+      arr.forEach(function (b, k) {
+        if (b && b.url) { BAKED[rs[k].q.id] = b.url; out.baked++; }
+      });
+      try {
+        var html = docHtml(rs, BAKED);
+        out.len = html ? html.length : 0;
+        out.inkimg = html ? (html.split('data:image/png').length - 1) : 0;
+        out.hasInk = html ? html.indexOf('qwrap') >= 0 : false;
+      } catch (e) { out.err = String((e && e.stack) || e); }
+      if (cb) cb(out);
+    });
+    return out;
+  }
+
+  window.EXP = { selfTest: selfTest, open: open, close: close };
 })();
