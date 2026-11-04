@@ -483,7 +483,11 @@
     if (!(window.INK && INK.bake && bank0)) return go();
     /* 点导出的这一刻现场烤图：等每道题的批注（含图片）都画进 canvas 再生成文档 */
     var jobs = all.map(function (r) {
-      try { return INK.bake(bank0, r.q).catch(function () { return null; }); }
+      try {
+        var pr = INK.bake(bank0, r.q).catch(function () { return null; });
+        /* 烤图可能卡在图片解码上永远不 resolve：1.5 秒等不到就先用空图继续，不能把整个导出拖死 */
+        return Promise.race([pr, new Promise(function (res) { setTimeout(function () { res(null); }, 1500); })]);
+      }
       catch (e) { return Promise.resolve(null); }
     });
     Promise.all(jobs).then(function (arr) {
