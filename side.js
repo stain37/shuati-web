@@ -746,7 +746,9 @@
     var MODEL_NAME = '';
     try { MODEL_NAME = String((typeof aiCfg === 'function' && aiCfg().model) || ''); } catch (e) {}
     var IS_REASONER = /reasoner|reason|-r1|\br1\b|thinking|qwq|o1|o3|deepseek-r/i.test(MODEL_NAME);
-    var TOK = IS_REASONER ? 3000 : 900;
+    /* deepseek-flash 这类也会先输出 reasoning_tokens，900 常被思考吃光 → 统一给足预算
+       max_tokens 只是上限，不按上限计费，给大没有副作用 */
+    var TOK = IS_REASONER ? 4500 : 3000;
     var SIG = ctl ? ctl.signal : undefined;
     Promise.resolve()
       .then(function () {
