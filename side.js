@@ -543,6 +543,7 @@
   }
 
   /* ---------- ✨ 一键 AI 分类（只处理「未分类」里的题库） ---------- */
+  var CLS_BUILD = 'b295';
   var CLS = { open: false, step: 'ask', req: '', groups: null, busy: false, err: '', note: '' };
 
   function clsUncat() {
@@ -762,9 +763,14 @@
           .then(function (full) {
             var t = String(full || acc || '');
             if (t.trim()) return t;
-            var e2 = new Error('模型返回了空内容');
-            e2.body = 'empty';
-            throw e2;
+            /* 第三次：完全不给 max_tokens（有些模型/服务商把预算算得很怪，给上限就全用在思考上） */
+            return aiChat(MSGS, null, SIG, { stream: false }).then(function (t2) {
+              var t3 = String(t2 || '');
+              if (t3.trim()) return t3;
+              var e2 = new Error('模型返回了空内容');
+              e2.body = 'empty';
+              throw e2;
+            });
           });
       })
       .then(function (txt) {
@@ -807,7 +813,7 @@
       .catch(function (e) {
         clearTimeout(timer);
         if (e && e.body === 'empty') {
-          CLS.err = '没分成功：模型一个字都没回（常见原因：这套模型是「推理型」，只输出了思考过程；或服务端限流/额度用尽）。换个模型（设置 → AI 服务）或稍后再试。';
+          CLS.err = '没分成功：模型一个字都没回（已试 3 次：非流式 / 流式 / 不给上限）。可能是这家服务商只放思考过程、或限流/额度用尽。换个模型（设置 → AI 服务）再试。[' + CLS_BUILD + ']';
           CLS.step = 'ask';
           clsRender();
           return;
