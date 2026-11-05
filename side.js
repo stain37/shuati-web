@@ -543,7 +543,7 @@
   }
 
   /* ---------- ✨ 一键 AI 分类（只处理「未分类」里的题库） ---------- */
-  var CLS_BUILD = 'b295';
+  var CLS_BUILD = 'b298';
   var CLS = { open: false, step: 'ask', req: '', groups: null, busy: false, err: '', note: '' };
 
   function clsUncat() {
@@ -781,44 +781,39 @@
       + 'banks 只能填上面清单里出现过的 id；同一个题库只能出现在一组里；'
       + '拿不准或不符合任何一组的，就别放进任何 group（会留在未分类）。';
 
+    /* 上一轮还没结束就再点：先掐掉旧的，避免两个请求抢面板 */
+    try { if (CLS.ctl && CLS.ctl.abort) CLS.ctl.abort(); } catch (e) {}
     var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
-    var t0 = Date.now();
+    CLS.ctl = ctl;
+    var t0 = Date.now(), got = 0;
     var tick = setInterval(function () {
       var w = document.querySelector('.cls-wait');
       if (!w) return;
       var sec = Math.round((Date.now() - t0) / 1000);
-      w.textContent = '已等 ' + sec + ' 秒' + (sec >= 20 ? '（推理型模型会慢一些，最多等 90 秒）' : '');
+      w.textContent = '已等 ' + sec + ' 秒' + (got ? '，已收到 ' + got + ' 字' : '')
+        + (sec >= 15 ? '（模型思考中，最多等 150 秒）' : '');
     }, 500);
     var timer = setTimeout(function () {
       try { if (ctl) ctl.abort(); } catch (e) {}
       if (!CLS._timedOut) {
         CLS._timedOut = true;
-        try { toast('等了 90 秒模型还没回，已停下', 2600, 'bad'); } catch (e) {}
+        try { toast('等了 150 秒模型还没回，已停下', 2600, 'bad'); } catch (e) {}
       }
-    }, 90000);
+    }, 150000);
     var MSGS = [{ role: 'system', content: sys }, { role: 'user', content: usr }];
-    /* 推理型模型（deepseek-reasoner / r1 / o1 / qwq 等）会把 max_tokens 全花在思考上，
-       留不下正文 → 这类模型直接要更多预算 */
     var MODEL_NAME = '';
     try { MODEL_NAME = String((typeof aiCfg === 'function' && aiCfg().model) || ''); } catch (e) {}
-    var IS_REASONER = /reasoner|reason|-r1|\br1\b|thinking|qwq|o1|o3|deepseek-r/i.test(MODEL_NAME);
-    /* deepseek-flash 这类也会先输出 reasoning_tokens，900 常被思考吃光 → 统一给足预算
-       max_tokens 只是上限，不按上限计费，给大没有副作用 */
-    var TOK = 6000;   /* 只是上限，不按上限计费；截断过的回答重来一次更费事 */
+    var TOK = 6000;   /* 只是上限，不按上限计费 */
     var SIG = ctl ? ctl.signal : undefined;
+    /* 先走流式：能立刻看到"已收到 N 字"，也避免非流式在慢服务上一直干等 */
     Promise.resolve()
       .then(function () {
-        return aiChat(MSGS, null, SIG, { stream: false, temp: 0.2, maxTokens: TOK });
-      })
-      .then(function (txt) {
-        if (txt && String(txt).trim()) return txt;
-        /* 有些服务商对 stream:false 会回空内容（或推理模型只吐 reasoning），改用流式再要一次 */
         var acc = '';
-        return aiChat(MSGS, function (full) { acc = full; }, SIG, { stream: true, temp: 0.2, maxTokens: TOK })
+        return aiChat(MSGS, function (full) { got = String(full || acc || '').length; acc = full; }, SIG, { stream: true, temp: 0.2, maxTokens: TOK })
           .then(function (full) {
             var t = String(full || acc || '');
             if (t.trim()) return t;
-            /* 第三次：完全不给 max_tokens（有些模型/服务商把预算算得很怪，给上限就全用在思考上） */
+            /* 流式也空：再用非流式、并且不给 max_tokens（有些服务商把预算算得很怪） */
             return aiChat(MSGS, null, SIG, { stream: false }).then(function (t2) {
               var t3 = String(t2 || '');
               if (t3.trim()) return t3;
@@ -870,7 +865,7 @@
         clearTimeout(timer); clearInterval(tick); CLS.running = false;
         var wasTimeout = CLS._timedOut === true; CLS._timedOut = false;
         if (wasTimeout) {
-          CLS.err = '等了 90 秒模型还没回，先停下了。可能是模型太慢或网络/服务不稳——可以换个小一点的模型，或过一会儿再试。[' + CLS_BUILD + ']';
+          CLS.err = '等了 150 秒模型还没回，先停下了。拿 20 多个题库去分时，推理型模型常常要一两分钟：可以少选几个未分类的题库、或换个更快的模型（设置 → AI 服务），或过一会儿再试。[' + CLS_BUILD + ']';
           CLS.step = 'ask';
           clsRender();
           return;
