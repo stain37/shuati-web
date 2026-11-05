@@ -10959,3 +10959,12 @@ html.cx-now *, html.cx-now *::before, html.cx-now *::after {
   transition: none !important;
   animation-duration: 0s !important;
 }
+
+/* 一键分类：示例 chip（web299） */
+.cls-egs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+.cls-eg{padding:4px 10px;border-radius:999px;border:1px solid var(--line2);
+  background:var(--card2);color:var(--sub);font-size:12px;line-height:1.5;cursor:pointer;
+  transition:background .15s ease,color .15s ease,border-color .15s ease}
+.cls-eg:hover{background:var(--primary-soft);color:var(--primary);border-color:var(--primary-line)}
+.cls-eg:active{transform:translateY(1px)}
+@media (max-width:620px){ .cls-eg{font-size:12px;padding:5px 10px} }

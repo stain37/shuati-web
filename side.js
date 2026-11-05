@@ -581,6 +581,16 @@
       var id = e.target && e.target.id;
       if (id === 'clsClose') { clsCloseFn(); return; }
       if (id === 'clsRun') { clsRun(); return; }
+      var eg = e.target && e.target.closest ? e.target.closest('.cls-eg') : null;
+      if (eg) {
+        var ta = $('clsReq');
+        var v = eg.getAttribute('data-eg') || '';
+        if (ta) { ta.value = v; }
+        CLS.req = v;
+        try { localStorage.setItem('qbank.cls.req.v1', v); } catch (e2) {}
+        if (ta) ta.focus();
+        return;
+      }
       if (id === 'clsBack') { CLS.step = 'ask'; clsRender(); return; }
       if (id === 'clsApply') { clsApply(); return; }
     });
@@ -606,7 +616,9 @@
     CLS.banks = list;
     CLS.req = '';
     try { CLS.req = localStorage.getItem('qbank.cls.req.v1') || ''; } catch (e) {}
-    if (!CLS.req) CLS.req = '按科目分开：内科、外科、病理、生理、生化、人文；其他归到「综合」。';
+    /* 老版本把「按科目分开…」当成默认值存进了 localStorage，这里识别并清掉，
+       让默认回到"按内容自然分"，不预设内外科这种分法 */
+    if (/^按科目分开：内科、外科、病理、生理、生化、人文/.test(CLS.req)) CLS.req = '';
     if (wide()) setOpen(true);
     $('clsMask').classList.add('show');
     clsRender();
@@ -626,8 +638,14 @@
     if (CLS.step === 'ask') {
       body.innerHTML = '<p class="cls-hint">现在有 <b>' + n + '</b> 个题库还没归到文件夹里。'
         + '下面写你想要的分法（分几组、哪些放一起都行），AI 会照这个分。</p>'
-        + '<textarea id="clsReq" class="cls-req" rows="3" placeholder="例：按科目分成 6 组：内科 / 外科 / 病理 / 生理 / 生化 / 人文；不确定的放「综合」。">'
+        + '<textarea id="clsReq" class="cls-req" rows="3" placeholder="不填也行：默认按内容主题自然分组。也可以指定，例：按系统分 5 组；按考试年份分；每 3 个题库拼一组">'
         + E(CLS.req) + '</textarea>'
+        + '<div class="cls-egs">'
+        + '<button type="button" class="cls-eg" data-eg="按系统分：心血管、呼吸、消化、泌尿、内分泌、神经；其余归「其他」">按系统分</button>'
+        + '<button type="button" class="cls-eg" data-eg="按考试年份分：年份相近的放一组，组名就用年份">按年份分</button>'
+        + '<button type="button" class="cls-eg" data-eg="按题量分：每组大约 3 个题库，组名用一两个词概括内容">按题量分</button>'
+        + '<button type="button" class="cls-eg" data-eg="">清空</button>'
+        + '</div>'
         + '<p class="cls-hint dim">AI 只看题库名和几道题的开头，不会改题目内容；分完可以再手动拖。</p>'
         + (CLS.err ? '<p class="cls-err">' + E(CLS.err) + '</p>' : '');
       foot.innerHTML = '<span class="spacer-grow"></span>'
@@ -758,7 +776,11 @@
   function clsRun() {
     var ta = $('clsReq');
     var req = (ta && ta.value || '').trim();
-    CLS.req = req || CLS.req;
+    CLS.req = req;   /* 清空就是「不指定」：走中性默认分法，不要回填上次的要求 */
+    /* 用户没写要求：不预设分法，让 AI 按内容自然分 */
+    var reqForAi = (CLS.req || '').trim()
+      || '你没有特别要求就按内容主题自然分组：把考同一系统/同一主题的题库放在一起，每组 2~6 个；'
+         + '组名简短（4~8 个字，例如「心血管」「呼吸」「围手术期」），拿不准的留在未分类。';
     try { localStorage.setItem('qbank.cls.req.v1', CLS.req); } catch (e) {}
     if (!clsAiReady()) { CLS.err = '这个站没加载 AI 模块（ai.js），没法自动分。'; CLS.step = 'ask'; clsRender(); return; }
     var cfg = clsCfg();
@@ -775,7 +797,7 @@
     }).join('\n');
     var sys = '你是题库整理助手。用户给你一批还没归类的题库（id 与信息）和他想要的分类方式。'
       + '你只负责按他的要求把它们分到若干文件夹里，并且只输出一个 JSON 对象，不要任何解释、不要代码块。';
-    var usr = '用户的分法要求：' + CLS.req + '\n\n题库清单：\n' + lines
+    var usr = '用户的分法要求：' + reqForAi + '\n\n题库清单：\n' + lines
       + '\n\n只输出这个格式：{"groups":[{"name":"文件夹名","banks":["id1","id2"]}]}'
       + '\n要求：name 是新建文件夹的名字（≤12 个字，不要 emoji、不要带编号）；'
       + 'banks 只能填上面清单里出现过的 id；同一个题库只能出现在一组里；'
