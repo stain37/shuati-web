@@ -10976,3 +10976,10 @@ html.cx-now *, html.cx-now *::before, html.cx-now *::after {
 .nb-pager .nb-pageinp{width:64px;padding:2px 6px;font-size:13px}
 .nb-pager-one{opacity:.55;font-size:12.5px}
 .nb-pager-one span{opacity:1}
+
+/* ---------- 侧栏搜索：范围（文件夹/题库/都搜）+ 并集/交集 ---------- */
+.qs-opts{display:flex;align-items:center;gap:10px;padding:0 10px 8px;font-size:12px;opacity:.85;flex-wrap:wrap}
+.qs-opts label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.qs-sel{font:inherit;padding:2px 4px;border-radius:6px;border:1px solid rgba(127,127,127,.35);
+  background:rgba(127,127,127,.10);color:inherit;max-width:110px}
+.qs-sel:focus{outline:2px solid rgba(127,127,127,.45);outline-offset:1px}

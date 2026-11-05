@@ -16,7 +16,7 @@
   function $(id) { return document.getElementById(id); }
   function wide() { try { return window.matchMedia(WIDE).matches; } catch (e) { return false; } }
 
-  var S = { open: true, q: '', closed: {}, ai: false };
+  var S = { open: true, q: '', closed: {}, ai: false, scope: 'both', logic: 'or' };
   var MT = { q: '', terms: [] };      /* 当前匹配上下文（paint 里算一次，catHtml 复用） */
   (function () {
     var v = ls(KEY, null);
@@ -24,6 +24,8 @@
       S.open = v.open !== false;
       S.closed = v.closed && typeof v.closed === 'object' ? v.closed : {};
       S.ai = !!v.ai;
+      S.scope = (v.scope === 'cat' || v.scope === 'bank') ? v.scope : 'both';
+      S.logic = v.logic === 'and' ? 'and' : 'or';
     } else S.open = true;
     if (!wide()) S.open = false;
   })();
@@ -72,6 +74,16 @@
       + '<button type="button" class="qs-ico" id="qsClose" title="收起侧栏（Alt+Q）">«</button></div>'
       + '<div class="qs-search"><label class="qs-find"><i>⌕</i><input id="qsQ" type="text" placeholder="搜题库 / 文件夹…" autocomplete="off" enterkeyhint="search"></label>'
       + '<button type="button" class="qs-ai" id="qsAi" title="AI 模糊：记不清名字也能找到"><span>✨</span></button></div>'
+      + '<div class="qs-opts">'
+      + '<label title="搜哪一类">搜 '
+      + '<select id="qsScope" class="qs-sel">'
+      + '<option value="both">两个都搜</option><option value="cat">只搜文件夹</option><option value="bank">只搜题库</option>'
+      + '</select></label>'
+      + '<label title="并集＝命中任意一个词就算；交集＝每个词都得命中（更准）">'
+      + '<select id="qsLogic" class="qs-sel">'
+      + '<option value="or">并集</option><option value="and">交集</option>'
+      + '</select></label>'
+      + '</div>'
       + '<div class="qs-ainote" id="qsAiNote" hidden></div>'
       + '<div class="qs-list" id="qsList"></div>'
       + '<div class="qs-foot"><span id="qsStat"></span><button type="button" class="qs-all" id="qsAll">全部题库 ›</button></div>';
@@ -109,6 +121,11 @@
       e.stopPropagation();
       if (e.key === 'Escape') { e.target.value = ''; S.q = ''; paint(); }
     });
+    (function () {
+      var sc = $('qsScope'), lg = $('qsLogic');
+      if (sc) { sc.value = S.scope; sc.onchange = function () { S.scope = sc.value; save(); paint(); }; }
+      if (lg) { lg.value = S.logic; lg.onchange = function () { S.logic = lg.value; save(); paint(); }; }
+    })();
     var list = $('qsList');
     list.addEventListener('click', onListClick);
     list.addEventListener('dragstart', onDragStart);
@@ -266,24 +283,49 @@
     if (simHit(h, t)) return 0.7;
     return 0;
   }
-  function hits(hay) {
-    var q = MT.q;
-    if (!q) return true;
-    var h = nz(hay), qn = nz(q);
-    if (!qn) return true;
-    if (hitOne(h, qn)) return true;                   /* 本地直接命中，最高优先 */
-    if (AIQ.q === q && AIQ.fixed) {                   /* AI 纠错后的词 */
+  /* 搜索词拆成「词」：空格 / 逗号 / 顿号 / 分号 / 斜杠 */
+  function qTokens(q) {
+    return String(q || '').split(/[\s,，、;；\/]+/).map(function (t) { return t.trim(); })
+      .filter(function (t) { return !!t; });
+  }
+  /* 单个词能不能命中这段文本：字面 / 抠字 / 顺序无关 + 该词对应的 AI 纠错与扩展词 */
+  function hitNeedle(h, n) {
+    if (!n) return true;
+    if (hitOne(h, n)) return true;
+    if (AIQ.q === MT.q && AIQ.fixed) {
       var f = nz(AIQ.fixed);
-      if (f && qn.indexOf(f) < 0 && hitOne(h, f)) return true;
+      if (f && hitOne(h, f)) return true;
     }
     var best = 0;
     for (var i = 0; i < MT.terms.length; i++) {
       var t = nz(MT.terms[i]);
       if (!t) continue;
+      if (t.indexOf(n) < 0 && n.indexOf(t) < 0) continue;   /* 只算跟这个词有关的扩展 */
       var s0 = termScore(h, t) * ((MT.wmap && MT.wmap[MT.terms[i]]) || 0.8);
       if (s0 > best) best = s0;
     }
-    return best >= 0.5;                              /* 扩展词要够相关才算命中 */
+    return best >= 0.5;
+  }
+  function hits(hay) {
+    var q = MT.q;
+    if (!q) return true;
+    var h = nz(hay);
+    if (!h) return false;
+    var toks = (MT.toks && MT.toks.length) ? MT.toks : [q];
+    if (MT.logic === 'and') {                    /* 交集：每个词都得命中 */
+      for (var i = 0; i < toks.length; i++) {
+        if (!hitNeedle(h, nz(toks[i]))) return false;
+      }
+      return true;
+    }
+    /* 并集：整串命中，或任意一个词命中 */
+    var qn = nz(q);
+    if (qn && hitNeedle(h, qn)) return true;
+    for (var j = 0; j < toks.length; j++) {
+      var tj = nz(toks[j]);
+      if (tj && tj !== qn && hitOne(h, tj)) return true;
+    }
+    return false;
   }
 
   /* 题库搜索文本：标题 + 目录路径 + 前 40 条题干（各 60 字），懒缓存 */
@@ -324,8 +366,10 @@
     var kidsArr = kids(c.id);
     var ownBanks = (bm[c.id] || []);
     var qLow = q;
+    var sc = MT.scope || 'both';
     function keepBank(b) {
       if (!qLow) return true;
+      if (sc === 'cat') return false;         /* 只搜文件夹：题库不按自己名字算命中 */
       return hits(bankHay(b));
     }
     var shownBanks = ownBanks.filter(keepBank);
@@ -336,8 +380,15 @@
       var h = catHtml(k, depth + 1, bm, q, hit);
       if (h) { subHtml += h; subCount += (hit.n - before); }
     });
-    var selfHit = !!qLow && hits(String(c.title));
-    var show = !qLow || selfHit || shownBanks.length || subCount;
+    var selfHit = !!qLow && sc !== 'bank' && hits(String(c.title));
+    if (selfHit) hit.c = (hit.c || 0) + 1;
+    /* 只搜文件夹且命中了：把里面所有题库都摊出来（不再按题目内容过滤） */
+    if (qLow && sc === 'cat' && selfHit && !shownBanks.length) shownBanks = ownBanks;
+    var show;
+    if (!qLow) show = true;
+    else if (sc === 'cat') show = selfHit || subCount > 0;
+    else if (sc === 'bank') show = shownBanks.length > 0 || subCount > 0;
+    else show = selfHit || shownBanks.length > 0 || subCount > 0;
     if (!show) return '';
     hit.n += shownBanks.length;
     var folded = !!S.closed[c.id] && !qLow;
@@ -393,6 +444,9 @@
     if (DRAG) return;                        /* 拖动中别整片重画，节点会被换掉 */
     var q = (S.q || '').trim().toLowerCase();
     MT.q = q;
+    MT.toks = qTokens(q);
+    MT.logic = S.logic;
+    MT.scope = S.scope;
     MT.terms = aiTerms(q);
     MT.wmap = {};
     if (AIQ.q === q && AIQ.terms.length) {
@@ -406,11 +460,12 @@
     if (S.ai && q.length >= 2 && !MT.terms.length) aiSchedule(q);
     aiNote(q);
     var bm = bankMap();
-    var hit = { n: 0 };
+    var hit = { n: 0, c: 0 };
     var html = '';
     kids(null).forEach(function (c) { html += catHtml(c, 0, bm, q, hit); });
     var rootBanks = (bm[''] || []).filter(function (b) {
       if (!q) return true;
+      if (S.scope === 'cat') return false;
       return hits(bankHay(b));
     });
     if (rootBanks.length) {
@@ -427,7 +482,14 @@
     var nDone = 0;
     allB.forEach(function (b) { nDone += statOf(b).done; });
     var st = $('qsStat');
-    if (st) st.innerHTML = (q ? '命中 ' + (hit.n + rootBanks.length) + ' 个' : '共 ' + allB.length + ' 个题库 · ' + nq + ' 题') + '<span class="qs-pd">已答 ' + nDone + '</span>';
+    if (st) {
+      var nCat = hit.c || 0, nBank = hit.n + rootBanks.length;
+      var hitTxt = S.scope === 'cat' ? ('命中 ' + nCat + ' 个文件夹')
+        : S.scope === 'bank' ? ('命中 ' + nBank + ' 个题库')
+          : ('命中 ' + nCat + ' 个文件夹 · ' + nBank + ' 个题库');
+      st.innerHTML = (q ? hitTxt : '共 ' + allB.length + ' 个题库 · ' + nq + ' 题')
+        + '<span class="qs-pd">已答 ' + nDone + '</span>';
+    }
   }
 
   /* ---------- 点击 ---------- */
