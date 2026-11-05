@@ -292,6 +292,8 @@
     var sameBank = it.bank.id === curBankId;
     close();
     if (sameBank) {
+      /* 记下跳转前那道题：这样点「返回」会先回到它，而不是一路退回主页 */
+      try { if (QZ.cur && QZ.cur !== it.q.id) QZ.__jumpPrev = QZ.cur; } catch (e) {}
       try { QZ.cur = it.q.id; } catch (e) {}
       try { render(); } catch (e) {}
       try { window.scrollTo(0, 0); } catch (e) {}

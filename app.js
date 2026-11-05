@@ -6468,7 +6468,18 @@ on('jumpInfo', () => { renderGrid(); $('gridMask').classList.add('show'); });
 on('gridClose', closeAll);
 on('btnHome', () => go('#/'));
 /* 固定返回键：优先浏览器历史（hash 返回），直接打开的子页就回首页 */
-on('backFix', () => { try { if (history.length > 1) history.back(); else go('#/'); } catch (e) { go('#/'); } });
+on('backFix', () => {
+  /* 相似题跳转后，先退回跳转前那道题（否则会一路退回主页） */
+  try {
+    var _r = (typeof route === 'function') ? route() : null;
+    if (_r && _r.name === 'quiz' && QZ && QZ.__jumpPrev) {
+      var _p = QZ.__jumpPrev; QZ.__jumpPrev = null;
+      QZ.cur = _p; render(); try { window.scrollTo(0, 0); } catch (e2) {}
+      return;
+    }
+  } catch (e0) {}
+  try { if (history.length > 1) history.back(); else go('#/'); } catch (e) { go('#/'); }
+});
 on('bnHome', () => go('#/'));
 on('appTitle', () => go('#/'));
 on('btnGoWrong', () => go('#/wrong'));

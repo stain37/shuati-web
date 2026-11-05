@@ -146,6 +146,69 @@
     if (!S.ai || !q) return [];
     try { return (typeof window.qaiTerms === 'function') ? (window.qaiTerms(q) || []) : []; } catch (e) { return []; }
   }
+  /* ---- AI 纠错 + 扩词（一次请求，带权重，结果缓存） ---- */
+  var AIQ = { q: '', fixed: '', fixes: [], terms: [], wmap: {}, at: 0 };
+  var tmrQ = 0, qAbort = null;
+  function aiqCache() { try { return JSON.parse(localStorage.getItem('qbank.side.aiq.v1') || '{}'); } catch (e) { return {}; } }
+  function aiqSave(k, v) {
+    try {
+      var m = aiqCache(); m[k] = v;
+      var ks = Object.keys(m);
+      if (ks.length > 300) delete m[ks[0]];
+      localStorage.setItem('qbank.side.aiq.v1', JSON.stringify(m));
+    } catch (e) {}
+  }
+  function aiqParse(txt) {
+    var t = String(txt || '').replace(/```[a-zA-Z]*/g, '').trim();
+    var a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    try { return JSON.parse(t.slice(a, b + 1)); } catch (e) { return null; }
+  }
+  function aiqApply(q, o) {
+    if (!o) return;
+    var terms = [], wmap = {};
+    var arr = o.terms || o.words || [];
+    for (var i = 0; i < arr.length && terms.length < 14; i++) {
+      var it = arr[i], w = 0.8;
+      if (typeof it === 'string') { it = { t: it }; }
+      var t = String((it && it.t) || '').trim();
+      if (!t) continue;
+      var ww = parseFloat(it.w);
+      if (isFinite(ww) && ww > 0) w = Math.max(0.3, Math.min(1, ww));
+      if (wmap[t]) continue;
+      terms.push(t); wmap[t] = w;
+    }
+    AIQ = { q: q, fixed: String(o.fixed || ''), fixes: (o.fixes || []).slice(0, 3), terms: terms, wmap: wmap, at: Date.now() };
+    try { if (o.fixed && String(o.fixed).trim() && String(o.fixed).trim() !== q) AIQ.fixed = String(o.fixed).trim(); } catch (e) {}
+    aiqSave(q, { fixed: AIQ.fixed, fixes: AIQ.fixes, terms: AIQ.terms, wmap: AIQ.wmap, at: AIQ.at });
+  }
+  function aiFix(q) {
+    if (!S.ai || q.length < 2) return;
+    var c = aiqCache()[q];
+    if (c) { aiqApply(q, { fixed: c.fixed, fixes: c.fixes, terms: c.terms.map(function (t) { return { t: t, w: (c.wmap || {})[t] || 0.8 }; }) }); return; }
+    clearTimeout(tmrQ);
+    tmrQ = setTimeout(function () {
+      if (MT.q !== q) return;
+      if (typeof aiChat !== 'function') return;
+      try { if (qAbort && qAbort.abort) qAbort.abort(); } catch (e) {}
+      try { qAbort = new AbortController(); } catch (e) { qAbort = null; }
+      var sys = '你是题库检索助手。用户输入的是要搜索的关键词，可能有错别字、拼音缩写、口语说法。'
+        + '请①纠正错别字/缩写，②给出 8~12 个相关检索词（同义词、近义表述、子概念、英文缩写）。'
+        + '只输出 JSON，不要解释：{"fixed":"纠正后的查询","fixes":["错→对"],"terms":[{"t":"词","k":"同义|近义表述|子概念|英文缩写","w":0.4~1.0}]}';
+      var usr = '用户的搜索词：' + q;
+      try {
+        aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }], null,
+          qAbort ? qAbort.signal : undefined, { stream: false, temp: 0.2, maxTokens: 700 })
+          .then(function (txt) {
+            var o = aiqParse(txt);
+            if (!o) return;
+            aiqApply(q, o);
+            try { if (MT.q === q) paint(); } catch (e) {}
+          })['catch'](function () {});
+      } catch (e) {}
+    }, 400);
+  }
+
   /* 归一化：全角→半角、去空白/常见标点、小写（中文原样保留） */
   function nz(t) {
     var s = String(t || ''), out = '';
@@ -176,17 +239,50 @@
     }
     return false;
   }
+  /* 相似度：查询的字在题干里「凑得够齐」就算命中（不管顺序），
+     用来补「AI 扩展词只有十来个、换个说法就搜不到」的短板 */
+  function simHit(h, q, need) {
+    var n = q.length;
+    if (!n || !h) return false;
+    var want = Math.max(2, Math.ceil(n * (need || 0.75)));
+    if (want > n) want = n;
+    var first = q.charAt(0), step = n > 8 ? 2 : 1;
+    for (var i = 0; i < h.length; i += step) {
+      if (h.charAt(i) !== first) continue;
+      var win = h.substr(i, Math.max(80, n * 12)), seen = {}, got = 0;
+      for (var a = 0; a < n; a++) {
+        var ch = q.charAt(a);
+        if (seen[ch]) continue;
+        if (win.indexOf(ch) >= 0) { seen[ch] = 1; got++; }
+      }
+      if (got >= want) return true;
+    }
+    return false;
+  }
+  function hitOne(h, q) { return loose(h, q) || simHit(h, q); }
+  function termScore(h, t) {
+    if (loose(h, t)) return 1;
+    if (simHit(h, t)) return 0.7;
+    return 0;
+  }
   function hits(hay) {
     var q = MT.q;
     if (!q) return true;
     var h = nz(hay), qn = nz(q);
     if (!qn) return true;
-    if (loose(h, qn)) return true;
+    if (hitOne(h, qn)) return true;                   /* 本地直接命中，最高优先 */
+    if (AIQ.q === q && AIQ.fixed) {                   /* AI 纠错后的词 */
+      var f = nz(AIQ.fixed);
+      if (f && qn.indexOf(f) < 0 && hitOne(h, f)) return true;
+    }
+    var best = 0;
     for (var i = 0; i < MT.terms.length; i++) {
       var t = nz(MT.terms[i]);
-      if (t && loose(h, t)) return true;
+      if (!t) continue;
+      var s0 = termScore(h, t) * ((MT.wmap && MT.wmap[MT.terms[i]]) || 0.8);
+      if (s0 > best) best = s0;
     }
-    return false;
+    return best >= 0.5;                              /* 扩展词要够相关才算命中 */
   }
 
   /* 题库搜索文本：标题 + 目录路径 + 前 40 条题干（各 60 字），懒缓存 */
@@ -198,7 +294,12 @@
     var txt = String(b.title || '') + ' ' + catPath(b.cat).join(' ');
     try {
       var qs = (b.questions || []).slice(0, 40), parts = [];
-      for (var i = 0; i < qs.length; i++) parts.push(String(qs[i].stem || '').slice(0, 60));
+      for (var i = 0; i < qs.length; i++) {
+        var it = qs[i] || {};
+        parts.push(String(it.stem || '').slice(0, 60));
+        var op = it.options || [];
+        for (var j = 0; j < op.length && j < 8; j++) parts.push(String(op[j] || '').slice(0, 20));
+      }
       if (parts.length) txt += ' ' + parts.join(' ');
     } catch (e) {}
     hayCache[k] = txt;
@@ -259,6 +360,7 @@
     if (!S.ai) { el.hidden = true; el.textContent = ''; return; }
     el.hidden = false;
     if (q.length < 2) el.textContent = '✨ AI 模糊已开：输 2 个字以上，AI 会一起找同义说法';
+    else if (MT.q && AIQ.q === MT.q && AIQ.fixed) el.textContent = '✨ AI 纠错：「' + MT.q + '」→「' + AIQ.fixed + '」· 扩展 ' + AIQ.terms.length + ' 词：' + AIQ.terms.slice(0, 5).join('、');
     else if (MT.terms.length) el.textContent = '✨ AI 又想到 ' + MT.terms.length + ' 个说法：' + MT.terms.slice(0, 6).join('、');
     else if (aiMute === q) el.textContent = '✨ AI 没给出扩展词（可能没配模型 / 服务没开），已只按字面找';
     else if (aiAt && Date.now() - aiAt > 6000) el.textContent = '✨ AI 还没回话…（可到「设置 → AI 服务」看模型通不通）';
@@ -287,6 +389,15 @@
     var q = (S.q || '').trim().toLowerCase();
     MT.q = q;
     MT.terms = aiTerms(q);
+    MT.wmap = {};
+    if (AIQ.q === q && AIQ.terms.length) {
+      for (var i0 = 0; i0 < AIQ.terms.length; i0++) {
+        var t0 = AIQ.terms[i0];
+        MT.wmap[t0] = AIQ.wmap[t0] || 0.8;
+        if (MT.terms.indexOf(t0) < 0) MT.terms.push(t0);
+      }
+    }
+    if (S.ai && q.length >= 2 && AIQ.q !== q) aiFix(q);
     if (S.ai && q.length >= 2 && !MT.terms.length) aiSchedule(q);
     aiNote(q);
     var bm = bankMap();
