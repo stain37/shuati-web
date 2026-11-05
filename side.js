@@ -146,18 +146,64 @@
     if (!S.ai || !q) return [];
     try { return (typeof window.qaiTerms === 'function') ? (window.qaiTerms(q) || []) : []; } catch (e) { return []; }
   }
+  /* 归一化：全角→半角、去空白/常见标点、小写（中文原样保留） */
+  function nz(t) {
+    var s = String(t || ''), out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 0xFF01 && c <= 0xFF5E) c -= 0xFEE0;
+      else if (c === 0x3000) c = 32;
+      var ch = String.fromCharCode(c).toLowerCase();
+      if (/[\s,.;:!?、，。；：！？·\-—_/\\'"()\[\]{}<>《》【】「」『』]/.test(ch)) continue;
+      out += ch;
+    }
+    return out;
+  }
+  /* 宽松匹配：子串 / 连续子序列（跳字）/ 二元组覆盖 ≥0.6 */
+  function loose(h, q) {
+    if (!q) return true;
+    var at = h.indexOf(q);
+    if (at >= 0) return true;
+    if (q.length >= 3) {
+      var i = 0;
+      for (var k = 0; k < h.length && i < q.length; k++) if (h.charAt(k) === q.charAt(i)) i++;
+      if (i === q.length) return true;
+    }
+    if (q.length >= 2) {
+      var hit = 0, total = 0;
+      for (var a = 0; a < q.length - 1; a++) { total++; if (h.indexOf(q.substr(a, 2)) >= 0) hit++; }
+      if (total && hit / total >= 0.6) return true;
+    }
+    return false;
+  }
   function hits(hay) {
     var q = MT.q;
     if (!q) return true;
-    var h = String(hay || '').toLowerCase();
-    if (h.indexOf(q) >= 0) return true;
+    var h = nz(hay), qn = nz(q);
+    if (!qn) return true;
+    if (loose(h, qn)) return true;
     for (var i = 0; i < MT.terms.length; i++) {
-      var t = String(MT.terms[i] || '').toLowerCase();
-      if (t && h.indexOf(t) >= 0) return true;
+      var t = nz(MT.terms[i]);
+      if (t && loose(h, t)) return true;
     }
     return false;
   }
 
+  /* 题库搜索文本：标题 + 目录路径 + 前 40 条题干（各 60 字），懒缓存 */
+  var hayCache = {};
+  function bankHay(b) {
+    var k = b && b.id;
+    if (!k) return String(b && b.title || '');
+    if (hayCache[k]) return hayCache[k];
+    var txt = String(b.title || '') + ' ' + catPath(b.cat).join(' ');
+    try {
+      var qs = (b.questions || []).slice(0, 40), parts = [];
+      for (var i = 0; i < qs.length; i++) parts.push(String(qs[i].stem || '').slice(0, 60));
+      if (parts.length) txt += ' ' + parts.join(' ');
+    } catch (e) {}
+    hayCache[k] = txt;
+    return txt;
+  }
   /* ---------- 渲染 ---------- */
   function rowHtml(b, depth) {
     var s = statOf(b), cur = curBankId() === b.id;
@@ -178,7 +224,7 @@
     var qLow = q;
     function keepBank(b) {
       if (!qLow) return true;
-      return hits(String(b.title) + ' ' + catPath(b.cat).join(' '));
+      return hits(bankHay(b));
     }
     var shownBanks = ownBanks.filter(keepBank);
     var subHtml = '';
@@ -249,7 +295,7 @@
     kids(null).forEach(function (c) { html += catHtml(c, 0, bm, q, hit); });
     var rootBanks = (bm[''] || []).filter(function (b) {
       if (!q) return true;
-      return hits(String(b.title) + ' ' + catPath(b.cat).join(' '));
+      return hits(bankHay(b));
     });
     if (rootBanks.length) {
       html += '<div class="qs-cat qs-rootcat" data-cat=""><button type="button" class="qs-ch" data-drop="" '
