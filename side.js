@@ -741,16 +741,22 @@
     var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 30000);
     var MSGS = [{ role: 'system', content: sys }, { role: 'user', content: usr }];
+    /* 推理型模型（deepseek-reasoner / r1 / o1 / qwq 等）会把 max_tokens 全花在思考上，
+       留不下正文 → 这类模型直接要更多预算 */
+    var MODEL_NAME = '';
+    try { MODEL_NAME = String((typeof aiCfg === 'function' && aiCfg().model) || ''); } catch (e) {}
+    var IS_REASONER = /reasoner|reason|-r1|\br1\b|thinking|qwq|o1|o3|deepseek-r/i.test(MODEL_NAME);
+    var TOK = IS_REASONER ? 3000 : 900;
     var SIG = ctl ? ctl.signal : undefined;
     Promise.resolve()
       .then(function () {
-        return aiChat(MSGS, null, SIG, { stream: false, temp: 0.2, maxTokens: 900 });
+        return aiChat(MSGS, null, SIG, { stream: false, temp: 0.2, maxTokens: TOK });
       })
       .then(function (txt) {
         if (txt && String(txt).trim()) return txt;
         /* 有些服务商对 stream:false 会回空内容（或推理模型只吐 reasoning），改用流式再要一次 */
         var acc = '';
-        return aiChat(MSGS, function (full) { acc = full; }, SIG, { stream: true, temp: 0.2, maxTokens: 900 })
+        return aiChat(MSGS, function (full) { acc = full; }, SIG, { stream: true, temp: 0.2, maxTokens: TOK })
           .then(function (full) {
             var t = String(full || acc || '');
             if (t.trim()) return t;
