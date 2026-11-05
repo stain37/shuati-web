@@ -587,6 +587,11 @@
   }
 
   function clsOpen() {
+    if (CLS.open && CLS.step === 'busy') {
+      var mm = $('clsMask');
+      if (mm) mm.classList.add('show');
+      return;
+    }
     var list = clsUncat();
     if (!list.length) {
       if (typeof toast === 'function') toast('没有「未分类」的题库了', 1600, 'ok');
@@ -633,7 +638,7 @@
     if (CLS.step === 'busy') {
       body.innerHTML = '<p class="cls-hint">✨ 正在读 ' + n + ' 个题库的标题和题目开头，想怎么分…</p>'
         + '<div class="cls-busy"><i></i><i></i><i></i></div>'
-        + '<p class="cls-hint dim">一般 3～15 秒；没配模型或服务没开的话会马上报错。</p>';
+        + '<p class="cls-hint dim"><span class="cls-wait">已等 0 秒</span>；一般 3～15 秒，没配模型或服务没开的话会马上报错。</p>';
       foot.innerHTML = '<span class="spacer-grow"></span><button type="button" class="btn" id="clsClose">取消</button>';
       return;
     }
@@ -723,6 +728,8 @@
     if (!clsAiReady()) { CLS.err = '这个站没加载 AI 模块（ai.js），没法自动分。'; CLS.step = 'ask'; clsRender(); return; }
     var cfg = clsCfg();
     if (!cfg.model) { CLS.err = '还没配模型：去「设置 → AI 服务」填好模型再来（分完还能手动拖，不急）。'; CLS.step = 'ask'; clsRender(); return; }
+    if (CLS.running) { return; }
+    CLS.running = true;
     CLS.err = ''; CLS.step = 'busy'; clsRender();
 
     var list = CLS.banks;
@@ -740,7 +747,20 @@
       + '拿不准或不符合任何一组的，就别放进任何 group（会留在未分类）。';
 
     var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
-    var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 30000);
+    var t0 = Date.now();
+    var tick = setInterval(function () {
+      var w = document.querySelector('.cls-wait');
+      if (!w) return;
+      var sec = Math.round((Date.now() - t0) / 1000);
+      w.textContent = '已等 ' + sec + ' 秒' + (sec >= 20 ? '（推理型模型会慢一些，最多等 90 秒）' : '');
+    }, 500);
+    var timer = setTimeout(function () {
+      try { if (ctl) ctl.abort(); } catch (e) {}
+      if (!CLS._timedOut) {
+        CLS._timedOut = true;
+        try { toast('等了 90 秒模型还没回，已停下', 2600, 'bad'); } catch (e) {}
+      }
+    }, 90000);
     var MSGS = [{ role: 'system', content: sys }, { role: 'user', content: usr }];
     /* 推理型模型（deepseek-reasoner / r1 / o1 / qwq 等）会把 max_tokens 全花在思考上，
        留不下正文 → 这类模型直接要更多预算 */
@@ -774,7 +794,7 @@
           });
       })
       .then(function (txt) {
-        clearTimeout(timer);
+        clearTimeout(timer); clearInterval(tick); CLS._timedOut = false; CLS.running = false;
         var data = clsParse(txt);
         if (data && data.groups) {
           // 模型有时把 id 写成序号（1、2、3）——按清单顺序还原成真 id
@@ -811,7 +831,14 @@
         clsRender();
       })
       .catch(function (e) {
-        clearTimeout(timer);
+        clearTimeout(timer); clearInterval(tick); CLS.running = false;
+        var wasTimeout = CLS._timedOut === true; CLS._timedOut = false;
+        if (wasTimeout) {
+          CLS.err = '等了 90 秒模型还没回，先停下了。可能是模型太慢或网络/服务不稳——可以换个小一点的模型，或过一会儿再试。[' + CLS_BUILD + ']';
+          CLS.step = 'ask';
+          clsRender();
+          return;
+        }
         if (e && e.body === 'empty') {
           CLS.err = '没分成功：模型一个字都没回（已试 3 次：非流式 / 流式 / 不给上限）。可能是这家服务商只放思考过程、或限流/额度用尽。换个模型（设置 → AI 服务）再试。[' + CLS_BUILD + ']';
           CLS.step = 'ask';
