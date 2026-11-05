@@ -3740,6 +3740,7 @@ function renderQuiz(bankId) {
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★' : '☆'}<span class="fav-t">${faved ? ' 已收藏' : ' 收藏'}</span></button>
         <span class="qtools" data-noswipe>
         <button class="btn pip-entry" id="pipEntry" style="display:none" title="小窗：把这道题单独拉到旁边对照">小窗</button>
+        <button class="btn sim-btn" id="btnSim" title="相似题：在这一题库里找你容易混淆/考同一考点的题，可让 AI 再挑一遍">🔍 相似题</button>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
         <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
@@ -3859,6 +3860,7 @@ function renderQuiz(bankId) {
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('btnSim', () => { if (window.SIMQ) SIMQ.toggle(); else toast('相似题模块没加载（sim.js）', 1800, 'bad'); });
 
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('doRedoBank', () => { qSheetToggle(false); redoSheet(bank, q); });
@@ -5938,6 +5940,7 @@ function showHelp() {
         <div class="help-row"><span class="kbd">J</span><span class="kbd">K</span><span class="spacer-grow"></span><span class="muted">下一题 / 上一题（Vim 那套；和 <span class="kbd">←</span><span class="kbd">→</span> 一样）</span></div>
         <div class="help-row"><span class="kbd">S</span><span class="spacer-grow"></span><span class="muted">收藏 / 取消收藏当前题（收藏成功会弹一下提示）</span></div>
         <div class="help-row"><span class="kbd">O</span><span class="spacer-grow"></span><span class="muted">打开答题卡：可按「做错 / 没做」筛选，点题号直接跳过去</span></div>
+        <div class="help-row"><span class="kbd">Tab</span><span class="kbd">Shift</span><span class="kbd">Tab</span><span class="spacer-grow"></span><span class="muted">在选项之间来回切换焦点（不用鼠标也能看题）</span></div>
       </div>
 
       <div class="help-card">
@@ -5955,7 +5958,9 @@ function showHelp() {
         <div class="sec-t">找题</div>
         <div class="help-row"><span class="kbd">/</span><span class="spacer-grow"></span><span class="muted">任何页面都能跳到搜索框</span></div>
         <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">光标在搜索框里＝立刻搜（不用等那 0.2 秒）</span></div>
-        <div class="help-row"><span class="kbd">Esc</span><span class="spacer-grow"></span><span class="muted">搜索框里有字＝清空；没字＝关掉弹窗</span></div>
+        <div class="help-row"><span class="kbd">Esc</span><span class="spacer-grow"></span><span class="muted">有弹窗＝关弹窗；输入框里有字＝清空；都没有＝返回上一页</span></div>
+        <div class="help-row"><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">左侧题库侧栏的搜索框里＝打开第一条；弹窗里＝确认</span></div>
+        <div class="help-row"><span class="kbd">Ctrl</span><span class="kbd">Enter</span><span class="spacer-grow"></span><span class="muted">多行输入框里也能确认（直接按 Enter 是换行）</span></div>
       </div>
 
       <div class="help-card">
@@ -6148,6 +6153,10 @@ function openSettings() {
   srsPaintEls();
   $('setMask').classList.add('show');
 }
+on('btnSide', () => {
+  if (window.SIDE) SIDE.toggle();
+  else toast('题库侧栏模块没加载（side.js）', 1800, 'bad');
+});
 on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');

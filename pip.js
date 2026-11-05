@@ -21,7 +21,37 @@
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const bankId = () => (location.hash.match(/^#\/bank\/([^/?]+)/) || [])[1] || '';
-  const bankTitle = id => (window.BANKS && BANKS[id] && BANKS[id].title) || '答题小窗';
+  /* 小窗标题 = 题库自己的名字。window.BANKS 只有内置题库，
+     自建题库（LOCAL）、临时卷（__PIP_BANK）、快照里都可能有，按顺序找。 */
+  function bankTitle(id) {
+    try {
+      if (window.BANKS && BANKS[id] && BANKS[id].title) return BANKS[id].title;
+    } catch (e) {}
+    try {
+      var bk = (typeof window.__PIP_BANK === 'function') ? window.__PIP_BANK(id) : null;
+      if (bk && bk.title) return bk.title;
+    } catch (e) {}
+    try {
+      if (typeof baseBanks === 'function') {
+        var hit = baseBanks().filter(function (b) { return b && b.id === id; })[0];
+        if (hit && hit.title) return hit.title;
+      }
+    } catch (e) {}
+    try {
+      var snap = JSON.parse(localStorage.getItem('qbank.pip.snap.v1') || 'null');
+      if (snap && snap.id === id && snap.bank && snap.bank.title) return snap.bank.title;
+    } catch (e) {}
+    return '答题小窗';
+  }
+  /* 标题可能是「数据还没加载完」时定的，等题库就绪/同步后补一次 */
+  function retitle() {
+    wins.forEach(function (w) {
+      if (!w || !w.el) return;
+      var t = w.el.querySelector('.pip-t');
+      var v = bankTitle(w.bank);
+      if (t && v && t.textContent !== v) t.textContent = v;
+    });
+  }
   function toast(t) { if (window.toast) return window.toast(t, 1800); console.log('[pip]', t); }
 
   function mkLayer() {
@@ -39,12 +69,15 @@
       '<button class="pip-btn" data-a="min" title="最小化成气泡">—</button>' +
       '<button class="pip-btn" data-a="close" title="关闭">✕</button></div>' +
       '<div class="pip-wrap"><iframe class="pip-frame" title="答题小窗"></iframe><i class="pip-shield"></i></div>' +
-      '<i class="pip-rz" title="拖动改大小"></i>';
+      '<i class="pip-rz" title="拖动改大小"></i>' +
+      '<div class="pip-ctl"><button class="pip-btn" data-a="max" title="还原成小窗">⤡</button>' +
+      '<button class="pip-btn" data-a="close" title="关闭">✕</button></div>';
     mkLayer().appendChild(el);
 
     const rec = { bank, el, frame: el.querySelector('iframe'), bubble: null, min: false, max: false, rect: rect || null };
     wins.push(rec);
     el.querySelector('.pip-t').textContent = bankTitle(bank);
+    setTimeout(retitle, 400);
     /* 临时卷（每日复习 / 套卷）只活在内存里，小窗是另一个文档 → 先存一份快照给它 */
     try {
       const bk = (typeof window.__PIP_BANK === 'function') ? window.__PIP_BANK(bank) : (window.BANKS && BANKS[bank]);
@@ -103,6 +136,7 @@
     el.addEventListener('pointerdown', () => activate(rec), true);
     /* 窗内那份站立（同源 iframe）里的点击也要能激活：iframe 的点击不会冒泡到父文档 */
     rec.frame.addEventListener('load', () => {
+      guestMode(rec);
       try {
         const d = rec.frame.contentDocument;
         if (d && !d.__pipAct) { d.__pipAct = 1; d.addEventListener('pointerdown', () => activate(rec), true); }
@@ -146,12 +180,23 @@
     el.querySelectorAll('.pip-btn').forEach(b => {
       b.onclick = () => {
         const a = b.dataset.a;
-        if (a === 'max') { rec.max = !rec.max; el.classList.toggle('max', rec.max); }
+        if (a === 'max') { rec.max = !rec.max; el.classList.toggle('max', rec.max); guestMode(rec); }
         else if (a === 'min') minimize(rec);
         else close(rec);
         save();
       };
     });
+  }
+
+  /* 小窗里那份是 index.html?pip=1，默认进「迷你客串模式」（html.pip-guest：
+     隐藏顶栏底栏、字号压小）。放大到全屏时应该跟正常答题界面一样，
+     所以给 iframe 发消息，让它把 pip-guest 摘掉 / 加回。 */
+  function guestMode(rec) {
+    try {
+      const w = rec.frame.contentWindow;
+      if (!w) return;
+      w.postMessage({ t: 'pip-guest', on: !rec.max }, location.origin);
+    } catch (e) {}
   }
 
   function snapSave(rec) {

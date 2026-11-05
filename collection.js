@@ -12,16 +12,20 @@
    颜色值只收颜色名（red/green/…）或 #hex；其它一律按原文显示，不会执行任何脚本。 */
 const MD_C_OPEN = '\u0001C', MD_C_END = '\u0001', MD_C_CLOSE = '\u0001/C\u0001';
 const MD_H_OPEN = '\u0001H\u0001', MD_H_CLOSE = '\u0001/H\u0001';
+/* 颜色值可能被中文引号包着（“red”、‘green’、“#c00”），先剥掉 */
+function mdCleanColor(c) {
+  return String(c == null ? '' : c).replace(/[\s"'\u201c\u201d\u2018\u2019\u300c\u300d]/g, '');
+}
 function mdValidColor(c) {
-  c = String(c || '').trim();
+  c = mdCleanColor(c);
   return /^#[0-9a-f]{3,8}$/i.test(c) || /^[a-zA-Z]{2,20}$/.test(c);
 }
 function mdColorize(s) {
   s = s.replace(/==([^=\n](?:[^\n]*?[^=\n])?)==/g, (m, t) => MD_H_OPEN + t + MD_H_CLOSE);
-  s = s.replace(/<font\s+color\s*=\s*["']?\s*([^\s"'>]+)\s*["']?\s*>\s*([\s\S]*?)\s*<\/font\s*>/gi, (m, c, inner) =>
-    mdValidColor(c) ? (MD_C_OPEN + c.trim() + MD_C_END + inner + MD_C_CLOSE) : m);
-  s = s.replace(/<span\s+style\s*=\s*["']?\s*color\s*:\s*([^\s;"'>]+)[^>]*>\s*([\s\S]*?)\s*<\/span\s*>/gi, (m, c, inner) =>
-    mdValidColor(c) ? (MD_C_OPEN + c.trim() + MD_C_END + inner + MD_C_CLOSE) : m);
+  s = s.replace(/<font\s+color\s*=\s*["'\u201c\u201d\u2018\u2019\u300c\u300d]?\s*([^\s"'>\u201d\u300d]+)\s*["'\u201c\u201d\u2018\u2019\u300c\u300d]?\s*>\s*([\s\S]*?)\s*<\/font\s*>/gi, (m, c, inner) =>
+    mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m);
+  s = s.replace(/<span\s+style\s*=\s*["'\u201c\u201d]?\s*color\s*:\s*([^\s;"'>]+)[^>]*>\s*([\s\S]*?)\s*<\/span\s*>/gi, (m, c, inner) =>
+    mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m);
   return s;
 }
 function mdColorEnd(html) {
@@ -3457,6 +3461,36 @@ function ctxRichNode(el, target) {
   if (!n || n.parentNode !== el) n = el.firstElementChild;
   return n;
 }
+/* 编辑器里的「选中文字」操作：复制 / 剪切 / 粘贴 / 拿这段文字去题库里找相关题。
+   菜单弹出时先把选区存下来——点菜单按钮会把焦点移走，Chrome 里焦点一丢 execCommand 就失败。 */
+function ctxSelSnap(el) {
+  try {
+    var s = window.getSelection();
+    if (!s || s.isCollapsed || !s.rangeCount) return null;
+    var r = s.getRangeAt(0).cloneRange();
+    if (!el.contains(r.commonAncestorContainer)) return null;
+    var txt = String(s.toString() || '');
+    if (!txt.trim()) return null;
+    return { range: r, text: txt };
+  } catch (e) { return null; }
+}
+function ctxRestore(el, snap) {
+  try { el.focus(); } catch (e) {}
+  if (!snap) return;
+  try {
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(snap.range);
+  } catch (e) {}
+}
+function ctxInsertText(el, text) {
+  try {
+    el.focus();
+    document.execCommand('insertText', false, text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  } catch (e) { return false; }
+}
 function ctxRichItems(el, node) {
   var pick = function (act) {
     return function () {
@@ -3484,7 +3518,58 @@ function ctxRichItems(el, node) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   };
   var conv = function (kind) { return function () { if (typeof slashApply === 'function') slashApply(el, kind); }; };
-  return [
+
+  /* ---- 选中文字的那一组（放在最上面，和浏览器原生右键一样的位置） ---- */
+  var snap = ctxSelSnap(el);
+  var head = [];
+  if (snap) {
+    head.push({
+      t: '复制', icon: '⧉', d: 'Ctrl+C', run: function () {
+        ctxRestore(el, snap);
+        try {
+          var ok = document.execCommand('copy');
+          if (typeof toast === 'function') toast(ok ? '已复制选中的文字' : '复制失败，试试 Ctrl+C', 1400, ok ? 'ok' : 'warn');
+        } catch (e) { if (typeof toast === 'function') toast('复制失败，试试 Ctrl+C', 1600, 'warn'); }
+      }
+    });
+    head.push({
+      t: '剪切', icon: '✂', d: 'Ctrl+X', run: function () {
+        ctxRestore(el, snap);
+        try {
+          var ok2 = document.execCommand('cut');
+          if (!ok2) { document.execCommand('copy'); document.execCommand('delete'); }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          if (typeof toast === 'function') toast('已剪切', 1200, 'ok');
+        } catch (e) {}
+      }
+    });
+  }
+  head.push({
+    t: '粘贴', icon: '⎘', d: 'Ctrl+V', run: function () {
+      var fallback = function () {
+        if (typeof toast === 'function') toast('浏览器不允许网页读剪贴板，直接按 Ctrl+V 贴进来', 2600, 'warn');
+      };
+      if (!navigator.clipboard || !navigator.clipboard.readText) { fallback(); return; }
+      navigator.clipboard.readText().then(function (txt) {
+        if (!txt) return;
+        if (!ctxInsertText(el, txt)) fallback();
+      }, fallback);
+    }
+  });
+  if (snap && snap.text.trim().length >= 4) {
+    head.push(CTX_SEP);
+    head.push({
+      t: '在题库里找相关题', icon: '🔍', d: '选中 ' + Math.min(snap.text.trim().length, 20) + ' 字', run: function () {
+        if (window.SIMQ && SIMQ.openText) SIMQ.openText(snap.text);
+        else if (typeof toast === 'function') toast('相似题模块没加载（sim.js）', 1800, 'bad');
+      }
+    });
+    head.push(CTX_SEP);
+  } else if (snap) {
+    head.push(CTX_SEP);
+  }
+
+  return head.concat([
     { t: '复制这块', icon: '⧉', run: pick('copy') },
     { t: '上移', icon: '↑', run: pick('up') },
     { t: '下移', icon: '↓', run: pick('down') },
@@ -3500,7 +3585,7 @@ function ctxRichItems(el, node) {
     { t: '转成无序清单', icon: '•', run: conv('ul') },
     { t: '转成有序清单', icon: '1.', run: conv('ol') },
     { t: '转成引用', icon: '❝', run: conv('quote') }
-  ];
+  ]);
 }
 /* ---- 题目卡片：收藏 / 错题 / 复制 ---- */
 function ctxCopy(text) {

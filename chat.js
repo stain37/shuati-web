@@ -686,6 +686,9 @@
       + '<div class="chat-title-row"><b>💬 AI 对话</b><span class="small muted chat-sub">问知识点 / 出题 / 分析题库</span>'
       + '<span class="spacer-grow"></span>'
       + (mode === 'home' ? '<button class="btn tiny" id="chatFull" title="进入全屏对话">⤢ 全屏</button>' : '')
+      + '<select class="chat-pick" id="chatPick" title="切换对话记录"></select>'
+      + '<button class="btn tiny" id="chatNew" title="开启新对话">＋</button>'
+      + '<button class="btn tiny" id="chatDel" title="删除当前这段对话">🗑</button>'
       + (mode === 'full' ? '<button class="btn tiny" id="chatClear" title="清空这段对话（不影响题库和作答）">清空</button>' : '')
       + '<button class="btn tiny" id="chatSkill" title="选择技能">🧩 技能</button>'
       + '</div>'
@@ -942,101 +945,33 @@
     if (RUN) T('上一轮还在生成，等它写完或点「停止」', 2000);
   }
 
-  /* ---------- 侧边「对话记录」抽屉（DeepSeek 式：左边一个小按钮，点开就是列表） ---------- */
-  function ensureSideTab() {
-    var b = $id('chatSideBtn');
-    if (!b) {
-      b = document.createElement('button');
-      b.id = 'chatSideBtn';
-      b.type = 'button';
-      b.className = 'chat-side-tab';
-      b.title = '对话记录';
-      b.setAttribute('aria-label', '对话记录');
-      b.textContent = '☰';
-      b.onclick = function () { var d = $id('chatDrawer'); if (d && d.classList.contains('show')) closeSide(); else openSide(); };
-      document.body.appendChild(b);
-    }
-    return b;
-  }
-  function syncSideTab() {
-    var on = !!document.querySelector('#chatHome, .chat-page');
-    var b = ensureSideTab();
-    b.style.display = on ? '' : 'none';
-  }
-  function ensureDrawer() {
-    var d = $id('chatDrawer');
-    if (d) return d;
-    var mask = document.createElement('div');
-    mask.id = 'chatDrawerMask';
-    mask.className = 'chat-drawer-mask';
-    mask.onclick = closeSide;
-    d = document.createElement('aside');
-    d.id = 'chatDrawer';
-    d.className = 'chat-side chat-drawer';
-    d.innerHTML = '<div class="chat-side-head"><b>对话</b><span class="spacer-grow"></span>'
-      + '<button class="chat-drawer-x" id="chatDrawerX" type="button" title="收起" aria-label="收起">×</button></div>'
-      + '<button class="chat-newbig" id="chatNew2" type="button"><span class="cn-plus">＋</span>开启新对话</button>'
-      + '<div class="chat-side-list" id="chatSideList"></div>';
-    document.body.appendChild(mask);
-    document.body.appendChild(d);
-    $id('chatDrawerX').onclick = closeSide;
-    $id('chatNew2').onclick = function () {
-      newChat();
-      closeSide();
-      if (!$id('chatLog') && typeof go === 'function') go('#/chat');
-    };
-    return d;
-  }
-  function openSide() {
-    ensureDrawer();
-    paintChatList();
-    var m = $id('chatDrawerMask'), d = $id('chatDrawer');
-    if (m) m.classList.add('show');
-    if (d) d.classList.add('show');
-  }
-  function closeSide() {
-    var m = $id('chatDrawerMask'), d = $id('chatDrawer');
-    if (m) m.classList.remove('show');
-    if (d) d.classList.remove('show');
-  }
-
   /* ---------- 会话列表（像 DeepSeek 左边那栏） ---------- */
   function startOfDay(ts) { var d = new Date(ts || Date.now()); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  /* ---------- 会话切换：页面内下拉（不再占用左侧栏） ---------- */
   function paintChatList() {
-    ensureDrawer();
-    var box = $id('chatSideList');
-    if (!box) return;
+    var sel = $id('chatPick');
+    if (!sel) return;
     var list = DB.chats.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
-    var today = startOfDay();
-    var buckets = {};
-    list.forEach(function (c) {
-      var diff = Math.floor((today - startOfDay(c.updatedAt)) / 86400000);
-      var lb = diff <= 0 ? '今天' : diff === 1 ? '昨天' : diff <= 7 ? '7 天内' : diff <= 30 ? '30 天内' : '更早';
-      (buckets[lb] = buckets[lb] || []).push(c);
-    });
-    var html = '';
-    ['今天', '昨天', '7 天内', '30 天内', '更早'].forEach(function (lb) {
-      if (!buckets[lb]) return;
-      html += '<div class="chat-side-g">' + lb + '</div>';
-      buckets[lb].forEach(function (c) {
-        html += '<div class="chat-item' + (c.id === DB.cur ? ' on' : '') + '" data-cid="' + E(c.id) + '">'
-          + '<span class="ci-t" title="' + E(c.title) + '">' + E(c.title || '新对话') + '</span>'
-          + '<button class="ci-x" data-del="' + E(c.id) + '" title="删除这段对话">×</button></div>';
-      });
-    });
-    box.innerHTML = html || '<div class="chat-side-empty small muted">还没有对话<br><span>点上面的「开启新对话」开始</span></div>';
-    box.querySelectorAll('.chat-item').forEach(function (el) {
-      el.onclick = function (e) {
-        if (e.target.closest('.ci-x')) return;
-        closeSide();
-        switchChat(el.dataset.cid);
-        if (!$id('chatLog') && typeof go === 'function') go('#/chat');
-      };
-    });
-    box.querySelectorAll('.ci-x').forEach(function (b) {
-      b.onclick = function (e) { e.stopPropagation(); askDelChat(b.dataset.del); };
-    });
+    sel.innerHTML = list.map(function (c) {
+      return '<option value="' + E(c.id) + '">' + E(String(c.title || '新对话').slice(0, 22)) + '</option>';
+    }).join('') || '<option value="">还没有对话</option>';
+    if (DB.cur) { try { sel.value = DB.cur; } catch (e) {} }
+    bindChatPick();
   }
+  function bindChatPick() {
+    var sel = $id('chatPick');
+    if (sel && !sel.__bound) {
+      sel.__bound = 1;
+      sel.onchange = function () { if (sel.value) switchChat(sel.value); };
+    }
+    var nb = $id('chatNew');
+    if (nb && !nb.__bound) { nb.__bound = 1; nb.onclick = function () { newChat(); }; }
+    var db = $id('chatDel');
+    if (db && !db.__bound) { db.__bound = 1; db.onclick = function () { if (DB.cur) askDelChat(DB.cur); }; }
+  }
+  /* 兼容老调用点（原来还有「侧栏按钮」那套） */
+  function syncSideTab() { try { paintChatList(); } catch (e) {} }
+
   function newChat() {
     saveChat();
     var c = mkChat('新对话');
@@ -2698,12 +2633,7 @@
       setTimeout(syncSideTab, 60);
       setTimeout(syncSideTab, 350);
     });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        var d = $id('chatDrawer');
-        if (d && d.classList.contains('show')) closeSide();
-      }
-    });
+    /* 侧栏抽屉已移除（web279 起左侧栏改由 side.js 渲染题库管理，不再管对话） */
   } catch (e) {}
 
   /* 启动：读存档失败也不能耽误「拖拽/入口按钮」的绑定（file:// 下 localStorage 可能被禁）；

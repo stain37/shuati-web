@@ -10367,3 +10367,254 @@ body.tr-busy #view { pointer-events: none; }
 .sp-fx.sp-out { opacity: 0; transform: translateX(-50%) translateY(8px); pointer-events: none; }
 /* web270：反馈面板收起后，底部胶囊提示别占太多视觉 */
 .fb-chip { margin-top: 8px; }
+
+/* ---------- 相似题面板（sim.js） ---------- */
+.sim-mask{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:18px;background:rgba(8,12,20,.46);opacity:0;pointer-events:none;transition:opacity .18s ease}
+.sim-mask[hidden]{display:none}
+.sim-mask.show{opacity:1;pointer-events:auto}
+.sim-panel{width:min(680px,100%);max-height:min(78vh,720px);display:flex;flex-direction:column;
+  background:var(--card);background:color-mix(in srgb,var(--card) var(--ui-pct,100%),var(--bg));
+  -webkit-backdrop-filter:blur(14px) saturate(1.1);backdrop-filter:blur(14px) saturate(1.1);
+  border:1px solid var(--line);border-radius:var(--r-card);
+  box-shadow:var(--sh-pop);overflow:hidden;transform:translateY(6px) scale(.99);
+  transition:transform .22s cubic-bezier(.16,1,.3,1)}
+.sim-mask.show .sim-panel{transform:none}
+.sim-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.sim-head b{font-size:15px}
+.sim-x{margin-left:auto}
+.sim-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px dashed var(--line)}
+.sim-scope{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--sub);cursor:pointer}
+.sim-note{margin-left:auto;font-size:12px}
+.sim-list{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 14px 12px}
+.sim-row{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:10px;align-items:center;
+  padding:10px 0;border-bottom:1px dashed var(--line)}
+.sim-row:last-child{border-bottom:0}
+.sim-score{text-align:center;line-height:1}
+.sim-score b{font-size:17px;font-variant-numeric:tabular-nums;color:var(--primary)}
+.sim-score span{font-size:10px;color:var(--sub);margin-left:1px}
+.sim-q{font-size:13.5px;line-height:1.55;color:var(--text);word-break:break-word}
+.sim-meta{display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--sub);margin-top:3px}
+.sim-bank{padding:0 6px;border-radius:var(--r-pill);background:var(--card2);border:1px solid var(--line)}
+.sim-why{margin-top:5px;font-size:12px;color:var(--primary);line-height:1.5}
+.sim-why::before{content:"AI：";opacity:.7}
+.sim-empty{padding:22px 4px;text-align:center;color:var(--sub);font-size:13px;line-height:1.7}
+.sim-go{flex:0 0 auto}
+
+.sim-score.sim-ai b{font-size:15px}
+.sim-row.is-ai{background:color-mix(in srgb,var(--primary) 7%,transparent);border-radius:10px;padding-left:6px;padding-right:6px;margin:0 -6px}
+@media (max-width:620px){
+  .sim-mask{align-items:flex-end;padding:0}
+  .sim-panel{width:100%;max-height:82vh;border-radius:var(--r-card) var(--r-card) 0 0;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));transform:translateY(14px)}
+  .sim-row{grid-template-columns:40px minmax(0,1fr) 56px;gap:8px}
+  .sim-list{padding:6px 12px 10px}
+  .sim-go{padding:6px 0;font-size:12px;width:100%}
+  .sim-note{margin-left:0;flex-basis:100%}
+}
+@media (prefers-reduced-motion: reduce){ .sim-mask,.sim-panel{transition:none} }
+
+
+/* ===== 题库侧栏（side.js）===== */
+.qside{
+  position:fixed;left:0;top:0;bottom:0;width:248px;z-index:70;display:flex;flex-direction:column;
+  background:var(--card);background:color-mix(in srgb,var(--card) 90%,transparent);
+  backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
+  border-right:1px solid var(--line);box-shadow:var(--sh-2);
+  transform:translateX(-100%);transition:transform .26s var(--ease);
+  padding-bottom:calc(env(safe-area-inset-bottom) + 6px);
+}
+body.qside-open .qside,body.qside-drawer .qside{transform:none}
+@media (min-width:1100px){
+  body.qside-open{padding-left:248px}
+  html[data-style] body.qside-open .nav,body.qside-open #nav{left:248px!important;right:12px!important}
+  html[data-style] body.qside-open .bnav{left:calc(248px + 12px)!important;right:12px!important}
+  /* 顶栏里的固定装饰（← 返回 / win95「开始」）要跟着正文一起右移，
+     否则 248px 的侧栏把它们盖住；.top 的盒模型已经因为 body 的 padding 右移，
+     所以 max() 公式里的 100vw 要按「视口 - 248px」重新算。 */
+  body.qside-open #backFix{
+    left:calc(248px + 12px);
+    left:calc(248px + max(12px, calc((100vw - 248px - 940px) / 2 + 12px)));
+  }
+  html[data-style="win95"] body.qside-open #backFix{
+    width:72px;justify-content:center;
+    left:calc(248px + max(92px, calc((100vw - 248px - 940px) / 2 + 92px)));
+  }
+  html[data-style="win95"] body.qside-open .top::before{
+    left:max(12px, calc((100vw - 248px - 940px) / 2 + 12px));
+  }
+  /* 皮肤默认的 .row 左侧预留保持不动（win95 是 176px，其余 104px），
+     只有窄窗口那条 560px 断点会改它。 */
+}
+.qside-mask{position:fixed;inset:0;z-index:64;background:rgba(8,12,20,.44);opacity:0;pointer-events:none;transition:opacity .2s ease}
+body.qside-drawer .qside-mask{opacity:1;pointer-events:auto}
+.qs-tab{
+  position:fixed;left:0;top:calc(74px + env(safe-area-inset-top));z-index:30;
+  width:30px;height:52px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--line);border-left:0;border-radius:0 12px 12px 0;cursor:pointer;
+  background:var(--card);box-shadow:var(--sh-1);font-size:15px;color:var(--sub);
+  transition:width .16s ease,color .16s ease,box-shadow .16s ease;
+}
+.qs-tab:hover{width:34px;color:var(--primary);box-shadow:var(--sh-2)}
+body.qside-open .qs-tab{display:none}
+
+.qside .qs-head{display:flex;align-items:center;gap:6px;padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+.qside .qs-brand{font-weight:700;font-size:13.5px;letter-spacing:.3px}
+.qside .qs-ico{
+  width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--line);border-radius:8px;background:var(--card2);color:var(--sub);
+  font-size:14px;line-height:1;cursor:pointer;transition:color .15s ease,background .15s ease,border-color .15s ease;
+}
+.qside .qs-ico:hover{color:var(--primary);border-color:var(--primary-line);background:var(--primary-weak)}
+.qside .qs-find{display:flex;align-items:center;gap:6px;margin:9px 12px 8px;padding:0 9px;
+  border:1px solid var(--line);border-radius:9px;background:var(--card2)}
+.qside .qs-find i{font-style:normal;color:var(--sub);font-size:13px}
+.qside .qs-find input{flex:1 1 auto;min-width:0;border:0;background:transparent;color:var(--text);
+  font-size:12.5px;padding:7px 0;outline:none}
+.qside .qs-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 6px 10px}
+.qside .qs-grp{margin:2px 0 4px}
+.qside .qs-gh{
+  width:100%;display:flex;align-items:center;gap:5px;padding:5px 7px;border:0;background:transparent;
+  color:var(--sub);font-size:11px;font-weight:700;letter-spacing:.4px;text-align:left;cursor:pointer;border-radius:7px;
+}
+.qside .qs-gh:hover{background:var(--card2);color:var(--text)}
+.qside .qs-gh em{margin-left:auto;font-style:normal;font-weight:600;opacity:.75}
+.qside .qs-caret{font-style:normal;display:inline-block;transition:transform .18s ease;font-size:9px}
+.qside .qs-grp.folded .qs-caret{transform:rotate(-90deg)}
+.qside .qs-grp.folded .qs-rows{display:none}
+.qside .qs-row{
+  position:relative;display:flex;align-items:flex-start;gap:7px;padding:7px 7px 7px 8px;border-radius:9px;
+  cursor:pointer;transition:background .14s ease;
+}
+.qside .qs-row:hover{background:var(--card2)}
+.qside .qs-row.on{background:var(--primary-weak)}
+.qside .qs-row.on .qs-main b{color:var(--primary)}
+.qside .qs-dot{flex:0 0 auto;width:6px;height:6px;margin-top:6px;border-radius:50%;background:var(--sub);opacity:.55}
+.qside .qs-dot.loc{background:var(--primary);opacity:1}
+.qside .qs-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.qside .qs-main b{font-size:12.5px;font-weight:600;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qside .qs-meta{font-size:10.5px;color:var(--sub);line-height:1.3}
+.qside .qs-meta .warn{color:var(--bad);font-style:normal}
+.qside .qs-bar{display:block;height:2px;margin-top:1px;border-radius:2px;
+  background:color-mix(in srgb,var(--line) 85%,transparent);overflow:hidden}
+.qside .qs-bar b{display:block;height:100%;border-radius:2px;
+  background:color-mix(in srgb,var(--primary) 78%,transparent);transition:width .3s ease}
+.qside .qs-more{
+  flex:0 0 auto;width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:var(--sub);
+  cursor:pointer;font-size:13px;line-height:1;opacity:0;transition:opacity .14s ease,background .14s ease;
+}
+.qside .qs-row:hover .qs-more{opacity:.9}
+.qside .qs-more:hover{background:var(--card3);color:var(--text)}
+.qside .qs-empty{padding:24px 12px;text-align:center;color:var(--sub);font-size:12px;display:flex;flex-direction:column;gap:4px}
+.qside .qs-empty b{font-size:12.5px;color:var(--text)}
+.qside .qs-foot{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);
+  font-size:10.5px;color:var(--sub);flex-wrap:wrap;
+}
+.qside .qs-pd{margin-left:6px;opacity:.8}
+.qside .qs-all{
+  margin-left:auto;border:0;background:transparent;color:var(--primary);font-size:11px;cursor:pointer;padding:2px 0;
+}
+.qside .qs-all:hover{text-decoration:underline}
+
+.qs-menu{
+  position:fixed;z-index:70;min-width:132px;padding:4px;border-radius:11px;border:1px solid var(--line);
+  background:var(--card);box-shadow:var(--sh-3);display:flex;flex-direction:column;
+  animation:qsPop .14s ease-out both;
+}
+@keyframes qsPop{from{opacity:0;transform:translateY(-3px) scale(.98)}to{opacity:1;transform:none}}
+.qs-menu button{
+  border:0;background:transparent;color:var(--text);text-align:left;font-size:12px;padding:7px 9px;border-radius:8px;cursor:pointer;
+}
+.qs-menu button:hover{background:var(--card2)}
+.qs-menu button.danger{color:var(--bad)}
+.qs-menu button.danger:hover{background:var(--badbg)}
+body.dark .qside{background:color-mix(in srgb,var(--card) 92%,transparent)}
+@media (max-width:1099px){
+  .qside{width:min(292px,84vw);box-shadow:var(--sh-3)}
+}
+@media (max-width:620px){
+  .qs-tab{top:calc(64px + env(safe-area-inset-top));height:46px;width:28px}
+  .qside .qs-row{padding:8px 6px}
+}
+@media (prefers-reduced-motion: reduce){
+  .qside{transition:none}
+  .qs-menu{animation:none}
+}
+
+/* 会话下拉（chat.js 标题行） */
+.chat-pick{max-width:168px;height:26px;padding:0 6px;border:1px solid var(--line);border-radius:8px;
+  background:var(--card2);color:var(--text);font-size:11.5px;outline:none;cursor:pointer}
+.chat-pick:hover{border-color:var(--primary-line)}
+@media (max-width:620px){.chat-pick{max-width:104px}}
+
+/* --- 树形目录 + 拖动（side.js v2）--- */
+.qside .qs-cat{position:relative}
+.qside .qs-ch{
+  width:100%;display:flex;align-items:center;gap:5px;padding:5px 7px;border:0;background:transparent;
+  color:var(--sub);font-size:11.5px;font-weight:700;letter-spacing:.2px;text-align:left;cursor:pointer;
+  border-radius:7px;padding-left:var(--qs-ind,6px);
+}
+.qside .qs-ch:hover{background:var(--card2);color:var(--text)}
+.qside .qs-ch .qs-ct{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qside .qs-ch em{margin-left:2px;font-style:normal;font-weight:600;opacity:.7;font-size:10.5px}
+.qside .qs-folder{font-style:normal;font-size:10.5px;opacity:.9}
+.qside .qs-cmore{
+  flex:0 0 auto;width:20px;text-align:center;border-radius:5px;opacity:0;
+  font-size:12px;transition:opacity .14s ease,background .14s ease;
+}
+.qside .qs-ch:hover .qs-cmore{opacity:.85}
+.qside .qs-cmore:hover{background:var(--card3)}
+.qside .qs-cat.folded > .qs-cbody{display:none}
+.qside .qs-cat.folded > .qs-ch .qs-caret{transform:rotate(-90deg)}
+.qside .qs-rootcat{margin-top:4px;border-top:1px dashed var(--line);padding-top:4px}
+.qside .qs-row{padding-left:var(--qs-ind,8px)}
+.qside .qs-row .qs-meta,.qside .qs-row .qs-main b{pointer-events:none}
+
+/* 拖动中 */
+.qside .qs-row.qs-drag{opacity:.55;background:var(--primary-weak);outline:1px dashed var(--primary-line)}
+.qside .qs-ch.qs-drag{opacity:.55}
+.qside .qs-ch.drop-on{
+  background:var(--primary-weak);color:var(--primary);
+  box-shadow:inset 0 0 0 1.5px var(--primary-line);
+}
+.qside .qs-pick{max-height:60vh;overflow:auto;min-width:180px}
+.qside .qs-pick button{padding:6px 10px;font-size:12px;text-align:left}
+
+/* ===== 侧栏搜索的 AI 模糊（side.js）===== */
+.qside .qs-search{display:flex;gap:6px;align-items:center;margin:0 0 6px}
+.qside .qs-search .qs-find{flex:1 1 auto;margin:0;min-width:0}
+.qside .qs-ai{flex:0 0 auto;width:30px;height:30px;padding:0;display:grid;place-items:center;
+  border:1px solid var(--line);border-radius:var(--r-s);background:var(--card2);color:var(--sub);
+  font-size:14px;line-height:1;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.qside .qs-ai:hover{color:var(--text);border-color:var(--primary-line)}
+.qside .qs-ai.on{background:var(--primary-soft);border-color:var(--primary-line);color:var(--primary)}
+.qside .qs-ainote{margin:-2px 2px 6px;padding:5px 7px;border-radius:var(--r-s);
+  background:var(--card2);border:1px dashed var(--line2);color:var(--sub);
+  font-size:11.5px;line-height:1.45;word-break:break-all}
+.qside .qs-ainote[hidden]{display:none}
+
+/* ===== 小窗放大到全屏时 = 正常答题界面（index.html 里的 message 监听会加 .pip-full）===== */
+html.pip-full .qside, html.pip-full .qs-tab, html.pip-full #qSideMask { display: none !important; }
+html.pip-full body { padding-left: 0 !important; }
+html.pip-full body.qside-open .bnav,
+html.pip-full body.qside-open #nav { left: 0 !important; }
+html.pip-full #backFix { display: none !important; }
+html.pip-full body { padding-top: 0 !important; }
+
+/* 小窗最大化 = 整窗都是页面本体，操作按钮浮在右上角 */
+.pip-win .pip-ctl{display:none;position:absolute;right:8px;top:8px;z-index:5;gap:6px}
+.pip-win.max .pip-bar{display:none}
+.pip-win.max .pip-wrap{border-radius:0}
+.pip-win.max .pip-ctl{display:flex}
+.pip-win .pip-ctl .pip-btn{width:26px;height:26px;border-radius:50%;
+  background:rgba(15,23,42,.55);color:#fff;border:0;display:grid;place-items:center;
+  font:600 13px/1 system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(6px);
+  opacity:.35;transition:opacity .15s,background .15s}
+.pip-win .pip-ctl .pip-btn:hover{opacity:1;background:rgba(15,23,42,.8)}
+.pip-win.max:hover .pip-ctl .pip-btn{opacity:.9}
+
+/* web283：帮助面板在 win95 等宽字体皮肤下，说明文字被挤到弹窗外面去（.muted 没有可收缩的宽度） */
+.help-row{flex-wrap:wrap}
+.help-row .muted{flex:1 1 220px;min-width:0;white-space:normal;text-align:right}
+@media (max-width:700px){.help-row .muted{text-align:left;flex-basis:100%}}
