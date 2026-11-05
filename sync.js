@@ -19,7 +19,7 @@ const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
-  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true },
+  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -38,10 +38,12 @@ const SYNC_SCOPES = [
   { k: 'var', label: '变式题', tip: 'AI 照原题出的变式题（纯练习，不计错题本 / 正确率；删掉的也会跟着走）' },
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
+  { k: 'star', label: '星标常驻（侧栏）', tip: '侧栏里标了 ★ 的题库 / 文件夹，两边保持一致；搜索词、展开状态这些设备偏好不跟着走' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
   { k: 'tag', label: '考点标签', tip: '你导入 / AI 生成的那份考点词表，以及 AI 给每道题贴的标签（统计页「按考点」用的就是它）；删词 / 批量清除也会跟着走' },
   { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
-  { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' }
+  { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' },
+  { k: 'board', label: '空白板手稿（30 张上限）', tip: '答题页「白板」画完存下来的手稿，是图片级的笔迹数据，勾上会让同步文件大几 MB；默认不勾' }
 ];
 /* 自建题库没勾上时，分类目录多半也没意义，但由用户自己决定，不做联动 */
 
@@ -255,6 +257,18 @@ async function syncPayload() {
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
   if (s.tag && typeof TAGS !== 'undefined') { d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); d.tagTs = (TAGS.tagTs ? TAGS.tagTs() : {}); }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
+  /* 侧栏星标：只拿 star 这一项，搜索词 / 展开状态 / 多选状态都是每台设备自己的偏好 */
+  if (s.star) {
+    try {
+      const side = JSON.parse(localStorage.getItem('qbank.side.v1') || '{}');
+      d.stars = (side && side.star && typeof side.star === 'object') ? side.star : {};
+    } catch (e) { d.stars = {}; }
+  }
+  /* 空白板手稿：数组，最新的在前 */
+  if (s.board) {
+    try { const a = JSON.parse(localStorage.getItem('qbank.board.v1') || '[]'); d.boards = Array.isArray(a) ? a : []; }
+    catch (e) { d.boards = []; }
+  }
   const tomb = {};
   ['ans', 'fav', 'note', 'fix', 'paper'].forEach(k => { if (s.ans || s.note || s.paper) tomb[k] = TOMB[k] || {}; });
   if (s.var) tomb.var = TOMB.var || {};
@@ -273,6 +287,39 @@ function syncMergeCloud(cloud) {
   if (!cloud || cloud.app !== 'shuati-sync') throw new Error('云端文件不是刷题站的同步数据');
   const d = cloud.data || {}, ct = cloud.tomb || {}, s = SYC.scope;
   let added = 0;
+
+  /* 0) 侧栏星标：两边取并集（星标是「收藏」语义，谁标过都算标过） */
+  if (s.star && d.stars && typeof d.stars === 'object') {
+    try {
+      const raw = JSON.parse(localStorage.getItem('qbank.side.v1') || '{}');
+      const mine = Object.assign({}, (raw && raw.star) || {});
+      let ch = 0;
+      Object.keys(d.stars).forEach(k => { if (!mine[k]) { mine[k] = 1; ch++; } });
+      if (ch) {
+        raw.star = mine;
+        localStorage.setItem('qbank.side.v1', JSON.stringify(raw));
+        syncLog('星标并进来 ' + ch + ' 个');
+        if (window.SIDE && SIDE.refresh) { try { SIDE.refresh(); } catch (e) {} }
+        else if (window.CAT && CAT.render) { try { CAT.render(); } catch (e) {} }
+      }
+    } catch (e) {}
+  }
+  /* 0b) 空白板手稿：按 id 合并，两边都有的以本机为准（避免把正在改的那张盖掉） */
+  if (s.board && Array.isArray(d.boards) && d.boards.length) {
+    try {
+      const mine = JSON.parse(localStorage.getItem('qbank.board.v1') || '[]');
+      const arr = Array.isArray(mine) ? mine.slice() : [];
+      const have = {};
+      arr.forEach(x => { if (x && x.id) have[x.id] = 1; });
+      let add = 0;
+      d.boards.forEach(x => { if (x && x.id && !have[x.id]) { arr.push(x); add++; } });
+      if (add) {
+        arr.sort((a, b) => (+b.ts || 0) - (+a.ts || 0));
+        localStorage.setItem('qbank.board.v1', JSON.stringify(arr.slice(0, 30)));
+        syncLog('手稿并进来 ' + add + ' 张');
+      }
+    } catch (e) {}
+  }
 
   /* 1) 先并墓碑：在别的设备上删掉的题，不能在本机复活 */
   ['ans', 'fav', 'note', 'fix', 'paper', 'tag', 'vocab', 'qtn', 'aisrc', 'var'].forEach(k => {
