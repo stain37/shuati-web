@@ -1956,8 +1956,20 @@ function paintEditor() {
     if (!text && !ED.imgs.length) { delete NOTES[k]; tombAdd('note', k); }
     else NOTES[k] = { text: text, imgs: ED.imgs.slice(), ts: Date.now() };
     if (!saveNotes()) { toast('保存失败：浏览器存储空间已满，建议把图片压小或先导出备份'); return; }
-    const mb = storageBytes() / 1024 / 1024;
-    toast(mb > 4 ? '已保存（本机存储已用 ' + mb.toFixed(2) + ' MB，接近上限）' : '已保存');
+    (function () {
+      const done = function (h) {
+        const used = (h && h.used) ? h.used : storageBytes();
+        const mb = used / 1024 / 1024;
+        const q = (h && h.quota) ? Math.round(h.quota / 1048576) : 0;
+        if (h && h.near) {
+          toast('已保存（本机已用 ' + mb.toFixed(1) + ' MB' + (q ? ' / 额度约 ' + q + ' MB' : '') + '，快满了，建议导出备份）', 4200, 'bad');
+        } else {
+          toast(mb >= 10 ? ('已保存（本机已用 ' + mb.toFixed(1) + ' MB' + (q ? ' / 额度约 ' + q + ' MB' : '') + '）') : '已保存', 1600, 'ok');
+        }
+      };
+      if (typeof window.storageHeadroom === 'function') { Promise.resolve(window.storageHeadroom()).then(done).catch(function () { done(null); }); }
+      else done(null);
+    })();
     if (typeof aiForget === 'function') aiForget(host.querySelector('.ai-host'));
     fmtBarHide(); host.innerHTML = ''; ED = null; fmtBarRebind();
     render();

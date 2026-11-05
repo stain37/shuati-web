@@ -3954,6 +3954,74 @@ function openQEditor(host, fk, q, target, done) {
     if (done) done();
   };
 }
+
+/* ---------------- 答题页：选中文字右键 → 复制 / 在题库里找相关题 ---------------- */
+(function () {
+  var box = null;
+  function close() {
+    if (box) { box.remove(); box = null; }
+    document.removeEventListener('mousedown', onDown, true);
+    document.removeEventListener('scroll', close, true);
+  }
+  function onDown(ev) { if (box && !box.contains(ev.target)) close(); }
+  function selText() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return '';
+    var t = String(sel).replace(/[ \t\u00a0]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return t.length > 600 ? t.slice(0, 600) : t;
+  }
+  function copyText(t) {
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = t; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        toast('已复制');
+      } catch (e) { toast('复制失败，可以按 Ctrl+C', 2000, 'bad'); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { toast('已复制'); }, fallback);
+    } else fallback();
+  }
+  function open(x, y, text) {
+    close();
+    var b = document.createElement('div');
+    b.className = 'qctx';
+    b.innerHTML = '<button type="button" data-qctx="copy">📋 复制</button>'
+      + (window.SIMQ && SIMQ.openText ? '<button type="button" data-qctx="sim">🔍 在题库里找相关题</button>' : '');
+    document.body.appendChild(b);
+    var w = b.offsetWidth, h = b.offsetHeight;
+    b.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
+    b.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + 'px';
+    box = b;
+    b.addEventListener('click', function (ev) {
+      var t = ev.target.closest('[data-qctx]');
+      if (!t) return;
+      var act = t.getAttribute('data-qctx');
+      close();
+      if (act === 'copy') copyText(text);
+      else if (act === 'sim') { try { SIMQ.openText(text); } catch (e) {} }
+    });
+    setTimeout(function () {
+      document.addEventListener('mousedown', onDown, true);
+      document.addEventListener('scroll', close, true);
+    }, 0);
+  }
+  document.addEventListener('contextmenu', function (ev) {
+    if (!document.body.classList.contains('quiz')) return;
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    /* 只在题目正文里接管：题干、共用题干、答过的选项、解析、作答反馈 */
+    if (!t.closest('.stem, .gstem, .opts .opt[data-lock], .exp-wrap, .fb')) return;
+    if (t.closest('input, textarea, .ink-wrap, .pip-win')) return;
+    var text = selText();
+    if (!text) return;                 /* 没选字 → 交回系统菜单 */
+    ev.preventDefault();
+    open(ev.clientX, ev.clientY, text);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+
 window.openQEditor = openQEditor;
 
 
@@ -3979,6 +4047,24 @@ async function storageUse() {
   } catch (err) {}
   return { used: storageBytes(), quota: 0, real: false };
 }
+/* 存储余量：给「快满了」判断用，别再按老的 4MB 拍脑袋 */
+async function storageHeadroom() {
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const e = await navigator.storage.estimate();
+      const used = e.usage || 0, quota = e.quota || 0;
+      if (quota) {
+        const free = quota - used;
+        return { used, quota, real: true, near: used > quota * 0.85 || free < 20 * 1024 * 1024 };
+      }
+    }
+  } catch (err) {}
+  const used = storageBytes();
+  /* 拿不到额度就按 200MB 当上限（浏览器一般给得比这多） */
+  return { used, quota: 200 * 1024 * 1024, real: false, near: used > 200 * 1024 * 1024 * 0.85 };
+}
+window.storageHeadroom = storageHeadroom;
+
 async function paintStorageUse() {
   const u = await storageUse();
   const el = $('storeUse');
@@ -4174,7 +4260,11 @@ function renderQuiz(bankId) {
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
     if (!recite && !locked && (QZ.excl[q.id] || []).indexOf(K) >= 0) cls += ' excl';   /* 长按排除：变灰、不参与选择与判分 */
-    return `<button class="${cls}" data-k="${K}" ${locked ? 'disabled' : ''}><span class="k">${K}</span><span>${stemHtml(optText(t, K))}</span></button>`;
+    /* 答过 / 背题：用 div 而不是 disabled 的 button —— 按钮被禁用后浏览器不派发右键、也不能选文字 */
+    const tag = (locked || recite) ? 'div' : 'button';
+    const lockAttr = (locked || recite) ? ' data-lock="1" role="button" aria-disabled="true"' : '';
+    if (locked || recite) cls += ' lock';
+    return `<${tag} class="${cls}" data-k="${K}"${lockAttr}><span class="k">${K}</span><span>${stemHtml(optText(t, K))}</span></${tag}>`;
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
@@ -4301,6 +4391,7 @@ function renderQuiz(bankId) {
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
+  else if (locked) $('view').querySelectorAll('.opt').forEach(el => { el.onclick = null; });   /* 已答：只让选文字/右键，不再改答案 */
   else $('view').querySelectorAll('.opt').forEach(el => {
     el.onclick = () => {
       if (el.dataset.lp === '1') { el.dataset.lp = ''; return; }   /* 长按刚排除/恢复，别再顺手选中 */
