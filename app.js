@@ -1493,9 +1493,15 @@ function fbAutoHide(fb) {
         try { fb.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
       };
       fb.parentNode.insertBefore(c, fb.nextSibling);
-    }, 10000);
+    }, 18000);
   };
+  /* 有解析就别自动收走：用户在读解析，收起等于打断 */
+  try {
+    if (fb.querySelector('.exp-wrap')) return;   /* 真有解析：别收，收起等于打断 */
+  } catch (e) {}
   fb.addEventListener('pointerdown', arm, { passive: true });
+  fb.addEventListener('wheel', arm, { passive: true });
+  fb.addEventListener('touchmove', arm, { passive: true });
   fb.addEventListener('keydown', arm);
   arm();
 }
@@ -2705,7 +2711,7 @@ var TR = (function () {
     document.body.classList.add('tr-busy');
     try {
       /* 退场只压到 0.2 就交棒给新页面，别整块消失——一消失就会「闪一下」 */
-      var a = v.animate([{ opacity: 1, transform: 'none' }, { opacity: 0.2, transform: 'translateY(-5px) scale(.995)' }],
+      var a = v.animate([{ opacity: 1, transform: 'none' }, { opacity: 0.62, transform: 'translateY(-4px) scale(.997)' }],
         { duration: 110, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'forwards' });
       a.onfinish = function () { try { a.cancel(); } catch (e) {} };
     } catch (e) { v.style.opacity = '0'; }
@@ -2743,16 +2749,16 @@ var TR = (function () {
     var kind = kindOf(r, prevSig), kf, dur, ease, org = null;
     if (kind === 'grow') {
       org = originOf(v);
-      kf = [{ opacity: 0.2, transform: 'translateY(9px) scale(.95)' }, { opacity: 1, transform: 'none' }];
+      kf = [{ opacity: 0.62, transform: 'translateY(9px) scale(.95)' }, { opacity: 1, transform: 'none' }];
       dur = 360; ease = 'cubic-bezier(.18,.92,.24,1)';
     } else if (kind === 'push') {
-      kf = [{ opacity: 0.2, transform: 'translateX(30px)' }, { opacity: 1, transform: 'none' }];
+      kf = [{ opacity: 0.62, transform: 'translateX(30px)' }, { opacity: 1, transform: 'none' }];
       dur = 320; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else if (kind === 'pop') {
-      kf = [{ opacity: 0.2, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }];
+      kf = [{ opacity: 0.62, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }];
       dur = 300; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else {
-      kf = [{ opacity: 0.2 }, { opacity: 1 }];
+      kf = [{ opacity: 0.62 }, { opacity: 1 }];
       dur = 240; ease = 'ease-out';
     }
     v.style.transformOrigin = org || '';
@@ -2812,6 +2818,9 @@ function renderInner() {
   const r = route();
   document.querySelectorAll('.mask').forEach(m => m.classList.remove('show'));
   const full = (r.name === 'quiz' || r.name === 'exam');
+  /* web272：批注只属于答题页 —— 一旦不是答题/模考页，就把那层固定画布收掉，
+     不然点「完成」保存后回到主界面，旧笔迹还盖在页面上 */
+  if (!full) { try { if (window.INK && INK.hideView) INK.hideView(); } catch (e) {} }
   document.body.classList.toggle('quiz', full);
   $('nav').style.display = r.name === 'quiz' ? 'flex' : 'none';
   $('chips').style.display = r.name === 'quiz' ? 'flex' : 'none';
@@ -3679,7 +3688,6 @@ function renderQuiz(bankId) {
   const k = kOf(bank, q);
   const speed = SET.quizMode === 'speed';
   const recite = SET.quizMode === 'recite';
-  let inkShown = (() => { try { return localStorage.getItem('qbank.ink.show.v1') !== '0'; } catch (e) { return true; } })();
   uiSpeedStop();                                  // 换题 / 重画：先把上一题的速刷浮层和待跳计时收掉
   const locked = !recite && answered(k);
   const rec = recOf(k);
@@ -3731,11 +3739,11 @@ function renderQuiz(bankId) {
         <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
         <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★' : '☆'}<span class="fav-t">${faved ? ' 已收藏' : ' 收藏'}</span></button>
         <span class="qtools" data-noswipe>
+        <button class="btn pip-entry" id="pipEntry" style="display:none" title="小窗：把这道题单独拉到旁边对照">小窗</button>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
         <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
         <button class="btn" id="doExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
-        <button class="btn" id="doInkEye" title="显示 / 隐藏题目上的批注（不删除笔迹）">${inkShown ? '👁' : '🚫'}</button>
         </span>
       </div>
       <div class="vstrip" id="vStrip"></div>
@@ -3824,7 +3832,7 @@ function renderQuiz(bankId) {
     try { if (INK.isEditing && INK.isEditing()) INK.rebind(); else INK.paint(bank, q); } catch (e) {}
   }
   paintInkDot();
-  try { inkEyeSync(); } catch (e) {}
+
   $('view').querySelectorAll('[data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
@@ -3851,36 +3859,13 @@ function renderQuiz(bankId) {
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
-  const inkEye = () => {
-    try {
-      const off = localStorage.getItem('qbank.ink.show.v1') === '0';
-      localStorage.setItem('qbank.ink.show.v1', off ? '1' : '0');
-    } catch (e) {}
-    inkShown = !inkShown;
-    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
-    render();
-    toast(inkShown ? '批注已显示' : '批注已隐藏（笔迹还在）', 1600);
-  };
-  on('doInkEye', () => { qSheetToggle(false); inkEye(); });
+
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('doRedoBank', () => { qSheetToggle(false); redoSheet(bank, q); });
   on('doExport', () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); });
   /* 工具行与抽屉里是两颗同名 id 的按钮，必须逐个绑，$() 只拿第一个 */
   document.querySelectorAll('#doExport').forEach(el => { el.onclick = () => { qSheetToggle(false); if (window.EXP) EXP.open(bank); else toast('导出模块没加载（exp.js）', 1800, 'bad'); }; });
   document.querySelectorAll('#doRedoBank').forEach(el => { el.onclick = () => { qSheetToggle(false); redoSheet(bank, q); }; });
-  document.querySelectorAll('#doInkEye').forEach(el => { el.onclick = () => {
-    const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
-    try { localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1'); } catch (e) {}
-    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
-    inkEyeSync(); render();
-  }; });
-  on('btnInkEye', () => {
-    const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
-    try { localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1'); } catch (e) {}
-    if (window.INK) { try { INK.paint(bank, q); } catch (e) {} }
-    inkEyeSync(); render();
-    toast(on ? '批注已隐藏（笔迹还在）' : '批注已显示', 1600);
-  });
   /* 方案十 4.7：两个入口共用一份 NOTES —— 打开完整编辑器之前，先把就地编辑的改动存进去，
      不然编辑器里显示的是旧内容，用户会以为刚才改的白改了。 */
   /* 点抽屉里的动作先把抽屉收掉：不然遮罩（.qsheet 固定全屏）还盖着，
@@ -4716,31 +4701,6 @@ function redo(bank, q) {
    · 重做题库：整库全部退回未答，顺序照题库原序，从第一题开始；
    · 仅重做错题：只挑当前错题组成一轮，答对＝订正（打上 fixed → 从错题集/错题 chip/答题卡里移出），
      答错＝留着（commitAnswer 会把 fixed 清掉）。「累计错了几次」照旧看得到。 */
-function inkEyeSync() {
-  let b = document.getElementById('inkEyeBig');
-  const bk = (typeof bankById === 'function' && QZ.bankId) ? bankById(QZ.bankId) : null;
-  const q = bk ? (bk.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
-  let has = false;
-  try { has = !!(window.INK && bk && q && INK.hasInk(bk, q)); } catch (e) { has = false; }
-  if (!has) { if (b) b.style.display = 'none'; return; }
-  if (!b) {
-    b = document.createElement('button');
-    b.id = 'inkEyeBig'; b.type = 'button'; b.className = 'ink-eye';
-    document.body.appendChild(b);
-    b.onclick = function () {
-      const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
-      localStorage.setItem('qbank.ink.show.v1', on ? '0' : '1');
-      const bk2 = bankById(QZ.bankId), q2 = bk2 ? (bk2.questions || []).filter(x => String(x.id) === String(QZ.cur))[0] : null;
-      if (bk2 && q2) { try { INK.paint(bk2, q2); } catch (e) {} }
-      render();
-    };
-  }
-  b.style.display = '';
-  const on = localStorage.getItem('qbank.ink.show.v1') !== '0';
-  b.innerHTML = on ? '<b>🚫</b> 隐藏批注' : '<b>👁</b> 显示批注';
-  b.className = 'ink-eye' + (on ? '' : ' off');
-}
-
 function paintInkDot() {
   const b = $('btnInk'); if (!b) return;
   try {
@@ -4874,7 +4834,16 @@ function uiSpeedFx(bank, q, ok) {
     : `<b class="sp-t">✗ 答案 ${esc(ans)}</b>
     <span class="sp-note">答错已停下，看完解析点「下一题 ›」</span>`;
   host.appendChild(el);
-  if (!ok) return;                      /* 打错不自动跳：先把解析看完 */
+  if (!ok) {                            /* 打错不自动跳：先把解析看完，浮层自己淡掉 */
+    const gone = function () {
+      if (!el.isConnected) return;
+      el.classList.add('sp-out');
+      setTimeout(function () { if (el.isConnected) el.remove(); }, 280);
+    };
+    el.addEventListener('pointerdown', gone, { passive: true });
+    SP_JUMP = setTimeout(function () { SP_JUMP = null; gone(); }, 6000);
+    return;
+  }
   on('spStop', () => { uiSpeedStop(); toast('已停下 —— 看完点「下一题 ›」', 1700); });
   const qid = String(q.id);
   SP_JUMP = setTimeout(() => {
@@ -5050,7 +5019,7 @@ function step(d) {
   QZ.cur = p[j].id;
   writeLS('qbank.last.' + bank.id, QZ.cur);
   render();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch (e) { window.scrollTo(0, 0); }
 }
 
 let GRIDF = 'all';        // 答题卡筛选：all / wrong / undone（只影响显示，不影响题号）

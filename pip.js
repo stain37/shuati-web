@@ -258,19 +258,25 @@
   function ensureEntry() {
     if (!bankId()) {
       const old = document.getElementById('pipEntry');
-      if (old) old.remove();
+      if (old) { if (old.dataset.pipBuilt === '1') old.style.display = 'none'; else old.remove(); }
       return;
     }
     const head = document.querySelector('#view .qhead');
     if (!head) return;
-    if (!document.getElementById('pipEntry')) {
-      const b = document.createElement('button');
+    let b = document.getElementById('pipEntry');
+    if (!b) {
+      b = document.createElement('button');
       b.className = 'btn';
       b.id = 'pipEntry';
-      b.onclick = () => open();
       const anchor = head.querySelector('#btnInk') || head.querySelector('#btnQn');
       if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(b, anchor);
       else head.appendChild(b);
+    }
+    if (b.style.display === 'none') b.style.display = '';
+    if (b.textContent !== '小窗') b.textContent = '小窗';
+    if (b.dataset.pipBound !== '1') {
+      b.dataset.pipBound = '1';
+      b.onclick = () => open();
     }
     updateFab();
   }

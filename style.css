@@ -10361,3 +10361,9 @@ body.focus .focus-exit{position:fixed;left:auto;right:12px;bottom:auto;top:calc(
 
 /* ===== web266：换页转场（TR）配套 ===== */
 body.tr-busy #view { pointer-events: none; }
+
+/* web270：速刷答错浮层 6 秒后自己淡出（也可点一下立刻收） */
+.sp-fx { transition: opacity .26s ease, transform .26s ease; }
+.sp-fx.sp-out { opacity: 0; transform: translateX(-50%) translateY(8px); pointer-events: none; }
+/* web270：反馈面板收起后，底部胶囊提示别占太多视觉 */
+.fb-chip { margin-top: 8px; }

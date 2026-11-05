@@ -407,6 +407,21 @@
       if (opt.state.eraseWhole != null) st.eraseWhole = opt.state.eraseWhole;
     }
     var ops = (opt.ops || []).slice(), cur = null, drag = false, dirty = false;
+    /* 编辑过程中把笔迹锚在题目卡片上：窗口一变，笔迹跟着卡片缩放而不是漂走 */
+    var anchorFrom = opt.anchorFrom || null, anchorCard = opt.anchorCard || null;
+    /* 卡片位置/尺寸一变（改窗口、滚动），就把已有笔迹一次性换算到新坐标系，
+       并把基准重置为当前矩形 —— 之后新画的笔就直接在当前坐标系里，不会再被二次搬运。 */
+    function syncAnchor() {
+      if (!anchorCard || !anchorFrom) return false;
+      var now = anchorCard.getBoundingClientRect();
+      if (!now.width || !now.height) return false;
+      if (Math.abs(now.left - anchorFrom.left) < 0.5 && Math.abs(now.top - anchorFrom.top) < 0.5 &&
+          Math.abs(now.width - anchorFrom.width) < 0.5 && Math.abs(now.height - anchorFrom.height) < 0.5) return false;
+      ops = remapFromCard(ops, anchorFrom, now);
+      if (cur) cur = remapFromCard([cur], anchorFrom, now)[0];
+      anchorFrom = now;
+      return true;
+    }
     var ctx = cv.getContext('2d');
     var size = { w: 1, h: 1 };
     if (window.ResizeObserver) {
@@ -453,12 +468,14 @@
       if (Math.abs(r.width - size.w) < 1 && Math.abs(r.height - size.h) < 1) return;
       size = { w: r.width, h: r.height };
       ctx = fitCanvas(cv, size.w, size.h);
+      opt.w0 = size.w; opt.h0 = size.h;   /* 几何交给锚定，这里只做像素缩放 */
       paint();
     }
     function paint() {
       repaintAll = paint;
       ctx.clearRect(0, 0, size.w, size.h);
       var sx = size.w / (opt.w0 || size.w), sy = size.h / (opt.h0 || size.h);
+      syncAnchor();
       for (var i = 0; i < ops.length; i++) drawOp(ctx, ops[i], sx, sy);
       if (cur) drawOp(ctx, cur, sx, sy);
       if (opt.handles) {
@@ -975,7 +992,8 @@
     document.addEventListener('keydown', onKey);
 
     tb.querySelector('.ink-done').onclick = function () {
-      opt.onDone(ops, opt.w0 || size.w, opt.h0 || size.h, dirty);
+      syncAnchor();
+      opt.onDone(ops, innerWidth, innerHeight, dirty);
     };
     setTool(st.tool);
     syncSize(); syncBtns();
@@ -1015,9 +1033,8 @@
     cv.style.height = Math.round(h * k) + 'px';
   }
 
-  function inkShow() {
-    try { return localStorage.getItem('qbank.ink.show.v1') !== '0'; } catch (e) { return true; }
-  }
+  /* web272：「隐藏批注」已删掉，批注永远显示（老的 qbank.ink.show.v1 键不再读） */
+  function inkShow() { return true; }
 
   /* 整页批注：显示层（不可点）与编辑层（可画）都是 fixed 铺满整个视口，
      所以「答题卡外面」也能画，而且点空白处不会触发选字/复制 */
@@ -1054,8 +1071,22 @@
     });
   }
 
+  /* 转屏 / 改窗口：画布尺寸和卡片尺寸都变了，重铺一次（笔迹按卡片锚定，所以只会跟着卡片缩放） */
+  var _rzT = 0;
+  addEventListener('resize', function () {
+    clearTimeout(_rzT);
+    _rzT = setTimeout(function () { try { if (typeof repaintAll === 'function') repaintAll(); } catch (e) {} }, 160);
+  }, { passive: true });
+
+  function hideView() {
+    var cv = document.getElementById('inkView');
+    if (cv) { cv.style.display = 'none'; try { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); } catch (e) {} }
+    var L = document.getElementById('inkImgLayer');
+    if (L) { L.innerHTML = ''; L.style.display = 'none'; }
+  }
+
   function paint(bank, q) {
-    if (!bank || !q) return;
+    if (!bank || !q) { hideView(); return; }
     var cv = viewLayer();
     var rec = INK_MEM[keyOf(bank, q)] || inkAll()[keyOf(bank, q)];
     if (rec && rec.ops) rec = { ops: penOps(rec.ops), vw: rec.vw, vh: rec.vh, cr: rec.cr, ts: rec.ts };
@@ -1068,7 +1099,9 @@
     var ctx = fitCanvas(cv, s.cw, s.ch);
     var sx = 1, sy = 1;
     repaintAll = function () { paint(bank, q); };   /* 图片解码完成后回一次，否则首帧画不出来 */
-    rec.ops.forEach(function (o) {
+    var ANCMAP = anchorOf(rec, cardDocRect());
+    var DRAWN = mapOps(rec.ops, ANCMAP);
+    DRAWN.forEach(function (o) {
       drawOp(ctx, o, sx, sy);
     });
     /* 图片单独用真 <img> 叠上去：canvas 画图在这套缩放里不可靠，DOM 一定画得出来。
@@ -1077,7 +1110,7 @@
     if (!lay) { lay = document.createElement('div'); lay.id = 'inkImgLayer'; lay.className = 'ink-imgs'; document.body.appendChild(lay); }
     var keep = [];
     lay._im = lay._im || {};
-    rec.ops.forEach(function (o, i) {
+    DRAWN.forEach(function (o, i) {
       if (o.t !== 'img' || !o.data) return;
       var im = lay._im[i];
       if (!im) {
@@ -1095,6 +1128,51 @@
       if (keep.indexOf(+k) < 0) { try { lay.removeChild(lay._im[k]); } catch (e) {} delete lay._im[k]; }
     });
     lay.style.display = editing ? 'none' : '';
+  }
+
+  /* 批注锚定：存的时候记下题目卡片的矩形（文档坐标），画的时候按当前卡片矩形做仿射映射，
+     窗口怎么变、字号怎么变，笔迹都跟着卡片走，不会漂到别处。 */
+  function cardDocRect() {
+    var c = (typeof cardOf === 'function' ? cardOf() : null) || document.querySelector('#view .qcard');
+    if (!c) return null;
+    var r = c.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+  }
+
+  function anchorOf(rec, rect) {
+    var cr = rec && rec.cr;
+    if (!rect || !cr || !(cr.w > 8) || !(cr.h > 8)) return null;
+    var kx = rect.w / cr.w, ky = rect.h / cr.h;
+    if (!(kx > 0.05 && kx < 20 && ky > 0.05 && ky < 20)) return null;
+    return { kx: kx, ky: ky, dx: rect.x - cr.x * kx, dy: rect.y - cr.y * ky };
+  }
+
+  function mapOps(ops, a) {
+    if (!a) return ops;
+    var k = (a.kx + a.ky) / 2;
+    return ops.map(function (o) {
+      var n = {}; for (var q in o) n[q] = o[q];
+      if (o.p) n.p = o.p.map(function (pt) { return [pt[0] * a.kx + a.dx, pt[1] * a.ky + a.dy, pt[2]]; });
+      if (o.s) n.s = o.s * k;
+      if (o.w) n.w = o.w * a.kx;
+      return n;
+    });
+  }
+
+  /* 把屏幕坐标的笔迹从一张卡片矩形搬到另一张（编辑中改窗口用） */
+  function remapFromCard(ops, from, to) {
+    if (!ops || !from || !to || !(from.width > 8) || !(from.height > 8)) return ops || [];
+    var kx = to.width / from.width, ky = to.height / from.height, k = (kx + ky) / 2;
+    return ops.map(function (o) {
+      var n = {}; for (var q in o) n[q] = o[q];
+      if (o.p) n.p = o.p.map(function (pt) {
+        return [to.left + (pt[0] - from.left) * kx, to.top + (pt[1] - from.top) * ky, pt[2]];
+      });
+      if (o.s) n.s = o.s * k;
+      if (o.w) n.w = o.w * kx;
+      return n;
+    });
   }
 
   function hasInk(bank, q) {
@@ -1121,7 +1199,7 @@
     var vw = Math.max(1, innerWidth), vh = Math.max(1, innerHeight);
     cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
     fitCanvas(cv, vw, vh);
-    EDIT = { bankId: bank.id, qid: q.id, w0: vw, h0: vh };
+    EDIT = { bankId: bank.id, qid: q.id, w0: vw, h0: vh, card0: card.getBoundingClientRect() };
     liveCv = cv;
     /* Esc 直接退出批注 */
     var escFn = function (e) { if (e && e.key === 'Escape') { var dn = wrap.querySelector('.ink-done'); if (dn) dn.click(); } };
@@ -1130,6 +1208,7 @@
     liveStudio = Studio({
       cv: cv, wrap: wrap, ops: ops || [], state: state || null,
       w0: vw, h0: vh, handles: true,
+      anchorCard: card, anchorFrom: card.getBoundingClientRect(),
       onDone: function (o, w, h, dirty) {
         var all = inkAll(), prevRec = all[keyOf(bank, q)];
         var r0 = card.getBoundingClientRect();
@@ -1151,6 +1230,32 @@
       }
     });
     setTimeout(function () { if (liveStudio) liveStudio.resize(); }, 30);
+
+    /* 未保存状态下改窗口 / 转屏：把编辑画布撑到新视口，Studio 会按锚定关系重画笔迹 */
+    var rzT = 0;
+    var onRz = function () {
+      clearTimeout(rzT);
+      rzT = setTimeout(function () {
+        if (!liveStudio) return;
+        cv.style.width = Math.max(1, innerWidth) + 'px';
+        cv.style.height = Math.max(1, innerHeight) + 'px';
+        liveStudio.resize();
+      }, 120);
+    };
+    window.__inkRz = onRz;
+    addEventListener('resize', onRz, { passive: true });
+
+    /* 编辑层是 position:fixed（视口坐标），页面一滚卡片就移了 → 每次滚动都按锚定关系重画一次 */
+    var scrRaf = 0;
+    var onScr = function () {
+      if (scrRaf) return;
+      scrRaf = requestAnimationFrame(function () {
+        scrRaf = 0;
+        try { if (liveStudio) liveStudio.paint(); } catch (e) {}
+      });
+    };
+    window.__inkScr = onScr;
+    addEventListener('scroll', onScr, { passive: true });
     return true;
   }
 
@@ -1402,6 +1507,8 @@
     try { window.__inkGen = (window.__inkGen || 0) + 1; } catch (e) {}
     try { if (window.__inkKey) { document.removeEventListener('keydown', window.__inkKey); window.__inkKey = null; } } catch (e) {}
     try { if (window.__inkEsc) { document.removeEventListener('keydown', window.__inkEsc); window.__inkEsc = null; } } catch (e) {}
+    try { if (window.__inkRz) { removeEventListener('resize', window.__inkRz); window.__inkRz = null; } } catch (e) {}
+    try { if (window.__inkScr) { removeEventListener('scroll', window.__inkScr); window.__inkScr = null; } } catch (e) {}
     try { document.body.classList.remove('ink-on'); } catch (e) {}
     /* 退出批注后，右上角那颗按钮要立刻变回「隐藏/显示批注」 */
     try {
@@ -1472,7 +1579,7 @@
     bake: bake, imgList: imgList,
     paint: paint, annotation: annotation, board: board, history: history,
     hasInk: hasInk, pngOf: pngOf, boardPng: boardPng, inkRec: inkRec, boards: boardAll,
-    close: closeAll, keyOf: keyOf,
+    close: closeAll, hideView: hideView, keyOf: keyOf,
     rebind: rebind, isEditing: isEditing,
     count: function () { return Object.keys(inkAll()).length; }
   };
