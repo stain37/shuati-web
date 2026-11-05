@@ -265,9 +265,9 @@
       steps: [
         {
           id: 'quiz-1', title: '⑧ 题目上方那一行工具',
-          target: '.qtools',
-          html: '<p>先随便打开一个题库（点左边侧栏里的题库，或首页的题库卡片），再往下看。</p>'
-            + '<p>进题后，题目上方有两排东西：</p>'
+          demo: true, target: '.qtools',
+          html: '<p>我给你<b>临时建了一个示例题库</b>并打开了，讲完会自动删掉，不占你的列表。</p>'
+            + '<p>题目上方有两排东西：</p>'
             + '<ul><li><b>左排</b>：普通 / 速刷 / 背题三种模式；</li>'
             + '<li><b>右排</b>：专注（收起顶栏底栏）、口诀（答题页便签）、收藏；</li>'
             + '<li><b>工具行</b>：小窗、相似题、批注、白板、重做、导出。</li></ul>'
@@ -292,10 +292,10 @@
       ]
     },
     {
-      id: 'tools', name: '答题页按钮', menuLabel: '⑨ 每个按钮干什么（答题页）', menuNote: '模式 / 专注 / 口诀 / 相似题 / 批注 / 导出 / 收藏',
+      id: 'tools', name: '答题页按钮', menuLabel: '⑨ 每个按钮干什么（答题页）', menuNote: '模式 / 专注 / 口诀 / 相似题 / 批注 / 导出 / 标签',
       steps: [
         {
-          id: 'tools-1', title: '⑨ 三种模式：普通 / 速刷 / 背题', target: '[data-qm]',
+          id: 'tools-1', title: '⑨ 三种模式：普通 / 速刷 / 背题', demo: true, target: '[data-qm]',
           html: '<ul><li><b>普通</b>：点选项判分，再慢慢看解析（默认）；</li>'
             + '<li><b>速刷</b>：答对约 1.2 秒自动跳下一题，答错才停下；设置里能开「限时 N 秒」，超时算答错；</li>'
             + '<li><b>背题</b>：不要求作答，直接看答案和解析，<b>不写任何作答记录</b>，不熟的顺手点 ★ 收藏。</li></ul>'
@@ -334,15 +334,23 @@
             + '<li>答过之后选项变成可选中文字，<b>右键 → 复制 / 在题库里找相关题</b>。</li></ul>'
         },
         {
-          id: 'tools-8', title: '题号那一行：标签与作答记录', target: '.qhead',
-          html: '<p>题号右边是题型、「本题作答 N 次 · 错 M 次」，还有考点标签。</p>'
-            + '<p>标签默认折叠（防剧透），点「显示标签」才出来；可以手动加标签，也能让 AI 打。</p>'
-            + '<p class="muted small">★ 收藏这里一点就会出现在「收藏」页和侧栏常驻区。</p>'
+          id: 'tools-8', title: '题号那一行：作答记录', target: '.qhead',
+          html: '<p>题号右边是题型和「本题作答 N 次 · 错 M 次」——同一道题答过几次、错过几次都记着。</p>'
+            + '<p class="muted small">★ 收藏一点，就出现在「收藏」页和侧栏常驻区。</p>'
+        },
+        {
+          id: 'tools-9', title: '标签：手动打，也能让 AI 打', target: '.tagrow',
+          html: '<p>题干下面这一行是<b>考点标签</b>，默认折叠（防止提前看到考什么）：</p>'
+            + '<ul><li><b>显示标签</b>：先把这行的标签亮出来；</li>'
+            + '<li><b>＋ 标签</b>：自己加考点（基本 6 个标签在上面单独选）；</li>'
+            + '<li><b>AI 标签</b>：让模型从词表里挑 1–3 个最合适的考点，一次只处理这一题；</li>'
+            + '<li><b>隐藏</b>：又收回去，继续当没看见。</li></ul>'
+            + '<p class="muted small">整个题库批量打标签、看哪个考点最薄，在「学习统计 → 按考点」里。</p>'
         }
       ]
     },
     {
-      id: 'pages', name: '其它页面', menuLabel: '⑩ 其它页面：统计 / 掌握度 / 导入 / 底栏', menuNote: '还有这些地方你没点开过',
+      id: 'pages', name: '其它页面', menuLabel: '⑩ 其它页面：统计 / 掌握度 / 导入 / 底栏', menuNote: '统计 / 掌握度 / 错题本 / 搜索 / 收藏 / 导入',
       steps: [
         {
           id: 'pages-1', title: '⑩ 学习统计：这段时间学得怎么样', route: '#/stats', top: true, target: '#view',
@@ -360,6 +368,25 @@
             + '<li><b>CSV</b>：题干 / 选项 / 答案 / 解析 四列，答题页「…更多」里能导出成 CSV；</li>'
             + '<li><b>整个文件夹</b>：按文件夹层级一次建好目录和题库；</li>'
             + '<li><b>JSON</b>：程序生成的题库，直接拖文件进来也行。</li></ul>'
+        },
+        {
+          id: 'pages-wrong', title: '错题本：不只是攒错题', route: '#/wrong', top: true, target: '#view',
+          html: '<p>答错的题会自动进来，按「错次 / 最近 / 题库」排序，可以按标签和题库筛。</p>'
+            + '<ul><li><b>只做错题</b>：把筛出来的题拉成一次练习，做完错的还会留在本子里；</li>'
+            + '<li><b>来源筛选</b>：错题 / 收藏 / 没做过的都能切；</li>'
+            + '<li><b>导出</b>：整份错题导成 HTML 或打印，考前过一遍很方便。</li></ul>'
+        },
+        {
+          id: 'pages-search', title: '搜索全部：跨题库找题', route: '#/search', top: true, target: '#view',
+          html: '<p>底栏「搜索」是<b>全站搜索</b>：所有题库的题干、选项、解析、标签一起找。</p>'
+            + '<ul><li>打关键词就行，支持多条一起搜（空格分开）；</li>'
+            + '<li>结果里直接点题，跳到那道题的位置继续做；</li>'
+            + '<li>点标签也能进这里——搜索页认标签筛选。</li></ul>'
+        },
+        {
+          id: 'pages-fav', title: '收藏：标记「要再看」', route: '#/fav', top: true, target: '#view',
+          html: '<p>答题页点 ★ 就进这里。适合放<b>不会但不一定算错</b>的题、容易混的对比题。</p>'
+            + '<p class="muted small">收藏也会同步（云同步里勾「收藏」）。</p>'
         },
         {
           id: 'pages-4', title: '底栏五个格子', route: '#/', top: true, target: '.bnav',
@@ -394,6 +421,7 @@
       var b = e.target && e.target.closest ? e.target.closest('[data-gd]') : null;
       if (!b) return;
       var act = b.getAttribute('data-gd');
+      if (act === 'close') { try { demoDrop(); } catch (e) {} }
       if (act === 'next') goStep(T ? T.idx + 1 : 0);
       else if (act === 'prev') goStep(T ? T.idx - 1 : 0);
       else if (act === 'skip') closeTour('skip');
@@ -441,7 +469,64 @@
     return out;
   }
 
+
+  /* ---------- 引导用临时题库：介绍答题页时现场建一套，讲完自动删 ---------- */
+  var DEMO_ID = 'gd-demo-bank', DEMO_MADE = false;
+  function demoBank() {
+    return {
+      id: DEMO_ID,
+      title: '引导示例题库（讲完会自动删）',
+      subtitle: '新手引导临时建的，不占你的题库列表',
+      createdAt: Date.now(),
+      questions: [
+        { id: 'gdq1', stem: '示例题 1：急性阑尾炎最典型的体征是什么？',
+          options: ['右下腹固定压痛（麦氏点）', '全腹板状腹', '肠鸣音亢进', '移动性浊音阳性'],
+          answer: ['A'], explain: '麦氏点压痛是急性阑尾炎最重要、最典型的体征，因为阑尾解剖位置相对固定。',
+          group: '', groupTitle: '' },
+        { id: 'gdq2', stem: '示例题 2：下列哪项不是休克早期的表现？',
+          options: ['脉搏细速', '血压下降', '皮肤湿冷', '尿量减少'],
+          answer: ['B'], explain: '休克早期机体代偿，血压可正常甚至略高；血压下降属于休克失代偿期。',
+          group: '', groupTitle: '' },
+        { id: 'gdq3', stem: '示例题 3（多选）：急性胰腺炎常见病因包括？',
+          options: ['胆道疾病', '大量饮酒', '高脂血症', '口服避孕药'],
+          answer: ['A', 'B', 'C'], explain: '我国以胆道疾病为主，其次是酒精；高甘油三酯血症也是明确病因。',
+          group: '', groupTitle: '' }
+      ]
+    };
+  }
+  function demoEnsure() {
+    try {
+      if (typeof LOCAL === 'undefined' || !Array.isArray(LOCAL)) return '';
+      var b = LOCAL.filter(function (x) { return x && x.id === DEMO_ID; })[0];
+      if (!b) {
+        b = demoBank();
+        LOCAL.push(b);
+        try { invalidateBanks(); } catch (e) {}
+        try { writeLS(LS.banks, LOCAL); } catch (e) {}
+        DEMO_MADE = true;
+      }
+      if (typeof go === 'function') go('#/bank/' + DEMO_ID);
+      return DEMO_ID;
+    } catch (e) { return ''; }
+  }
+  function demoDrop() {
+    if (!DEMO_MADE) return;
+    DEMO_MADE = false;
+    try {
+      if (typeof LOCAL === 'undefined' || !Array.isArray(LOCAL)) return;
+      var i = -1;
+      LOCAL.forEach(function (x, k) { if (x && x.id === DEMO_ID) i = k; });
+      if (i >= 0) {
+        LOCAL.splice(i, 1);
+        try { invalidateBanks(); } catch (e) {}
+        try { writeLS(LS.banks, LOCAL); } catch (e) {}
+      }
+      if ((location.hash || '').indexOf(DEMO_ID) >= 0 && typeof go === 'function') go('#/');
+    } catch (e) {}
+  }
+
   function startTour(list, idx, mode, chapterId) {
+    try { demoDrop(); } catch (e) {}
     ensureDom();
     T = { list: list, idx: Math.max(0, idx || 0), mode: mode || 'full', chapterId: chapterId || null, nextChapterId: null };
     if (mode === 'chapter') {
@@ -487,6 +572,7 @@
   }
 
   function paintEnd() {
+    try { demoDrop(); } catch (e) {}
     if (!CARD) return;
     var chapterMode = T && T.mode === 'chapter';
     var chName = '';
@@ -530,6 +616,7 @@
       if (cur !== step.route && typeof go === 'function') go(step.route);
     }
     try { ensureSideVisible(step); } catch (e) {}
+    if (step.demo) { try { demoEnsure(); } catch (e) {} }
     if (step.top) { try { window.scrollTo(0, 0); } catch (e) {} }
     var tries = 0;
     (function waitReady() {
