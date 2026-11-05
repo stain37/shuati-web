@@ -740,10 +740,24 @@
 
     var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 30000);
+    var MSGS = [{ role: 'system', content: sys }, { role: 'user', content: usr }];
+    var SIG = ctl ? ctl.signal : undefined;
     Promise.resolve()
       .then(function () {
-        return aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }],
-          null, ctl ? ctl.signal : undefined, { stream: false, temp: 0.2, maxTokens: 900 });
+        return aiChat(MSGS, null, SIG, { stream: false, temp: 0.2, maxTokens: 900 });
+      })
+      .then(function (txt) {
+        if (txt && String(txt).trim()) return txt;
+        /* 有些服务商对 stream:false 会回空内容（或推理模型只吐 reasoning），改用流式再要一次 */
+        var acc = '';
+        return aiChat(MSGS, function (full) { acc = full; }, SIG, { stream: true, temp: 0.2, maxTokens: 900 })
+          .then(function (full) {
+            var t = String(full || acc || '');
+            if (t.trim()) return t;
+            var e2 = new Error('模型返回了空内容');
+            e2.body = 'empty';
+            throw e2;
+          });
       })
       .then(function (txt) {
         clearTimeout(timer);
@@ -784,6 +798,12 @@
       })
       .catch(function (e) {
         clearTimeout(timer);
+        if (e && e.body === 'empty') {
+          CLS.err = '没分成功：模型一个字都没回（常见原因：这套模型是「推理型」，只输出了思考过程；或服务端限流/额度用尽）。换个模型（设置 → AI 服务）或稍后再试。';
+          CLS.step = 'ask';
+          clsRender();
+          return;
+        }
         var msg = '';
         try {
           msg = (typeof aiErrInfo === 'function' && e) ? (aiErrInfo(e).msg || '') : '';
