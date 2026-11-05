@@ -644,7 +644,7 @@
       + (CLS.note ? '<p class="cls-hint dim">' + E(CLS.note) + '</p>' : '')
       + (gs.length ? '' : '<p class="cls-hint">AI 没能分好，可以改改要求再来一次。</p>')
       + gs.map(function (g, i) {
-        var names = (g.banks || []).map(function (id) { return byId[id] ? byId[id].title : id; });
+        var names = (g.banks || []).map(function (id) { return byId[id] ? byId[id].title : ('?' + id); });
         return '<div class="cls-g" data-g="' + i + '">'
           + '<div class="cls-gh"><input class="cls-gn" data-gn="' + i + '" value="' + E(g.name) + '" maxlength="14">'
           + '<em>' + names.length + ' 个</em>'
@@ -658,10 +658,60 @@
       + '<button type="button" class="btn primary" id="clsApply"' + (gs.length ? '' : ' disabled') + '>应用到侧栏</button>';
   }
 
+  function clsJSON(t) {
+    try { return JSON.parse(t); } catch (e) {}
+    var s = t.replace(/^\s*\uFEFF/, '');
+    var m = s.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+    if (m) { try { return JSON.parse(m[1].trim()); } catch (e2) {} }
+    for (var st = 0; st < s.length; st++) {
+      var c0 = s.charAt(st);
+      if (c0 !== '{' && c0 !== '[') continue;
+      var open = c0, close = c0 === '{' ? '}' : ']', depth = 0, inStr = false, q = 0, esc = false;
+      for (var i = st; i < s.length; i++) {
+        var ch = s.charAt(i);
+        if (inStr) {
+          if (esc) { esc = false; continue; }
+          if (ch === '\\') { esc = true; continue; }
+          if (ch === q) inStr = false;
+          continue;
+        }
+        if (ch === '"' || ch === "'") { inStr = true; q = ch; continue; }
+        if (ch === open) depth++;
+        else if (ch === close) {
+          depth--;
+          if (depth === 0) {
+            var cand = s.slice(st, i + 1).replace(/'/g, '"').replace(/,\s*([}\])])/g, '$1');
+            try { return JSON.parse(cand); } catch (e3) {}
+            break;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   function clsParse(txt) {
-    var a = String(txt || '').indexOf('{'), b = String(txt || '').lastIndexOf('}');
-    if (a < 0 || b <= a) return null;
-    try { return JSON.parse(String(txt).slice(a, b + 1)); } catch (e) { return null; }
+    var raw = String(txt || '');
+    CLS.raw = raw.slice(0, 600);
+    var j = clsJSON(raw);
+    if (!j) return null;
+    // 兼容多种形状：{groups:[{name,banks}]} / [{name,banks}] / {name:[ids]} / {分组:[…]}
+    var groups = [];
+    var arr = null;
+    if (Array.isArray(j)) arr = j;
+    else if (Array.isArray(j.groups)) arr = j.groups;
+    else if (Array.isArray(j['分组']) || Array.isArray(j.folders) || Array.isArray(j.result)) arr = j['分组'] || j.folders || j.result;
+    else if (j && typeof j === 'object') { arr = []; for (var k in j) if (Object.prototype.hasOwnProperty.call(j, k) && Array.isArray(j[k])) arr.push({ name: k, banks: j[k] }); }
+    if (!arr) return null;
+    for (var gi = 0; gi < arr.length; gi++) {
+      var g = arr[gi] || {};
+      var name = String(g.name || g.title || g.folder || g['分组名'] || g['文件夹'] || '').trim();
+      if (!name) continue;
+      var bs = g.banks || g.ids || g.items || g.题库 || [];
+      if (!Array.isArray(bs)) bs = [bs];
+      groups.push({ name: name.slice(0, 20), banks: bs.map(function (x) { return String(x).trim(); }).filter(Boolean) });
+    }
+    return groups.length ? { groups: groups } : null;
   }
 
   function clsRun() {
@@ -698,7 +748,19 @@
       .then(function (txt) {
         clearTimeout(timer);
         var data = clsParse(txt);
-        if (!data || !data.groups || !data.groups.length) throw new Error('AI 的回答不是预期的 JSON');
+        if (data && data.groups) {
+          // 模型有时把 id 写成序号（1、2、3）——按清单顺序还原成真 id
+          var idxMap = {};
+          CLS.banks.forEach(function (b, i) { idxMap[String(i + 1)] = b.id; });
+          data.groups.forEach(function (g) {
+            g.banks = (g.banks || []).map(function (v) {
+              var k = String(v).trim().replace(/^#/, '').replace(/[|:：].*$/, '');
+              if (CLS.banks.some(function (b) { return b.id === k; })) return k;
+              return idxMap[k] || k;
+            });
+          });
+        }
+        if (!data || !data.groups || !data.groups.length) { console.warn('[classify] 模型原文:', CLS.raw); throw new Error('AI 的回答不是预期的 JSON（原文开头：' + String(CLS.raw || '').slice(0, 160) + '）'); }
         var byId = {};
         list.forEach(function (b) { byId[b.id] = 1; });
         var used = {};
