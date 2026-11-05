@@ -123,7 +123,7 @@ h2.sec::before{background:linear-gradient(180deg,var(--primary),color-mix(in srg
 @media (prefers-reduced-motion: reduce){ #view{animation:none} }
 body{
   font:var(--fs)/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  background:var(--bg); color:var(--text); min-height:100vh;
+  background:var(--bg); color:var(--text); min-height:100vh; min-height:100dvh;
   -webkit-text-size-adjust:100%;
 }
 a{color:var(--primary);text-decoration:none}
@@ -404,7 +404,7 @@ body.dark .nav{background:rgba(15,20,32,.96)}
 .bnav-ind{position:absolute;left:0;top:4px;bottom:4px;width:0;z-index:0;pointer-events:none;opacity:0;border-radius:15px;
   background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 14%,transparent),color-mix(in srgb,var(--primary) 8%,transparent));
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 22%,transparent),0 2px 8px color-mix(in srgb,var(--primary) 10%,transparent);
-  transition:transform .42s cubic-bezier(.34,.96,.6,.99),width .42s cubic-bezier(.34,.96,.6,.99),opacity .2s ease}
+  transition:opacity .2s ease}
 body.dark .bnav{background:color-mix(in srgb,var(--card) 86%,transparent)}
 @media(prefers-reduced-motion:reduce){.bnav-ind,.bnav .bn-ic,.bnav .btn span{transition:none!important}}
 /* 非答题页：正文别被这条挡住（~74px）；答题页：#nav 顶到它上面，两条一共 ~170px */
@@ -1568,7 +1568,7 @@ body.quiz.focus .bnav { display: none !important; }
 body.quiz.focus { padding-bottom: 120px; }
 body.focus:not(.quiz) { padding-bottom: 118px; }
 body.focus .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
-.focus-exit { position: fixed; right: 12px; bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 24;
+.focus-exit { position: fixed; right: 12px; top: calc(10px + env(safe-area-inset-top)); z-index: 36;
   display: none; align-items: center; gap: 4px; padding: 7px 12px; border-radius: 999px;
   background: var(--card); border: 1px solid var(--line); color: var(--sub); box-shadow: var(--sh-pop); font-size: 12.5px; }
 body.focus .focus-exit { display: flex; }
@@ -1882,7 +1882,7 @@ html[data-bg="custom"] body{background-image:var(--bg-img,var(--bg-wash));backgr
 @media (max-width:760px){ html[data-bg="custom"] body,html[data-bg="custom"] body.dark{background-attachment:scroll,scroll} }
 /* 视频背景（web141）：一个固定的 <video> 垫在最底层，object-fit:cover 自适应；
    深色降亮度，避免白屏刺眼；减少动态效果时不自动播（停在首帧）。 */
-.bg-video{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;object-position:center center;z-index:-1;pointer-events:none;display:none;background:#0b1220}
+.bg-video{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;object-fit:cover;object-position:center center;z-index:-1;pointer-events:none;display:none;background:#0b1220}
 html[data-bg="video"] .bg-video{display:block}
 html[data-bg="video"]{background:var(--bg)}
 html[data-bg="video"] body{background-color:transparent;background-image:none}
@@ -9878,7 +9878,7 @@ body.ink-on .bnav,body.ink-on #nav{opacity:.25;pointer-events:none}
 .ink-chk{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);margin-left:4px}
 /* 整页批注：铺满整个文档（不是视口），所以笔迹会跟着页面一起滚动 */
 .ink-view{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:12;display:none}
-.ink-fix{position:fixed;left:0;top:0;width:100vw;height:100vh;touch-action:none;pointer-events:auto;z-index:30;display:none;cursor:crosshair}
+.ink-fix{position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;touch-action:none;pointer-events:auto;z-index:30;display:none;cursor:crosshair}
 body.ink-on{user-select:none;-webkit-user-select:none}
 body.ink-on *{cursor:crosshair}
 body.ink-on .ink-wrap,body.ink-on .ink-wrap *{cursor:pointer;user-select:none}
@@ -10134,10 +10134,17 @@ body.ink-on .ink-txt{cursor:text}
   /* ⑤ 手机答题页：两行筛选默认收起，顶栏一个「筛选」开关展开；点任意 chip 自动收起。
      收起后首屏多出约 70–90px 给题干与选项（EXAM-MASTER「题库首屏保留集合、搜索和题目，统计默认折叠」）。 */
   body.quiz .chips-toggle { display: inline-flex; align-items: center; }
+  /* web266：改成 Collapse（高度+透明度过渡），不再 display:none 一刀切 */
+  body.quiz #subjchips, body.quiz #chips {
+    transition: max-height .26s cubic-bezier(.22,.9,.26,1), opacity .2s ease, padding .26s, margin .26s;
+    overflow: hidden;
+  }
   body.quiz:not(.chips-open) #subjchips,
-  body.quiz:not(.chips-open) #chips { display: none !important; }
+  body.quiz:not(.chips-open) #chips {
+    max-height: 0 !important; opacity: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; border-width: 0;
+  }
   body.quiz.chips-open #subjchips,
-  body.quiz.chips-open #chips { max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; }
+  body.quiz.chips-open #chips { max-height: 42vh; opacity: 1; overflow-y: auto; overscroll-behavior: contain; }
   .chips-toggle[aria-expanded="true"] { background: var(--primary-soft); border-color: var(--primary-line); color: var(--primary); }
 
   /* ④ 输入框字号 >= 16px：iOS Safari 对 <16px 的输入框会在聚焦时自动放大整页（EXAM-MASTER 同样的处理） */
@@ -10156,7 +10163,7 @@ body.ink-on .ink-txt{cursor:text}
 .mv-kpi span { display: block; font-size: 12px; color: var(--sub); margin-top: 2px; }
 .mv-kpi i { display: block; font-size: 11px; color: var(--sub); font-style: normal; margin-top: 2px; opacity: .8; }
 .mv-subj, .mv-tags { padding: 6px 12px 10px; }
-.mv-row { display: grid; grid-template-columns: minmax(0,1fr) 92px; grid-template-areas: "name meta" "bar meta"; gap: 2px 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); align-items: center; }
+.mv-row { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "name meta" "bar meta"; gap: 2px 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); align-items: center; }
 .mv-row:last-child { border-bottom: 0; }
 .mv-name { grid-area: name; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .mv-name > span.mv-sub { font-weight: 400; font-size: 11.5px; color: var(--sub); white-space: nowrap; }
@@ -10172,3 +10179,185 @@ body.ink-on .ink-txt{cursor:text}
   .mv-kpi { flex: 1 1 calc(50% - 4px); min-width: 0; padding: 8px 10px; }
   .mv-kpi b { font-size: 18px; }
 }
+
+/* ===== web260：题目卡顶部横杠 + 专注/口诀置右 + 工具行独立 + 长按排除整格 ===== */
+.qgrip{display:flex;align-items:center;justify-content:center;height:20px;margin:-8px 0 2px;cursor:grab;
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.qgrip i{display:block;width:44px;height:5px;border-radius:99px;background:var(--line2,var(--line));
+  opacity:.45;transition:width .15s ease,background .15s ease,opacity .15s ease}
+.qgrip:hover i,.qgrip.on i{background:var(--primary);opacity:1}
+.qgrip:hover i{width:58px}
+.qgrip.dragging i{background:var(--primary);opacity:1}
+.qgrip:active{cursor:grabbing}
+.qtools{display:flex;flex:1 1 100%;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}
+
+/* 长按排除：整格都能按，且不弹系统的文字选择/呼出菜单 */
+body.quiz .opts .opt,body.quiz .opts .opt *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+  touch-action:manipulation}
+
+@media (max-width: 620px){
+  .qcard{padding:4px 11px 12px!important}
+  .qgrip{height:26px;margin:-6px 0 0}
+  .qgrip i{width:52px;height:5px}
+  .qhead{flex-wrap:wrap!important;overflow:visible!important;row-gap:6px;-webkit-mask-image:none!important;mask-image:none!important}
+  .qhead>.qno{order:0}
+  .qhead>.tag{order:0}
+  .qhead>.tag.g{display:none!important}
+  .qhead>.spacer-grow{order:1}
+  .qhead>.focus-btn{order:2}
+  .qhead>.qn-open{order:3}
+  .qhead>.btn.fav-btn{order:4;flex:0 0 auto!important;width:38px;height:38px;padding:0!important;
+    justify-content:center;font-size:15px}
+  .qhead>.qtools{order:5}
+  .qhead .fav-t{display:none}
+  .qhead .btn{height:38px}
+  .qhead .focus-btn,.qhead .qn-open{flex:0 0 auto;padding:0 12px;font-weight:700}
+  .qhead .focus-btn{background:var(--primary);border-color:var(--primary);color:#fff}
+  .qhead .focus-btn.on{background:var(--primary);box-shadow:0 0 0 3px var(--primary-weak)}
+  .qhead .focus-btn:active{transform:scale(.96)}
+  .qtools{display:flex!important;flex:1 1 100%;gap:6px;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;
+    touch-action:pan-x;padding:2px 0 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+  .qtools::-webkit-scrollbar{display:none}
+  .qtools>.btn{flex:0 0 auto}
+}
+
+/* ===== web261：手机平台层（按 mobile-native 清单） ===== */
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none;background:var(--bg)}
+html,body{overscroll-behavior:none}
+body{overscroll-behavior-y:none}
+/* 1) 触屏上按钮文字不该被长按选中 */
+button,[role="button"],.btn,.chip,.subjchip,.bnav .btn,.bnav a,.qhead .btn,label.btn{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+/* 2) 触摸设备没有 hover：把「一按就上浮、松手不回弹」的位移清零（背景/边框变化保留） */
+@media (hover:none){
+  .btn:hover,.bank:hover,.opt:hover:not(:disabled),.ai-hit:hover,.nb-card:hover,.wi:hover,
+  .vchip:hover,.tagchip:hover,.tagadd:hover,.taghide-btn:hover,.vocab-chip:hover,
+  .hero .hstat>button.hs:hover,.home-nav-fab:hover,.srow-go:hover .chev,.bnav .btn:hover .bn-ic,
+  .hs:hover{transform:none!important}
+}
+/* 3) 触屏输入框 16px，避免 iOS 聚焦放大（不锁 zoom） */
+@media (pointer:coarse){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+  textarea,select{font-size:16px!important}
+}
+/* 4) 内部滚动到边界不要再把整页拖着走 */
+.qhead,.qtools,.chips-open #chips,.kbdocs,.sheet-body,.mask .sheet{overscroll-behavior:contain}
+
+/* ===== web262：借 UI 动效库的两个低干扰交互 ===== */
+/* ① ripple-click：按钮按下从触点扩散一圈淡光（元素自身要能裁切） */
+.btn,.chip,.subjchip,.kbtab,.bnav .btn{position:relative;overflow:hidden}
+.btn .rp,.chip .rp,.subjchip .rp,.kbtab .rp,.bnav .btn .rp{
+  position:absolute;pointer-events:none;border-radius:50%;
+  background:currentColor;opacity:.22;transform:scale(0);
+  animation:anRipple .42s cubic-bezier(.22,1,.36,1) forwards}
+@keyframes anRipple{to{transform:scale(1);opacity:0}}
+/* ② counter-roll 用的数字字形：等宽，滚动时不抖 */
+.hero .hstat b{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion: reduce){
+  .btn .rp,.chip .rp,.subjchip .rp,.kbtab .rp,.bnav .btn .rp{animation:none;opacity:0}
+}
+
+/* ===== web262：浅奶油底 hero 的文字/统计块压暗 =====
+   这 15 套皮肤把 .hero::after 换成 #fbfaf6->#f1efe6，原来的白字压白底几乎看不见。 */
+html[data-style="artscrafts"] .hero,
+html[data-style="baroque"] .hero,
+html[data-style="corpmemphis"] .hero,
+html[data-style="cubism"] .hero,
+html[data-style="default"] .hero,
+html[data-style="dieselpunk"] .hero,
+html[data-style="egypt"] .hero,
+html[data-style="flat"] .hero,
+html[data-style="futurism"] .hero,
+html[data-style="postimpress"] .hero,
+html[data-style="renais"] .hero,
+html[data-style="streamline"] .hero,
+html[data-style="superflat"] .hero,
+html[data-style="surreal"] .hero,
+html[data-style="wabisabi"] .hero{color:#1c2430!important}
+html[data-style="artscrafts"] .hero .hstat>button.hs,
+html[data-style="baroque"] .hero .hstat>button.hs,
+html[data-style="corpmemphis"] .hero .hstat>button.hs,
+html[data-style="cubism"] .hero .hstat>button.hs,
+html[data-style="default"] .hero .hstat>button.hs,
+html[data-style="dieselpunk"] .hero .hstat>button.hs,
+html[data-style="egypt"] .hero .hstat>button.hs,
+html[data-style="flat"] .hero .hstat>button.hs,
+html[data-style="futurism"] .hero .hstat>button.hs,
+html[data-style="postimpress"] .hero .hstat>button.hs,
+html[data-style="renais"] .hero .hstat>button.hs,
+html[data-style="streamline"] .hero .hstat>button.hs,
+html[data-style="superflat"] .hero .hstat>button.hs,
+html[data-style="surreal"] .hero .hstat>button.hs,
+html[data-style="wabisabi"] .hero .hstat>button.hs{color:#1c2430!important}
+html[data-style="artscrafts"] .hero .hstat>div,
+html[data-style="baroque"] .hero .hstat>div,
+html[data-style="corpmemphis"] .hero .hstat>div,
+html[data-style="cubism"] .hero .hstat>div,
+html[data-style="default"] .hero .hstat>div,
+html[data-style="dieselpunk"] .hero .hstat>div,
+html[data-style="egypt"] .hero .hstat>div,
+html[data-style="flat"] .hero .hstat>div,
+html[data-style="futurism"] .hero .hstat>div,
+html[data-style="postimpress"] .hero .hstat>div,
+html[data-style="renais"] .hero .hstat>div,
+html[data-style="streamline"] .hero .hstat>div,
+html[data-style="superflat"] .hero .hstat>div,
+html[data-style="surreal"] .hero .hstat>div,
+html[data-style="wabisabi"] .hero .hstat>div{color:#1c2430!important}
+html[data-style="artscrafts"] .hero .hstat b,
+html[data-style="baroque"] .hero .hstat b,
+html[data-style="corpmemphis"] .hero .hstat b,
+html[data-style="cubism"] .hero .hstat b,
+html[data-style="default"] .hero .hstat b,
+html[data-style="dieselpunk"] .hero .hstat b,
+html[data-style="egypt"] .hero .hstat b,
+html[data-style="flat"] .hero .hstat b,
+html[data-style="futurism"] .hero .hstat b,
+html[data-style="postimpress"] .hero .hstat b,
+html[data-style="renais"] .hero .hstat b,
+html[data-style="streamline"] .hero .hstat b,
+html[data-style="superflat"] .hero .hstat b,
+html[data-style="surreal"] .hero .hstat b,
+html[data-style="wabisabi"] .hero .hstat b{color:#0f172a!important}
+html[data-style="artscrafts"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="baroque"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="corpmemphis"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="cubism"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="default"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="dieselpunk"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="egypt"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="flat"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="futurism"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="postimpress"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="renais"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="streamline"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="superflat"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="surreal"] .hero .hstat>button.hs, html[data-style=none] .x,
+html[data-style="wabisabi"] .hero .hstat>button.hs, html[data-style=none] .x{background:rgba(15,23,42,.06);border-color:rgba(15,23,42,.12)}
+
+/* web263 · WouoUI 式滚动进度条 + 体感收尾 ------------------------------------ */
+#pgBar{position:fixed;right:0;top:0;width:3px;height:0;z-index:60;pointer-events:none;
+  border-radius:0 0 0 2px;opacity:0;transition:opacity .35s ease;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--primary) 85%,transparent),color-mix(in srgb,var(--primary) 35%,transparent))}
+body.focus #pgBar{display:none}
+@media(prefers-reduced-motion:reduce){#pgBar{transition:none}}
+@media(max-width:620px){#pgBar{width:2px}}
+
+/* web264 · 反馈面板自动收起 + 答错配色的可读性 + 弹簧手感 --------------------- */
+.fb{transition:opacity .28s ease, transform .28s ease}
+.fb.fb-hide{opacity:0;transform:translateY(-4px);pointer-events:none}
+.fb.fb-gone{display:none}
+.fb-chip{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;
+  padding:7px 13px;border-radius:999px;background:var(--card);border:1px solid var(--ok-line);color:var(--ok)}
+.fb-chip.bad{border-color:var(--bad-line);color:var(--bad)}
+/* 暗色主题下 --badbg/--okbg 是浅色块，白字压上去看不清：改成"本色 12% 混卡片色" */
+body.dark .fb.bad{background:color-mix(in srgb,var(--bad) 13%,var(--card));border-color:color-mix(in srgb,var(--bad) 34%,transparent)}
+body.dark .fb.ok{background:color-mix(in srgb,var(--ok) 12%,var(--card));border-color:color-mix(in srgb,var(--ok) 32%,transparent)}
+@media(prefers-reduced-motion:reduce){.fb{transition:none}}
+
+/* web262 的 `.btn{position:relative}` 写在文件末尾，把 .focus-exit 的 fixed 压掉了，
+   导致「退出专注」掉回页面流里 —— 这里用更高优先级钉回右上角 */
+body.focus .focus-exit{position:fixed;left:auto;right:12px;bottom:auto;top:calc(10px + env(safe-area-inset-top));z-index:36}
+
+/* ===== web266：换页转场（TR）配套 ===== */
+body.tr-busy #view { pointer-events: none; }

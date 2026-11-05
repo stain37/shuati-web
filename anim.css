@@ -86,13 +86,13 @@
 }
 
 /* ---------- 通用工具类（想手动挂的时候用） ---------- */
-.an-in{animation:anFadeIn var(--an-2) var(--an-ease) both}
-.an-rise{animation:anRise var(--an-2) var(--an-ease) both}
-.an-pop{animation:anZoomIn var(--an-2) var(--an-ease) both}
-.an-beat{animation:anBeat .5s var(--an-ease) both}
-.an-shake{animation:anShakeX .4s var(--an-ease) both}
-.an-float{animation:anFloat 3.2s ease-in-out infinite}
-.an-stagger>*{animation:anRise var(--an-2) var(--an-ease) both}
+.an-in{animation:anFadeIn calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
+.an-rise{animation:anRise calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
+.an-pop{animation:anZoomIn calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
+.an-beat{animation:anBeat calc(.5s * var(--fx-inv,1)) var(--an-ease) both}
+.an-shake{animation:anShakeX calc(.4s * var(--fx-inv,1)) var(--an-ease) both}
+.an-float{animation:anFloat calc(3.2s * var(--fx-inv,1)) ease-in-out infinite}
+.an-stagger>*{animation:anRise calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
 .an-stagger>*:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
 .an-stagger>*:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
 .an-stagger>*:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
@@ -112,7 +112,7 @@
 /* 换页：原来只有 4px 位移，给它一点点缩放入场，像纸张落桌。
    注意要写成 #view.view-enter —— style.css 里 #view{animation:viewIn} 的
    ID 特异性更高，只用 .view-enter 会被它盖掉（旧 .view-enter 规则其实是失效的）。 */
-#view.view-enter{animation:anPageIn var(--an-2, .24s) var(--an-ease) both}
+#view.view-enter{animation:anPageIn calc(var(--an-2, .24s) * var(--fx-inv,1)) var(--an-ease) both}
 /* 关键：动画播完 JS 会把 .view-enter 摘掉，这时元素会回落到 style.css 的
    #view{animation:viewIn} —— 等于又从头淡入一次，用户看到的是「闪两下」。
    下面这条用 ID+类 的特异性把回落动画按住，只播 anPageIn 这一遍。 */
@@ -120,7 +120,7 @@
 
 /* 底部导航：切页时当前项轻轻弹一下；按下有回弹 */
 .bnav .btn{transition:transform var(--an-1) var(--an-ease), background var(--an-1), color var(--an-1)}
-.bnav .btn.on{animation:anPop .32s var(--an-back)}
+.bnav .btn.on{animation:anPop calc(.32s * var(--fx-inv,1)) var(--an-back)}
 .bnav .btn:active{transform:scale(.92)}
 
 /* 首页统计块 / 快捷卡：按下有肉感（只补 transform，其他过渡照旧保留） */
@@ -131,13 +131,13 @@
 .hs:active, .vb-q:active, .vb-card:active{transform:scale(.985)}
 
 /* 面板（弹层 / 抽屉）：从下往上带一点缩放，别硬闪 */
-.mask.show .sheet{animation:anSheetIn var(--an-3) var(--an-ease) both}
+.mask.show .sheet{animation:anSheetIn calc(var(--an-3) * var(--fx-inv,1)) var(--an-ease) both}
 
 /* toast：从下方弹入并轻微回弹 */
-.toast.show{animation:anToastIn .32s var(--an-back) both}
+.toast.show{animation:anToastIn calc(.32s * var(--fx-inv,1)) var(--an-back) both}
 
 /* 知识库卡片：入场错峰（最多错 10 个，超出就同步进场，避免长列表拖沓） */
-#kbRows > .kbrow{animation:anRise var(--an-2) var(--an-ease) both}
+#kbRows > .kbrow{animation:anRise calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
 #kbRows > .kbrow:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
 #kbRows > .kbrow:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
 #kbRows > .kbrow:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
@@ -151,7 +151,7 @@
 #kbRows > .kbrow:nth-child(n+11){animation-delay:calc(var(--an-step) * 10)}
 
 /* 首页题库树 / 目录：同样错峰 */
-#nbTree > *{animation:anRise var(--an-2) var(--an-ease) both}
+#nbTree > *{animation:anRise calc(var(--an-2) * var(--fx-inv,1)) var(--an-ease) both}
 #nbTree > *:nth-child(1){animation-delay:calc(var(--an-step) * 0)}
 #nbTree > *:nth-child(2){animation-delay:calc(var(--an-step) * 1)}
 #nbTree > *:nth-child(3){animation-delay:calc(var(--an-step) * 2)}
@@ -161,8 +161,8 @@
 #nbTree > *:nth-child(n+7){animation-delay:calc(var(--an-step) * 6)}
 
 /* 空态：轻轻呼吸，提示「这里还能用」 */
-.empty{animation:anFadeIn var(--an-3) var(--an-ease) both}
-.empty svg{animation:anFloat 3.4s ease-in-out infinite}
+.empty{animation:anFadeIn calc(var(--an-3) * var(--fx-inv,1)) var(--an-ease) both}
+.empty svg{animation:anFloat calc(3.4s * var(--fx-inv,1)) ease-in-out infinite}
 
 /* 骨架屏：从「明暗呼吸」换成 animate.css 那种扫光，等待时更像在加载 */
 .skel .sk-bl{
@@ -172,7 +172,7 @@
     transparent 68%);
   background-size:220% 100%;
   background-repeat:no-repeat;
-  animation:anShimmer 1.3s linear infinite;
+  animation: anShimmer calc(1.3s * var(--fx-inv,1)) linear infinite;
 }
 
 /* ============================================================
@@ -187,4 +187,15 @@
   }
   .bnav .btn, .hs, .vb-q, .vb-card, .nb-card{transition:none !important}
   .bnav .btn:active, .hs:active, .vb-q:active, .vb-card:active{transform:none !important}
+}
+
+/* ===== web260：把「换页淡入」整条关掉，答题页只保留必要的反馈 =====
+   用户反馈「点一下页面都闪一下」——上一版把两遍动画合成一遍后仍有 0.86 的透明度跌落，
+   这里直接关掉整页入场动画（导航、弹层、toast 的动效都还在）。 */
+#view.view-enter{animation:none!important}
+@media (prefers-reduced-motion: no-preference){
+  body.quiz .opt.sel,body.quiz .opt.right,body.quiz .opt.wrong{animation:none!important}
+  body.quiz .opt.pulse-ok,body.quiz .opt.pulse-bad,body.quiz .opt.flip-in{animation:none!important}
+  body.quiz .opt.opt-hit{animation:none!important;outline:2px solid var(--primary);outline-offset:2px}
+  body.quiz .fb{animation:none!important}
 }

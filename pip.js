@@ -268,7 +268,7 @@
       b.className = 'btn';
       b.id = 'pipEntry';
       b.onclick = () => open();
-      const anchor = head.querySelector('#btnQn');
+      const anchor = head.querySelector('#btnInk') || head.querySelector('#btnQn');
       if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(b, anchor);
       else head.appendChild(b);
     }

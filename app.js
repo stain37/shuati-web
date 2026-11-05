@@ -543,7 +543,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -1315,10 +1315,215 @@ function ntSigns(on){
   if(!r){ r=document.createElement('div'); r.id='ntSignR'; r.className='nt-sign nt-r'; r.textContent='カラオケ'; r.setAttribute('aria-hidden','true'); document.body.appendChild(r); }
   if(!l){ l=document.createElement('div'); l.id='ntSignL'; l.className='nt-sign nt-l'; l.textContent='居酒屋'; l.setAttribute('aria-hidden','true'); document.body.appendChild(l); }
 }
+/* web262：借 UI 动效库的两个「低干扰」交互
+   ① counter-roll：首页统计数字从 0 滚到目标值（600ms，easeOutCubic）
+   ② ripple-click：按钮按下时从触点扩散一圈淡光（240ms）
+   两者都尊重「减少动态效果」开关与系统 prefers-reduced-motion。 */
+function motionOn() {
+  if (document.body.classList.contains('reduce-motion')) return false;
+  try { return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return true; }
+}
+function rollStats(list, dur) {
+  if (!list || !list.length) return;
+  dur = dur || 620;
+  var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
+  Array.prototype.forEach.call(list, function (el) {
+    if (el.dataset.rolled === '1') return;
+    var raw = (el.textContent || '').trim();
+    var m = /^([\d,]+)(.*)$/.exec(raw);
+    if (!m) return;
+    var target = parseInt(m[1].replace(/,/g, ''), 10);
+    var suffix = m[2] || '';
+    if (!isFinite(target) || target < 3) return;
+    el.dataset.rolled = '1';
+    if (!motionOn()) return;
+    var t0 = 0;
+    var step = function (ts) {
+      if (!t0) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur);
+      el.textContent = Math.round(target * ease(k)).toLocaleString('en-US') + suffix;
+      if (k < 1) requestAnimationFrame(step);
+      else el.textContent = target.toLocaleString('en-US') + suffix;
+    };
+    el.textContent = '0' + suffix;
+    requestAnimationFrame(step);
+  });
+}
+/* web263 · WouoUI 式缓动引擎 --------------------------------------------------
+   出处：WouoUI-Lite_General.ino 的动画函数（两行）——
+     if (fabs(*a - *a_trg) < 0.15f) *a = *a_trg;
+     else *a += (*a_trg - *a) / (param / 10.0f);
+   要点有三条，这里全照搬：
+   1) 不是"播一段动画"，而是每帧朝目标值逼近 → 目标随时改都能从当前值接着走（可打断）；
+   2) 逼近到阈值内直接吸附到目标，不会永远差半个像素（WouoUI 是 0.15，这里用 0.2px）；
+   3) 到齐就停掉 rAF（WouoUI v2.2 的优化：动画结束后不再做无意义的浮点运算）。
+   帧率无关的写法：factor = 1 - exp(-dt * rate)，60fps 下 rate=.011 约等于每帧走 1/6。 */
+function fxSpeed() {
+  try {
+    var sp = Number(SET && SET.fxSpd) || 1;
+    if (sp < 0.4) sp = 0.4; if (sp > 3) sp = 3;
+    return sp;
+  } catch (e) { return 1; }
+}
+
+var MO = (function () {
+  var list = [], raf = 0, last = 0;
+  function reduced() {
+    try {
+      return document.body.classList.contains('reduce-motion') ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) { return false; }
+  }
+  function tick(ts) {
+    raf = 0;
+    var dt = Math.min(64, ts - (last || ts));
+    last = ts;
+    var sec = dt / 1000;
+    for (var i = 0; i < list.length;) {
+      var t = list[i], settled = true;
+      for (var k = 0; k < t.trg.length; k++) {
+        var d = t.trg[k] - t.cur[k];
+        if (t.spr) {
+          /* 弹簧模式：F = -k·x - c·v（半隐式积分）。ζ 取 0.6~0.75 时会有 5%~8% 的
+             过冲再回弹，就是「微微 Q 弹」；水滴感来自它不像指数曲线那样越尾越拖。 */
+          var kk = t.spr.k, cc = t.spr.c;
+          var v0 = t.vel[k] || 0;                      /* 必须先把 undefined 兜成 0，否则 cc*undefined = NaN */
+          var v1 = v0 + (kk * d - cc * v0) * sec;
+          if (!isFinite(v1)) { t.vel[k] = 0; t.cur[k] = t.trg[k]; continue; }
+          t.vel[k] = v1;
+          t.cur[k] += v1 * sec;
+          if (Math.abs(t.trg[k] - t.cur[k]) < (t.eps || 0.3) && Math.abs(v1) < 0.6) {
+            t.cur[k] = t.trg[k]; t.vel[k] = 0; continue;
+          }
+          settled = false;
+          continue;
+        }
+        if (Math.abs(d) < (t.eps || 0.2)) { t.cur[k] = t.trg[k]; continue; }
+        settled = false;
+        t.cur[k] += d * (1 - Math.exp(-dt * (t.rate || 0.011)));
+      }
+      if (t.onFrame) { try { t.onFrame(t.cur); } catch (e) {} }
+      if (settled) {
+        list.splice(i, 1);
+        if (t.onDone) { try { t.onDone(); } catch (e) {} }
+        continue;
+      }
+      i++;
+    }
+    if (list.length) raf = requestAnimationFrame(tick); else last = 0;
+  }
+  function run(id, opt) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) {
+        list[i].trg = opt.trg.slice();
+        list[i].onFrame = opt.onFrame || list[i].onFrame;
+        list[i].onDone = opt.onDone || null;
+        if (opt.rate) list[i].rate = opt.rate * fxSpeed();
+        if (opt.spr) { list[i].spr = opt.spr; list[i].vel = list[i].vel || []; }
+        if (reduced() || opt.jump) { list[i].cur = opt.trg.slice(); list[i].trg = opt.trg.slice(); list[i].vel = []; }
+        if (!raf) { last = 0; raf = requestAnimationFrame(tick); }
+        return list[i];
+      }
+    }
+    var t = {
+      id: id, cur: (opt.cur || opt.trg).slice(), trg: opt.trg.slice(),
+      rate: (opt.rate || 0.011) * fxSpeed(), eps: opt.eps || 0.2, spr: opt.spr || null, vel: [],
+      onFrame: opt.onFrame, onDone: opt.onDone
+    };
+    if (reduced() || opt.jump) { t.cur = t.trg.slice(); if (t.onFrame) t.onFrame(t.cur); if (t.onDone) t.onDone(); return t; }
+    if (t.onFrame) t.onFrame(t.cur);
+    list.push(t);
+    if (!raf) { last = 0; raf = requestAnimationFrame(tick); }
+    return t;
+  }
+  return { run: run, reduced: reduced };
+})();
+
+/* 右侧细进度条：读长页面时的一点点位置反馈（WouoUI 列表右侧那条 bar 的网页版） */
+function uiScrollBar() {
+  if (document.getElementById('pgBar')) return;
+  var bar = document.createElement('div');
+  bar.id = 'pgBar';
+  bar.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(bar);
+  var cur = [0], trg = [0], hideTimer = 0;
+  function apply(v) { bar.style.height = v[0].toFixed(1) + 'px'; }
+  function sync() {
+    var doc = document.documentElement;
+    var vh = window.innerHeight || doc.clientHeight;
+    var full = Math.max(doc.scrollHeight, document.body.scrollHeight);
+    var p = full > vh ? (window.pageYOffset || doc.scrollTop) / (full - vh) : 0;
+    p = p < 0 ? 0 : (p > 1 ? 1 : p);
+    trg[0] = Math.max(6, p * vh);
+    if (full < vh * 2.2) { bar.style.opacity = '0'; return; }
+    bar.style.opacity = '1';
+    MO.run('pgbar', { cur: cur, trg: trg, rate: 0.02, eps: 0.2, onFrame: apply });
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () { bar.style.opacity = '0'; }, 900);
+  }
+  window.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  sync();
+}
+/* web264 · 反馈面板自动收起 -------------------------------------------------
+   用户嫌答完题那块红/绿大面板一直糊在那儿挡题目。这里给它 10 秒寿命：
+   10 秒内没点过它，就淡出收起，只留一颗小胶囊（写着对错和正确答案），
+   点胶囊随时能原样打开（打开后重新开始计时）。 */
+function fbAutoHide(fb) {
+  if (!fb) return;
+  clearTimeout(fb.__t);
+  fb.classList.remove('fb-hide', 'fb-gone');
+  var chip = document.getElementById('fbChip');
+  if (chip) chip.remove();
+  var bad = fb.classList.contains('bad');
+  var arm = function () {
+    clearTimeout(fb.__t);
+    fb.__t = setTimeout(function () {
+      if (!fb.isConnected) return;
+      fb.classList.add('fb-hide');
+      setTimeout(function () { if (fb.classList.contains('fb-hide')) fb.classList.add('fb-gone'); }, 340);
+      var c = document.createElement('button');
+      c.id = 'fbChip';
+      c.className = 'btn fb-chip' + (bad ? ' bad' : '');
+      c.innerHTML = (bad ? '❌ 答错了' : '✅ 答对了') + ' · 点开看解析';
+      c.onclick = function () {
+        c.remove();
+        fb.classList.remove('fb-hide', 'fb-gone');
+        arm();
+        try { fb.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      };
+      fb.parentNode.insertBefore(c, fb.nextSibling);
+    }, 10000);
+  };
+  fb.addEventListener('pointerdown', arm, { passive: true });
+  fb.addEventListener('keydown', arm);
+  arm();
+}
+function bindRipple() {
+  if (window.__rippleBound) return;
+  window.__rippleBound = 1;
+  document.addEventListener('pointerdown', function (e) {
+    if (!motionOn()) return;
+    var el = e.target && e.target.closest ? e.target.closest('.btn,.chip,.subjchip,.kbtab,.bnav .btn') : null;
+    if (!el || el.disabled) return;
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    var d = Math.max(r.width, r.height) * 2;
+    var sp = document.createElement('span');
+    sp.className = 'rp';
+    sp.style.width = sp.style.height = d + 'px';
+    sp.style.left = (e.clientX - r.left - d / 2) + 'px';
+    sp.style.top = (e.clientY - r.top - d / 2) + 'px';
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    el.appendChild(sp);
+    setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 420);
+  }, { passive: true });
+}
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
   document.body.classList.toggle('dark', dark);
+  bindRipple();
   document.body.classList.toggle('fs-s', SET.fs === 's');
   document.body.classList.toggle('fs-l', SET.fs === 'l');
   document.body.classList.toggle('fs-xl', SET.fs === 'xl');
@@ -1366,6 +1571,11 @@ function applyLook() {
   /* 「减少动态效果」（设置里的开关）：加个 body 类，style.css 里那条规则把全站动画/过渡关掉；
      系统级的 prefers-reduced-motion 仍然独立生效（两条并存）。 */
   document.body.classList.toggle('reduce-motion', !!SET.reduceMotion);
+  try { var _spd = Number(SET.fxSpd) || 1; if (_spd < 0.4) _spd = 0.4; if (_spd > 3) _spd = 3;
+    document.documentElement.style.setProperty('--fx-inv', String(1 / _spd));
+    var _sel = document.getElementById('fxSpd');
+    if (_sel && document.activeElement !== _sel) _sel.value = String(_spd);
+  } catch (e) {}
   /* 面板磨砂（背景模糊）：默认开；关掉就是纯半透明，不看背景纹理 */
   document.body.classList.toggle('frost', SET.frost !== false);
   /* 极简模式：关背景氛围 / 动效 / 引导卡，只留干活的界面（设置里随时开回） */
@@ -1855,14 +2065,14 @@ function uiBindSwipe(bank) {
     const el = e.target;
     /* 第 3 条：在解析里横向划（看宽表格 / 公式 / 长代码）以前被当成翻页。
        解析区、可横向滚动的块、滑条一律不起手翻页。 */
-    if (el && el.closest && el.closest('input,select,textarea,button,.opts,.kbrow,.exp,.exp-wrap,.rich-edit,.rich-imgs,pre,.md-code,table,[data-noswipe]')) return;
+    if (el && el.closest && el.closest('input,select,textarea,button,.opts,.kbrow,.exp,.exp-wrap,.rich-edit,.rich-imgs,pre,.md-code,table,.qhead,.qtools,.qmode,[data-noswipe]')) return;
     if (el && el.closest && el.closest('.card') && el.closest('.card').scrollWidth > el.closest('.card').clientWidth + 4) return;   /* 卡片本身能横向滚就别抢手势 */
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now(); moved = false;
   }, { passive: true });
   card.addEventListener('touchmove', e => {
     if (x0 == null || e.touches.length !== 1) return;
     const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
-    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) moved = true;
+    if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy)) moved = true;
   }, { passive: true });
   card.addEventListener('touchend', e => {
     if (x0 == null) return;
@@ -1871,7 +2081,7 @@ function uiBindSwipe(bank) {
     if (!t) return;
     const dx = t.clientX - x1, dy = t.clientY - y0, dt = Date.now() - t0;
     if (!moved || dt > 900) return;
-    if (Math.abs(dx) < 30 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 2) return;
     if (Math.abs(dy) > 40) return;   /* 手往上/下带了很多：那是滚动（第 3 条），不翻页 */
     if (typeof aiBusy === 'function' && aiBusy()) return;    /* 正在生成解析就别翻页 */
     try { e.preventDefault(); } catch (err) {}               /* 压掉紧随其后的 click */
@@ -1922,18 +2132,25 @@ function uiBottomNavInit() {
   ind.className = 'bnav-ind';
   ind.setAttribute('aria-hidden', 'true');
   nav.insertBefore(ind, nav.firstChild);
-  const paint = () => {
+  const cur = [0, 0];                       /* [x, width] —— 由 MO 平滑逼近，不靠 CSS 过渡 */
+  const apply = v => {
+    ind.style.transform = 'translateX(' + v[0].toFixed(2) + 'px)';
+    ind.style.width = v[1].toFixed(2) + 'px';
+  };
+  const paintNow = (jump) => {
     const on = nav.querySelector('.btn.on');
     if (!on || !on.offsetWidth) { ind.style.opacity = '0'; return; }
     const nr = nav.getBoundingClientRect();
     const br = on.getBoundingClientRect();
     const bl = parseFloat(getComputedStyle(nav).borderLeftWidth) || 0;
     ind.style.opacity = '1';
-    ind.style.width = br.width + 'px';
-    ind.style.transform = 'translateX(' + (br.left - nr.left - bl) + 'px)';
+    MO.run('bnavpill', { cur: cur, trg: [br.left - nr.left - bl, br.width], jump: !!jump, onFrame: apply,
+      eps: 0.3, spr: { k: 320, c: 22 } });      /* ζ≈0.61：过去时先冲过头约 6% 再回坐，就是那点「Q」 */
   };
+  const paint = () => paintNow(false);      /* 注意：监听器会把 Event / MutationRecord 当第一个参数传进来，
+                                               那个对象是 truthy，直接传给 paintNow 会每次都被当成 jump */
   nav.__bnavPaint = paint;
-  paint();
+  paintNow(true);
   window.addEventListener('resize', paint);
   if ('MutationObserver' in window) {
     new MutationObserver(paint).observe(nav, { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
@@ -2287,6 +2504,7 @@ function uiBottomNavDock() {
 }
 uiHomeNavInit();
 uiBottomNavInit();
+uiScrollBar();
 uiBottomNavDock();
 /* §3.6-P0① 专注模式：`body.focus` 由 applyLook() 统一加（设置里也能开关），这里只管切状态 + 提示。
    答题页的「⛶ 专注」按钮、右下角浮出的「退出专注」、Esc 都走这里。 */
@@ -2451,20 +2669,144 @@ function showFatal(err) {
   const cl = bar.querySelector('#fbClose');
   if (cl) cl.onclick = () => { bar.remove(); FATAL_SHOWN = false; };
 }
+/* ============================================================
+   换页转场（web266）：照 MUI Transitions 的四种做法
+   · Grow —— 新页面从「你点的那个东西」的位置长出来（transform-origin = 上次 pointerdown 的坐标）
+   · Slide —— 平级页面之间按底栏顺序左右滑（往右边的页从右进，往左边的从左进）
+   · Fade —— 兜底
+   旧页面先退场 120ms（淡出 + 微微上移），再画新页面，新页面按上面三种之一进场。
+   顺手给「换页那一刻」加 tr-busy，退场期间旧按钮点不动，免得点出错页。
+   ============================================================ */
+var TR = (function () {
+  var NAV_ORDER = { home: 0, wrong: 1, fav: 2, search: 3, kb: 4, stats: 6, sync: 7, setting: 8 };
+  var SUB = { quiz: 1, exam: 1, mastery: 1, qlist: 1, chat: 1, report: 1, cal: 1, import: 1, bank: 1 };
+  var ptr = null;
+  document.addEventListener('pointerdown', function (ev) {
+    var t = ev.target;
+    var el = t && t.closest ? t.closest('.card,.btn,.hs,.chip,.subjchip,.kbtab,.bnav .btn,.bank') : null;
+    if (!el) return;
+    var r = el.getBoundingClientRect();
+    ptr = { x: r.left + r.width / 2, y: r.top + Math.min(r.height * 0.5, 48), ts: Date.now() };
+  }, true);
+  function reduced() {
+    try {
+      if (document.body.classList.contains('reduce-motion')) return true;
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) { return false; }
+  }
+  function wantExit(sig) {
+    if (reduced() || !_lastViewSig || sig === _lastViewSig) return false;
+    var v = document.getElementById('view');
+    return !!(v && v.firstElementChild);
+  }
+  function exit() {
+    var v = document.getElementById('view');
+    if (!v) return;
+    document.body.classList.add('tr-busy');
+    try {
+      /* 退场只压到 0.2 就交棒给新页面，别整块消失——一消失就会「闪一下」 */
+      var a = v.animate([{ opacity: 1, transform: 'none' }, { opacity: 0.2, transform: 'translateY(-5px) scale(.995)' }],
+        { duration: 110, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'forwards' });
+      a.onfinish = function () { try { a.cancel(); } catch (e) {} };
+    } catch (e) { v.style.opacity = '0'; }
+  }
+  function abort() {
+    var v = document.getElementById('view');
+    if (v) {
+      try { v.getAnimations().forEach(function (x) { x.cancel(); }); } catch (e) {}
+      v.style.opacity = ''; v.style.transformOrigin = '';
+    }
+    document.body.classList.remove('tr-busy');
+  }
+  function originOf(v) {
+    if (!ptr || Date.now() - ptr.ts > 2500) return '50% 8%';
+    var r = v.getBoundingClientRect();
+    var x = Math.max(-40, Math.min(r.width + 40, ptr.x - r.left));
+    var y = Math.max(-40, Math.min(r.height + 40, ptr.y - r.top));
+    return x + 'px ' + y + 'px';
+  }
+  function kindOf(r, prevSig) {
+    var to = r.name, from = String(prevSig || '').split('/')[0];
+    if (to === 'home') return 'pop';
+    if (SUB[to]) return 'grow';
+    if (NAV_ORDER[to] != null && NAV_ORDER[from] != null && to !== from) {
+      return NAV_ORDER[to] > NAV_ORDER[from] ? 'push' : 'pop';
+    }
+    return 'fade';
+  }
+  function enter(r, prevSig) {
+    var v = document.getElementById('view');
+    if (!v) return;
+    document.body.classList.remove('tr-busy');
+    v.style.opacity = '';
+    if (reduced()) { v.style.transformOrigin = ''; return; }
+    var kind = kindOf(r, prevSig), kf, dur, ease, org = null;
+    if (kind === 'grow') {
+      org = originOf(v);
+      kf = [{ opacity: 0.2, transform: 'translateY(9px) scale(.95)' }, { opacity: 1, transform: 'none' }];
+      dur = 360; ease = 'cubic-bezier(.18,.92,.24,1)';
+    } else if (kind === 'push') {
+      kf = [{ opacity: 0.2, transform: 'translateX(30px)' }, { opacity: 1, transform: 'none' }];
+      dur = 320; ease = 'cubic-bezier(.2,.92,.26,1)';
+    } else if (kind === 'pop') {
+      kf = [{ opacity: 0.2, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }];
+      dur = 300; ease = 'cubic-bezier(.2,.92,.26,1)';
+    } else {
+      kf = [{ opacity: 0.2 }, { opacity: 1 }];
+      dur = 240; ease = 'ease-out';
+    }
+    v.style.transformOrigin = org || '';
+    try { var _inv = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fx-inv')) || 1; dur = Math.round(dur * _inv); } catch (e) {}
+    try {
+      var a = v.animate(kf, { duration: dur, easing: ease, fill: 'both' });
+      a.onfinish = function () {
+        try { a.cancel(); } catch (e) {}
+        v.style.transformOrigin = ''; v.style.opacity = '';
+      };
+    } catch (e) { v.style.transformOrigin = ''; v.style.opacity = ''; }
+  }
+  return { wantExit: wantExit, exit: exit, abort: abort, enter: enter, reduced: reduced };
+})();
+
+var _trPending = null;
 function render() {
   if (typeof richFlush === 'function') richFlush();          // 方案十：换页 / 重画前先保存就地编辑
+  try {
+    const r = route();
+    const sig = r.name + '/' + (r.bankId || '');
+    if (_trPending) {                       /* 连着点两次：不排队，立刻把上一支收掉重画 */
+      clearTimeout(_trPending); _trPending = null;
+      try { TR.abort(); } catch (e) {}
+      renderNow();
+      return;
+    }
+    if (TR.wantExit(sig)) {
+      _trPending = setTimeout(function () { _trPending = null; renderNow(); }, 108);
+      TR.exit();
+      return;
+    }
+    renderNow();
+  }
+  catch (err) { showFatal(err); }
+}
+function renderNow() {
   try {
     const r = route();
     const sig = r.name + '/' + (r.bankId || '');
     /* §3.6-P2⑥：换页 + 这页真可能卡一下 → 先同步铺一层骨架，真内容留到下一个宏任务，
        这样浏览器能先把骨架画出来（渲染真慢的时候，用户看到的是骨架，不是白屏） */
     if (sig !== _lastViewSig && skelNeeded(r) && skelPaint(r)) {
-      setTimeout(() => { try { renderInner(); } catch (err) { showFatal(err); } }, 0);
+      setTimeout(() => {
+        try { renderInner(); } catch (err) { showFatal(err); }
+        try { rollStats(document.querySelectorAll('#view .hero .hstat b')); } catch (e) {}
+      }, 0);
       return;
     }
     renderInner();
   }
   catch (err) { showFatal(err); }
+  /* web262：统计数字从 0 滚到目标值（渲染完再滚，元素这时才在） */
+  try { rollStats(document.querySelectorAll('#view .hero .hstat b')); } catch (e) {}
 }
 function renderInner() {
   const r = route();
@@ -2539,13 +2881,18 @@ let _lastViewSig = '';
 function viewEnter(r) {
   const sig = r.name + '/' + (r.bankId || '');
   if (sig === _lastViewSig) return;
+  const prevSig = _lastViewSig;
   _lastViewSig = sig;
   skelDrop();                               /* §3.6-P2⑥：真内容已经在了，还留着骨架就摘掉 */
   const v = $('view');
   if (!v) return;
-  v.classList.remove('view-enter');
-  void v.offsetWidth;                       /* 重排一下，让同一个类能重新播 */
-  v.classList.add('view-enter');
+  /* web266：入场交给 TR（Grow / Slide / Fade），不再用 CSS 类 */
+  try { TR.enter(r, prevSig); }
+  catch (e) {
+    v.classList.remove('view-enter');
+    void v.offsetWidth;
+    v.classList.add('view-enter');
+  }
 }
 window.addEventListener('animationend', e => {
   if (e.target && e.target.id === 'view') e.target.classList.remove('view-enter');
@@ -3361,6 +3708,7 @@ function renderQuiz(bankId) {
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
   $('view').innerHTML = `
     <div class="card qcard">
+      <div class="qgrip" id="qdBar" title="按住拖动题目卡片；点一下浮起 / 还原"><i></i></div>
       ${attRailHtml(fk)}
       <div class="qmode" role="tablist" aria-label="刷题模式">
         ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
@@ -3379,15 +3727,16 @@ function renderQuiz(bankId) {
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
         <span class="spacer-grow"></span>
+        <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
+        <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
+        <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★' : '☆'}<span class="fav-t">${faved ? ' 已收藏' : ' 收藏'}</span></button>
+        <span class="qtools" data-noswipe>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
         <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
         <button class="btn" id="doExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
         <button class="btn" id="doInkEye" title="显示 / 隐藏题目上的批注（不删除笔迹）">${inkShown ? '👁' : '🚫'}</button>
-        <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>
-        <button class="btn qd-grip" id="qdGrip" title="拖动题目区块（右下角可拉大小）；再点一下回到正常排版">⠿</button>
-        <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
-        <button class="btn fav-btn${faved ? ' on' : ''}" id="btnFav">${faved ? '★ 已收藏' : '☆ 收藏'}</button>
+        </span>
       </div>
       <div class="vstrip" id="vStrip"></div>
       <div class="qtwo">
@@ -3484,14 +3833,20 @@ function renderQuiz(bankId) {
       if (el.dataset.lp === '1') { el.dataset.lp = ''; return; }   /* 长按刚排除/恢复，别再顺手选中 */
       onPick(bank, q, el.dataset.k);
     };
-    let timer = null;
+    let timer = null, px0 = 0, py0 = 0;
     const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    el.addEventListener('pointerdown', () => {
-      stop();
-      timer = setTimeout(() => { timer = null; el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); }, 480);
+    const fire = () => { stop(); el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); };
+    el.addEventListener('pointerdown', ev => {
+      stop(); px0 = ev.clientX; py0 = ev.clientY;
+      timer = setTimeout(() => { timer = null; fire(); }, 480);
     });
-    ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach(ev => el.addEventListener(ev, stop));
-    el.addEventListener('contextmenu', ev => { ev.preventDefault(); el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); });
+    /* 手指轻微晃动不算滑走：位移超过 12px 才取消长按 */
+    el.addEventListener('pointermove', ev => {
+      if (!timer) return;
+      if (Math.abs(ev.clientX - px0) > 12 || Math.abs(ev.clientY - py0) > 12) stop();
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, stop));
+    el.addEventListener('contextmenu', ev => { ev.preventDefault(); fire(); });
   });
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
@@ -3782,7 +4137,7 @@ function qfState() { const s = readLS(QF_KEY, null) || { float: false, x: 0, y: 
 function qfSave(st) { writeLS(QF_KEY, st); }
 function uiQuizFloat() {
   const card = document.querySelector('#view > .card');
-  const grip = document.getElementById('qdGrip');
+  const grip = document.getElementById('qdBar') || document.getElementById('qdGrip');
   if (!card || !grip) return;
   const st = qfState();
   const applyFloat = (on) => {
@@ -4656,6 +5011,7 @@ function showFb(bank, q) {
       ? richBox(fk, explainOf(fk, q), custom, '解析')
       : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}
     <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
+  try { fbAutoHide(fb); } catch (e) {}
   if (showExp && typeof richBindAll === 'function') richBindAll(fb);   // 方案十：解析块就地可改
   uiOptLink(fb);                                                       // §3.6-P1⑤：解析里的 A/B/C/D 与选项联动
   /* 三档反馈：换档位只改这题的排期，不动对错次数 */
@@ -5804,6 +6160,7 @@ function openSettings() {
   if ($('setFocus')) $('setFocus').checked = !!SET.focus;
   if ($('setSpeedSec')) $('setSpeedSec').value = SET.speedSec || 0;
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
+  if ($('fxSpd')) $('fxSpd').value = String(SET.fxSpd || 1);
   if ($('setMinimal')) $('setMinimal').checked = !!SET.minimal;
   if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
@@ -5826,6 +6183,7 @@ on('btnQuizSet', openSettings);
 on('btnSetAll', openSettings);
 on('setTheme', e => { setLook('theme', e.target.value); paintThemeBtn(); }, 'change');
 on('setFs', e => setLook('fs', e.target.value), 'change');
+  on('fxSpd', e => { setLook('fxSpd', Number(e.target.value) || 1); if (typeof toast === 'function') toast('动效速度：' + e.target.selectedOptions[0].textContent, 1200, 'ok'); }, 'change');
 on('setBig', e => {
   const v = +e.target.value === 2 ? 2 : (+e.target.value === 1 ? 1 : 0);
   setLook('big', v);
@@ -6008,7 +6366,7 @@ document.querySelectorAll('.mask').forEach(m => m.onclick = e => { if (e.target 
    三条纪律：① 只在触屏上认（pointerType 是 mouse 的直接不管）；
    ② 得先过 30px 且横向明显大于纵向才成立 —— 不然会跟纵向滚动、点选项、点题号打架；
    ③ 翻页只调现成的 step(±1)，不另立一套。卡片跟手那点位移是次要的，reduced-motion 下干脆不动。 */
-const SWIPE_MIN = 30;
+const SWIPE_MIN = 56;
 let _sw = null;                     /* 手上这一笔：{x,y,id,card,dx,ok} */
 function uiSwipeBind() {
   const v = $('view');
@@ -6018,14 +6376,14 @@ function uiSwipeBind() {
     if (e.pointerType === 'mouse' || e.button) return;
     const card = e.target.closest('.card');
     if (!card || !card.querySelector('#qBody')) return;            /* 只认题目卡 */
-    if (e.target.closest('input, textarea, select, [contenteditable="true"], .vstrip, .qsheet, .mask')) return;
+    if (e.target.closest('input, textarea, select, [contenteditable="true"], .vstrip, .qsheet, .mask, .qhead, .qtools, .qmode')) return;
     _sw = { x: e.clientX, y: e.clientY, id: e.pointerId, card, dx: 0, ok: false };
   });
   v.addEventListener('pointermove', e => {
     if (!_sw || e.pointerId !== _sw.id) return;
     const dx = e.clientX - _sw.x, dy = e.clientY - _sw.y;
     if (!_sw.ok) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) < 14 && Math.abs(dy) < 14) return;
       if (Math.abs(dx) <= Math.abs(dy)) { _sw = null; return; }    /* 往纵向走：交回给页面滚动 */
       _sw.ok = true;
       _sw.card.classList.add('swiping');

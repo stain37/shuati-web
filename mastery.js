@@ -182,6 +182,27 @@
 
     $('view').innerHTML = html;
     bind(d);
+    growBars();
+  }
+
+  /* web263 · 进度条也走缓动（WouoUI README：「包括列表，弹窗，甚至进度条」）。
+     做法：先归零，再用 MO 沿指数曲线长到目标宽度；中途换页/重画也不会跳变，
+     因为 MO 是按 id 复用同一支补间，目标变了就从当前值接着走。 */
+  function growBars() {
+    if (!window.MO || window.MO.reduced()) return;
+    var bars = document.querySelectorAll('#view .mv-bar > i');
+    Array.prototype.forEach.call(bars, function (el, i) {
+      var target = parseFloat(el.style.width) || 0;
+      if (!(target > 0)) return;
+      el.style.width = '0%';
+      var cur = [0];
+      setTimeout(function () {
+        window.MO.run('mvbar' + i, {
+          cur: cur, trg: [target], eps: 0.15, spr: { k: 230, c: 19 },   /* ζ≈0.63：冲过一点点再落回 */
+          onFrame: function (v) { el.style.width = Math.max(0, Math.min(100, v[0])).toFixed(2) + '%'; }
+        });
+      }, 60 + i * 45);
+    });
   }
 
   function kpi(label, value, sub) {

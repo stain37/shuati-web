@@ -2,23 +2,25 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>刷题站 · 题库</title>
 <meta name="description" content="可自定义的刷题网站：选择题即时判分、答错出解析，错题本带统计与间隔重复复习，支持模考与搜索。">
-<meta name="theme-color" content="#2563eb">
+<meta name="theme-color" id="metaTheme" content="#eef1f7">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261221d">
+<link rel="stylesheet" href="style.css?v=20261105n">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
 <link rel="stylesheet" href="chat.css?v=20261105c">
 <link rel="stylesheet" href="diagram.css?v=20261031a">
 <link rel="stylesheet" href="motion.css?v=20261030c">
-<link rel="stylesheet" href="anim.css?v=20261104b">
+<link rel="stylesheet" href="anim.css?v=20261105b">
+<link rel="stylesheet" href="fxs.css?v=20261105e">
 <link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
@@ -220,6 +222,16 @@ var iv=setInterval(function(){n++;
   <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
   <label class="chk"><input type="checkbox" id="setMinimal"> 极简模式（关掉背景氛围 / 动效 / 首页引导卡，只留刷题和管理的界面）</label>
   <label class="chk"><input type="checkbox" id="setReduceMotion"> 减少动态效果（关掉全站动画 / 过渡 / 彩带，和系统「减少动态效果」同效）</label>
+  <div class="tools" style="margin-top:6px">
+    <span class="tl">动效速度</span>
+    <select class="num" id="fxSpd">
+      <option value="0.7">慢一点</option>
+      <option value="1">标准</option>
+      <option value="1.4">快一点</option>
+      <option value="1.8">很快</option>
+    </select>
+    <span class="small muted">影响换页、换题、弹窗、入场这些动画的时长（上面勾了「减少动态效果」就不播）</span>
+  </div>
   <div class="tools" style="margin-top:12px">
     <span class="tl">复习曲线</span>
     <select class="num" id="srsMode"></select>
@@ -284,8 +296,9 @@ var iv=setInterval(function(){n++;
 
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
 <script src="csv.js?v=20261104a"></script>
-<script src="mastery.js?v=20261104a"></script>
-<script src="app.js?v=20261221b"></script>
+<script src="mastery.js?v=20261105c"></script>
+<script src="app.js?v=20261105l"></script>
+<script src="fxs.js?v=20261105d"></script>
 <script src="collection.js?v=20261203a"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261130i"></script>
@@ -327,7 +340,7 @@ var iv=setInterval(function(){n++;
 <script src="skills.js?v=20261031c"></script>
 <script src="ai-ops.js?v=20261105c"></script>
 <script src="motion.js?v=20261030b"></script>
-<script src="pip.js?v=20261130b"></script>
+<script src="pip.js?v=20261105a"></script>
 <script src="ink.js?v=20261221e"></script>
 <script src="exp.js?v=20261220d"></script>
 
