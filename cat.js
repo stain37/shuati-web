@@ -961,7 +961,11 @@
         + sechead(E(curTitle), true)
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
         + toolsFoldHtml()
-        + ((icons || det) ? viewWrap(icons, rows, det) + pagerHtml('page', page, pages, entries.length, '项') : emptyHint());
+        + ((icons || det) ? viewWrap(icons, rows, det)
+          + (pages > 1
+            ? pagerHtml('page', page, pages, entries.length, '项')
+            : '<div class="nb-pager nb-pager-one"><span>共 ' + entries.length + ' 项 · 一页就装下了（超过 ' + per + ' 项会自动分页）</span></div>')
+          : emptyHint());
     }
 
     return ''
@@ -1070,14 +1074,28 @@
   /* 第 12/13 条：老题库 / 老目录没有 createdAt → 「最近添加」排序会乱、目录还永远置顶。
      这里给「有效建库时间」：有 createdAt 用它；没有就按它在 LOCAL 里的位置（越靠后越新）
      折算成一个稳定时间戳（基数 1.7e12 往前排，不会跟真 createdAt 打架），只算不改存储。 */
-  function bankBornAt(b) { return +b.createdAt || 0; }
+  function bankBornAt(b) {
+    var t = +b.createdAt || 0;
+    if (t) return t;
+    /* 老题库没记时间：按它在 LOCAL 里的位置折算一个「合成时间」（越靠后越新）。
+       基数 1.7e12 比真实时间戳（约 1.79e12）小，不会跟真 createdAt 打架。 */
+    var i = bankPlainIndex(b);
+    var n = 0;
+    try { n = ((typeof LOCAL !== 'undefined' && LOCAL) || []).length; } catch (e) {}
+    return 1700000000000 - Math.max(0, n - i);
+  }
   function catBornAt(c) {
     var t = +c.createdAt || +c.ts || +c.upd || 0;
     if (t) return t;
-    /* 老目录没记时间：用里面最新的题库顶上（至少不会永远沉底），还没有就 0 → 排最后 */
+    /* 老目录没记时间：用里面最新的题库顶上（至少不会永远沉底） */
     var mx = 0;
-    try { dirBanks(c.id).forEach(function (b) { var t2 = +b.createdAt || 0; if (t2 > mx) mx = t2; }); } catch (e) {}
-    return mx;
+    try { dirBanks(c.id).forEach(function (b) { var t2 = bankBornAt(b); if (t2 > mx) mx = t2; }); } catch (e) {}
+    if (mx) return mx;
+    /* 还不行：跟题库一样按它在 CATS 里的位置折算合成时间，保证「最近添加」总有稳定顺序 */
+    var i = -1, arr = [];
+    try { arr = (typeof CATS !== 'undefined' && CATS) || []; } catch (e) {}
+    for (var j = 0; j < arr.length; j++) if (arr[j] && arr[j].id === c.id) i = j;
+    return 1700000000000 - Math.max(0, arr.length - i);
   }
   function entryBornAt(e) { return e.cat ? catBornAt(e.cat) : bankBornAt(e.bank); }
   function entryTitle(e) { return String((e.cat ? e.cat.name || e.cat.title : e.bank.title) || ''); }

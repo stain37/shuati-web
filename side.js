@@ -705,7 +705,7 @@
   }
 
   /* ---------- ✨ 一键 AI 分类（只处理「未分类」里的题库） ---------- */
-  var CLS_BUILD = 'b298';
+  var CLS_BUILD = 'b299';
   var CLS = { open: false, step: 'ask', req: '', groups: null, busy: false, err: '', note: '' };
 
   function clsUncat() {
@@ -718,6 +718,15 @@
       if (t) out.push(t.length > 56 ? t.slice(0, 56) + '…' : t);
     });
     return out;
+  }
+  /* 导入时间（给 AI 分组用）：YYYY-MM-DD；没记录就空串 */
+  function clsDay(ts) {
+    var t = +ts || 0;
+    if (!t) return '';
+    var d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    var p = function (x) { return (x < 10 ? '0' : '') + x; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
   }
   function clsCfg() {
     try { return (typeof aiCfg === 'function' ? aiCfg() : {}) || {}; } catch (e) { return {}; }
@@ -954,12 +963,16 @@
     var list = CLS.banks;
     var lines = list.map(function (b, i) {
       var ex = clsSample(b);
+      var born = clsDay(b.createdAt);
       return (i + 1) + '. id=' + b.id + ' | 《' + b.title + '》 | ' + (b.questions ? b.questions.length : 0) + ' 题'
+        + (born ? ' | 导入于 ' + born : '')
         + (ex.length ? ' | 题目开头：' + ex.join(' / ') : '');
     }).join('\n');
     var sys = '你是题库整理助手。用户给你一批还没归类的题库（id 与信息）和他想要的分类方式。'
       + '你只负责按他的要求把它们分到若干文件夹里，并且只输出一个 JSON 对象，不要任何解释、不要代码块。';
     var usr = '用户的分法要求：' + reqForAi + '\n\n题库清单：\n' + lines
+      + '\n（每行里的「导入于 YYYY-MM-DD」是这个题库导入本机的时间；'
+      + '如果用户想按导入时间/批次分（例如「这个月的单独一组」「按学期分」），就用这个时间判断；没有这项的是早期导入、时间不详。）'
       + '\n\n只输出这个格式：{"groups":[{"name":"文件夹名","banks":["id1","id2"]}]}'
       + '\n要求：name 是新建文件夹的名字（≤12 个字，不要 emoji、不要带编号）；'
       + 'banks 只能填上面清单里出现过的 id；同一个题库只能出现在一组里；'

@@ -10968,3 +10968,11 @@ html.cx-now *, html.cx-now *::before, html.cx-now *::after {
 .cls-eg:hover{background:var(--primary-soft);color:var(--primary);border-color:var(--primary-line)}
 .cls-eg:active{transform:translateY(1px)}
 @media (max-width:620px){ .cls-eg{font-size:12px;padding:5px 10px} }
+
+/* ---------- 列表底部翻页条（原来没有样式：只有文字，看不出是分页） ---------- */
+.nb-pager{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 2px 6px;font-size:13px;opacity:.82}
+.nb-pager span{opacity:.9}
+.nb-pager .nb-pagego{display:inline-flex;align-items:center;gap:6px}
+.nb-pager .nb-pageinp{width:64px;padding:2px 6px;font-size:13px}
+.nb-pager-one{opacity:.55;font-size:12.5px}
+.nb-pager-one span{opacity:1}
