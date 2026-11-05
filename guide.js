@@ -57,7 +57,7 @@
     id: 'hello', center: true, route: '#/',
     title: '第一次用？先花两分钟看一遍',
     html: '<p>这个站是<b>纯本机</b>的刷题站：题库和作答记录都存在你自己的浏览器里。</p>'
-      + '<p>下面按顺序走一遍，一共 8 段，每段两三步：</p>'
+      + '<p>下面按顺序走一遍，一共 10 段，每段两三步：</p>'
       + '<ul><li><b>导入题库</b> —— 把现成的题库文件放进来</li>'
       + '<li><b>制作题库</b> —— 没有现成的？照着格式自己写</li>'
       + '<li><b>配知识库</b> —— 让 AI 写解析时能引用教材资料</li>'
@@ -290,6 +290,88 @@
             + '<p>底栏「错题」是错题本；首页「掌握度复盘」按科目 / 考点告诉你哪儿最薄，哪个考点最该补。</p>'
         }
       ]
+    },
+    {
+      id: 'tools', name: '答题页按钮', menuLabel: '⑨ 每个按钮干什么（答题页）', menuNote: '模式 / 专注 / 口诀 / 相似题 / 批注 / 导出 / 收藏',
+      steps: [
+        {
+          id: 'tools-1', title: '⑨ 三种模式：普通 / 速刷 / 背题', target: '[data-qm]',
+          html: '<ul><li><b>普通</b>：点选项判分，再慢慢看解析（默认）；</li>'
+            + '<li><b>速刷</b>：答对约 1.2 秒自动跳下一题，答错才停下；设置里能开「限时 N 秒」，超时算答错；</li>'
+            + '<li><b>背题</b>：不要求作答，直接看答案和解析，<b>不写任何作答记录</b>，不熟的顺手点 ★ 收藏。</li></ul>'
+        },
+        {
+          id: 'tools-2', title: '专注模式：只看题', target: '#btnFocus',
+          html: '<p>点「⛶ 专注」把顶栏和底栏收起来，屏幕上只剩题目；按 <b>Esc</b> 退出。'
+            + '<br>手机上看长题、平板上抄笔记时最有用。</p>'
+        },
+        {
+          id: 'tools-3', title: '口诀便签：这页的草稿纸', target: '#btnQn',
+          html: '<p>「✎ 口诀」是独立浮窗：可以拖动、右下角拉大小，写口诀、记易混点都行。'
+            + '<br>只在答题页出现，跟着这道题走，<b>只存本机</b>。</p>'
+        },
+        {
+          id: 'tools-4', title: '相似题：我好像见过这道', target: '#btnSim',
+          html: '<p>「🔍 相似题」在本题库里找同一考点的题（按题干 / 选项 / 标签算相似度），排好序给你；'
+            + '点了 AI 还能让它再挑一遍并说明为什么像。</p>'
+            + '<p class="muted small">旁边「小窗」能把当前这道题单独拉到旁边对照，画中画一样跟着你翻页。</p>'
+        },
+        {
+          id: 'tools-5', title: '批注 / 白板：随手画', target: '#btnInk',
+          html: '<p><b>✎ 批注</b>：在题目上画线、圈重点，笔迹跟着这道题走，换设备/换窗口都不会飘（存的是相对题目的位置）。</p>'
+            + '<p><b>▦ 白板</b>：一张干净白纸，随便写画，点「完成」存进「手稿历史」（最多 30 张）。</p>'
+            + '<p class="muted small">两者都有钢笔 / 荧光笔 / 橡皮 / 直线 / 矩形 / 椭圆 / 箭头，可撤销重做、导出 PNG。</p>'
+        },
+        {
+          id: 'tools-6', title: '重做 / 导出', target: '#doExport',
+          html: '<p><b>↻ 重做</b>：整库重做，或只重做错题，原来的作答记录和错次都留着。</p>'
+            + '<p><b>⇩ 导出</b>：挑题、排序，导出成 HTML 或直接打印成 PDF（可以带批注）。</p>'
+        },
+        {
+          id: 'tools-7', title: '选项：多选 / 长按排除 / 复制', target: '.opts',
+          html: '<ul><li><b>单选</b>点了立刻判；<b>多选</b>选完点「提交答案」；</li>'
+            + '<li><b>长按选项</b>（电脑按住）可以把它排掉「不选它」；</li>'
+            + '<li>答过之后选项变成可选中文字，<b>右键 → 复制 / 在题库里找相关题</b>。</li></ul>'
+        },
+        {
+          id: 'tools-8', title: '题号那一行：标签与作答记录', target: '.qhead',
+          html: '<p>题号右边是题型、「本题作答 N 次 · 错 M 次」，还有考点标签。</p>'
+            + '<p>标签默认折叠（防剧透），点「显示标签」才出来；可以手动加标签，也能让 AI 打。</p>'
+            + '<p class="muted small">★ 收藏这里一点就会出现在「收藏」页和侧栏常驻区。</p>'
+        }
+      ]
+    },
+    {
+      id: 'pages', name: '其它页面', menuLabel: '⑩ 其它页面：统计 / 掌握度 / 导入 / 底栏', menuNote: '还有这些地方你没点开过',
+      steps: [
+        {
+          id: 'pages-1', title: '⑩ 学习统计：这段时间学得怎么样', route: '#/stats', top: true, target: '#view',
+          html: '<p>累计做题、正确率、连续天数、近 14 天柱状图、各题库正确率、错最多的题、按考点的掌握情况都在这一页。</p>'
+            + '<p>「学情诊断（周报）」可以让 AI 把这一周的数据读一遍，告诉你先补哪儿。</p>'
+        },
+        {
+          id: 'pages-2', title: '掌握度复盘：哪儿最薄', route: '#/mastery', target: '#view .card',
+          html: '<p>按<b>科目</b>和<b>考点</b>排的一张体检表：正确率、错次、待复习。</p>'
+            + '<p>点「刷错题」直接进只做错题的模式，哪一块红就先啃哪一块。</p>'
+        },
+        {
+          id: 'pages-3', title: '导入：文本 / CSV / 文件夹', route: '#/import', target: '#ta',
+          html: '<ul><li><b>粘文本</b>：行首数字、A. B. C. D.、答案、解析 都认（模板见页面下方）；</li>'
+            + '<li><b>CSV</b>：题干 / 选项 / 答案 / 解析 四列，答题页「…更多」里能导出成 CSV；</li>'
+            + '<li><b>整个文件夹</b>：按文件夹层级一次建好目录和题库；</li>'
+            + '<li><b>JSON</b>：程序生成的题库，直接拖文件进来也行。</li></ul>'
+        },
+        {
+          id: 'pages-4', title: '底栏五个格子', route: '#/', top: true, target: '.bnav',
+          html: '<p>首页 / 错题 / 收藏 / 搜索 / AI，右边还有同步与设置。</p>'
+            + '<p>往下滑它会自动收起来，往上滑立刻回来；长按可以把这一条拖到别处（双击回原位）。</p>'
+        },
+        {
+          id: 'pages-5', title: '顶栏：返回 / 主页 / 进度', route: '#/', target: '.top',
+          html: '<p>左边「← 返回」「⌂ 主页」，中间是当前在哪；右边是进度（第几题 / 错几道）、文件按钮和夜间模式。</p>'
+            + '<p class="muted small">「文件」里能建题库、打开题库文件、导出备份；键盘快捷键按 <b>?</b> 看。</p>'
+        }
+      ]
     }
   ];
 
@@ -448,6 +530,7 @@
       if (cur !== step.route && typeof go === 'function') go(step.route);
     }
     try { ensureSideVisible(step); } catch (e) {}
+    if (step.top) { try { window.scrollTo(0, 0); } catch (e) {} }
     var tries = 0;
     (function waitReady() {
       tries++;
@@ -456,7 +539,7 @@
       }
       var el = step.target ? document.querySelector(step.target) : null;
       if (!el && tries < 26) { setTimeout(waitReady, 150); return; }
-      if (el) {
+      if (el && !step.top) {
         try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
       }
       setTimeout(place, 280);
