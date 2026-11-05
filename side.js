@@ -178,14 +178,14 @@
       if (wmap[t]) continue;
       terms.push(t); wmap[t] = w;
     }
-    AIQ = { q: q, fixed: String(o.fixed || ''), fixes: (o.fixes || []).slice(0, 3), terms: terms, wmap: wmap, at: Date.now() };
+    AIQ = { q: q, intent: String(o.intent || '').slice(0, 60), fixed: String(o.fixed || ''), fixes: (o.fixes || []).slice(0, 3), terms: terms, wmap: wmap, at: Date.now() };
     try { if (o.fixed && String(o.fixed).trim() && String(o.fixed).trim() !== q) AIQ.fixed = String(o.fixed).trim(); } catch (e) {}
-    aiqSave(q, { fixed: AIQ.fixed, fixes: AIQ.fixes, terms: AIQ.terms, wmap: AIQ.wmap, at: AIQ.at });
+    aiqSave(q, { intent: AIQ.intent, fixed: AIQ.fixed, fixes: AIQ.fixes, terms: AIQ.terms, wmap: AIQ.wmap, at: AIQ.at });
   }
   function aiFix(q) {
     if (!S.ai || q.length < 2) return;
     var c = aiqCache()[q];
-    if (c) { aiqApply(q, { fixed: c.fixed, fixes: c.fixes, terms: c.terms.map(function (t) { return { t: t, w: (c.wmap || {})[t] || 0.8 }; }) }); return; }
+    if (c) { aiqApply(q, { intent: c.intent || '', fixed: c.fixed, fixes: c.fixes, terms: c.terms.map(function (t) { return { t: t, w: (c.wmap || {})[t] || 0.8 }; }) }); return; }
     clearTimeout(tmrQ);
     tmrQ = setTimeout(function () {
       if (MT.q !== q) return;
@@ -193,8 +193,9 @@
       try { if (qAbort && qAbort.abort) qAbort.abort(); } catch (e) {}
       try { qAbort = new AbortController(); } catch (e) { qAbort = null; }
       var sys = '你是题库检索助手。用户输入的是要搜索的关键词，可能有错别字、拼音缩写、口语说法。'
-        + '请①纠正错别字/缩写，②给出 8~12 个相关检索词（同义词、近义表述、子概念、英文缩写）。'
-        + '只输出 JSON，不要解释：{"fixed":"纠正后的查询","fixes":["错→对"],"terms":[{"t":"词","k":"同义|近义表述|子概念|英文缩写","w":0.4~1.0}]}';
+        + '第一步先用一句话说出用户到底想找什么（哪怕是错别字/拼音缩写/口语，也要猜出真实意图），'
+        + '第二步按这个意图把查询词规范成医学教材里的说法，第三步给出 8~12 个相关检索词（同义词、近义表述、子概念、英文缩写）。'
+        + '只输出 JSON，不要解释：{"intent":"用户想找什么（≤30 字，用标准说法）","fixed":"规范化后的检索词（≤20 字）","fixes":["错→对"],"terms":[{"t":"词","k":"同义|近义表述|子概念|英文缩写","w":0.4~1.0}]}';
       var usr = '用户的搜索词：' + q;
       try {
         aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }], null,
@@ -360,7 +361,11 @@
     if (!S.ai) { el.hidden = true; el.textContent = ''; return; }
     el.hidden = false;
     if (q.length < 2) el.textContent = '✨ AI 模糊已开：输 2 个字以上，AI 会一起找同义说法';
-    else if (MT.q && AIQ.q === MT.q && AIQ.fixed) el.textContent = '✨ AI 纠错：「' + MT.q + '」→「' + AIQ.fixed + '」· 扩展 ' + AIQ.terms.length + ' 词：' + AIQ.terms.slice(0, 5).join('、');
+    else if (MT.q && AIQ.q === MT.q && (AIQ.intent || AIQ.fixed)) {
+      var head = AIQ.intent ? ('✨ 我理解你想找：' + AIQ.intent) : ('✨ AI 纠错：「' + MT.q + '」→「' + AIQ.fixed + '」');
+      var tail = (AIQ.fixed && AIQ.fixed !== MT.q && AIQ.intent) ? ('（原词「' + MT.q + '」→「' + AIQ.fixed + '」）') : '';
+      el.textContent = head + tail + ' · 扩展 ' + AIQ.terms.length + ' 词：' + AIQ.terms.slice(0, 5).join('、');
+    }
     else if (MT.terms.length) el.textContent = '✨ AI 又想到 ' + MT.terms.length + ' 个说法：' + MT.terms.slice(0, 6).join('、');
     else if (aiMute === q) el.textContent = '✨ AI 没给出扩展词（可能没配模型 / 服务没开），已只按字面找';
     else if (aiAt && Date.now() - aiAt > 6000) el.textContent = '✨ AI 还没回话…（可到「设置 → AI 服务」看模型通不通）';
