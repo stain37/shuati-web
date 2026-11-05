@@ -255,6 +255,7 @@
       html += '<div class="qs-cat qs-rootcat" data-cat=""><button type="button" class="qs-ch" data-drop="" '
         + 'style="--qs-ind:6px"><i class="qs-caret">·</i><i class="qs-folder">🏠</i>'
         + '<span class="qs-ct">未分类</span><em>' + rootBanks.length + '</em></button>'
+        + (rootBanks.length >= 2 ? '<button type="button" class="qs-ai-cls" id="qsClassify" title="让 AI 把未分类的题库归到文件夹里（可自己写要求）">✨ 一键分类</button>' : '')
         + '<div class="qs-cbody">' + rootBanks.map(function (b) { return rowHtml(b, 0); }).join('') + '</div></div>';
     }
     box.innerHTML = html || '<div class="qs-empty"><b>没有题库</b><span>点右上角 ＋ 新建或导入</span></div>';
@@ -269,6 +270,8 @@
 
   /* ---------- 点击 ---------- */
   function onListClick(e) {
+    var cls = e.target.closest('#qsClassify');
+    if (cls) { e.stopPropagation(); clsOpen(); return; }
     var cm = e.target.closest('[data-cm]');
     if (cm) { e.stopPropagation(); catMenu(cm.dataset.cm, cm); return; }
     var fold = e.target.closest('[data-fold]');
@@ -539,6 +542,256 @@
       });
   }
 
+  /* ---------- ✨ 一键 AI 分类（只处理「未分类」里的题库） ---------- */
+  var CLS = { open: false, step: 'ask', req: '', groups: null, busy: false, err: '', note: '' };
+
+  function clsUncat() {
+    return banks().filter(function (b) { return !b.cat && !b.paper; });
+  }
+  function clsSample(b) {
+    var out = [];
+    (b.questions || []).slice(0, 3).forEach(function (q) {
+      var t = String((q && q.stem) || '').replace(/\s+/g, ' ').trim();
+      if (t) out.push(t.length > 56 ? t.slice(0, 56) + '…' : t);
+    });
+    return out;
+  }
+  function clsCfg() {
+    try { return (typeof aiCfg === 'function' ? aiCfg() : {}) || {}; } catch (e) { return {}; }
+  }
+  function clsAiReady() {
+    return typeof aiChat === 'function';
+  }
+
+  function clsMount() {
+    if ($('clsMask')) return;
+    var d = document.createElement('div');
+    d.id = 'clsMask';
+    d.className = 'mask cls-mask';
+    d.innerHTML = '<div class="sheet cls-sheet" role="dialog" aria-modal="true">'
+      + '<div class="cls-head"><b>✨ 一键 AI 分类</b>'
+      + '<button type="button" class="btn cls-x" id="clsClose" title="关闭">✕</button></div>'
+      + '<div class="cls-body" id="clsBody"></div>'
+      + '<div class="cls-foot" id="clsFoot"></div>'
+      + '</div>';
+    document.body.appendChild(d);
+    d.addEventListener('pointerdown', function (e) { if (e.target === d) clsCloseFn(); });
+    d.addEventListener('click', function (e) {
+      var id = e.target && e.target.id;
+      if (id === 'clsClose') { clsCloseFn(); return; }
+      if (id === 'clsRun') { clsRun(); return; }
+      if (id === 'clsBack') { CLS.step = 'ask'; clsRender(); return; }
+      if (id === 'clsApply') { clsApply(); return; }
+    });
+  }
+
+  function clsOpen() {
+    var list = clsUncat();
+    if (!list.length) {
+      if (typeof toast === 'function') toast('没有「未分类」的题库了', 1600, 'ok');
+      return;
+    }
+    clsMount();
+    CLS.open = true;
+    CLS.step = 'ask';
+    CLS.err = '';
+    CLS.note = '';
+    CLS.groups = null;
+    CLS.banks = list;
+    CLS.req = '';
+    try { CLS.req = localStorage.getItem('qbank.cls.req.v1') || ''; } catch (e) {}
+    if (!CLS.req) CLS.req = '按科目分开：内科、外科、病理、生理、生化、人文；其他归到「综合」。';
+    if (wide()) setOpen(true);
+    $('clsMask').classList.add('show');
+    clsRender();
+    setTimeout(function () { var t = $('clsReq'); if (t) t.focus(); }, 60);
+  }
+
+  function clsCloseFn() {
+    CLS.open = false;
+    var m = $('clsMask');
+    if (m) m.classList.remove('show');
+  }
+
+  function clsRender() {
+    var body = $('clsBody'), foot = $('clsFoot');
+    if (!body || !foot) return;
+    var n = CLS.banks.length;
+    if (CLS.step === 'ask') {
+      body.innerHTML = '<p class="cls-hint">现在有 <b>' + n + '</b> 个题库还没归到文件夹里。'
+        + '下面写你想要的分法（分几组、哪些放一起都行），AI 会照这个分。</p>'
+        + '<textarea id="clsReq" class="cls-req" rows="3" placeholder="例：按科目分成 6 组：内科 / 外科 / 病理 / 生理 / 生化 / 人文；不确定的放「综合」。">'
+        + E(CLS.req) + '</textarea>'
+        + '<p class="cls-hint dim">AI 只看题库名和几道题的开头，不会改题目内容；分完可以再手动拖。</p>'
+        + (CLS.err ? '<p class="cls-err">' + E(CLS.err) + '</p>' : '');
+      foot.innerHTML = '<span class="spacer-grow"></span>'
+        + '<button type="button" class="btn" id="clsClose">取消</button>'
+        + '<button type="button" class="btn primary" id="clsRun">✨ 让 AI 分一下</button>';
+      return;
+    }
+    if (CLS.step === 'busy') {
+      body.innerHTML = '<p class="cls-hint">✨ 正在读 ' + n + ' 个题库的标题和题目开头，想怎么分…</p>'
+        + '<div class="cls-busy"><i></i><i></i><i></i></div>'
+        + '<p class="cls-hint dim">一般 3～15 秒；没配模型或服务没开的话会马上报错。</p>';
+      foot.innerHTML = '<span class="spacer-grow"></span><button type="button" class="btn" id="clsClose">取消</button>';
+      return;
+    }
+    /* preview */
+    var gs = CLS.groups || [];
+    var byId = {};
+    CLS.banks.forEach(function (b) { byId[b.id] = b; });
+    body.innerHTML = (CLS.err ? '<p class="cls-err">' + E(CLS.err) + '</p>' : '')
+      + (CLS.note ? '<p class="cls-hint dim">' + E(CLS.note) + '</p>' : '')
+      + (gs.length ? '' : '<p class="cls-hint">AI 没能分好，可以改改要求再来一次。</p>')
+      + gs.map(function (g, i) {
+        var names = (g.banks || []).map(function (id) { return byId[id] ? byId[id].title : id; });
+        return '<div class="cls-g" data-g="' + i + '">'
+          + '<div class="cls-gh"><input class="cls-gn" data-gn="' + i + '" value="' + E(g.name) + '" maxlength="14">'
+          + '<em>' + names.length + ' 个</em>'
+          + '<label class="cls-gx"><input type="checkbox" data-gon="' + i + '"' + (g.skip ? '' : ' checked') + '> 要这组</label></div>'
+          + '<div class="cls-gb">' + names.map(function (x) { return '<span class="cls-bn">' + E(x) + '</span>'; }).join('') + '</div>'
+          + '</div>';
+      }).join('');
+    foot.innerHTML = '<span class="spacer-grow"></span>'
+      + '<button type="button" class="btn" id="clsBack">改要求</button>'
+      + '<button type="button" class="btn" id="clsClose">取消</button>'
+      + '<button type="button" class="btn primary" id="clsApply"' + (gs.length ? '' : ' disabled') + '>应用到侧栏</button>';
+  }
+
+  function clsParse(txt) {
+    var a = String(txt || '').indexOf('{'), b = String(txt || '').lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    try { return JSON.parse(String(txt).slice(a, b + 1)); } catch (e) { return null; }
+  }
+
+  function clsRun() {
+    var ta = $('clsReq');
+    var req = (ta && ta.value || '').trim();
+    CLS.req = req || CLS.req;
+    try { localStorage.setItem('qbank.cls.req.v1', CLS.req); } catch (e) {}
+    if (!clsAiReady()) { CLS.err = '这个站没加载 AI 模块（ai.js），没法自动分。'; CLS.step = 'ask'; clsRender(); return; }
+    var cfg = clsCfg();
+    if (!cfg.model) { CLS.err = '还没配模型：去「设置 → AI 服务」填好模型再来（分完还能手动拖，不急）。'; CLS.step = 'ask'; clsRender(); return; }
+    CLS.err = ''; CLS.step = 'busy'; clsRender();
+
+    var list = CLS.banks;
+    var lines = list.map(function (b, i) {
+      var ex = clsSample(b);
+      return (i + 1) + '. id=' + b.id + ' | 《' + b.title + '》 | ' + (b.questions ? b.questions.length : 0) + ' 题'
+        + (ex.length ? ' | 题目开头：' + ex.join(' / ') : '');
+    }).join('\n');
+    var sys = '你是题库整理助手。用户给你一批还没归类的题库（id 与信息）和他想要的分类方式。'
+      + '你只负责按他的要求把它们分到若干文件夹里，并且只输出一个 JSON 对象，不要任何解释、不要代码块。';
+    var usr = '用户的分法要求：' + CLS.req + '\n\n题库清单：\n' + lines
+      + '\n\n只输出这个格式：{"groups":[{"name":"文件夹名","banks":["id1","id2"]}]}'
+      + '\n要求：name 是新建文件夹的名字（≤12 个字，不要 emoji、不要带编号）；'
+      + 'banks 只能填上面清单里出现过的 id；同一个题库只能出现在一组里；'
+      + '拿不准或不符合任何一组的，就别放进任何 group（会留在未分类）。';
+
+    var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, 30000);
+    Promise.resolve()
+      .then(function () {
+        return aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }],
+          null, ctl ? ctl.signal : undefined, { stream: false, temp: 0.2, maxTokens: 900 });
+      })
+      .then(function (txt) {
+        clearTimeout(timer);
+        var data = clsParse(txt);
+        if (!data || !data.groups || !data.groups.length) throw new Error('AI 的回答不是预期的 JSON');
+        var byId = {};
+        list.forEach(function (b) { byId[b.id] = 1; });
+        var used = {};
+        var gs = [];
+        data.groups.forEach(function (g) {
+          var name = String((g && g.name) || '').trim().slice(0, 14);
+          if (!name) return;
+          var ids = (g.banks || []).filter(function (id) {
+            if (!byId[id] || used[id]) return false;
+            used[id] = 1; return true;
+          });
+          if (ids.length) gs.push({ name: name, banks: ids });
+        });
+        if (!gs.length) throw new Error('AI 没给出可用的分组');
+        CLS.groups = gs;
+        var rest = list.length - Object.keys(used).length;
+        CLS.note = 'AI 分了 ' + gs.length + ' 组，共 ' + Object.keys(used).length + ' 个题库'
+          + (rest > 0 ? '，还有 ' + rest + ' 个留在未分类' : '') + '。名字可以直接改。';
+        CLS.step = 'preview';
+        clsRender();
+      })
+      .catch(function (e) {
+        clearTimeout(timer);
+        var msg = '';
+        try {
+          msg = (typeof aiErrInfo === 'function' && e) ? (aiErrInfo(e).msg || '') : '';
+          var hint = (typeof aiErrInfo === 'function' && e) ? (aiErrInfo(e).hint || '') : '';
+          msg = msg ? (msg + (hint ? ' · ' + hint : '')) : '';
+        } catch (x) {}
+        if (!msg) msg = (e && e.message) ? e.message : 'AI 没回话';
+        CLS.err = '没分成功：' + msg;
+        CLS.step = 'ask';
+        clsRender();
+      });
+  }
+
+  function clsApply() {
+    var gs = CLS.groups || [];
+    var body = $('clsBody');
+    if (!gs.length || !body) return;
+    var picked = [];
+    gs.forEach(function (g, i) {
+      var on = body.querySelector('[data-gon="' + i + '"]');
+      var nm = body.querySelector('[data-gn="' + i + '"]');
+      var name = (nm && nm.value || g.name || '').trim().slice(0, 14);
+      if (on && !on.checked) return;
+      if (!name) return;
+      picked.push({ name: name, banks: g.banks.slice() });
+    });
+    if (!picked.length) { CLS.err = '一组都没选，先勾上要的组。'; clsRender(); return; }
+    var undo = { cats: [], banks: [] };
+    var moved = 0;
+    picked.forEach(function (g) {
+      var cid = null;
+      /* 已经有同名的一级文件夹就直接用它，别再建一个重复的 */
+      try {
+        var same = kids(null).filter(function (c) { return String(c.title || '').trim() === g.name; })[0];
+        if (same) cid = same.id;
+      } catch (e) {}
+      var isNew = false;
+      if (!cid) {
+        try { cid = CAT.create(null, g.name); isNew = true; } catch (e) { cid = null; }
+      }
+      if (!cid) return;
+      if (isNew) undo.cats.push(cid);
+      g.banks.forEach(function (id) {
+        var b = null;
+        try { b = banks().filter(function (x) { return x.id === id; })[0]; } catch (e) {}
+        undo.banks.push({ id: id, cat: b ? (b.cat || null) : null });
+        try { if (CAT.moveBank(id, cid)) moved++; } catch (e) {}
+      });
+    });
+    try { CAT.save(); } catch (e) {}
+    CLS.open = false; clsCloseFn();
+    setTimeout(function () { try { paint(); } catch (e) {} try { if (window.CAT && CAT.render) CAT.render(); } catch (e) {} }, 40);
+    if (typeof toast === 'function') {
+      toast('AI 把 ' + moved + ' 个题库分成了 ' + picked.length + ' 组', 5200, 'ok', {
+        label: '撤销',
+        fn: function () {
+          try {
+            undo.banks.forEach(function (x) { try { CAT.moveBank(x.id, x.cat); } catch (e) {} });
+            try { CAT.save(); } catch (e) {}
+            try { if (CAT.delEmpty) CAT.delEmpty(undo.cats.slice()); } catch (e) {}
+            try { if (CAT.save) CAT.save(); } catch (e) {}
+            paint();
+            if (window.CAT && CAT.render) CAT.render();
+          } catch (e) {}
+          if (typeof toast === 'function') toast('已撤销分类', 1400, 'ok');
+        }
+      });
+    }
+  }
+
   /* ---------- 刷新钩子 ---------- */
   var tmr = 0;
   function refresh() { clearTimeout(tmr); tmr = setTimeout(function () { apply(); paint(); }, 80); }
@@ -562,6 +815,8 @@
     close: function () { setOpen(false); },
     toggle: function () { setOpen(!S.open); },
     newFolder: newFolder,
+    classify: clsOpen,
+    classifyState: function () { return { open: CLS.open, step: CLS.step, n: (CLS.banks || []).length }; },
     moveTo: moveBankTo,
     state: function () { return { open: S.open, q: S.q, wide: wide(), drag: DRAG }; }
   };

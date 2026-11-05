@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261106f">
+<link rel="stylesheet" href="style.css?v=20261106o">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261104a">
 <link rel="stylesheet" href="guide.css?v=20261022a">
@@ -155,6 +155,18 @@ var iv=setInterval(function(){n++;
       <option value="custom">自定义…</option>
     </select>
     <input type="color" id="setTextColorPick" value="#334155" title="自定义正文颜色">
+    <span class="tl" title="皮肤配色和深浅模式打架时，文字可能压在看不清的底色上；开着会自动换成一黑或一白">界面文字</span>
+    <select class="num" id="setUiText" title="自动 = 跟皮肤走，看不清时自动换成黑的或白的；也可以自己定">
+      <option value="auto">自动（推荐）</option>
+      <option value="ink">深墨</option>
+      <option value="light">浅白</option>
+      <option value="custom">自定义…</option>
+    </select>
+    <input type="color" id="setUiTextPick" value="#0b1220" title="自定义界面文字色">
+    <label class="tl" for="setAutoContrast" title="关掉后完全按皮肤原样，看不清也不管"
+      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="setAutoContrast" checked>自动保证文字看得清
+    </label>
     <span class="tl">主题色</span>
     <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
       <option value="teal">冷静青（默认）</option>
@@ -320,9 +332,9 @@ var iv=setInterval(function(){n++;
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
 <script src="csv.js?v=20261104a"></script>
 <script src="mastery.js?v=20261105c"></script>
-<script src="app.js?v=20261106e"></script>
+<script src="app.js?v=20261107b"></script>
 <script src="sim.js?v=20261106b"></script>
-<script src="side.js?v=20261106c"></script>
+<script src="side.js?v=20261106e"></script>
 <script src="keys.js?v=20261106a"></script>
 <script src="fxs.js?v=20261105d"></script>
 <script src="collection.js?v=20261106b"></script>

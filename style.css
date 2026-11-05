@@ -10618,3 +10618,344 @@ html.pip-full body { padding-top: 0 !important; }
 .help-row{flex-wrap:wrap}
 .help-row .muted{flex:1 1 220px;min-width:0;white-space:normal;text-align:right}
 @media (max-width:700px){.help-row .muted{text-align:left;flex-basis:100%}}
+
+/* ===== 侧栏：✨ 一键 AI 分类（side.js） ===== */
+.qs-rootcat{position:relative}
+.qs-rootcat .qs-ch{padding-right:112px}
+.qs-ai-cls{position:absolute;right:8px;top:5px;z-index:2;
+  font-size:11px;line-height:1;padding:5px 8px;border-radius:999px;
+  border:1px solid var(--primary-line);background:var(--primary-soft);color:var(--primary);
+  cursor:pointer;transition:transform .16s ease,background .16s ease}
+.qs-ai-cls:hover{transform:translateY(-1px);background:color-mix(in srgb,var(--primary) 16%,var(--card))}
+.qs-ai-cls:active{transform:scale(.96)}
+
+.cls-mask{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,10,18,.45);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .2s ease}
+.cls-mask.show{opacity:1;pointer-events:auto}
+.cls-sheet{width:min(560px,100%);max-height:min(84vh,760px);display:flex;flex-direction:column;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-pop);
+  transform:translateY(10px) scale(.985);transition:transform .22s cubic-bezier(.16,1,.3,1)}
+.cls-mask.show .cls-sheet{transform:none}
+.cls-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.cls-head b{flex:1 1 auto;font-size:15px}
+.cls-x{flex:0 0 auto;padding:4px 9px}
+.cls-body{padding:12px 14px;overflow:auto;min-height:60px}
+.cls-foot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.cls-hint{margin:0 0 8px;font-size:13px;line-height:1.6;color:var(--text)}
+.cls-hint.dim{color:var(--sub);font-size:12px}
+.cls-req{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.6;
+  padding:9px 10px;border-radius:var(--r-m);border:1px solid var(--line2);background:var(--card2);color:var(--text);resize:vertical}
+.cls-err{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--bad)}
+.cls-busy{display:flex;gap:6px;align-items:center;padding:10px 2px}
+.cls-busy i{width:7px;height:7px;border-radius:50%;background:var(--primary);opacity:.4;animation:clsDot 1.1s infinite ease-in-out}
+.cls-busy i:nth-child(2){animation-delay:.15s}
+.cls-busy i:nth-child(3){animation-delay:.3s}
+@keyframes clsDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.cls-g{border:1px solid var(--line);border-radius:var(--r-m);padding:8px 10px;margin-bottom:8px;background:var(--card2)}
+.cls-gh{display:flex;align-items:center;gap:8px}
+.cls-gn{flex:1 1 auto;min-width:0;font:inherit;font-size:13px;font-weight:600;padding:5px 8px;
+  border-radius:var(--r-s);border:1px solid var(--line2);background:var(--card);color:var(--text)}
+.cls-gh em{flex:0 0 auto;font-style:normal;font-size:12px;color:var(--sub)}
+.cls-gx{flex:0 0 auto;display:flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);cursor:pointer}
+.cls-gb{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.cls-bn{font-size:11.5px;line-height:1.5;padding:2px 7px;border-radius:999px;
+  background:var(--card3);color:var(--sub);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:620px){
+  .cls-mask{align-items:flex-end}
+  .cls-sheet{width:100%;max-height:92vh;border-radius:var(--r-card) var(--r-card) 0 0;
+    padding-bottom:env(safe-area-inset-bottom)}
+  .cls-gh{flex-wrap:wrap}
+  .cls-gn{flex:1 1 100%}
+}
+@media (prefers-reduced-motion:reduce){.cls-mask,.cls-sheet{transition:none}.cls-busy i{animation:none}}
+
+/* ===== 文字可读性兜底类（CX 动态加，web289）===== */
+.cx-ink, .cx-ink .t, .cx-ink .k { color: #0f172a !important; }
+.cx-paper, .cx-paper .t, .cx-paper .k { color: #f4f7fc !important; }
+.cx-mid { color: color-mix(in srgb, currentColor 70%, #64748b) !important; }
+
+/* ===== 深色模式下「卡片是浅底」的皮肤：题干/题号/解析压墨色（web289 按实测 41 套生成；选项不动，它们有自己的深底）===== */
+html[data-style="flat"] body.dark .qcard .stem,
+html[data-style="flat"] body.dark .qcard .gstem,
+html[data-style="flat"] body.dark .qcard .qno,
+html[data-style="flat"] body.dark .qcard .exp,
+html[data-style="flat"] body.dark .qcard .fb .ans,
+html[data-style="flat"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="retro"] body.dark .qcard .stem,
+html[data-style="retro"] body.dark .qcard .gstem,
+html[data-style="retro"] body.dark .qcard .qno,
+html[data-style="retro"] body.dark .qcard .exp,
+html[data-style="retro"] body.dark .qcard .fb .ans,
+html[data-style="retro"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="pencil"] body.dark .qcard .stem,
+html[data-style="pencil"] body.dark .qcard .gstem,
+html[data-style="pencil"] body.dark .qcard .qno,
+html[data-style="pencil"] body.dark .qcard .exp,
+html[data-style="pencil"] body.dark .qcard .fb .ans,
+html[data-style="pencil"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="riso"] body.dark .qcard .stem,
+html[data-style="riso"] body.dark .qcard .gstem,
+html[data-style="riso"] body.dark .qcard .qno,
+html[data-style="riso"] body.dark .qcard .exp,
+html[data-style="riso"] body.dark .qcard .fb .ans,
+html[data-style="riso"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="pop"] body.dark .qcard .stem,
+html[data-style="pop"] body.dark .qcard .gstem,
+html[data-style="pop"] body.dark .qcard .qno,
+html[data-style="pop"] body.dark .qcard .exp,
+html[data-style="pop"] body.dark .qcard .fb .ans,
+html[data-style="pop"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="sketch"] body.dark .qcard .stem,
+html[data-style="sketch"] body.dark .qcard .gstem,
+html[data-style="sketch"] body.dark .qcard .qno,
+html[data-style="sketch"] body.dark .qcard .exp,
+html[data-style="sketch"] body.dark .qcard .fb .ans,
+html[data-style="sketch"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="neo"] body.dark .qcard .stem,
+html[data-style="neo"] body.dark .qcard .gstem,
+html[data-style="neo"] body.dark .qcard .qno,
+html[data-style="neo"] body.dark .qcard .exp,
+html[data-style="neo"] body.dark .qcard .fb .ans,
+html[data-style="neo"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="bauhaus"] body.dark .qcard .stem,
+html[data-style="bauhaus"] body.dark .qcard .gstem,
+html[data-style="bauhaus"] body.dark .qcard .qno,
+html[data-style="bauhaus"] body.dark .qcard .exp,
+html[data-style="bauhaus"] body.dark .qcard .fb .ans,
+html[data-style="bauhaus"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="pixel"] body.dark .qcard .stem,
+html[data-style="pixel"] body.dark .qcard .gstem,
+html[data-style="pixel"] body.dark .qcard .qno,
+html[data-style="pixel"] body.dark .qcard .exp,
+html[data-style="pixel"] body.dark .qcard .fb .ans,
+html[data-style="pixel"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="y2k"] body.dark .qcard .stem,
+html[data-style="y2k"] body.dark .qcard .gstem,
+html[data-style="y2k"] body.dark .qcard .qno,
+html[data-style="y2k"] body.dark .qcard .exp,
+html[data-style="y2k"] body.dark .qcard .fb .ans,
+html[data-style="y2k"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="terminal"] body.dark .qcard .stem,
+html[data-style="terminal"] body.dark .qcard .gstem,
+html[data-style="terminal"] body.dark .qcard .qno,
+html[data-style="terminal"] body.dark .qcard .exp,
+html[data-style="terminal"] body.dark .qcard .fb .ans,
+html[data-style="terminal"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="ukiyoe"] body.dark .qcard .stem,
+html[data-style="ukiyoe"] body.dark .qcard .gstem,
+html[data-style="ukiyoe"] body.dark .qcard .qno,
+html[data-style="ukiyoe"] body.dark .qcard .exp,
+html[data-style="ukiyoe"] body.dark .qcard .fb .ans,
+html[data-style="ukiyoe"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="porcelain"] body.dark .qcard .stem,
+html[data-style="porcelain"] body.dark .qcard .gstem,
+html[data-style="porcelain"] body.dark .qcard .qno,
+html[data-style="porcelain"] body.dark .qcard .exp,
+html[data-style="porcelain"] body.dark .qcard .fb .ans,
+html[data-style="porcelain"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="mehndi"] body.dark .qcard .stem,
+html[data-style="mehndi"] body.dark .qcard .gstem,
+html[data-style="mehndi"] body.dark .qcard .qno,
+html[data-style="mehndi"] body.dark .qcard .exp,
+html[data-style="mehndi"] body.dark .qcard .fb .ans,
+html[data-style="mehndi"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="botanical"] body.dark .qcard .stem,
+html[data-style="botanical"] body.dark .qcard .gstem,
+html[data-style="botanical"] body.dark .qcard .qno,
+html[data-style="botanical"] body.dark .qcard .exp,
+html[data-style="botanical"] body.dark .qcard .fb .ans,
+html[data-style="botanical"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="morandi"] body.dark .qcard .stem,
+html[data-style="morandi"] body.dark .qcard .gstem,
+html[data-style="morandi"] body.dark .qcard .qno,
+html[data-style="morandi"] body.dark .qcard .exp,
+html[data-style="morandi"] body.dark .qcard .fb .ans,
+html[data-style="morandi"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="macaron"] body.dark .qcard .stem,
+html[data-style="macaron"] body.dark .qcard .gstem,
+html[data-style="macaron"] body.dark .qcard .qno,
+html[data-style="macaron"] body.dark .qcard .exp,
+html[data-style="macaron"] body.dark .qcard .fb .ans,
+html[data-style="macaron"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="rococo"] body.dark .qcard .stem,
+html[data-style="rococo"] body.dark .qcard .gstem,
+html[data-style="rococo"] body.dark .qcard .qno,
+html[data-style="rococo"] body.dark .qcard .exp,
+html[data-style="rococo"] body.dark .qcard .fb .ans,
+html[data-style="rococo"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="construct"] body.dark .qcard .stem,
+html[data-style="construct"] body.dark .qcard .gstem,
+html[data-style="construct"] body.dark .qcard .qno,
+html[data-style="construct"] body.dark .qcard .exp,
+html[data-style="construct"] body.dark .qcard .fb .ans,
+html[data-style="construct"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="cubism"] body.dark .qcard .stem,
+html[data-style="cubism"] body.dark .qcard .gstem,
+html[data-style="cubism"] body.dark .qcard .qno,
+html[data-style="cubism"] body.dark .qcard .exp,
+html[data-style="cubism"] body.dark .qcard .fb .ans,
+html[data-style="cubism"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="opart"] body.dark .qcard .stem,
+html[data-style="opart"] body.dark .qcard .gstem,
+html[data-style="opart"] body.dark .qcard .qno,
+html[data-style="opart"] body.dark .qcard .exp,
+html[data-style="opart"] body.dark .qcard .fb .ans,
+html[data-style="opart"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="newwave"] body.dark .qcard .stem,
+html[data-style="newwave"] body.dark .qcard .gstem,
+html[data-style="newwave"] body.dark .qcard .qno,
+html[data-style="newwave"] body.dark .qcard .exp,
+html[data-style="newwave"] body.dark .qcard .fb .ans,
+html[data-style="newwave"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="naive"] body.dark .qcard .stem,
+html[data-style="naive"] body.dark .qcard .gstem,
+html[data-style="naive"] body.dark .qcard .qno,
+html[data-style="naive"] body.dark .qcard .exp,
+html[data-style="naive"] body.dark .qcard .fb .ans,
+html[data-style="naive"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="atompunk"] body.dark .qcard .stem,
+html[data-style="atompunk"] body.dark .qcard .gstem,
+html[data-style="atompunk"] body.dark .qcard .qno,
+html[data-style="atompunk"] body.dark .qcard .exp,
+html[data-style="atompunk"] body.dark .qcard .fb .ans,
+html[data-style="atompunk"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="streamline"] body.dark .qcard .stem,
+html[data-style="streamline"] body.dark .qcard .gstem,
+html[data-style="streamline"] body.dark .qcard .qno,
+html[data-style="streamline"] body.dark .qcard .exp,
+html[data-style="streamline"] body.dark .qcard .fb .ans,
+html[data-style="streamline"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="baimiao"] body.dark .qcard .stem,
+html[data-style="baimiao"] body.dark .qcard .gstem,
+html[data-style="baimiao"] body.dark .qcard .qno,
+html[data-style="baimiao"] body.dark .qcard .exp,
+html[data-style="baimiao"] body.dark .qcard .fb .ans,
+html[data-style="baimiao"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="rinpa"] body.dark .qcard .stem,
+html[data-style="rinpa"] body.dark .qcard .gstem,
+html[data-style="rinpa"] body.dark .qcard .qno,
+html[data-style="rinpa"] body.dark .qcard .exp,
+html[data-style="rinpa"] body.dark .qcard .fb .ans,
+html[data-style="rinpa"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="madhubani"] body.dark .qcard .stem,
+html[data-style="madhubani"] body.dark .qcard .gstem,
+html[data-style="madhubani"] body.dark .qcard .qno,
+html[data-style="madhubani"] body.dark .qcard .exp,
+html[data-style="madhubani"] body.dark .qcard .fb .ans,
+html[data-style="madhubani"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="superflat"] body.dark .qcard .stem,
+html[data-style="superflat"] body.dark .qcard .gstem,
+html[data-style="superflat"] body.dark .qcard .qno,
+html[data-style="superflat"] body.dark .qcard .exp,
+html[data-style="superflat"] body.dark .qcard .fb .ans,
+html[data-style="superflat"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="corpmemphis"] body.dark .qcard .stem,
+html[data-style="corpmemphis"] body.dark .qcard .gstem,
+html[data-style="corpmemphis"] body.dark .qcard .qno,
+html[data-style="corpmemphis"] body.dark .qcard .exp,
+html[data-style="corpmemphis"] body.dark .qcard .fb .ans,
+html[data-style="corpmemphis"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="fauvism"] body.dark .qcard .stem,
+html[data-style="fauvism"] body.dark .qcard .gstem,
+html[data-style="fauvism"] body.dark .qcard .qno,
+html[data-style="fauvism"] body.dark .qcard .exp,
+html[data-style="fauvism"] body.dark .qcard .fb .ans,
+html[data-style="fauvism"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="neoexpr"] body.dark .qcard .stem,
+html[data-style="neoexpr"] body.dark .qcard .gstem,
+html[data-style="neoexpr"] body.dark .qcard .qno,
+html[data-style="neoexpr"] body.dark .qcard .exp,
+html[data-style="neoexpr"] body.dark .qcard .fb .ans,
+html[data-style="neoexpr"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="photoreal"] body.dark .qcard .stem,
+html[data-style="photoreal"] body.dark .qcard .gstem,
+html[data-style="photoreal"] body.dark .qcard .qno,
+html[data-style="photoreal"] body.dark .qcard .exp,
+html[data-style="photoreal"] body.dark .qcard .fb .ans,
+html[data-style="photoreal"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="lowbrow"] body.dark .qcard .stem,
+html[data-style="lowbrow"] body.dark .qcard .gstem,
+html[data-style="lowbrow"] body.dark .qcard .qno,
+html[data-style="lowbrow"] body.dark .qcard .exp,
+html[data-style="lowbrow"] body.dark .qcard .fb .ans,
+html[data-style="lowbrow"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="neopop"] body.dark .qcard .stem,
+html[data-style="neopop"] body.dark .qcard .gstem,
+html[data-style="neopop"] body.dark .qcard .qno,
+html[data-style="neopop"] body.dark .qcard .exp,
+html[data-style="neopop"] body.dark .qcard .fb .ans,
+html[data-style="neopop"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="bluegreen"] body.dark .qcard .stem,
+html[data-style="bluegreen"] body.dark .qcard .gstem,
+html[data-style="bluegreen"] body.dark .qcard .qno,
+html[data-style="bluegreen"] body.dark .qcard .exp,
+html[data-style="bluegreen"] body.dark .qcard .fb .ans,
+html[data-style="bluegreen"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="clay"] body.dark .qcard .stem,
+html[data-style="clay"] body.dark .qcard .gstem,
+html[data-style="clay"] body.dark .qcard .qno,
+html[data-style="clay"] body.dark .qcard .exp,
+html[data-style="clay"] body.dark .qcard .fb .ans,
+html[data-style="clay"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="sticker"] body.dark .qcard .stem,
+html[data-style="sticker"] body.dark .qcard .gstem,
+html[data-style="sticker"] body.dark .qcard .qno,
+html[data-style="sticker"] body.dark .qcard .exp,
+html[data-style="sticker"] body.dark .qcard .fb .ans,
+html[data-style="sticker"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="newsprint"] body.dark .qcard .stem,
+html[data-style="newsprint"] body.dark .qcard .gstem,
+html[data-style="newsprint"] body.dark .qcard .qno,
+html[data-style="newsprint"] body.dark .qcard .exp,
+html[data-style="newsprint"] body.dark .qcard .fb .ans,
+html[data-style="newsprint"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="scrapbook"] body.dark .qcard .stem,
+html[data-style="scrapbook"] body.dark .qcard .gstem,
+html[data-style="scrapbook"] body.dark .qcard .qno,
+html[data-style="scrapbook"] body.dark .qcard .exp,
+html[data-style="scrapbook"] body.dark .qcard .fb .ans,
+html[data-style="scrapbook"] body.dark .qcard .tagrow .tag { color: #0f172a !important; },
+html[data-style="oil"] body.dark .qcard .stem,
+html[data-style="oil"] body.dark .qcard .gstem,
+html[data-style="oil"] body.dark .qcard .qno,
+html[data-style="oil"] body.dark .qcard .exp,
+html[data-style="oil"] body.dark .qcard .fb .ans,
+html[data-style="oil"] body.dark .qcard .tagrow .tag { color: #0f172a !important; }
+
+/* ===== 兜底：这四套结构特殊，规则不带 .qcard 前缀，直接压全部题目文字（web289b）===== */
+html[data-style="clay"] body.dark .stem,
+html[data-style="clay"] body.dark .gstem,
+html[data-style="clay"] body.dark .qno,
+html[data-style="clay"] body.dark .exp,
+html[data-style="retro"] body.dark .stem,
+html[data-style="retro"] body.dark .gstem,
+html[data-style="retro"] body.dark .qno,
+html[data-style="retro"] body.dark .exp,
+html[data-style="terminal"] body.dark .stem,
+html[data-style="terminal"] body.dark .gstem,
+html[data-style="terminal"] body.dark .qno,
+html[data-style="terminal"] body.dark .exp { color: #0f172a !important; }
+/* surreal：保持皮肤原样（它的选项是深底浅字，运行时守卫会误判，已排除） */
+
+
+
+
+
+/* surreal：选项行是深紫底，文字必须浅（带 #view 提权，压过皮肤自己的 !important） */
+html[data-style="surreal"] #view .opts .opt,
+html[data-style="surreal"] #view .opts .opt .t,
+html[data-style="surreal"] #view .opts .opt .k,
+html[data-style="surreal"] #view .opts .opt b,
+html[data-style="surreal"] #view .opts .opt span { color: #f4f7fd !important; }
+
+/* pop：深色下题目卡仍是浅底（皮肤自带白卡），题干/题号压墨色 */
+html[data-style="pop"] body.dark #view .stem,
+html[data-style="pop"] body.dark #view .gstem,
+html[data-style="pop"] body.dark #view .qno,
+html[data-style="pop"] body.dark #view .exp { color: #0f172a !important; }
+
+/* 切主题瞬间抑制过渡（防止文字颜色一帧一帧跳） */
+html.cx-now *, html.cx-now *::before, html.cx-now *::after {
+  transition: none !important;
+  animation-duration: 0s !important;
+}

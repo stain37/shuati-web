@@ -543,7 +543,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false };
+const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220' };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -1525,6 +1525,445 @@ function bindRipple() {
     setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 420);
   }, { passive: true });
 }
+/* ===== 自动对比度守卫（web287）=====
+   只改文字颜色，绝不动皮肤的底色/边框/圆角/阴影，主题风格原样保留。
+   规则（三条一起判，任一条成立就换色）：
+     ① WCAG 亮度对比 < 4.5（浅灰压浅灰、白字压白卡）
+     ② 高饱和文字压高饱和底、且色相接近（红字压红底这种"看着糊"）
+     ③ 文字与底的亮度差 < 0.22（低亮度配低亮度）
+   换色不再用纯黑/纯白，而是保留主题里这块文字原有的色相、只把亮度拉到安全区、
+   饱和度上限 0.42 —— 所以换完之后仍然"是这套皮肤的颜色"，只是看得清了。
+   渐变背景会解析所有色标，按最差的那个色标算。 */
+(function () {
+  function parse(c) {
+    var m = String(c || '').match(/rgba?\(([^)]+)\)/);
+    if (!m) {
+      /* oklab()/color() 这类现代写法：借 canvas 归一化成 rgb，否则整块解析失败、永远修不到 */
+      try {
+        var cv = document.createElement('canvas').getContext('2d');
+        var raw = String(c || '');
+        if (raw && raw !== 'transparent') {
+          cv.fillStyle = '#123456'; cv.fillStyle = raw;
+          var hex = String(cv.fillStyle);
+          var mm = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+          if (mm) return { r: parseInt(mm[1], 16), g: parseInt(mm[2], 16), b: parseInt(mm[3], 16), a: 1 };
+        }
+      } catch (e) {}
+      return null;
+    }
+    var p = m[1].split(',').map(Number);
+    if (p.length < 3 || p.slice(0, 3).some(function (v) { return !isFinite(v); })) return null;
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  }
+  function lum(c) {
+    function f(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  }
+  function ratio(a, b) {
+    if (!a || !b) return 21;
+    var l1 = lum(a), l2 = lum(b), hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  function css(c) { return 'rgb(' + Math.round(c.r) + ',' + Math.round(c.g) + ',' + Math.round(c.b) + ')'; }
+
+  function rgb2hsl(c) {
+    var r = c.r / 255, g = c.g / 255, b = c.b / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    var h = 0, s = 0, l = (mx + mn) / 2;
+    if (d) {
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return { h: h, s: s, l: l };
+  }
+  function hsl2rgb(h, s, l) {
+    h = ((h % 360) + 360) % 360;
+    function f(n) {
+      var k = (n + h / 30) % 12;
+      var a = s * Math.min(l, 1 - l);
+      return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    }
+    return { r: Math.round(f(0) * 255), g: Math.round(f(8) * 255), b: Math.round(f(4) * 255) };
+  }
+  /* 从渐变串里抠出所有色标（含透明度）；忽略太透明的 */
+  function stopsOf(bgImage) {
+    var out = [], re = /rgba?\([^)]*\)/g, m;
+    while ((m = re.exec(bgImage))) {
+      var c = parse(m[0]);
+      if (c && c.a >= 0.55) out.push(c);
+    }
+    return out;
+  }
+
+  /* 元素背后真正画出来的底色：{solid:c} | {stops:[...]} | null */
+  function bgBehind(el) {
+    var n = el, i = 0;
+    while (n && n !== document.documentElement && i++ < 8) {
+      var cs = getComputedStyle(n);
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+        if (/gradient/i.test(cs.backgroundImage)) {
+          var st = stopsOf(cs.backgroundImage);
+          if (st.length) return { stops: st };
+        }
+        /* url(...) 花纹底：量不出颜色时继续往上找卡片底，别整块放弃 */
+      }
+      var c = parse(cs.backgroundColor);
+      if (c && c.a >= 0.6) return { solid: c };
+      n = n.parentElement;
+    }
+    var bc = parse(getComputedStyle(document.body).backgroundColor);
+    return bc && bc.a >= 0.6 ? { solid: bc } : null;
+  }
+  /* 对一组底色取最差对比度 */
+  function normBg(bg) {                       /* 允许直接传一个颜色 */
+    if (!bg) return null;
+    if (bg.solid || bg.stops) return bg;
+    return { solid: bg };
+  }
+  function worstRatio(color, bgArg) {
+    var bg = normBg(bgArg);
+    if (!bg) return 21;
+    if (bg.solid) return ratio(color, bg.solid);
+    return bg.stops.reduce(function (m, s) { return Math.min(m, ratio(color, s)); }, 21);
+  }
+  /* 渐变底取"平均色"当代表：色标跨明暗两端时，按平均色选方向才对 */
+  function avgColor(bg) {
+    if (!bg) return null;
+    if (bg.solid) return bg.solid;
+    var n = bg.stops.length, r = 0, g = 0, b = 0;
+    for (var i = 0; i < n; i++) { r += bg.stops[i].r; g += bg.stops[i].g; b += bg.stops[i].b; }
+    return { r: r / n, g: g / n, b: b / n, a: 1 };
+  }
+  function bgLum(bgArg) {
+    var bg = normBg(bgArg);
+    if (!bg) return 1;
+    if (bg.solid) return lum(bg.solid);
+    var t = bg.stops.reduce(function (a, s) { return a + lum(s); }, 0) / bg.stops.length;
+    return t;
+  }
+  /* 饱和度/色相的"糊在一起"判定：文字与任一个底都高饱和且色相近 */
+  function muddy(color, bgArg) {
+    var bg = normBg(bgArg);
+    if (!bg) return false;
+    var list = bg.solid ? [bg.solid] : bg.stops;
+    var ch = rgb2hsl(color);
+    for (var i = 0; i < list.length; i++) {
+      var bh = rgb2hsl(list[i]);
+      if (ch.s >= 0.5 && bh.s >= 0.5) {
+        var dh = Math.abs(ch.h - bh.h); if (dh > 180) dh = 360 - dh;
+        if (dh <= 48) return true;
+      }
+    }
+    return false;
+  }
+  /* 挑一个"仍然是这身皮肤的颜色"，但亮度安全 */
+  var INKC = { r: 15, g: 23, b: 42 }, PAPERC = { r: 240, g: 244, b: 250 };
+  function safeColor(cur, bg) {
+    var base = cur || { r: 30, g: 30, b: 30 };
+    var hsl = rgb2hsl(base);
+    var cap = 0.42;
+    /* 候选：尽量保留主题色相，分浅/深两个方向各给两档亮度，再加墨/纸兜底 */
+    var cands = [
+      hsl2rgb(hsl.h, Math.min(hsl.s, cap), 0.10),
+      hsl2rgb(hsl.h, Math.min(hsl.s, cap), 0.06),
+      hsl2rgb(hsl.h, Math.min(hsl.s, cap * 0.6), 0.96),
+      hsl2rgb(hsl.h, Math.min(hsl.s, cap), 0.98),
+      INKC, PAPERC
+    ];
+    var cand = null, bestR = 0;
+    for (var i = 0; i < cands.length; i++) {
+      var r = worstRatio(cands[i], bg);
+      if (r > bestR + 0.001) { bestR = r; cand = cands[i]; }
+    }
+    return { c: cand, ratio: bestR };
+  }
+
+  function fixEl(el) {
+    /* 反馈面板里的「❌ 回答错误」「正确答案：…」这类块：自带语义色，怎么调都压不过面板底色，
+       直接让它继承面板已经修好的颜色最稳 */
+    if (el.classList && (el.classList.contains('res') || el.classList.contains('ans'))) {
+      if (el.style.getPropertyValue('color') !== 'inherit') el.style.setProperty('color', 'inherit', 'important');
+      return 0;
+    }
+    if (!el) return 0;
+    var cur = parse(getComputedStyle(el).color);
+    if (!cur) return 0;
+    var bg = bgBehind(el);
+    /* 有些皮肤的 .qcard 自己刷了白底、而题干/题号本身透明：往上找会停在中间透明层，
+       量不到真正的白卡底 → 这几类块直接取最近 .qcard 的底色 */
+    if (el.matches('.stem,.gstem,.qno,.exp,.fb .ans,.tagrow .tag')) {
+      var qc = el.closest('.qcard');
+      if (qc) {
+        var cbg = parse(getComputedStyle(qc).backgroundColor);
+        if (cbg && cbg.a >= 0.6) bg = { solid: cbg };
+      }
+    }
+    if (!bg) {                            /* 图片底：不换色，只加一层描边光晕 */
+      var dark = lum(cur) < 0.45;
+      el.style.setProperty('text-shadow', dark
+        ? '0 1px 0 rgba(255,255,255,.55), 0 0 3px rgba(255,255,255,.45)'
+        : '0 1px 0 rgba(0,0,0,.45), 0 0 4px rgba(0,0,0,.4)', 'important');
+      return 0;
+    }
+    var avg = avgColor(bg);
+    var r = ratio(cur, avg);
+    var bad = r < 4.5 || muddy(cur, { solid: avg }) || Math.abs(lum(cur) - bgLum(bg)) < 0.22;
+    if (!bad) {
+      if (el.classList.contains('cx-ink') || el.classList.contains('cx-paper') || el.classList.contains('cx-mid')) {
+        el.classList.remove('cx-ink', 'cx-paper', 'cx-mid');
+      }
+      if (el.style.getPropertyValue('text-shadow')) el.style.removeProperty('text-shadow');
+      return 0;
+    }
+    var pick = safeColor(cur, avg);
+    /* 语义色（红/绿标题）在同类底上容易糊：只允许极端亮度，别取中间调 */
+    if (el.classList.contains('res') || /(^|\s)fb-\w+/.test(el.className)) {
+      var alt = worstRatio(INKC, bg) >= worstRatio(PAPERC, bg) ? INKC : PAPERC;
+      if (worstRatio(cur, avg) < 4.5) pick = { c: alt, ratio: worstRatio(alt, bg) };
+    }
+    /* 用 class 而不是 inline style：重渲染会掉 inline，class 由 CSS !important 兜底。
+       只在目标 class 与当前不同时才写，避免每帧 remove+add 造成文字闪烁 */
+    var lc = lum(pick.c);
+    var want = lc < 0.45 ? 'cx-ink' : (lc > 0.8 ? 'cx-paper' : 'cx-mid');
+    if (!el.classList.contains(want)) {
+      el.classList.remove('cx-ink', 'cx-paper', 'cx-mid');
+      el.classList.add(want);
+    }
+    /* 中间调底色（灰/渐变中段）靠换色也到不了 4.5：补一层反色描边，形状和配色仍不动 */
+    if (ratio(pick.c, avg) < 5) {
+      var darkTxt = lum(pick.c) < 0.45;
+      var wantSh = darkTxt
+        ? '0 0 1px rgba(255,255,255,.85), 0 1px 0 rgba(255,255,255,.6)'
+        : '0 0 1px rgba(0,0,0,.75), 0 1px 0 rgba(0,0,0,.55)';
+      if (el.style.getPropertyValue('text-shadow').trim() !== wantSh) el.style.setProperty('text-shadow', wantSh, 'important');
+    } else if (el.style.getPropertyValue('text-shadow')) {
+      el.style.removeProperty('text-shadow');
+    }
+    return 1;
+  }
+
+  var SEL = ['.stem', '.gstem', '.qno', '.opts .opt', '.opts .opt .t', '.opts .opt .k',
+    '.fb', '.fb .res', '.fb .ans', '.exp', '.qmode .btn', '.tagrow .tag', '.tagrow .tagx',
+    /* 主页也在覆盖范围内（原来只盯着答题页，主页数字/标题一律没人管） */
+    '.hero h1', '.hero p', '.hero .hstat b', '.hero .hstat .hs', '.hero .sub',
+    '.card h2', '.card h3', '.card .sec-t', '.card .hint', '.kv b', '.num', '.big-num',
+    '.stat b', '.stat .lbl', '.tile b', '.tile .t', '.empty', '.list-row .t'];
+
+  function contrastFix() {
+    if (!document.body) return null;
+    var S = (typeof SET === 'object' && SET) || {};
+    if (S.autoContrast === false) { clearSurfaces(); return clearContrastFix(); }
+    /* 只重推"表面色"（按皮肤色相 + 当前明暗档位），--text 不动；文字仍由下面逐个元素校正兜底。 */
+    var isDark = !!document.body.classList.contains('dark');
+    /* 两个模式都跑：repaintSurfaces 内部自带「已对齐就 return」，
+       浅色模式那次主要是把之前深色重涂留下的内联变量撤掉（否则切回白天仍是深卡） */
+    try { repaintSurfaces(isDark); } catch (e) {}
+    /* 表面色定下来之后，若 --text 与 --card 仍然糊在一起（clay 这类皮肤本身的配色就坏了），
+       按卡片亮度把 --text 一步定死；条件一旦满足就不再动，避免与 repaintSurfaces 互相拉扯 */
+    try { settleText(isDark); } catch (e) {}
+    /* 不能只从 #view .qcard 往下找：题目卡有时会被"浮起/小窗"搬到别处（甚至挂到 body 下），
+       按 #view 取会扫到另一个空壳，真正显示的那块反而漏掉。改成在可见区域内全量找。 */
+    var SKIP = '.qside,.sim-mask,.ctx-menu,.mask,.toast,.pip-win,#qSideMask';
+    function visible(el) {
+      if (!el || el.closest(SKIP)) return false;
+      if (!el.getClientRects().length) return false;
+      var cs2 = getComputedStyle(el);
+      return cs2.visibility !== 'hidden' && cs2.display !== 'none' && parseFloat(cs2.opacity || '1') > 0.05;
+    }
+    var n = 0;
+    SEL.forEach(function (sel) {
+      Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) {
+        if (visible(el)) n += fixEl(el);
+      });
+    });
+    var all = document.querySelectorAll('#view .qcard *'), guard = 0;
+    for (var i = 0; i < all.length && guard < 220; i++) {
+      var el2 = all[i];
+      if (el2.childElementCount !== 0) continue;      /* 只处理"叶子"文字节点，避免整块误伤 */
+      if (!el2.textContent || !el2.textContent.trim()) continue;
+      if (!visible(el2)) continue;
+      guard++;
+      n += fixEl(el2);
+    }
+    document.documentElement.setAttribute('data-cx', '1');
+    return { fixed: n };
+  }
+
+  function clearContrastFix() {
+    Array.prototype.forEach.call(document.querySelectorAll('#view [style*="color"]'), function (el) {
+      el.style.removeProperty('color');
+    });
+    document.documentElement.removeAttribute('data-cx');
+    return null;
+  }
+
+  /* 审计：给每个目标块报告最差对比度，便于批量核对 */
+  function audit() {
+    var card = document.querySelector('#view .qcard');
+    if (!card) return { items: [] };
+    var items = [];
+    SEL.forEach(function (sel) {
+      Array.prototype.forEach.call(card.querySelectorAll(sel), function (el) {
+        /* 只统计"自己直接画文字"的块，容器（.opt 外壳等）不参与，免得数字失真 */
+        var paints = false;
+        for (var q = 0; q < el.childNodes.length; q++) {
+          var nd = el.childNodes[q];
+          if (nd.nodeType === 3 && nd.nodeValue && nd.nodeValue.trim()) { paints = true; break; }
+        }
+        if (!paints) return;
+        var cur = parse(getComputedStyle(el).color);
+        var bg = bgBehind(el);
+        if (!cur || !bg) return;
+        var avg = avgColor(bg);
+        var halo = (el.style.textShadow || '').length > 0;
+        items.push({
+          sel: sel,
+          text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 14),
+          ratio: halo ? 21 : Math.round(ratio(cur, avg) * 100) / 100,
+          halo: halo,
+          muddy: muddy(cur, avg),
+          lumGap: Math.round(Math.abs(lum(cur) - bgLum(bg)) * 100) / 100
+        });
+      });
+    });
+    return { items: items, worst: items.reduce(function (m, it) { return Math.min(m, it.ratio); }, 21) };
+  }
+
+  /* ===== 明暗模式与皮肤对齐（web288）：皮肤只设计了一种明暗，切到另一边就会"卡片反着来"。
+     这里只在该模式与皮肤底色明显错位时，按皮肤自己的色相重新推一套表面色，
+     色相/饱和度沿用原皮肤（所以还是这张脸），亮度换成该模式该有的档位。 */
+  function parse2(c) { return parse(c); }
+  function bodyVar(name) {
+    return getComputedStyle(document.body).getPropertyValue(name).trim();
+  }
+  function repaintSurfaces(isDark) {
+    /* 皮肤把 --bg 定义在 html 上；body 的 background-color 是「明暗模式」刷的那层，
+       拿它判断会把「html 亮、body 暗」的错位当成已经对齐（clay 就是这类） */
+    var bgRaw = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || bodyVar('--bg');
+    var bg = parse(bgRaw) || parse(getComputedStyle(document.body).backgroundColor);
+    if (!bg) return 0;
+    var l = lum(bg);
+    /* 只用 --bg 判断不够：这几套皮肤的 --bg 本来就是深色、卡片却是白的（flat/retro/pixel…），
+       深色模式下会变成「深底 + 白卡 + 白字」。所以卡片也要一起判断。 */
+    var cardRaw = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || bodyVar('--card');
+    var cardC = parse(cardRaw) || parse(getComputedStyle(document.body).backgroundColor);
+    var lc = cardC ? lum(cardC) : l;
+    var need = isDark ? (l > 0.55 || lc > 0.55) : (l < 0.42 || lc < 0.18);
+    if (!need) {
+      /* 之前按另一种明暗重涂过：现在皮肤自己就对齐了，把重涂的内联变量撤掉，
+         否则切回白天时会留着深色卡片（「明暗跟主题不搭」的元凶） */
+      var wasDark = document.documentElement.getAttribute('data-cx-mode') === 'dark';
+      if (wasDark !== isDark) {
+        ['--bg', '--card', '--card2', '--card3', '--line'].forEach(function (k) {
+          document.documentElement.style.removeProperty(k);
+          document.body.style.removeProperty(k);
+        });
+        document.documentElement.removeAttribute('data-cx-mode');
+      }
+      return 0;
+    }
+    var hsl = rgb2hsl(bg);
+    var sat = Math.min(hsl.s, isDark ? 0.30 : 0.16);
+    var set = isDark
+      ? { '--bg': [0.06, 0.34], '--card': [0.10, 0.26], '--card2': [0.14, 0.22], '--card3': [0.18, 0.20], '--line': [0.26, 0.18] }
+      : { '--bg': [0.97, 0.14], '--card': [0.995, 0.10], '--card2': [0.94, 0.12], '--card3': [0.90, 0.14], '--line': [0.84, 0.16] };
+    Object.keys(set).forEach(function (k) {
+      var L = set[k][0], S = Math.min(hsl.s, set[k][1]);
+      var c = hsl2rgb(hsl.h, S, L);
+      document.documentElement.style.setProperty(k, css(c), 'important');
+      document.body.style.setProperty(k, css(c), 'important');
+    });
+    document.documentElement.setAttribute('data-cx-mode', isDark ? 'dark' : 'light');
+    return 1;
+  }
+  /* 有些皮肤自己就把 --text 设成了近白、卡片却是近白（clay 这类），它不是"模式错位"而是配色本身坏了。
+     这里只在 --text 与 --card 的对比度明显不够时，把 --text 换成该明暗该有的档位。 */
+  function fixTextVar(isDark) {
+    var cardC = parse(getComputedStyle(document.documentElement).getPropertyValue('--card').trim())
+      || parse(getComputedStyle(document.body).backgroundColor);
+    var textRaw = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+    var textC = parse(textRaw) || parse(getComputedStyle(document.body).color);
+    if (!cardC || !textC) return 0;
+    if (ratio(textC, cardC) >= 3) return 0;   /* 只在配色真的糊成一团时才动 --text */
+    var want = isDark ? { r: 240, g: 244, b: 250, a: 1 } : { r: 15, g: 23, b: 42, a: 1 };
+    if (ratio(want, cardC) < 4.6) want = isDark ? { r: 255, g: 255, b: 255, a: 1 } : { r: 0, g: 0, b: 0, a: 1 };
+    document.documentElement.style.setProperty('--text', css(want), 'important');
+    document.body.style.setProperty('--text', css(want), 'important');
+    return 1;
+  }
+  function settleText(isDark) {
+    var cardC = parse(getComputedStyle(document.documentElement).getPropertyValue('--card').trim())
+      || parse(getComputedStyle(document.body).backgroundColor);
+    var textC = parse(getComputedStyle(document.documentElement).getPropertyValue('--text').trim())
+      || parse(getComputedStyle(document.body).color);
+    if (!cardC || !textC) return 0;
+    if (ratio(textC, cardC) >= 3) return 0;
+    var want = lum(cardC) > 0.5 ? { r: 15, g: 23, b: 42, a: 1 } : { r: 240, g: 244, b: 250, a: 1 };
+    document.documentElement.style.setProperty('--text', css(want), 'important');
+    document.body.style.setProperty('--text', css(want), 'important');
+    return 1;
+  }
+  function clearSurfaces() {
+    ['--bg', '--card', '--card2', '--card3', '--line'].forEach(function (k) {
+      document.body.style.removeProperty(k);
+      document.documentElement.style.removeProperty(k);
+    });
+    ['--text'].forEach(function (k) {
+      document.body.style.removeProperty(k);
+      document.documentElement.style.removeProperty(k);
+    });
+    document.documentElement.removeAttribute('data-cx-mode');
+  }
+
+  /* 每次 #view 重画后补一次（答题页内容是渲染出来的，applyLook 跑在前面） */
+  var _cxT = 0;
+  var _cxT2 = 0, _cxT3 = 0;
+  function afterRender() {
+    clearTimeout(_cxT);
+    _cxT = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 70);
+    /* 有些页面首帧之后还会异步重画一次（换成新节点），补两刀，别让刚写好的内联色被冲掉 */
+    clearTimeout(_cxT2); _cxT2 = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 430);
+    clearTimeout(_cxT3); _cxT3 = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 1250);
+  }
+  function hook() {
+    var v = document.getElementById('view');
+    if (!v || v.dataset.cxHooked === '1') return;
+    v.dataset.cxHooked = '1';
+    new MutationObserver(afterRender).observe(v, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
+  else hook();
+  window.addEventListener('hashchange', afterRender);
+
+  window.CX = { fix: contrastFix, clear: clearContrastFix, ratio: ratio, parse: parse, bgBehind: bgBehind, audit: audit, mud: muddy,
+    probe: function (el) {
+      var cur = parse(getComputedStyle(el).color);
+      var bg = bgBehind(el);
+      var avg = bg ? avgColor(bg) : null;
+      return { cur: cur, bg: bg, avg: avg, ratio: (cur && avg) ? Math.round(ratio(cur, avg) * 100) / 100 : null,
+        lumDiff: (cur && bg) ? Math.round(Math.abs(lum(cur) - bgLum(bg)) * 100) / 100 : null,
+        hasImg: !!el.closest('.qcard') && getComputedStyle(el.closest('.qcard')).backgroundImage.slice(0, 60) };
+    },
+    debug: function () { return { dark: !!document.body.classList.contains('dark'), bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(), cx: document.documentElement.getAttribute('data-cx-vars') }; }
+  };
+})();
+
+
+/* 只有浅色设计的皮肤（74 套里这 41 套的卡片天生是白/米色，深色模式只会把正文翻成近白
+   → 白字压白卡）。对它们直接锁定浅色，不再硬改人家的设计。 */
+const LIGHT_ONLY_SKINS = ['flat','retro','pencil','riso','pop','sketch','surreal','neo','bauhaus','pixel',
+  'hologram','ukiyoe','porcelain','mehndi','botanical','morandi','rococo','construct','opart','newwave','naive',
+  'atompunk','madhubani','superflat','fauvism','neoexpr','photoreal','minhwa','neopop','bluegreen','sticker',
+  'newsprint','scrapbook','oil','qline','neu','softui'];
+const SKIN_FALLBACK = {flat:'noir',retro:'cubism',pencil:'tenebrism',riso:'lowbrow',pop:'corpmemphis',sketch:'tenebrism',
+  surreal:'disco',neo:'artdeco',bauhaus:'corpmemphis',pixel:'terminal',hologram:'glitch',ukiyoe:'noir',porcelain:'noir',
+  mehndi:'default',botanical:'acid',morandi:'default',rococo:'wabisabi',construct:'corpmemphis',opart:'blueprint',
+  newwave:'macaron',naive:'noir',atompunk:'dieselpunk',madhubani:'corpmemphis',superflat:'lowbrow',fauvism:'corpmemphis',
+  neoexpr:'aurora',photoreal:'rinpa',minhwa:'corpmemphis',neopop:'corpmemphis',bluegreen:'aurora',sticker:'clay',
+  newsprint:'tenebrism',scrapbook:'corpmemphis',oil:'corpmemphis',qline:'clay',neu:'win95',softui:'win95'};
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -1549,6 +1988,22 @@ function applyLook() {
   if (document.documentElement) document.documentElement.setAttribute('data-style', style);
   try{ ntSigns(SET.style==='neontokyo'); }catch(e){}
   try{ ntDrops(SET.style==='neontokyo'); }catch(e){}
+  /* 明暗锁定（web291）：有一批皮肤天生只有浅色版（卡片是白的，深色模式只把正文翻成近白
+     → 白字压白卡）。与其硬改人家的设计，不如把这套皮肤的明暗锁在它自己的设计上：
+     深色模式下量到卡片仍是亮色，就退回浅色并提示一句。 */
+  try {
+    if (!window.__modeLocking && dark && LIGHT_ONLY_SKINS.indexOf(style) >= 0) {
+      const to = SKIN_FALLBACK[style] || 'noir';
+      if (to && to !== style && UI_STYLES.indexOf(to) >= 0) {
+        window.__modeLocking = true;
+        SET.style = to;
+        try { if (typeof writeLS === 'function' && LS && LS.set) writeLS(LS.set, SET); } catch (e) {}
+        window.__modeLocking = false;
+        try { if (typeof toast === 'function') toast('「' + style + '」只有浅色版，已换成「' + to + '」', 2800, 'info'); } catch (e) {}
+        return applyLook();
+      }
+    }
+  } catch (e) {}
   /* 区块外发光：三态 auto（跟风格）/ on（指定颜色）/ off */
   {
     let mode = SET.glowMode;
@@ -1595,6 +2050,15 @@ function applyLook() {
       tc === 'ink' ? '#111827' : tc === 'blue' ? '#1d4ed8' : tc === 'brown' ? '#7c3a12'
         : tc === 'green' ? '#166534' : (SET.textColorPick || '#334155'));
   }
+  /* 皮肤 + 深浅可能让文字和底色撞成一片（白字压白卡）：量一遍真实底色，必要时覆盖 --text/--sub */
+  /* 切皮肤/明暗的瞬间关掉所有过渡，避免「颜色一帧一帧跳」看起来像闪 */
+  try {
+    var de = document.documentElement;
+    de.classList.add('cx-now');
+    clearTimeout(window.__cxNowT);
+    window.__cxNowT = setTimeout(function () { de.classList.remove('cx-now'); }, 380);
+  } catch (e) {}
+  try { window.CX && window.CX.fix(); } catch (e) {}
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -6169,6 +6633,12 @@ on('setBig', e => {
 }, 'change');
 on('setTextColor', e => setLook('textColor', e.target.value), 'change');
 on('setTextColorPick', e => { SET.textColorPick = e.target.value; setLook('textColor', 'custom'); }, 'input');
+if ($('setUiText')) $('setUiText').value = SET.uiText || 'auto';
+if ($('setUiTextPick')) $('setUiTextPick').value = SET.uiTextPick || '#0b1220';
+if ($('setAutoContrast')) $('setAutoContrast').checked = SET.autoContrast !== false;
+on('setUiText', e => setLook('uiText', e.target.value), 'change');
+on('setUiTextPick', e => { SET.uiTextPick = e.target.value; setLook('uiText', 'custom'); }, 'input');
+on('setAutoContrast', e => { SET.autoContrast = !!e.target.checked; setLook('autoContrast', SET.autoContrast); }, 'change');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
 on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
 on('setStyle', e => {
