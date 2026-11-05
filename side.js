@@ -696,15 +696,41 @@
     return null;
   }
 
+  /* 模型偶尔会把 JSON 写超长被截断（结尾没闭合）——把已经写完整的 {name, banks} 片段捞出来 */
+  function clsSalvage(t) {
+    var s = String(t || '');
+    var out = [], re = /"name"\s*:\s*"([^"]{1,40})"/g, m, marks = [];
+    while ((m = re.exec(s))) marks.push({ name: m[1], at: m.index + m[0].length });
+    for (var i = 0; i < marks.length; i++) {
+      var seg = s.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : s.length);
+      var bi = seg.search(/"banks"\s*:/);
+      if (bi < 0) continue;
+      var arrStart = seg.indexOf('[', bi);
+      if (arrStart < 0) continue;
+      var arrSeg = seg.slice(arrStart + 1);
+      var end = arrSeg.indexOf(']');
+      if (end >= 0) arrSeg = arrSeg.slice(0, end);
+      var ids = [], ir = /"([^"\s,]{3,80})"/g, im;
+      while ((im = ir.exec(arrSeg))) ids.push(im[1]);
+      if (!ids.length) ids = arrSeg.split(',').map(function (x) { return x.replace(/["'\s]/g, ''); }).filter(Boolean);
+      if (ids.length) out.push({ name: marks[i].name.trim(), banks: ids });
+    }
+    return out.length ? { groups: out } : null;
+  }
+
   function clsParse(txt) {
     var raw = String(txt || '');
     CLS.raw = raw.slice(0, 600);
     var j = clsJSON(raw);
-    if (!j) return null;
+    if (!j) return clsSalvage(raw);
+    CLS.rawLen = raw.length;
     // 兼容多种形状：{groups:[{name,banks}]} / [{name,banks}] / {name:[ids]} / {分组:[…]}
     var groups = [];
     var arr = null;
-    if (Array.isArray(j)) arr = j;
+    if (!Array.isArray(j) && j && j.name && (j.banks || j.ids || j.items || j.题库)) {
+      // 只捞到一个 {name, banks} 片段：当成单组
+      arr = [j];
+    } else if (Array.isArray(j)) arr = j;
     else if (Array.isArray(j.groups)) arr = j.groups;
     else if (Array.isArray(j['分组']) || Array.isArray(j.folders) || Array.isArray(j.result)) arr = j['分组'] || j.folders || j.result;
     else if (j && typeof j === 'object') { arr = []; for (var k in j) if (Object.prototype.hasOwnProperty.call(j, k) && Array.isArray(j[k])) arr.push({ name: k, banks: j[k] }); }
@@ -716,6 +742,15 @@
       var bs = g.banks || g.ids || g.items || g.题库 || [];
       if (!Array.isArray(bs)) bs = [bs];
       groups.push({ name: name.slice(0, 20), banks: bs.map(function (x) { return String(x).trim(); }).filter(Boolean) });
+    }
+    var expect = (raw.match(/"name"\s*:/g) || []).length;
+    if (expect > groups.length) {
+      var sg0 = clsSalvage(raw);
+      if (sg0 && sg0.groups.length >= groups.length) return sg0;
+    }
+    if (groups.length && groups.length === 1 && /^(banks|ids|items|题库)$/i.test(groups[0].name)) {
+      /* 只解析出 {"banks":[…]}, 没拿到组名——退回按原文抢救 */
+      return clsSalvage(raw);
     }
     return groups.length ? { groups: groups } : null;
   }
@@ -769,7 +804,7 @@
     var IS_REASONER = /reasoner|reason|-r1|\br1\b|thinking|qwq|o1|o3|deepseek-r/i.test(MODEL_NAME);
     /* deepseek-flash 这类也会先输出 reasoning_tokens，900 常被思考吃光 → 统一给足预算
        max_tokens 只是上限，不按上限计费，给大没有副作用 */
-    var TOK = IS_REASONER ? 4500 : 3000;
+    var TOK = 6000;   /* 只是上限，不按上限计费；截断过的回答重来一次更费事 */
     var SIG = ctl ? ctl.signal : undefined;
     Promise.resolve()
       .then(function () {
@@ -808,7 +843,8 @@
             });
           });
         }
-        if (!data || !data.groups || !data.groups.length) { console.warn('[classify] 模型原文:', CLS.raw); throw new Error('AI 的回答不是预期的 JSON（原文开头：' + String(CLS.raw || '').slice(0, 160) + '）'); }
+        if (!data || !data.groups || !data.groups.length) { console.warn('[classify] 模型原文:', CLS.raw); throw new Error('AI 的回答不是预期的 JSON（共 ' + String(CLS.raw || '').length + ' 字，结尾：'
+              + String(CLS.raw || '').slice(-80) + '）[' + CLS_BUILD + ']'); }
         var byId = {};
         list.forEach(function (b) { byId[b.id] = 1; });
         var used = {};
