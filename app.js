@@ -4323,6 +4323,7 @@ function renderQuiz(bankId) {
         <span class="qtools" data-noswipe>
         <button class="btn pip-entry" id="pipEntry" style="display:none" title="小窗：把这道题单独拉到旁边对照">小窗</button>
         <button class="btn sim-btn" id="btnSim" title="相似题：在这一题库里找你容易混淆/考同一考点的题，可让 AI 再挑一遍">🔍 相似题</button>
+        <button class="btn map-btn" id="btnMap" title="脑图：把这道题、最像的几道题、它的考点摊成一张图，点图上的题直接跳过去">🗺 脑图</button>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
         <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
         <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
@@ -4444,6 +4445,7 @@ function renderQuiz(bankId) {
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('btnSim', () => { if (window.SIMQ) SIMQ.toggle(); else toast('相似题模块没加载（sim.js）', 1800, 'bad'); });
+  on('btnMap', () => { if (window.MAPQ) MAPQ.toggle(); else toast('脑图模块没加载（map.js）', 1800, 'bad'); });
 
   on('btnBoard', () => { if (window.INK) INK.board(); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
   on('doRedoBank', () => { qSheetToggle(false); redoSheet(bank, q); });

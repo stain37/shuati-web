@@ -233,6 +233,7 @@
       + '</div>'
       + '<div class="sim-list" id="simList"></div>'
       + '<div class="sim-foot small muted">本地按题干 / 选项 / 标签的字面相似度排序。配了模型后点「✨ AI 精排」，会让它再挑一遍并说明为什么像。</div>'
+      + '<div class="sim-maprow"><button type="button" class="btn tiny" id="simMap">🗺 在脑图里看全部</button><span class="small muted">把这道题、最像的几道、它的考点摊成一张可拖动的图</span></div>'
       + '</div></div>';
   }
 
@@ -248,6 +249,11 @@
     });
     m.querySelector('#simX').addEventListener('click', close);
     m.querySelector('#simAi').addEventListener('click', aiRank);
+    var mb = m.querySelector('#simMap');
+    if (mb) mb.addEventListener('click', function () {
+      close();
+      if (window.MAPQ) MAPQ.open(); else if (typeof toast === 'function') toast('脑图模块没加载（map.js）', 1800, 'bad');
+    });
     m.querySelector('#simAll').addEventListener('change', function (e) {
       S.scope = e.target.checked ? 'all' : 'bank';
       paint();

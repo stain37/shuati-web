@@ -1865,6 +1865,26 @@
     data: function () { return TAGD; }, dropBank: dropTagsOfBank,
     tagTs: function () { return TAG_TS; },
     lastMerge: function () { return TAG_LAST; },
+    /* 清掉「孤儿标签」：键里的题库本机根本不存在（多半是旧版本同步时，
+       另一台设备的题库 id 被原样写了进来）。validBank(id) 由 sync.js 提供。 */
+    pruneOrphans: function (validBank) {
+      if (typeof validBank !== 'function') return 0;
+      var bad = [];
+      Object.keys(TAGD).forEach(function (k) {
+        var i = String(k).indexOf('#');
+        if (i <= 0) return;
+        if (!validBank(String(k).slice(0, i))) bad.push(k);
+      });
+      /* 走 setTags(k, [])：它会 delete + 记时间戳 + 记墓碑 + save()。
+         直接 delete + save() 不行 —— save() 走 mergeWrite，会和 localStorage 里那份取并集，
+         删掉的键立刻被合并回来（本地实测踩过）。 */
+      bad.forEach(function (k) { try { setTags(k, [], true); } catch (e) {} });
+      if (bad.length) {
+        try { TAG_LAST = Object.assign({}, TAG_LAST || {}, { orphanPruned: bad.length }); } catch (e) {}
+        try { drawTags(); } catch (e) {}
+      }
+      return bad.length;
+    },
     /* 云同步用：云端那份标签并进来。
        规则（有逐题时间戳 qbank.tagts.v1 时）：云端这道题比本机新 → 用云端的（pad 上改的能传到手机）；
        本机更新 → 留着本机的；本机没有 → 补上。没有时间戳的老云端数据 → 并集合并，至少不会丢。
@@ -1876,15 +1896,22 @@
       var overlap = 0;
       ck.forEach(function (k) { if (TAGD[k] && TAGD[k].length) overlap++; });
       /* 键重映射：mapKey(云端键) → 本机键（或 ''=这题本机找不到，跳过） */
-      var mapped = 0, missed = 0, tombBlocked = 0, tombSample = [], stale = 0;
+      var mapped = 0, missed = 0, tombBlocked = 0, tombSample = [], stale = 0, orphan = 0;
+      /* validBank(id)：这个题库在本机到底存不存在（sync.js 传进来）。
+         没有它的时候，云端键映射不到就会按原键写进本机，变成「孤儿标签」——
+         界面上一道题都不挂，用户只觉得「同步不上」。 */
+      var VB = (bankMap && typeof bankMap.validBank === 'function') ? bankMap.validBank : null;
       function mapKey(k) {
-        if (!bankMap || !bankMap.map) return k;
         var i = String(k).indexOf('#');
-        if (i < 0) return k;
+        if (i < 0) return VB ? '' : k;
         var bk = String(k).slice(0, i), qid = String(k).slice(i + 1);
+        if (!bankMap || !bankMap.map) {
+          if (VB && !VB(bk)) { orphan++; return ''; }      /* 本机没有这本题库：别留孤儿 */
+          return k;
+        }
         var m = bankMap.map[bk];
-        if (!m) return k;                                 /* 表里没这条题库：按原键试（可能 id 本来就一样） */
-        if (m.id === bk) return k;
+        if (!m) { if (VB && !VB(bk)) { orphan++; return ''; } return k; }
+        if (m.id === bk) { if (VB && !VB(bk)) { orphan++; return ''; } return k; }
         var nq = (m.qmap && m.qmap[qid]) || '';
         if (!nq) { missed++; return ''; }
         mapped++;

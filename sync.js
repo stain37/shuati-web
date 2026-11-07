@@ -265,7 +265,19 @@ async function syncPayload() {
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
-  if (s.tag && typeof TAGS !== 'undefined') { d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); d.tagTs = (TAGS.tagTs ? TAGS.tagTs() : {}); }
+  if (s.tag && typeof TAGS !== 'undefined') {
+    d.tags = TAGS.data(); d.tagVocab = TAGS.vocab(); d.tagTs = (TAGS.tagTs ? TAGS.tagTs() : {});
+    /* 没同步整份题库时，也带一份「瘦题库表」（id/标题/题 id+题干前 40 字）——
+       对端靠它把 bankId#qid 映射到自己的题库；不带的话标签键永远对不上。 */
+    if (!s.banks) {
+      try {
+        d.tagBanks = (LOCAL || []).map(b => ({
+          id: b.id, title: b.title || '',
+          questions: (b.questions || []).map(q => ({ id: q.id, stem: String(q.stem || '').slice(0, 40) }))
+        }));
+      } catch (e) {}
+    }
+  }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   /* 侧栏星标：只拿 star 这一项，搜索词 / 展开状态 / 多选状态都是每台设备自己的偏好 */
   if (s.star) {
@@ -418,7 +430,12 @@ function syncMergeCloud(cloud) {
       if (kept.length !== LOCAL.length) LOCAL = kept;
       (Array.isArray(d.banks) ? d.banks : []).forEach(b => {
         if (!b || !b.id || mine[b.id]) return;                      /* 本机（或云端）删掉的，不补回来 */
-        if (!LOCAL.some(x => x.id === b.id)) { LOCAL.push(b); added++; }
+        if (LOCAL.some(x => x.id === b.id)) return;                 /* 同一本（id 相同） */
+        /* 2026-11-08：两台设备各自导入同一份题库，id 不同但内容是同一本。
+           以前只按 id 去重 → 每同步一次就多一本同名题库，标签还会挂在副本上。
+           这里按「题库名 + 题量 + 首题题干」认作同一本，跳过。 */
+        if (LOCAL.some(x => x && syncBankSig(x) === syncBankSig(b))) { added += 0; return; }
+        LOCAL.push(b); added++;
       });
       writeLS(LS.banks, LOCAL); invalidateBanks();
     }
@@ -444,8 +461,10 @@ function syncMergeCloud(cloud) {
      标签键是 bankId#qid，两台设备各自导入同一份题库时 id 不一样，先按题库名+题号建映射再合并。 */
   if (s.tag && typeof TAGS !== 'undefined' && TAGS.mergeIn) {
     try {
-      const bmap = syncTagBankMap(Array.isArray(d.banks) ? d.banks : null);
-      added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0, d.tagTs, { map: bmap }) || 0);
+      const bmap = syncTagBankMap(Array.isArray(d.banks) ? d.banks : (Array.isArray(d.tagBanks) ? d.tagBanks : null));
+      added += (TAGS.mergeIn(d.tags, d.tagVocab, +cloud.updatedAt || 0, d.tagTs, { map: bmap, validBank: syncValidBank }) || 0);
+      /* 清掉历史遗留的孤儿标签（键里的题库本机根本没有） */
+      if (TAGS.pruneOrphans) { const k = TAGS.pruneOrphans(syncValidBank); if (k) added += 0; }
     } catch (e) {}
   }
 
@@ -702,6 +721,21 @@ function syncTagBankMap(cloudBanks) {
   });
   return map;
 }
+/* 「这本是不是同一本」的签名：题库名 + 题量 + 首题题干前 40 字 */
+function syncBankSig(b) {
+  const n = s => String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
+  if (!b) return '';
+  const qs = b.questions || [];
+  return n(b.title) + '|' + qs.length + '|' + n((qs[0] || {}).stem).slice(0, 40);
+}
+/* 这本题库在本机到底存不存在：自建题库看 LOCAL，知识库自带的用 bankById 兜底 */
+function syncValidBank(id) {
+  if (!id) return false;
+  try { if (LOCAL.some(x => x && x.id === id)) return true; } catch (e) {}
+  try { if (typeof bankById === 'function' && bankById(id)) return true; } catch (e) {}
+  try { if (window.bankById && window.bankById(id)) return true; } catch (e) {}
+  return false;
+}
 function syncTagDiagHtml() {
   try {
     if (typeof TAGS === 'undefined') return '';
@@ -715,6 +749,7 @@ function syncTagDiagHtml() {
     if (lm.missed) s += '，' + lm.missed + ' 条本机找不到对应题';
     if (lm.tombBlocked) s += '，' + lm.tombBlocked + ' 条被本机更早的删除记录挡住（云端那份比删除新就会自动恢复；示例 ' + String((lm.tombSample || []).join('、')).replace(/</g, '') + '）';
     if (lm.stale) s += '，' + lm.stale + ' 条云端比本机旧（保持本机版本）';
+    if (lm.orphanPruned) s += '，顺手清掉 ' + lm.orphanPruned + ' 条「孤儿标签」（键里的题库本机早就没有了）';
     if (lm.cloudN && mine && !lm.overlap) {
       if (lm.mapped) s += '（两边题库 id 不同，已按题库名+题号对上，下次同步会补进来）';
       else if (lm.missed) s += ' ⚠️ ' + lm.missed + ' 条云端标签的题库/题本机没有，且题库名也没匹配上（改名过？），这部分合并不了';
@@ -1020,5 +1055,8 @@ setTimeout(() => {
 
 window.SYNC = {
   now: syncNow, pull: syncPullOnly, push: syncForcePush, test: syncTest,
-  cfg: SYC, payload: syncPayload, fp: syncFp, device: syncDevice, render: renderSync
+  cfg: SYC, payload: syncPayload, fp: syncFp, device: syncDevice, render: renderSync,
+  /* 诊断用：标签合并是按 bankId#qid 合，两台设备各自导入同一题库时 id 不同，
+     这里把它俩的映射与合并单独暴露出来，方便在控制台里对着一份云端数据复现「为什么没合上」 */
+  tagMap: syncTagBankMap, mergeCloud: syncMergeCloud
 };

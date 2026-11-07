@@ -1,0 +1,91 @@
+/* ===== 相似题脑图（map.css，web317）=====
+   独立于皮肤：自己的配色（青 + 紫），深浅色都看得清。 */
+
+#mpWrap{
+  position:fixed; z-index:96; display:flex; flex-direction:column; overflow:hidden;
+  background:#fbfaff; color:#1f2333;
+  border:1px solid #b9e3dd; border-radius:16px;
+  box-shadow:0 26px 70px rgba(15,60,60,.22), 0 2px 8px rgba(15,60,60,.10);
+}
+body.dark #mpWrap{ background:#12161a; color:#e8eef2; border-color:#2c5a55; box-shadow:0 26px 70px rgba(0,0,0,.55); }
+
+#mpBar{
+  position:fixed; z-index:97; height:38px; display:flex; align-items:center; gap:8px; padding:0 10px;
+  background:linear-gradient(180deg,#e6fbf7,#d5f4ee); border:1px solid #a9d9d3; border-radius:12px;
+  box-shadow:0 6px 18px rgba(15,90,84,.14); font-size:13px; color:#17685f; cursor:grab; user-select:none;
+}
+body.dark #mpBar{ background:linear-gradient(180deg,#123430,#0e2a27); border-color:#2c5a55; color:#9fe4da; }
+#mpBar:active{ cursor:grabbing; }
+#mpBar .mp-grip{ font-style:normal; color:#2f9b8f; }
+#mpTitle{ font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%; }
+#mpBar .mp-grow{ flex:1; }
+#mpBar button{ border:0; background:transparent; width:26px; height:26px; border-radius:8px; font-size:13px; color:#17685f; cursor:pointer; }
+#mpBar button:hover{ background:rgba(15,90,84,.10); }
+body.dark #mpBar button{ color:#9fe4da; }
+
+#mpStage{
+  position:relative; flex:1; overflow:hidden; border-radius:0 0 16px 16px;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(124,92,255,.16) 1px, transparent 0) 0 0/22px 22px,
+    linear-gradient(180deg,#f7f5ff,#eef7f5);
+  touch-action:none;
+}
+body.dark #mpStage{ background:
+    radial-gradient(circle at 1px 1px, rgba(159,228,218,.12) 1px, transparent 0) 0 0/22px 22px,
+    linear-gradient(180deg,#101418,#0d1214); }
+
+#mpEdges{ position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+#mpEdgeG path.mp-e{ fill:none; stroke:#5cc8b8; stroke-linecap:round; opacity:.85; }
+#mpEdgeG path.mp-e.tag{ stroke:#cfc6f7; stroke-dasharray:1 5; }
+body.dark #mpEdgeG path.mp-e{ stroke:#2e7d74; }
+body.dark #mpEdgeG path.mp-e.tag{ stroke:#5a4fa0; }
+
+#mpNodes{ position:absolute; left:0; top:0; width:100%; height:100%; transform-origin:0 0; }
+
+.mp-node{
+  position:absolute; transform:translate(-50%,-50%); max-width:236px; padding:9px 11px; border-radius:12px;
+  background:#fff; border:1px solid #d8d2ec; box-shadow:0 3px 14px rgba(31,35,51,.10);
+  cursor:pointer; transition:box-shadow .16s, transform .16s;
+}
+body.dark .mp-node{ background:#1a1f24; border-color:#2f3a42; box-shadow:0 2px 10px rgba(0,0,0,.35); }
+.mp-node:hover{ box-shadow:0 8px 22px rgba(31,35,51,.14); }
+.mp-node.sel{ box-shadow:0 0 0 2px rgba(124,92,255,.55), 0 14px 34px rgba(124,92,255,.22); transform:translate(-50%,-50%) scale(1.03); }
+.mp-node .mp-k{ display:block; font-style:normal; font-size:11px; letter-spacing:.02em; color:#6f6a8a; margin-bottom:4px; }
+body.dark .mp-node .mp-k{ color:#8fa0aa; }
+.mp-node .mp-t{ font-size:13px; line-height:1.5; font-weight:600; color:#1d2130; }
+.mp-node .mp-pill{
+  display:inline-block; margin-top:6px; font-size:11px; padding:1px 7px; border-radius:999px;
+  background:#e6fbf7; color:#0f7a6d; border:1px solid #bfe9e2;
+}
+body.dark .mp-node .mp-pill{ background:#12302c; color:#8fe0d4; border-color:#25514b; }
+.mp-node .mp-pill.c{ background:#efecff; color:#5a49c8; border-color:#d9d2ff; }
+body.dark .mp-node .mp-pill.c{ background:#221c3d; color:#b9aef7; border-color:#3b3268; }
+
+.mp-node.center{ background:linear-gradient(180deg,#fff,#f7f4ff); border-color:#cfc6f7; min-width:220px; }
+body.dark .mp-node.center{ background:linear-gradient(180deg,#171b2c,#12161f); border-color:#3b3268; }
+.mp-node.center .mp-t{ font-weight:700; font-size:14px; }
+.mp-node.tag{ max-width:200px; background:#f4f1ff; border-color:#ded6ff; padding:7px 11px; }
+body.dark .mp-node.tag{ background:#1a1730; border-color:#3b3268; }
+.mp-node.tag .mp-t{ font-size:12.5px; color:#5a49c8; }
+body.dark .mp-node.tag .mp-t{ color:#b9aef7; }
+
+#mpRz{
+  position:fixed; z-index:97; width:18px; height:18px; cursor:nwse-resize; opacity:.5;
+  background:linear-gradient(135deg,transparent 46%,#2f9b8f 48%,#2f9b8f 54%,transparent 56%);
+}
+#mpRz:hover{ opacity:.9; }
+
+#mpChip{
+  position:fixed; right:18px; bottom:18px; z-index:96; padding:9px 14px; border-radius:999px;
+  background:linear-gradient(180deg,#e6fbf7,#d5f4ee); border:1px solid #a9d9d3; color:#17685f;
+  font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 10px 26px rgba(15,90,84,.20);
+}
+body.dark #mpChip{ background:#123430; border-color:#2c5a55; color:#9fe4da; }
+
+@media (max-width: 720px){
+  #mpWrap{ border-radius:12px; }
+  .mp-node{ max-width:180px; }
+  .mp-node .mp-t{ font-size:12.5px; }
+}
+
+.sim-maprow{display:flex;align-items:center;gap:8px;padding:8px 12px 2px;border-top:1px dashed #d9d3ec;margin-top:6px}
