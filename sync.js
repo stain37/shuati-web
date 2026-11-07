@@ -251,7 +251,17 @@ async function syncPayload() {
   if (s.qtn) d.qtn = QTN;
   if (s.paper) d.papers = PAPERS;
   if (s.var) { try { d.var = JSON.parse(localStorage.getItem('qbank.var.v1') || '{}'); } catch (e) { d.var = {}; } }
-  if (s.cat) d.cats = catRows();
+  if (s.cat) {
+    d.cats = catRows();
+    /* 多方案：方案清单 + 每个方案的目录树 + 题库归属（默认方案的归属仍在 banks[].cat 上） */
+    try {
+      if (window.SCM && SCM.raw) {
+        const raw = SCM.raw();
+        d.schemes = raw.schemes;
+        d.catmap = raw.map;
+      }
+    } catch (e) {}
+  }
   if (s.srs) d.srs = SRS;
   if (s.banks) d.banks = LOCAL;
   if (s.ai && typeof AIC !== 'undefined') d.ai = AIC;
@@ -288,6 +298,34 @@ function syncMergeCloud(cloud) {
   const d = cloud.data || {}, ct = cloud.tomb || {}, s = SYC.scope;
   let added = 0;
 
+  /* 0-方案) 多方案：方案清单按 id 并集，归属按方案并集；本机已有的不动 */
+  if (s.cat && window.SCM && SCM.raw && (d.schemes || d.catmap)) {
+    try {
+      const raw = SCM.raw();
+      const db = raw.schemes, map = raw.map;
+      const cs = d.schemes || { list: [], data: {} };
+      let ns = 0, nm = 0;
+      (cs.list || []).forEach(x => {
+        if (!x || !x.id) return;
+        if (!db.list.some(y => y.id === x.id)) { db.list.push({ id: x.id, name: x.name || x.id }); ns++; }
+        if (!db.data[x.id] && cs.data && cs.data[x.id]) db.data[x.id] = cs.data[x.id];
+      });
+      const cm = d.catmap || {};
+      Object.keys(cm).forEach(sid => {
+        if (!map[sid] || typeof map[sid] !== 'object') map[sid] = {};
+        Object.keys(cm[sid] || {}).forEach(bid => {
+          if (map[sid][bid] == null) { map[sid][bid] = cm[sid][bid]; nm++; }
+        });
+      });
+      if (ns || nm) {
+        localStorage.setItem(SCM.KEY_SCH, JSON.stringify(db));
+        localStorage.setItem(SCM.KEY_MAP, JSON.stringify(map));
+        SCM.load();
+        syncLog('方案并进来 ' + ns + ' 个、归属 ' + nm + ' 条');
+        if (window.SIDE && SIDE.refresh) { try { SIDE.refresh(); } catch (e) {} }
+      }
+    } catch (e) {}
+  }
   /* 0) 侧栏星标：两边取并集（星标是「收藏」语义，谁标过都算标过） */
   if (s.star && d.stars && typeof d.stars === 'object') {
     try {

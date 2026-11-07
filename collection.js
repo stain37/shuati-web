@@ -1985,8 +1985,46 @@ const SORTS = {
   id: { label: '题号', def: 1, cmp: (a, b) => String(a.bank.title).localeCompare(String(b.bank.title)) || String(a.q.id).localeCompare(String(b.q.id), 'zh', { numeric: true }) }
 };
 const ARROW = d => (d > 0 ? '↑' : '↓');
-const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '', base: '', tf: '' });
+const mkState = () => ({ bank: 'all', sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, leech: false, withExp: true, withImg: true, withSel: true, withStat: true, open: new Set(), sel: new Set(), shown: [], scope: 'all', kw: '', tag: '', base: '', tf: '' });
 const LP = { wrong: mkState(), fav: mkState(), search: mkState() };
+/* web315：错题本的筛选/排序记在本机（qbank.wrong.filters.v1），刷新、切页回来还在。
+   只记「筛什么」，不记「找词」和「只看某个题库」——那两条更像临时动作，记住了反而迷糊。 */
+const WFP_KEY = 'qbank.wrong.filters.v1';
+const WFP_FIELDS = ['sort', 'dir', 'minWrong', 'onlyOpen', 'onlyDue', 'leech', 'tf', 'base', 'tag'];
+let WFP_LAST = '';
+function wfpPicked(st) {
+  const o = {};
+  WFP_FIELDS.forEach(k => { o[k] = st[k]; });
+  return o;
+}
+function wfpSave(st) {
+  try {
+    const o = wfpPicked(st), sig = JSON.stringify(o);
+    if (sig === WFP_LAST) return;
+    WFP_LAST = sig;
+    writeLS(WFP_KEY, o);
+  } catch (e) {}
+}
+/* 全是默认值（错次 ↓、不筛选）时不显示「重置」按钮和提示 */
+function wfpIsDefault(st) {
+  return st.sort === 'wrong' && +st.dir === -1 && !(+st.minWrong) &&
+    !st.onlyOpen && !st.onlyDue && !st.leech && !st.tf && !st.base && !st.tag;
+}
+(function wfpRestore() {
+  try {
+    const o = readLS(WFP_KEY, null);
+    if (!o || typeof o !== 'object') { WFP_LAST = JSON.stringify(wfpPicked(LP.wrong)); return; }
+    const w = LP.wrong;
+    if (SORTS[o.sort]) w.sort = o.sort;
+    if (+o.dir === 1 || +o.dir === -1) w.dir = +o.dir;
+    if (typeof o.minWrong === 'number') w.minWrong = Math.max(0, o.minWrong | 0);
+    w.onlyOpen = !!o.onlyOpen; w.onlyDue = !!o.onlyDue; w.leech = !!o.leech;
+    if (['A1', 'A2', 'B1', 'X'].indexOf(o.tf) >= 0) w.tf = o.tf;
+    if (typeof o.base === 'string') w.base = o.base;
+    if (typeof o.tag === 'string') w.tag = o.tag;
+    WFP_LAST = JSON.stringify(wfpPicked(w));
+  } catch (e) {}
+})();
 let LP_KW_T = null;                                  /* 「找词」输入的防抖计时器 */
 let LP_COMPOSING = false;                             /* 拼音候选阶段：不重画，否则选字会退回拼音 */
 const QAI_KEY = 'qbank.qsearch.ai.v1';
@@ -2400,6 +2438,7 @@ function renderList(mode) {
     shown = localShown.slice().sort(cmp);
   }
   st.shown = shown;
+  if (isWrong) wfpSave(st);                            /* web315：筛选/排序记在本机 */
 
   const dueItems = isWrong ? items.filter(it => isDue(it.k)) : [];
   const selN = shown.filter(it => st.sel.has(it.k)).length;
@@ -2487,7 +2526,12 @@ function renderList(mode) {
         <span class="tl">错次 ≥</span><input type="number" min="0" value="${st.minWrong}" id="minW" class="num">
         <label class="chk mini"><input type="checkbox" id="onlyOpen" ${st.onlyOpen ? 'checked' : ''}>只看还没做对的</label>
         <label class="chk mini"><input type="checkbox" id="onlyDue" ${st.onlyDue ? 'checked' : ''}>只看今天该复习的</label>
-      </div>` : ''}
+        <span class="spacer-grow"></span>
+        <button class="btn small${st.leech ? ' primary' : ''}" id="stLeech" title="顽固题＝反复做错、到现在还没做对的题（错 ≥ 3 次）。这些题多刷没用：先看解析、在答题页写「口诀」，或者换一本题库。">🧟 顽固题</button>
+        <button class="btn small" id="stPaper" ${shown.length ? '' : 'disabled'} title="把现在筛出来的 ${shown.length} 道题存成一份套卷，之后还能接着做（计入原来的错题次数）">📄 存为练习卷</button>
+        ${wfpIsDefault(st) ? '' : `<button class="btn small" id="stReset" title="把筛选和排序恢复成默认（错次 ↓、不筛选）">↺ 重置筛选</button>`}
+      </div>${st.leech ? `<div class="note small" style="margin-top:8px">🧟 顽固题：错 ≥ 3 次且到现在还没做对（共 ${shown.length} 道）。多刷没用——先看解析、写「口诀」，或者换一本题库再来。</div>` : ''}
+      ${wfpIsDefault(st) ? '' : `<div class="small muted" style="margin-top:6px">筛选和排序会记住（下次打开错题本还是这样），点「↺ 重置筛选」回默认。</div>`}` : ''}
 
       <details class="fold">
         <summary>批量操作与导出 · 已选 <b>${selN}</b> 题</summary>
@@ -2652,11 +2696,31 @@ function renderList(mode) {
     else { st.sort = id; st.dir = SORTS[id].def; }
     render();
   });
-  on('minW', () => { st.minWrong = Math.max(0, +$('minW').value || 0); render(); }, 'change');
-  on('onlyOpen', () => { st.onlyOpen = $('onlyOpen').checked; render(); }, 'change');
+  on('minW', () => { st.minWrong = Math.max(0, +$('minW').value || 0); st.leech = false; render(); }, 'change');
+  on('onlyOpen', () => { st.onlyOpen = $('onlyOpen').checked; st.leech = false; render(); }, 'change');
   on('onlyDue', () => { st.onlyDue = $('onlyDue').checked; render(); }, 'change');
+  /* 顽固题：一键把筛选调成「错 ≥ 3 次且还没做对」；再点一次复位 */
+  on('stLeech', () => {
+    st.leech = !st.leech;
+    if (st.leech) { st.minWrong = 3; st.onlyOpen = true; st.onlyDue = false; }
+    else { st.minWrong = 0; st.onlyOpen = false; }
+    render();
+  });
   on('wRevAll', () => makePaper('错题复习 · ' + dueItems.length + ' 题', dueItems.map(it => it.k)));
   on('wRevSel', () => makePaper('错题复习 · ' + selKeys.length + ' 题', selKeys));
+  /* web315：把当前筛出来的题存成一份练习卷（套卷），之后从首页/套卷列表还能接着做 */
+  on('stPaper', () => {
+    if (!shown.length) { toast('现在没有筛出来的题'); return; }
+    const kw0 = String(st.kw || '').trim();
+    const nm = (st.leech ? '顽固题' : (kw0 ? '「' + kw0.slice(0, 12) + '」' : '错题'))
+      + '练习 · ' + shown.length + ' 题';
+    makePaper(nm, shown.map(it => it.k));
+  });
+  /* 重置筛选：回到「错次 ↓、不筛选」，并把这个默认值写回本机 */
+  on('stReset', () => {
+    Object.assign(st, { sort: 'wrong', dir: -1, minWrong: 0, onlyOpen: false, onlyDue: false, leech: false, tf: '', base: '', tag: '' });
+    render();
+  });
   on('withExp', () => { st.withExp = $('withExp').checked; render(); }, 'change');
   on('withImg', () => { st.withImg = $('withImg').checked; render(); }, 'change');
   on('withSel', () => { st.withSel = $('withSel').checked; render(); }, 'change');

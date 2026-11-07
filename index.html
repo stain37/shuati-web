@@ -12,9 +12,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261222f">
+<link rel="stylesheet" href="style.css?v=20261107b">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
-<link rel="stylesheet" href="cat.css?v=20261104a">
+<link rel="stylesheet" href="cat.css?v=20261107e">
 <link rel="stylesheet" href="guide.css?v=20261022a">
 <link rel="stylesheet" href="chat.css?v=20261105c">
 <link rel="stylesheet" href="diagram.css?v=20261031a">
@@ -22,6 +22,23 @@
 <link rel="stylesheet" href="anim.css?v=20261105b">
 <link rel="stylesheet" href="fxs.css?v=20261105e">
 <link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
+<script>
+  /* 皮肤层懒加载（web312）：style.css 只剩通用样式（约 60 KB gz），
+     123 套皮肤的规则全在 skins.css 里（约 113 KB gz）。
+     只有选过非默认皮肤的人才去下这一份；默认皮肤完全不用付这份流量。
+     · 这里先按存档里的 qbank.settings.v2.style 探一次，越早开始下载越好；
+     · app.js 的 applyLook() 里还有一次 ensureSkinsCss()，管运行中换皮肤 / 明暗锁定改皮肤的情况。 */
+  (function () {
+    try {
+      var s = JSON.parse(localStorage.getItem('qbank.settings.v2') || '{}');
+      var st = s && s.style;
+      if (!st || st === 'default' || document.getElementById('skinsCss')) return;
+      var l = document.createElement('link');
+      l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261107b';
+      (document.head || document.documentElement).appendChild(l);
+    } catch (e) {}
+  })();
+</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -332,29 +349,30 @@ var iv=setInterval(function(){n++;
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
 <script src="csv.js?v=20261104a"></script>
 <script src="mastery.js?v=20261105c"></script>
-<script src="app.js?v=20261108b"></script>
+<script src="app.js?v=20261107f"></script>
 <script src="sim.js?v=20261107b"></script>
-<script src="side.js?v=20261107t"></script>
+<script src="side.js?v=20261107c"></script>
 <script src="keys.js?v=20261106a"></script>
 <script src="fxs.js?v=20261105d"></script>
-<script src="collection.js?v=20261108a"></script>
+<script src="collection.js?v=20261107e"></script>
 <script src="diagram.js?v=20261111b"></script>
 <script src="exam.js?v=20261130i"></script>
-<script src="kb.js?v=20261221f"></script>
+<script src="kb.js?v=20261107b"></script>
 <script src="ai.js?v=20261130e"></script>
 
 <!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
      放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
-<script src="cat.js?v=20261222a"></script>
-<script src="bf.js?v=20261123a"></script>
+<script src="scheme.js?v=20261109a"></script>
+<script src="cat.js?v=20261107e"></script>
+<script src="bf.js?v=20261109a"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
 
 <!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
      它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
-<script src="sync.js?v=20261108b"></script>
+<script src="sync.js?v=20261109a"></script>
 
 <!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
      4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->

@@ -102,7 +102,7 @@
   /* ---------- 读取 / 整理 / 保存 ---------- */
   function readRaw() {
     var v = null;
-    try { v = JSON.parse(localStorage.getItem(CAT_KEY)); } catch (e) { v = null; }
+    try { v = (window.SCM && SCM.cats) ? SCM.cats() : JSON.parse(localStorage.getItem(CAT_KEY)); } catch (e) { v = null; }
     if (!Array.isArray(v)) return [];
     return v.filter(function (c) { return c && typeof c === 'object'; }).map(function (c, i) {
       return {
@@ -165,7 +165,10 @@
     LOCK = true;
     try {
       normalize(); compact();
-      try { localStorage.setItem(CAT_KEY, JSON.stringify(CAT)); } catch (e) { T('分类没存下（浏览器存储满了）'); }
+      try {
+        if (window.SCM && SCM.setCats) SCM.setCats(CAT);
+        else localStorage.setItem(CAT_KEY, JSON.stringify(CAT));
+      } catch (e) { T('分类没存下（浏览器存储满了）'); }
       writeBanksIfNeeded();
       if (typeof invalidateBanks === 'function') { /* 分类不参与题库缓存，这里不用清 */ }
       notifyFile();
@@ -173,8 +176,32 @@
     if (!opts.quiet) repaint();
   }
 
+  /* 写回题库文件/本机文件时用：永远给「默认方案」的归属，免得在 B 方案里保存把默认方案污染掉 */
+  function storedCat(b) {
+    try {
+      if (window.SCM && SCM.catForStore) {
+        if (SCM.current && SCM.current() === SCM.DEF) return (b.cat == null ? null : b.cat);
+        var c = SCM.catForStore(b.id);
+        return c ? c : null;
+      }
+    } catch (e) {}
+    return b.cat == null ? null : b.cat;
+  }
   function writeBanksIfNeeded() {
-    try { if (typeof LOCAL !== 'undefined' && typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
+    try {
+      if (typeof LOCAL === 'undefined' || typeof writeLS !== 'function') return;
+      var multi = false;
+      try { multi = !!(window.SCM && SCM.current && SCM.current() !== SCM.DEF); } catch (e) {}
+      if (multi) {
+        var copy = LOCAL.map(function (x) {
+          var o = {}, k;
+          for (k in x) { if (Object.prototype.hasOwnProperty.call(x, k)) o[k] = x[k]; }
+          o.cat = storedCat(x);
+          return o;
+        });
+        writeLS('qbank.local.v2', copy);
+      } else writeLS('qbank.local.v2', LOCAL);
+    } catch (e) {}
   }
 
   /* ---------- 树查询 ---------- */
@@ -369,7 +396,7 @@
     if (!raw) return false;
     var b = bankOf(id);
     if (b) {
-      raw.cat = b.cat == null ? null : b.cat;
+      raw.cat = storedCat(b);
       if (b.ord == null) delete raw.ord; else raw.ord = b.ord;
     }
     try { if (typeof writeLS === 'function') writeLS('qbank.local.v2', LOCAL); } catch (e) {}
@@ -378,6 +405,7 @@
   }
   function moveBank(id, dir, beforeId) {
     var b = bankOf(id); if (!b || b.paper) return false;
+    try { if (window.SCM && SCM.setCatOf) SCM.setCatOf(id, dir || ''); } catch (e) {}
     b.cat = dir || null;
     var sibs = dirBanks(dir).filter(function (x) { return x.id !== id; });
     if (!beforeId) {
@@ -391,7 +419,7 @@
     syncBankToLocal(id);          // 立刻写回原始题库对象，刷新后位置还在
     var raw = toRaw(id);          // 内置题库不在 LOCAL 里，得改 __BANKS__ 里的那一份
     if (raw) {
-      raw.cat = b.cat == null ? null : b.cat;
+      raw.cat = storedCat(b);
       if (b.ord == null) delete raw.ord; else raw.ord = b.ord;
     }
     return true;
@@ -937,21 +965,39 @@
     } else {
       var dirs = kids(CUR), bs = dirBanks(CUR);
       var curTitle = CUR ? TITLE(byId(CUR)) : '全部题库';
-      var bsorted = bs.slice().sort(sortBank);
+      var smode = bankSortMode();
+      var bsorted = smode.by === 'manual' ? bs.slice().sort(sortBank) : bs;
       var per = homePer();
       var entries = dirs.map(function (c) { return { cat: c }; }).concat(bsorted.map(function (b) { return { bank: b }; }));
-      /* 最近添加 / 按名称：目录与题库混排（第 12、13 条）；自定义顺序保持「目录在前」的老手感 */
-      if (bankSortMode() !== 'custom') entries = sortMixedEntries(entries);
+      /* 最近添加 / 按名称 / 题目数：目录与题库混排（第 12、13 条）；自定义顺序保持「目录在前」的老手感 */
+      entries = sortMixedEntries(entries);
       var pages = Math.max(1, Math.ceil(entries.length / per));
       var page = Math.min(Math.max(1, HOME_PAGE), pages);
       HOME_PAGE = page;
-      var pageEntries = entries.slice((page - 1) * per, page * per);
+      /* 分组模式：不分页，整份一次画完（组头拼进同一份字符串，不另起容器） */
+      var grouped = dateGroupOn();
+      var pageEntries = grouped ? entries : entries.slice((page - 1) * per, page * per);
       var pdirs = [], pbanks = [];
       pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else pbanks.push(e.bank); });
-      /* 混排时按 pageEntries 的真实顺序出卡片，别再「目录全排前面」（第 13 条） */
-      var icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
-      var rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
-      var det = detailsHtml(pdirs, pbanks, false);
+      /* 混排时按 pageEntries 的真实顺序出卡片，别再「目录全排前面」（第 13 条）。
+         分组时：图标视图的组头用 grid-column:1/-1 跨整行，列表视图是普通块，
+         所以还是只调一次 viewWrap（每组分一个 .nb-icons 会让网格各排各的、列数对不齐）。 */
+      var icons, rows;
+      if (grouped) {
+        var gs = groupEntries(entries);
+        icons = gs.map(function (g) {
+          return grpHeadHtml(g.label, g.list.length)
+            + g.list.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
+        }).join('');
+        rows = gs.map(function (g) {
+          return grpHeadHtml(g.label, g.list.length)
+            + g.list.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
+        }).join('');
+      } else {
+        icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
+        rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
+      }
+      var det = detailsHtml(pdirs, pbanks, false, grouped);
       var agg = CUR ? subStat(CUR) : null;
       body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
@@ -962,9 +1008,11 @@
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
         + toolsFoldHtml()
         + ((icons || det) ? viewWrap(icons, rows, det)
-          + (pages > 1
-            ? pagerHtml('page', page, pages, entries.length, '项')
-            : '<div class="nb-pager nb-pager-one"><span>共 ' + entries.length + ' 项 · 一页就装下了（超过 ' + per + ' 项会自动分页）</span></div>')
+          + (grouped
+            ? '<div class="nb-pager nb-pager-one"><span>共 ' + entries.length + ' 项 · 按添加日期分组（今天 / 昨天 / 本周 / 更早），不分页；关掉「🗓 分组」就回到每页 ' + per + ' 项</span></div>'
+            : (pages > 1
+              ? pagerHtml('page', page, pages, entries.length, '项')
+              : '<div class="nb-pager nb-pager-one"><span>共 ' + entries.length + ' 项 · 一页就装下了（超过 ' + per + ' 项会自动分页）</span></div>'))
           : emptyHint());
     }
 
@@ -1044,14 +1092,33 @@
      「最近添加」优先用建库时间 createdAt；老题库没这字段就按它在 LOCAL 里越靠后越新兜底
      （LOCAL 是入库顺序追加的，所以倒着数就是最近添加）。 */
   var BSORT_KEY = 'qbank.banksort.v1';
+  /* web311：排序从「一个字符串」升级成 { by, dir }（多了升降序和「题目数」）。
+     老值 custom / name / recent 读到就映射，老用户不用重设。 */
+  var BSORT_BY = ['manual', 'name', 'added', 'count'];
+  var BSORT_DEF_DIR = { manual: 1, name: 1, added: -1, count: -1 };
   function bankSortMode() {
-    try {
-      var v = localStorage.getItem(BSORT_KEY) || '';
-      return (v === 'name' || v === 'recent') ? v : 'custom';
-    } catch (e) { return 'custom'; }
+    var raw = '';
+    try { raw = localStorage.getItem(BSORT_KEY) || ''; } catch (e) {}
+    if (raw && raw.charAt(0) === '{') {
+      try {
+        var o = JSON.parse(raw);
+        if (o && BSORT_BY.indexOf(o.by) >= 0) return { by: o.by, dir: (+o.dir < 0 ? -1 : 1) };
+      } catch (e2) {}
+    }
+    if (raw === 'name') return { by: 'name', dir: 1 };
+    if (raw === 'recent') return { by: 'added', dir: -1 };
+    return { by: 'manual', dir: 1 };
   }
-  function setBankSortMode(v) {
-    try { localStorage.setItem(BSORT_KEY, (v === 'name' || v === 'recent') ? v : 'custom'); } catch (e) {}
+  function setBankSortMode(by, dir) {
+    if (BSORT_BY.indexOf(by) < 0) by = 'manual';
+    if (by === 'manual') dir = 1;
+    else if (+dir !== 1 && +dir !== -1) dir = BSORT_DEF_DIR[by];
+    try { localStorage.setItem(BSORT_KEY, JSON.stringify({ by: by, dir: dir })); } catch (e) {}
+  }
+  function bumpBankSortDir() {
+    var m = bankSortMode();
+    if (m.by === 'manual') return;
+    setBankSortMode(m.by, -m.dir);
   }
   function bankPlainIndex(b) {
     var i = -1;
@@ -1061,15 +1128,10 @@
     } catch (e) {}
     return i;
   }
+  /* 只负责「自定义顺序」：其它排序统一由 sortMixedEntries 处理（目录 + 题库混排）。
+     以前这里还留着 name / recent 两支，但上层会再排一遍，等于死代码，已删。 */
   function sortBank(a, b) {
-    var m = bankSortMode();
-    if (m === 'name') return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
-    if (m === 'recent') {
-      var ta = +a.createdAt || 0, tb = +b.createdAt || 0;
-      if (ta || tb) return (tb - ta) || (bankPlainIndex(b) - bankPlainIndex(a));
-      return bankPlainIndex(b) - bankPlainIndex(a);
-    }
-    return (+a.ord || 0) - (+b.ord || 0) || String(a.title).localeCompare(String(b.title), 'zh');
+    return (+a.ord || 0) - (+b.ord || 0) || String(a.title || '').localeCompare(String(b.title || ''), 'zh');
   }
   /* 第 12/13 条：老题库 / 老目录没有 createdAt → 「最近添加」排序会乱、目录还永远置顶。
      这里给「有效建库时间」：有 createdAt 用它；没有就按它在 LOCAL 里的位置（越靠后越新）
@@ -1109,22 +1171,114 @@
     } catch (err) {}
     return i;
   }
-  /* 非「自定义顺序」时：目录和题库**一起排**（第 13 条：文件夹不再固定置顶） */
+  /* 非「自定义顺序」时：目录和题库**一起排**（第 13 条：文件夹不再固定置顶）。
+     by=added 用有效建库时间；count 用题目数（目录取它下面所有题库的题目数）；name 按名字。
+     dir=-1 为倒序；同值时按入库顺序、再按名字兜底，保证每次排出来一样。 */
+  function entryQ(e) {
+    if (e.cat) { try { return subStat(e.cat.id).q || 0; } catch (err) { return 0; } }
+    return (e.bank.questions || []).length;
+  }
   function sortMixedEntries(list) {
     var m = bankSortMode();
-    return list.slice().sort(function (a, b) {
-      if (m === 'name') return entryTitle(a).localeCompare(entryTitle(b), 'zh');
-      return (entryBornAt(b) - entryBornAt(a)) || (entryIdx(b) - entryIdx(a)) || entryTitle(a).localeCompare(entryTitle(b), 'zh');
+    var arr = list.slice();
+    if (m.by === 'manual') return arr;
+    var qm = {}, qk = function (e) { return (e.cat ? 'c:' : 'b:') + (e.cat ? e.cat.id : e.bank.id); };
+    if (m.by === 'count') arr.forEach(function (e) { qm[qk(e)] = entryQ(e); });
+    arr.sort(function (a, b) {
+      var r = 0;
+      if (m.by === 'name') r = entryTitle(a).localeCompare(entryTitle(b), 'zh');
+      else if (m.by === 'count') r = qm[qk(a)] - qm[qk(b)];
+      else r = entryBornAt(a) - entryBornAt(b);
+      if (r) return r * m.dir;
+      return (entryIdx(a) - entryIdx(b)) || entryTitle(a).localeCompare(entryTitle(b), 'zh');
     });
+    return arr;
   }
   function bankSortHtml() {
     var m = bankSortMode();
+    var L = [['manual', '自定义顺序'], ['name', '按名称'], ['added', '最近添加'], ['count', '题目数']];
     return '<span class="nb-bsortwrap" title="题库排序方式">排序 '
       + '<select class="inp nb-bsort" id="bankSortSel">'
-      + '<option value="custom"' + (m === 'custom' ? ' selected' : '') + '>自定义顺序</option>'
-      + '<option value="name"' + (m === 'name' ? ' selected' : '') + '>按名称</option>'
-      + '<option value="recent"' + (m === 'recent' ? ' selected' : '') + '>最近添加</option>'
-      + '</select></span>';
+      + L.map(function (x) {
+        return '<option value="' + x[0] + '"' + (m.by === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('')
+      + '</select>'
+      + (m.by === 'manual' ? '' :
+        '<button class="btn tiny nb-bsortdir" data-act="bsortdir" title="'
+        + (m.dir < 0 ? '现在是倒序，点一下改成升序' : '现在是升序，点一下改成倒序') + '">'
+        + (m.dir < 0 ? '↓' : '↑') + '</button>')
+      + dateTogHtml()
+      + grpTogHtml()
+      + '</span>';
+  }
+
+  /* ---------- 7.1b 添加日期（web311） ----------
+     存 qbank.showdate.v1（各设备自己的偏好，不进云同步），默认显示。
+     合成时间（bankBornAt 给老数据折算出来的 1.7e12 一档）一律不显示，
+     否则老题库会全变成「2023-11-15」，看着像 bug。 */
+  var DATE_KEY = 'qbank.showdate.v1';
+  function showDate() {
+    var v = '';
+    try { v = localStorage.getItem(DATE_KEY) || ''; } catch (e) {}
+    return v !== '0';
+  }
+  function setShowDate(on) { try { localStorage.setItem(DATE_KEY, on ? '1' : '0'); } catch (e) {} }
+  function fmtDay(ts) {
+    ts = +ts || 0;
+    if (!ts || ts < 1720000000000) return '';          /* 2024-07-03 以前 = 没有真实时间（合成时间） */
+    var d = new Date(ts), n = new Date();
+    var p = function (x) { return ('0' + x).slice(-2); };
+    var md = p(d.getMonth() + 1) + '-' + p(d.getDate());
+    return d.getFullYear() === n.getFullYear() ? md : (d.getFullYear() + '-' + md);
+  }
+  function dayOf(b) { return showDate() ? fmtDay(bankBornAt(b)) : ''; }
+  function dateTogHtml() {
+    var on = showDate();
+    return '<button class="btn tiny nb-datetog' + (on ? ' on' : '') + '" data-act="showdate" aria-pressed="' + on + '" title="'
+      + (on ? '名字下面显示添加日期，点一下隐藏' : '显示添加日期') + '">📅 日期</button>';
+  }
+
+  /* ---------- 7.1c 按添加日期分组（web315） ----------
+     存 qbank.dategroup.v1（各设备自己的偏好，不进云同步），默认关。
+     分组时**不分页**：先按 homePer() 切页再分组，「今天 / 昨天 / 本周 / 更早」会被页边切碎、
+     页码也对不上，所以分组模式下整份一次画完（首页条目一般几十个，画得动）。 */
+  var GRP_KEY = 'qbank.dategroup.v1';
+  var GRP_LABEL = { today: '今天', yday: '昨天', week: '本周', old: '更早' };
+  var GRP_ORDER = ['today', 'yday', 'week', 'old'];
+  function dateGroupOn() {
+    var v = '';
+    try { v = localStorage.getItem(GRP_KEY) || ''; } catch (e) {}
+    return v === '1';
+  }
+  function setDateGroup(on) { try { localStorage.setItem(GRP_KEY, on ? '1' : '0'); } catch (e) {} }
+  /* 合成时间（< 2024-07-03，bankBornAt 给老数据折算的那一档）不认识，一律算「更早」 */
+  function dayBucket(ts, t0) {
+    ts = +ts || 0;
+    if (!ts || ts < 1720000000000) return 'old';
+    if (ts >= t0) return 'today';
+    if (ts >= t0 - 86400000) return 'yday';
+    if (ts >= t0 - 6 * 86400000) return 'week';
+    return 'old';
+  }
+  function todayZero() { var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  function groupEntries(entries) {
+    var t0 = todayZero(), m = {};
+    entries.forEach(function (e) {
+      var k = dayBucket(entryBornAt(e), t0);
+      (m[k] || (m[k] = [])).push(e);
+    });
+    return GRP_ORDER.filter(function (k) { return m[k] && m[k].length; })
+      .map(function (k) { return { key: k, label: GRP_LABEL[k], list: m[k] }; });
+  }
+  /* 组头：图标视图是跨整行的格子（grid-column:1/-1），列表视图是普通块 */
+  function grpHeadHtml(label, n) {
+    return '<div class="nb-ghead"><span>' + label + '</span><em>' + n + ' 项</em></div>';
+  }
+  function grpTogHtml() {
+    var on = dateGroupOn();
+    return '<button class="btn tiny nb-grptog' + (on ? ' on' : '') + '" data-act="dategroup" aria-pressed="' + on + '" title="'
+      + (on ? '正在按添加日期分组（今天 / 昨天 / 本周 / 更早），分组时不分页；点一下关掉' : '按添加日期分组（今天 / 昨天 / 本周 / 更早），分组时不分页')
+      + '">🗓 分组</button>';
   }
 
   /* 目录树（侧边/顶部折叠）：整个分类结构一次看全 */
@@ -1213,7 +1367,8 @@
       + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '')
       + b.questions.length + ' 题　已答 ' + s.done
       + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
-      + '　正确率 ' + s.acc + '%</div>'
+      + '　正确率 ' + s.acc + '%'
+      + (dayOf(b) ? '　·　' + dayOf(b) : '') + '</div>'
       + '<div class="prog"><i style="width:' + s.pct.toFixed(1) + '%"></i></div>'
       + '</div>'
       + '<div class="nb-lacts">'
@@ -1242,6 +1397,7 @@
     return '<div class="nb-icon nb-bank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true" title="' + E(b.title) + '（' + b.questions.length + ' 题' + ((typeof bankScore === 'function') ? ' · 满分 ' + bankScore(b) : '') + '）">'
       + '<span class="nb-iic">' + ICON_BANK + '</span>'
       + '<span class="nb-iname">' + E(b.title) + '</span>'
+      + (dayOf(b) ? '<span class="nb-idate">' + dayOf(b) + '</span>' : '')
       + '<span class="nb-imeta">' + b.questions.length + ' 题 · ' + s.acc + '%' + ((typeof bankScore === 'function') ? ' · ' + bankScore(b) + ' 分' : '') + '</span>'
       + '<span class="nb-ibar"><i style="width:' + s.pct.toFixed(1) + '%"></i></span>'
       /* 图标视图也得有个「⋯」：速刷 / 背题 / 模拟考试三个入口都在这个菜单里。
@@ -1255,13 +1411,13 @@
     var items = [];
     (dirs || []).forEach(function (c) {
       var s = subStat(c.id);
-      items.push({ kind: 'dir', id: c.id, name: TITLE(c), type: '目录',
+      items.push({ kind: 'dir', id: c.id, name: TITLE(c), type: '目录', at: catBornAt(c),
         q: s.q, done: s.done, acc: s.done ? Math.round(s.ok / s.done * 100) : 0, wr: s.wr,
         crumb: inSearch ? pathOf(c.parent || null).map(TITLE).join(' › ') : '' });
     });
     (banks || []).forEach(function (b) {
       var s = bankStat(b);
-      items.push({ kind: 'bank', id: b.id, name: b.title, type: b.source === 'local' ? '自建' : '内置',
+      items.push({ kind: 'bank', id: b.id, name: b.title, type: b.source === 'local' ? '自建' : '内置', at: bankBornAt(b),
         q: b.questions.length, done: s.done, acc: s.acc, wr: s.wr,
         crumb: inSearch ? pathOf(b.cat || null).map(TITLE).join(' › ') : '' });
     });
@@ -1273,7 +1429,7 @@
     });
     return items;
   }
-  function detailsHtml(dirs, banks, inSearch) {
+  function detailsHtml(dirs, banks, inSearch, grouped) {
     var items = detailItems(dirs, banks, inSearch);
     if (!items.length) return '';
     var S = DETAIL_SORT;
@@ -1282,7 +1438,7 @@
       return '<th class="' + (on ? 'on' : '') + '" data-act="sort" data-v="' + key + '" title="点一下按「' + label + '」排序（再点一下倒过来）">'
         + label + (on ? (S.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
     }
-    var rows = items.map(function (it) {
+    function rowOf(it) {
       var attr = it.kind === 'dir' ? ('data-cat="' + E(it.id) + '"') : ('data-bank="' + E(it.id) + '"');
       var acts = it.kind === 'dir'
         ? '<button class="btn tiny" data-act="open" data-id="' + E(it.id) + '">打开</button><button class="btn tiny" data-act="menu" data-id="' + E(it.id) + '">⋯</button>'
@@ -1292,15 +1448,32 @@
         + '<td class="nb-dname"><span class="nb-dic">' + (it.kind === 'dir' ? ICON_FOLDER : ICON_BANK) + '</span>'
         + '<span class="nb-dtext">' + E(it.name) + (it.crumb ? '<span class="small muted">　在 ' + E(it.crumb) + '</span>' : '') + '</span></td>'
         + '<td class="small muted">' + it.type + '</td>'
+        + '<td class="nb-ddate small muted">' + (fmtDay(it.at) || '—') + '</td>'
         + '<td class="num">' + it.q + '</td>'
         + '<td class="num">' + it.done + '</td>'
         + '<td class="num">' + (it.done ? it.acc + '%' : '—') + '</td>'
         + '<td class="num' + (it.wr ? ' warn' : '') + '">' + (it.wr || '—') + '</td>'
         + '<td class="nb-dacts">' + acts + '</td>'
         + '</tr>';
-    }).join('');
+    }
+    var rows;
+    if (grouped) {
+      /* 分组行用合并单元格，不额外加容器；组内顺序沿用当前 DETAIL_SORT */
+      var t0 = todayZero(), gm = {}, gorder = [];
+      items.forEach(function (it) {
+        var k = dayBucket(it.at, t0);
+        if (!gm[k]) { gm[k] = []; gorder.push(k); }
+        gm[k].push(it);
+      });
+      rows = GRP_ORDER.filter(function (k) { return gm[k] && gm[k].length; }).map(function (k) {
+        return '<tr class="nb-grow"><td colspan="8">' + GRP_LABEL[k] + ' · ' + gm[k].length + ' 项</td></tr>'
+          + gm[k].map(rowOf).join('');
+      }).join('');
+    } else {
+      rows = items.map(rowOf).join('');
+    }
     return '<table class="nb-table"><thead><tr>'
-      + th('name', '名称') + th('type', '类型') + th('q', '题目数') + th('done', '已答') + th('acc', '正确率') + th('wr', '错题')
+      + th('name', '名称') + th('type', '类型') + th('at', '添加时间') + th('q', '题目数') + th('done', '已答') + th('acc', '正确率') + th('wr', '错题')
       + '<th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
@@ -1403,7 +1576,7 @@
   function bind(host) {
     /* 「我的题库」右边的排序下拉：换一种排序就从头重画（页码回第 1 页） */
     var bsortSel = host.querySelector('#bankSortSel');
-    if (bsortSel) bsortSel.onchange = function () { setBankSortMode(bsortSel.value); HOME_PAGE = 1; repaint(); };
+    if (bsortSel) bsortSel.onchange = function () { setBankSortMode(bsortSel.value, 0); HOME_PAGE = 1; repaint(); };
     var search = host.querySelector('#nbSearch');
     if (search) {
       var nbComposing = false;
@@ -1700,6 +1873,9 @@
       case 'view': setViewMode(el && el.dataset ? el.dataset.v : 'icon'); HOME_PAGE = 1; repaint(); break;
       case 'isize': setIconSize(el && el.dataset ? el.dataset.v : 'md'); HOME_PAGE = 1; repaint(); break;
       case 'sort': sortDetail(el && el.dataset ? el.dataset.v : 'name'); repaint(); break;
+      case 'bsortdir': bumpBankSortDir(); HOME_PAGE = 1; repaint(); break;
+      case 'showdate': setShowDate(!showDate()); repaintKeepY(); break;
+      case 'dategroup': setDateGroup(!dateGroupOn()); HOME_PAGE = 1; repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
       case 'newcat': askNewCat(); break;
       case 'newbank': if (typeof go === 'function') go('#/import'); break;

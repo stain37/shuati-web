@@ -105,6 +105,7 @@
       type: 'bankfile',
       savedAt: new Date().toISOString(),
       cats: catsData(),
+      schemes: (window.SCM && SCM.raw) ? SCM.raw().schemes : null, catmap: (window.SCM && SCM.raw) ? SCM.raw().map : null,
       banks: banks,
       papers: (typeof PAPERS !== 'undefined' ? PAPERS : []),
       note: '这是「刷题站」的题库文件：自建题库 + 分类 + 临时套卷。在网页首页用「打开题库文件」读回来即可；作答记录不在这里面（用「导出全部数据」备份）。'
@@ -452,7 +453,7 @@
   function exportBankHook(b) {
     try {
       if (!b) return;
-      var one = { app: 'shuati-bank-file', version: FILE_VER, type: 'bankfile', savedAt: new Date().toISOString(), cats: catsData(), banks: [packBank(b)], note: '单个题库文件，可直接拖进网页导入。' };
+      var one = { app: 'shuati-bank-file', version: FILE_VER, type: 'bankfile', savedAt: new Date().toISOString(), cats: catsData(), schemes: (window.SCM && SCM.raw) ? SCM.raw().schemes : null, catmap: (window.SCM && SCM.raw) ? SCM.raw().map : null, banks: [packBank(b)], note: '单个题库文件，可直接拖进网页导入。' };
       var name = (typeof safeName === 'function' ? safeName(b.title) : String(b.title)) + '.json';
       if (typeof download === 'function') download(name, JSON.stringify(one, null, 2), 'application/json');
       if (S.linked) autoSync();

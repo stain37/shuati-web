@@ -121,6 +121,26 @@ body.nbm { user-select: none; -webkit-user-select: none; }
 .nb-bsortwrap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 10px; vertical-align: middle; }
 .nb-bsort { height: 30px; padding: 2px 6px; font-size: 13px; border-radius: var(--r-s); }
 @media (max-width: 520px) { .nb-bsortwrap { margin-left: 0; margin-top: 4px; } }
+/* web311：升降序按钮 + 「📅 日期」开关 + 名字下面的添加日期 */
+.nb-bsortdir { height: 30px; min-width: 30px; padding: 2px 7px; font-size: 13px; line-height: 1; }
+.nb-datetog { height: 30px; padding: 2px 8px; font-size: 12.5px; }
+.nb-datetog.on { color: var(--primary); border-color: var(--primary-line); background: var(--primary-weak); }
+.nb-idate { font-size: calc(var(--fs) * .76); color: var(--sub); line-height: 1.1; margin-top: -2px; }
+.nb-icons-sm .nb-idate { display: none; }
+.nb-table td.nb-ddate { font-variant-numeric: tabular-nums; }
+/* web315：按添加日期分组（今天 / 昨天 / 本周 / 更早）。
+   图标视图的组头跨越整个网格（grid-column:1/-1），列表视图是普通块，
+   详细信息是合并单元格的一行 —— 三处样式统一用 muted 小字，不抢卡片。 */
+.nb-grptog { height: 30px; padding: 2px 8px; font-size: 12.5px; }
+.nb-grptog.on { color: var(--primary); border-color: var(--primary-line); background: var(--primary-weak); }
+.nb-ghead { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; padding: 10px 2px 2px; margin-top: 2px; border-bottom: 1px solid var(--line2); }
+.nb-ghead span { font-size: calc(var(--fs) * .84); font-weight: 700; color: var(--text); letter-spacing: .02em; }
+.nb-ghead em { font-style: normal; font-size: calc(var(--fs) * .76); color: var(--sub); }
+.nb-list .nb-ghead { margin-top: 10px; padding: 4px 4px 6px; }
+.nb-list .nb-ghead:first-child { margin-top: 0; padding-top: 0; }
+.nb-table tr.nb-grow td { background: transparent; border-bottom: 1px solid var(--line2); color: var(--sub); font-size: calc(var(--fs) * .8); font-weight: 700; letter-spacing: .02em; padding: 12px 11px 5px; }
+.nb-table tbody tr.nb-grow { cursor: default; }
+.nb-table tbody tr.nb-grow:hover { background: transparent; }
 
 .nb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 18px; }
 /* 主界面「全部题库 / 临时套卷」分页 */

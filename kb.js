@@ -1058,7 +1058,7 @@ function kbFileIdOf(id) { return String(id || '').replace(/^file:/, ''); }
 function kbIsSkipped(id) { const f = kbFileIdOf(id); return KB_SKIP.indexOf(f) >= 0; }
 function kbSkipAdd(id) { const f = kbFileIdOf(id); if (KB_SKIP.indexOf(f) < 0) { KB_SKIP.push(f); writeLS(KB_LS_SKIP, KB_SKIP); } }
 function kbSkipRemove(id) { const f = kbFileIdOf(id); KB_SKIP = KB_SKIP.filter(x => x !== f); writeLS(KB_LS_SKIP, KB_SKIP); }
-function kbSkipName(id) { const f = kbFileIdOf(id); const b = (window.__KBS__ || []).find(x => String(x.id) === f); return b ? (b.name || f) : f; }
+function kbSkipName(id) { const f = kbFileIdOf(id); const b = (window.__KBS__ || []).find(x => String(x.id) === f) || (window.__KBM__ || []).find(x => String(x.id) === f); return b ? (b.name || f) : f; }
 function kbRestoreSkip(id) {
   kbSkipRemove(id);
   kbIngestFiles(true);          /* 恢复被删的库：强制重新挂载 */
@@ -1374,6 +1374,13 @@ async function kbUiDel(ids) {
     snaps.push(s);
   }
   if (!snaps.length) return;
+  /* 删除前确认（单个 / 批量都走这里）：文件库删掉不占存储、只是进黑名单，一句提醒足够；
+     网页导入的库是真删，要说得更重。 */
+  var _dn = snaps.length === 1 ? ('《' + snaps[0].name + '》') : (snaps.length + ' 个知识库（' + snaps.map(function (x) { return '《' + x.name + '》'; }).join('、') + '）');
+  var _dmsg = '删掉' + _dn + '？';
+  if (snaps.some(function (x) { return x.auto; })) _dmsg += '\n\n文件知识库（知识库.js 自带的）删掉后刷新不会再自动挂载，可在页面下方「已删掉、刷新也不再自动挂载」里点「恢复」找回。';
+  if (snaps.some(function (x) { return !x.auto; })) _dmsg += '\n\n自己导入的知识库删掉后正文就从浏览器里清掉了，只能靠随后 9 秒内的「撤销」找回。';
+  if (!confirm(_dmsg)) return;
   for (const s of snaps) { try { await kbRemove(s.id); } catch (e) {} }
   render();
   const what = snaps.length === 1 ? ('《' + snaps[0].name + '》') : (snaps.length + ' 个知识库');

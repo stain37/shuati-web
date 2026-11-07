@@ -27,6 +27,14 @@
       S.scope = (v.scope === 'cat' || v.scope === 'bank') ? v.scope : 'both';
       S.logic = v.logic === 'and' ? 'and' : 'or';
       S.star = v.star && typeof v.star === 'object' ? v.star : {};
+      (function migStar() {                    /* 多方案：老 key 是 c:<目录>，归到默认方案 */
+        var out = {}, ch = false;
+        Object.keys(S.star).forEach(function (k) {
+          if (k.indexOf('c:') === 0 && k.split(':').length === 2) { out['c:default:' + k.slice(2)] = S.star[k]; ch = true; }
+          else out[k] = S.star[k];
+        });
+        if (ch) { S.star = out; save(); }
+      })();
       S.sel = v.sel && typeof v.sel === 'object' ? v.sel : {};
       S.selmode = !!v.selmode;
     } else S.open = true;
@@ -76,6 +84,10 @@
       + '<button type="button" class="qs-ico" id="qsSel" title="多选：批量移动 / 删除">☑</button>'
       + '<button type="button" class="qs-ico" id="qsNew" title="新建 / 导入题库">＋</button>'
       + '<button type="button" class="qs-ico" id="qsClose" title="收起侧栏（Alt+Q）">«</button></div>'
+      + '<div class="qs-scb"><span class="qs-sl">方案</span>'
+      + '<select id="qsScheme" class="qs-selscheme" title="同一批题库，换一套文件夹方案"></select>'
+      + '<button type="button" class="qs-ico qs-ico-sm" id="qsSchemeNew" title="新建方案（复制当前方案的文件夹）">＋</button>'
+      + '<button type="button" class="qs-ico qs-ico-sm" id="qsSchemeMore" title="重命名 / 删除方案">⋯</button></div>'
       + '<div class="qs-search"><label class="qs-find"><i>⌕</i><input id="qsQ" type="text" placeholder="搜题库 / 文件夹…" autocomplete="off" enterkeyhint="search"></label>'
       + '<button type="button" class="qs-ai" id="qsAi" title="AI 模糊：记不清名字也能找到"><span>✨</span></button></div>'
       + '<div class="qs-opts">'
@@ -94,6 +106,7 @@
       + '<button type="button" data-b="all" title="把当前列表里显示的题库和文件夹全选上">全选</button>'
       + '<button type="button" data-b="none">清空</button>'
       + '<button type="button" data-b="move">移动到…</button>'
+      + '<button type="button" data-b="addsch">加入方案…</button>'
       + '<button type="button" data-b="del" class="danger">删除</button>'
       + '<button type="button" data-b="off">取消</button></div>'
       + '<div class="qs-foot"><span id="qsStat"></span><button type="button" class="qs-all" id="qsAll">全部题库 ›</button></div>';
@@ -115,6 +128,7 @@
     document.body.appendChild(tab);
 
     $('qsDir').onclick = function () { newFolder(null); };
+    bindScheme();
     $('qsSel').onclick = function () {
       S.selmode = !S.selmode;
       S.sel = {};
@@ -136,6 +150,7 @@
       return;
     }
     if (act === 'move') bulkMove();
+      else if (act === 'addsch') bulkAddScheme();
       else if (act === 'del') bulkDelete();
       else if (act === 'off') { S.selmode = false; S.sel = {}; paint(); }
     };
@@ -392,6 +407,7 @@
       + '<span class="qs-dot' + (b.source === 'local' ? ' loc' : '') + '"></span>'
       + '<div class="qs-main"><b title="' + E(b.title) + '">' + E(b.title) + '</b>'
       + '<span class="qs-meta">' + s.n + ' 题 · 已答 ' + s.done + (s.wr ? ' · <i class="warn">错 ' + s.wr + '</i>' : '') + '</span>'
+      + schBadge(b)
       + '<i class="qs-bar"><b style="width:' + Math.max(0, Math.min(100, s.pct)).toFixed(1) + '%"></b></i></div>'
       + '<button type="button" class="qs-star' + ((S.star || {})[sk] === 1 ? ' on' : '') + '" data-star="' + E(sk) + '" title="标星（常驻在最上面）">'
       + ((S.star || {})[sk] === 1 ? '★' : '☆') + '</button>'
@@ -438,8 +454,8 @@
       + '<i class="qs-caret">' + (total ? '▾' : '·') + '</i><i class="qs-folder">📁</i>'
       + '<span class="qs-ct" title="' + E(c.title) + '">' + E(c.title) + '</span>'
       + '<em>' + (shownBanks.length || '') + '</em>'
-      + '<span class="qs-star' + ((S.star || {})['c:' + c.id] === 1 ? ' on' : '') + '" data-star="c:' + E(c.id) + '" title="标星（常驻）">'
-      + ((S.star || {})['c:' + c.id] === 1 ? '★' : '☆') + '</span>'
+      + '<span class="qs-star' + ((S.star || {})[catKey(c.id)] === 1 ? ' on' : '') + '" data-star="' + E(catKey(c.id)) + '" title="标星（常驻）">'
+      + ((S.star || {})[catKey(c.id)] === 1 ? '★' : '☆') + '</span>'
       + '<span class="qs-cmore" data-cm="' + E(c.id) + '" title="文件夹操作">⋯</span>'
       + '</button>'
       + '<div class="qs-cbody">' + subHtml + shownBanks.map(function (b) { return rowHtml(b, depth + 1); }).join('') + '</div>'
@@ -540,6 +556,149 @@
     }
     var selBtn = $('qsSel');
     if (selBtn) { selBtn.classList.toggle('on', !!S.selmode); selBtn.setAttribute('aria-pressed', S.selmode ? 'true' : 'false'); }
+    paintSchemes();
+  }
+
+  /* ---------- 方案（同一批题库，换一套文件夹） ---------- */
+  function sid() { try { return (window.SCM && SCM.current) ? SCM.current() : 'default'; } catch (e) { return 'default'; } }
+  function catKey(id) { return 'c:' + sid() + ':' + id; }
+  function schemeName(id) {
+    try {
+      var l = SCM.list() || [];
+      for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i].name;
+    } catch (e) {}
+    return id;
+  }
+  function paintSchemes() {
+    var sel = $('qsScheme');
+    if (!sel || !window.SCM) return;
+    var cur = sid();
+    var html = (SCM.list() || []).map(function (s) {
+      return '<option value="' + E(s.id) + '"' + (s.id === cur ? ' selected' : '') + '>' + E(s.name) + '</option>';
+    }).join('');
+    if (sel.innerHTML !== html) sel.innerHTML = html;
+    try { sel.value = cur; } catch (e) {}
+  }
+  function schemeReload() {
+    try { if (CAT.reload) CAT.reload(); } catch (e) {}
+    try { if (CAT.render) CAT.render(); } catch (e) {}
+    paint();
+  }
+  function schemeSwitch(id) {
+    if (!window.SCM || !id || id === sid()) return;
+    var ok = false;
+    try { ok = SCM.switchTo(id); } catch (e) { ok = false; }
+    if (!ok) return;
+    S.q = '';
+    try { var q = $('qsQ'); if (q) q.value = ''; } catch (e) {}
+    schemeReload();
+    try { toast('已切到方案：' + SCM.curName(), 1500, 'ok'); } catch (e) {}
+  }
+  function askText(o) {
+    if (window.BFUI && BFUI.prompt) return BFUI.prompt(o);
+    var v = window.prompt(o.label || '名称', o.value || '');
+    return Promise.resolve(v == null ? null : v);
+  }
+  function schemeNew() {
+    if (!window.SCM) return;
+    var n = (SCM.list() || []).length + 1;
+    askText({ title: '新建方案', label: '方案名称（会复制当前方案的文件夹结构，题库共用）', value: '方案 ' + n,
+      test: function (x) { return x && String(x).trim() ? '' : '名字不能为空'; } }).then(function (v) {
+      if (v == null) return;
+      var id = SCM.create(v, SCM.current());
+      if (!id) return;
+      schemeSwitch(id);
+    });
+  }
+  function schemeMore() {
+    if (!window.SCM) return;
+    var isDef = sid() === SCM.DEF;
+    qsModal({
+      title: '方案：' + E(SCM.curName()),
+      html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
+        + (isDef ? '' : '<button type="button" class="qs-tg" data-t="del">删除当前方案（题库不受影响）</button>')
+        + '</div>',
+      buttons: [{ t: '关闭', val: null }],
+      onPick: function (t) { return { ok: true, act: t }; }
+    }).then(function (r) {
+      if (!r || !r.ok) return;
+      if (r.act === 'ren') {
+        askText({ title: '重命名方案', label: '新名称', value: SCM.curName() }).then(function (v) {
+          if (v == null || !String(v).trim()) return;
+          SCM.rename(SCM.current(), v); paintSchemes();
+          try { toast('已改名', 1200, 'ok'); } catch (e) {}
+        });
+      } else if (r.act === 'del') {
+        var cf = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : function (o) { return Promise.resolve(window.confirm(o.title)); };
+        cf({ title: '删除方案「' + SCM.curName() + '」？', html: '只删这套文件夹结构，题库和作答记录都不会删。', okText: '删除', danger: true }).then(function (ok) {
+          if (!ok) return;
+          try { SCM.remove(SCM.current()); } catch (e) {}
+          S.q = ''; try { var q = $('qsQ'); if (q) q.value = ''; } catch (e) {}
+          schemeReload();
+          try { toast('已删除方案，回到默认方案', 1600, 'ok'); } catch (e) {}
+        });
+      }
+    });
+  }
+  function pickScheme(title) {
+    var cur = sid();
+    var rows = (SCM.list() || []).filter(function (s) { return s.id !== cur; }).map(function (s) {
+      return '<button type="button" class="qs-tg" data-t="' + E(s.id) + '">📁 ' + E(s.name) + '</button>';
+    });
+    if (!rows.length) {
+      try { toast('只有一个方案，先点左上角 ＋ 新建一个', 2000); } catch (e) {}
+      return Promise.resolve({ ok: false });
+    }
+    return qsModal({
+      title: title || '选方案', html: '<div class="qs-tgs">' + rows.join('') + '</div>',
+      buttons: [{ t: '取消', val: null }],
+      onPick: function (id) { return { ok: true, sid: id }; }
+    }).then(function (v) { return v && v.ok ? v : { ok: false }; });
+  }
+  function bulkAddScheme() {
+    var l = selList();
+    if (!l.bank.length) { try { toast('先勾选题库（文件夹请用文件夹 ⋯ 菜单）', 2000); } catch (e) {} return; }
+    pickScheme('把 ' + l.bank.length + ' 个题库加进哪个方案？').then(function (r) {
+      if (!r || !r.ok) return;
+      l.bank.forEach(function (id) { try { SCM.setCatOf(id, '', r.sid); } catch (e) {} });
+      S.sel = {};
+      afterEdit('已加进「' + schemeName(r.sid) + '」的顶层');
+    });
+  }
+  function schBadge(b) {
+    try {
+      if (!window.SCM || !SCM.schemesOfBank) return '';
+      var arr = SCM.schemesOfBank(b.id) || [];
+      if (arr.length < 2) return '';
+      var names = arr.map(function (x) { return x.name; }).join('、');
+      return '<span class="qs-sch" data-sch="' + E(b.id) + '" title="出现在 ' + arr.length + ' 个方案：' + E(names) + '">×' + arr.length + '</span>';
+    } catch (e) { return ''; }
+  }
+  function showBankSchemes(bid) {
+    if (!window.SCM) return;
+    var arr = SCM.schemesOfBank(bid) || [];
+    if (!arr.length) return;
+    var cur = sid();
+    var rows = arr.map(function (s) {
+      return '<button type="button" class="qs-tg" data-t="' + E(s.id) + '">'
+        + (s.id === cur ? '✓ ' : '') + '📁 ' + E(s.name)
+        + '<span class="qs-tg-sub">' + E((CAT.get && CAT.get(s.cat) ? CAT.get(s.cat).title : '顶层')) + '</span></button>';
+    }).join('');
+    qsModal({
+      title: '这个题库在 ' + arr.length + ' 个方案里', html: '<div class="qs-tgs">' + rows + '</div>',
+      buttons: [{ t: '关闭', val: null }],
+      onPick: function (id) { return { ok: true, sid: id }; }
+    }).then(function (r) {
+      if (!r || !r.ok || r.sid === sid()) return;
+      schemeSwitch(r.sid);
+    });
+  }
+  function bindScheme() {
+    var sel = $('qsScheme');
+    if (sel) sel.onchange = function () { schemeSwitch(this.value); };
+    var nw = $('qsSchemeNew'); if (nw) nw.onclick = schemeNew;
+    var mo = $('qsSchemeMore'); if (mo) mo.onclick = schemeMore;
+    paintSchemes();
   }
 
   /* ---------- 多选 / 星标 / 批量操作 ---------- */
@@ -709,16 +868,17 @@
     var bmap = {};
     banks().forEach(function (b) { bmap[b.id] = b; });
     var cc = [], bb = [];
+    var PRE = 'c:' + sid() + ':';
     keys.forEach(function (k) {
       if (k.indexOf('b:') === 0) { var b = bmap[k.slice(2)]; if (b) bb.push(b); }
-      else if (k.indexOf('c:') === 0) { var c = CAT.get ? CAT.get(k.slice(2)) : null; if (c) cc.push(c); }
+      else if (k.indexOf(PRE) === 0) { var c = CAT.get ? CAT.get(k.slice(PRE.length)) : null; if (c) cc.push(c); }
     });
     if (!cc.length && !bb.length) return '';
     var rows = cc.map(function (c) {
       return '<div class="qs-starrow"><button type="button" class="qs-ch qs-staritem" data-open="' + E(c.id) + '" style="--qs-ind:6px;--qs-d:0">'
         + '<i class="qs-caret">\u203a</i><i class="qs-folder">📁</i>'
         + '<span class="qs-ct" title="' + E(c.title) + '">' + E(c.title) + '</span>'
-        + '<span class="qs-star on" data-star="c:' + E(c.id) + '" title="\u53d6\u6d88\u661f\u6807">\u2605</span></button></div>';
+        + '<span class="qs-star on" data-star="' + E(catKey(c.id)) + '" title="\u53d6\u6d88\u661f\u6807">\u2605</span></button></div>';
     }).join('');
     var brows = bb.map(function (b) { return rowHtml(b, 0); }).join('');
     return '<div class="qs-cat qs-stars" data-starblock="1">'
@@ -730,6 +890,8 @@
   function onListClick(e) {
     var cls = e.target.closest('#qsClassify');
     if (cls) { e.stopPropagation(); clsOpen(); return; }
+    var sch = e.target.closest('.qs-sch');
+    if (sch) { e.stopPropagation(); showBankSchemes(sch.getAttribute('data-sch')); return; }
     var ck = e.target.closest('[data-ck]');
     if (ck) { e.stopPropagation(); selToggle(ck.getAttribute('data-ck')); paint(); return; }
     var star = e.target.closest('[data-star]');
@@ -791,6 +953,7 @@
     m.id = 'qsMenu';
     m.innerHTML = '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
+      + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'
       + '<button type="button" class="danger" data-m="del">删除文件夹</button>';
     document.body.appendChild(m);
     var r = anchor.getBoundingClientRect();
@@ -806,6 +969,14 @@
         v = String(v).trim(); if (!v) return;
         try { CAT.rename(cid, v); CAT.save && CAT.save(); CAT.render && CAT.render(); } catch (e) {}
         paint();
+      } else if (act === 'addsch') {
+        var sub = catSubtree(cid);
+        if (!sub.banks.length) { try { toast('这个文件夹里没有题库', 1500); } catch (e) {} return; }
+        pickScheme('把 ' + sub.banks.length + ' 个题库加进哪个方案？').then(function (r) {
+          if (!r || !r.ok) return;
+          sub.banks.forEach(function (bid) { try { SCM.setCatOf(bid, '', r.sid); } catch (e) {} });
+          try { toast('已加进「' + schemeName(r.sid) + '」的顶层（原方案里也还在）', 2000, 'ok'); } catch (e) {}
+        });
       } else if (act === 'del') {
         var ask = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : function (o) { return Promise.resolve(window.confirm(o.title)); };
         ask({ title: '删除文件夹？', html: '只删这个文件夹本身，里面的题库会被移到上一层，不会被删掉。', okText: '删除', danger: true }).then(function (ok) {
@@ -1468,7 +1639,9 @@
         window.__qsMo.observe(v, { childList: true });
       }
     } catch (e) {}
-    window.addEventListener('hashchange', function () { setTimeout(function () { apply(); paint(); }, 120); });
+    /* web313：#view 的 MutationObserver 已经会在每次重画后 refresh()，
+       hashchange 再挂一个只会让侧栏在「导航时」白画一遍（实测每次导航整棵侧栏重写 2 次）。
+       侧栏只关心题库/文件夹数据，数据变了自有 refresh()/storage 事件兜底，所以这里不再监听 hashchange。 */
     window.addEventListener('storage', function (e) { if (e.key && e.key.indexOf('qbank.') === 0) refresh(); });
   }
 

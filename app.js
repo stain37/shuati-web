@@ -1964,6 +1964,16 @@ const SKIN_FALLBACK = {flat:'noir',retro:'cubism',pencil:'tenebrism',riso:'lowbr
   newwave:'macaron',naive:'noir',atompunk:'dieselpunk',madhubani:'corpmemphis',superflat:'lowbrow',fauvism:'corpmemphis',
   neoexpr:'aurora',photoreal:'rinpa',minhwa:'corpmemphis',neopop:'corpmemphis',bluegreen:'aurora',sticker:'clay',
   newsprint:'tenebrism',scrapbook:'corpmemphis',oil:'corpmemphis',qline:'clay',neu:'win95',softui:'win95'};
+/* 皮肤层懒加载（web312）：skins.css 里是 123 套皮肤，默认皮肤用不到它。
+   applyLook() 每次都会调这里 —— 换皮肤、明暗锁定回退皮肤时都能补上；
+   已经挂过一次就直接返回，不会重复插入。 */
+function ensureSkinsCss(style) {
+  if (style === 'default') return;                 /* 默认皮肤只在 style.css 里 */
+  if (document.getElementById('skinsCss')) return;
+  var l = document.createElement('link');
+  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261107b';
+  (document.head || document.documentElement).appendChild(l);
+}
 function applyLook() {
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
@@ -1983,9 +1993,11 @@ function applyLook() {
   if (document.documentElement) document.documentElement.setAttribute('data-theme', color);
   const bg = BG_OPTIONS.indexOf(SET.bg) >= 0 ? SET.bg : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-bg', bg);
-  /* 界面风格（皮肤层）：只打一个属性，样式全在 style.css §10；不认识的值一律落回 default */
+  /* 界面风格（皮肤层）：只打一个属性；通用样式在 style.css，123 套皮肤在 skins.css（web312 拆出去的）。
+     不认识的值一律落回 default —— default 不需要 skins.css，所以默认皮肤一点都不多下。 */
   const style = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
   if (document.documentElement) document.documentElement.setAttribute('data-style', style);
+  try { ensureSkinsCss(style); } catch (e) {}
   try{ ntSigns(SET.style==='neontokyo'); }catch(e){}
   try{ ntDrops(SET.style==='neontokyo'); }catch(e){}
   /* 明暗锁定（web291）：有一批皮肤天生只有浅色版（卡片是白的，深色模式只把正文翻成近白
@@ -3051,7 +3063,20 @@ function route() {
   return { name: 'home' };
 }
 function go(hash) {
+  /* web313：底栏高亮改成「点下去当场点亮」——
+     以前要等 renderInner 跑完（TR 还要先等 108ms 退场）才 markTop，
+     点了之后有 150ms 左右看不出反应，体感像卡了一下。这里只是先改 class，不碰数据。 */
+  try { markTop(navNameOf(hash)); } catch (e) {}
   if (location.hash === hash) render(); else location.hash = hash;
+}
+/* 从 hash 猜出底栏对应的名字（只认底栏那 5 个入口；其它页面返回 '' = 全部熄灭） */
+function navNameOf(hash) {
+  var h = String(hash || '');
+  if (h.charAt(0) === '#') h = h.slice(1);
+  if (h.charAt(0) === '/') h = h.slice(1);
+  var p = h.split('/')[0].split('?')[0];
+  if (!p) return 'home';
+  return (p === 'wrong' || p === 'fav' || p === 'search' || p === 'kb' || p === 'sync') ? p : '';
 }
 
 /* ---------- 「继续上次」：记住最近做的是哪个题库、哪一题 ----------
@@ -3214,13 +3239,13 @@ var TR = (function () {
     if (kind === 'grow') {
       org = originOf(v);
       kf = [{ opacity: 0.62, transform: 'translateY(9px) scale(.95)' }, { opacity: 1, transform: 'none' }];
-      dur = 360; ease = 'cubic-bezier(.18,.92,.24,1)';
+      dur = 300; ease = 'cubic-bezier(.18,.92,.24,1)';
     } else if (kind === 'push') {
       kf = [{ opacity: 0.62, transform: 'translateX(30px)' }, { opacity: 1, transform: 'none' }];
-      dur = 320; ease = 'cubic-bezier(.2,.92,.26,1)';
+      dur = 280; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else if (kind === 'pop') {
       kf = [{ opacity: 0.62, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }];
-      dur = 300; ease = 'cubic-bezier(.2,.92,.26,1)';
+      dur = 260; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else {
       kf = [{ opacity: 0.62 }, { opacity: 1 }];
       dur = 240; ease = 'ease-out';
@@ -3251,7 +3276,9 @@ function render() {
       return;
     }
     if (TR.wantExit(sig)) {
-      _trPending = setTimeout(function () { _trPending = null; renderNow(); }, 108);
+      /* web313：原来是 108ms（对齐 110ms 退场动画）。退场只压到 0.62、不整块消失，
+         所以不必等它播完再换内容，60ms 就走 —— 用户少等 50ms，观感不变。 */
+      _trPending = setTimeout(function () { _trPending = null; renderNow(); }, 60);
       TR.exit();
       return;
     }
@@ -3286,6 +3313,7 @@ function renderInner() {
      不然点「完成」保存后回到主界面，旧笔迹还盖在页面上 */
   if (!full) { try { if (window.INK && INK.hideView) INK.hideView(); } catch (e) {} }
   document.body.classList.toggle('quiz', full);
+  if (!full) QF_ON = false;   /* web316：离开答题页就把「浮着」忘掉，下次进来仍是正常排版 */
   $('nav').style.display = r.name === 'quiz' ? 'flex' : 'none';
   $('chips').style.display = r.name === 'quiz' ? 'flex' : 'none';
   var sjc = $('subjchips'); if (sjc) sjc.style.display = r.name === 'quiz' ? 'flex' : 'none';
@@ -4091,7 +4119,7 @@ function catRows() {
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
 async function exportAllData() {
   let tipCats = 0;
-  const data = { app: 'shuati', version: 8, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
+  const data = { app: 'shuati', version: 8, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), schemes: (window.SCM && SCM.raw) ? SCM.raw().schemes : null, catmap: (window.SCM && SCM.raw) ? SCM.raw().map : null, favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
     aisrc: (typeof aiSrcNorm === 'function' ? aiSrcNorm() : readLS('qbank.aisrc.v1', {})),
     tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
     tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
@@ -4673,6 +4701,11 @@ function uiQnPanel(fk) {
    「⠿」按住拖：整个答题卡变浮层跟着走；靠近窗口左 / 右 / 上 / 下边或中心线时吸附，
    位置存在 qbank.quizfloat.v1，下次进来还在原处。再点一次「⠿」回到正常排版。 */
 const QF_KEY = 'qbank.quizfloat.v1';
+/* web316（用户 2026-11-07 报）：拖拽模式下点「上一题 / 下一题」整页会重渲染，
+   以前 uiQuizFloat() 开头无条件 applyFloat(false)，于是每换一题都被打回顶部那条「⠿」，
+   浮层位置白摆了。浮起与否不该写进 localStorage（一进题库就自动浮着更烦人），
+   但至少要记住「这一次会话里浮着」——用内存开关 QF_ON，换题保持、离开答题页清掉。 */
+let QF_ON = false;
 function qfState() { const s = readLS(QF_KEY, null) || { float: false, x: 0, y: 0, w: 0, h: 0 };
   if (s.float) { s.float = false; writeLS(QF_KEY, s); }   /* 旧版会把「浮起」记进本地，进题库就自动浮起；这里一次性清掉 */
   return s; }
@@ -4684,11 +4717,13 @@ function uiQuizFloat() {
   const st = qfState();
   const applyFloat = (on) => {
     card.classList.toggle('qf-float', on);
+    QF_ON = !!on;
     st.float = on;
     if (on) {
       const w = st.w || Math.min(980, Math.max(360, card.getBoundingClientRect().width));
-      const x = (st.x == null || !st.x) ? Math.max(8, Math.round((window.innerWidth - w) / 2)) : st.x;
-      const y = (st.y == null || !st.y) ? 72 : st.y;
+      /* 0 是合法坐标（贴着屏幕左边 / 顶上吸附过），不能当「没存过」用 —— 只看 == null */
+      const x = (st.x == null) ? Math.max(8, Math.round((window.innerWidth - w) / 2)) : st.x;
+      const y = (st.y == null) ? 72 : st.y;
       card.style.width = w + 'px';
       if (st.h) card.style.height = st.h + 'px';
       card.style.left = Math.max(0, Math.min(window.innerWidth - 80, x)) + 'px';
@@ -4703,7 +4738,7 @@ function uiQuizFloat() {
     grip.title = on ? '拖动题目区块；再点一下回到正常排版' : '按住拖动题目区块；松手会吸附到窗口边 / 居中';
     qfSave(st);
   };
-  applyFloat(false);   /* 浮起只在本次操作里生效，不再从 localStorage 自动恢复 */
+  applyFloat(QF_ON);   /* 浮起只在本次会话里生效：换上一题/下一题保持原位，刷新页面或离开答题页才回到正常排版 */
   let moved = false;                                   /* 拖过就别再当成「点一下切回正常排版」 */
   grip.onclick = () => { if (moved) { moved = false; return; } applyFloat(!st.float); };
   const guideV = document.createElement('div'), guideH = document.createElement('div');
@@ -6239,6 +6274,15 @@ function renderCal() {
   const pullDays = pu ? pu.days : 7;
   const mStr = y + ' 年 ' + (m + 1) + ' 月';
 
+  /* 未来 14 天到期预测：直接复用 calBuckets() 的 dueN，画成和「近 14 天」同款的柱子 */
+  const fcw = st.dueN, fcList = [];
+  for (let i = 0; i < 14; i++) {
+    const ts = t0 + i * 86400000, dk = srsDayKey(ts), ddx = new Date(ts);
+    fcList.push({ ts: ts, n: fcw[dk] || 0, label: i === 0 ? '今天' : (i === 1 ? '明天' : (ddx.getMonth() + 1) + '/' + ddx.getDate()) });
+  }
+  const fcTotal = fcList.reduce(function (a, x) { return a + x.n; }, 0);
+  const fcMax = Math.max(1, Math.max.apply(null, fcList.map(function (x) { return x.n; })));
+
   let dayHtml = '';
   if (CAL_DAY) {
     const items = calDayItems(CAL_DAY);
@@ -6262,6 +6306,21 @@ function renderCal() {
   }
 
   $('view').innerHTML = `
+    <div class="card" id="calFc">
+      <div class="tools" style="margin-top:0">
+        <span class="mini-tag">未来 14 天到期</span>
+        <span class="mini-tag${fcTotal ? ' ok' : ''}">共 ${fcTotal} 张</span>
+        <span class="spacer-grow"></span>
+        <span class="tl">点柱子看那天</span>
+      </div>
+      <div class="chart">
+        ${fcList.map(function (d, i) {
+          return '<div class="cbar' + (d.n ? '' : ' zero') + '" data-fcday="' + d.ts + '" style="--i:' + i + '" title="' + d.label + '：到期 ' + d.n + ' 张">'
+            + '<b>' + (d.n || '') + '</b><i style="height:' + Math.max(2, Math.round(d.n / fcMax * 92)) + 'px"></i><span>' + d.label + '</span></div>';
+        }).join('')}
+      </div>
+      ${fcTotal ? '' : '<div class="small muted" style="margin-top:6px">未来两周没有排期中的题：只有「做错过、还在复习队列里」的题才会出现在这里。</div>'}
+    </div>
     <div class="card" id="calBox">
       <div class="cal-head">
         <button class="btn small" id="calPrev" title="上个月">‹</button>
@@ -6293,6 +6352,12 @@ function renderCal() {
 
   $('view').querySelectorAll('.cal-c[data-day]').forEach(btn => {
     btn.onclick = () => { CAL_DAY = +btn.dataset.day; render(); };
+  });
+  $('view').querySelectorAll('.cbar[data-fcday]').forEach(btn => {
+    btn.onclick = () => {
+      const ts = +btn.dataset.fcday, dd = new Date(ts);
+      CAL_DAY = ts; CAL_M = { y: dd.getFullYear(), m: dd.getMonth() }; render();
+    };
   });
   const prev = $('calPrev'), next = $('calNext');
   if (prev) prev.onclick = () => { const d = new Date(y, m - 1, 1); CAL_M = { y: d.getFullYear(), m: d.getMonth() }; render(); };
