@@ -280,7 +280,7 @@
     var bar = $('#mpBar'), wrap = $('#mpWrap'), rz = $('#mpRz'), stage = $('#mpStage');
     var d = null;
     bar.addEventListener('pointerdown', function (e) {
-      if (e.target.closest('button,select')) return;
+      if (e.target.closest('button,select,input,label,textarea')) return;
       d = { x: e.clientX, y: e.clientY, ox: S.x, oy: S.y, moved: false };
       try { bar.setPointerCapture(e.pointerId); } catch (err) {}
       e.preventDefault();
@@ -304,7 +304,7 @@
       } else { save(); }
     });
     bar.addEventListener('dblclick', function (e) {
-      if (e.target.closest('button,select')) return;
+      if (e.target.closest('button,select,input,label,textarea')) return;
       setMax(!isMax());
     });
 
@@ -334,6 +334,8 @@
     window.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !S.on) return;
       e.preventDefault(); e.stopPropagation();
+      var sd = document.getElementById('mpSide');
+      if (sd && sd.classList.contains('show')) { sideClose(); return; }
       var kp = document.getElementById('mpKp');
       if (kp && kp.classList.contains('full')) { kpFull(false); return; }
       if (isMax()) { setMax(false); return; }
@@ -348,6 +350,7 @@
       /* 点画布空白：把右侧知识点面板收起来（和样板一样） */
       var kp0 = document.getElementById('mpKp');
       if (kp0 && kp0.classList.contains('show')) { try { kpClose(); } catch (err) {} }
+      try { sideClose(); } catch (err) {}
       pg = { x: e.clientX, y: e.clientY, tx: V.tx, ty: V.ty };
       stage.style.cursor = 'grabbing';
     });
@@ -486,16 +489,24 @@
         e.stopPropagation();
         var n = DATA.nodes.find(function (x) { return x.id === el.dataset.id; });
         if (!n) return;
-        if (n.type === 'sim') {
-          if (typeof QZ !== 'undefined') { QZ.cur = n.ref.id; }
-          /* 注意：这里的 render 是本模块自己的，应用题的做法是 window.render */
-          try { (window.render || render)(); } catch (err) {}
-          setTimeout(function () { recenter(n.ref); }, 60);   /* 以新题为圆心重画当前组 */
-        } else {
+        if (n.type === 'tag') {
           sel = (sel === n.id) ? null : n.id;
           render();
-          if (n.type === 'tag' && sel) { try { kpOpen(n); } catch (err) {} }
+          if (sel) { try { kpOpen(n); } catch (err) {} } else { try { kpClose(); } catch (err) {} }
+          return;
         }
+        sel = n.id;
+        render();
+        try { sideOpen(n); } catch (err) {}
+      });
+      el.addEventListener('dblclick', function (e) {
+        e.stopPropagation();
+        var n = DATA.nodes.find(function (x) { return x.id === el.dataset.id; });
+        if (!n || n.type !== 'sim') return;
+        if (typeof QZ !== 'undefined') { QZ.cur = n.ref.id; }
+        /* 注意：这里的 render 是本模块自己的，应用题的做法是 window.render */
+        try { (window.render || render)(); } catch (err) {}
+        setTimeout(function () { recenter(n.ref); }, 60);
       });
     });
 
@@ -568,6 +579,72 @@
     });
     if (list) out.push('</' + list + '>');
     return out.join('');
+  }
+
+  /* 点题目卡：底部弹出题目抽屉（题干/选项/答案/解析 + 跳到这道题 / 分析考点） */
+  function sideEnsure() {
+    var s = document.getElementById('mpSide');
+    if (s) return s;
+    s = document.createElement('div');
+    s.id = 'mpSide';
+    s.innerHTML = '<div class="mp-sdh"><b id="mpSdName">题目</b><i id="mpSdKick"></i><span class="mp-grow"></span>' +
+      '<button id="mpSdJump" class="mp-sdbtn">跳到这道题</button>' +
+      '<button id="mpSdAi" class="mp-sdbtn">分析考点</button>' +
+      '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button></div>' +
+      '<div id="mpSdBody" class="mp-sdbody"></div>';
+    document.body.appendChild(s);
+    s.querySelector('#mpSdX').onclick = sideClose;
+    s.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    return s;
+  }
+  function sideClose() {
+    var s = document.getElementById('mpSide'); if (s) s.classList.remove('show');
+  }
+  function answerLetter(q) {
+    var a = q && (q.answer != null ? q.answer : q.ans);
+    if (Array.isArray(a)) return a.map(function (x) { return String(x).toUpperCase(); }).join('');
+    if (typeof a === 'number') return String.fromCharCode(65 + a);
+    return String(a || '').toUpperCase();
+  }
+  function sideOpen(n) {
+    var s = sideEnsure();
+    var q = (n.ref && typeof n.ref === 'object') ? n.ref : {};
+    var bankId = (n.ref && n.ref._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || '';
+    function esc2(x) { return String(x == null ? '' : x).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+    var typeName = n.type === 'center' ? '中心题' : n.type === 'sim' ? '相似题' : '题目';
+    var kick = n.type === 'sim' ? ('相似 ' + (n.score == null ? '?' : n.score) + '%') : (n.type === 'center' ? '当前这题' : '');
+    s.querySelector('#mpSdName').textContent = typeName;
+    s.querySelector('#mpSdKick').textContent = kick;
+    var alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    var ans = answerLetter(q);
+    var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
+    var html = '<div class="mp-sdq">' + esc2(q.stem || n.label || '') + '</div>';
+    if (opts.length) {
+      html += '<div class="mp-sdopts">' + opts.map(function (o, i) {
+        var L = alpha[i] || String(i + 1);
+        var ok = ans.indexOf(L) >= 0;
+        return '<div class="mp-sdo' + (ok ? ' ok' : '') + '"><b>' + L + '</b>' + esc2(o) + (ok ? '<i>正确</i>' : '') + '</div>';
+      }).join('') + '</div>';
+    }
+    var exp = q.exp || q.expl || q.analysis || '';
+    if (exp) html += '<div class="mp-sdexp"><b>解析</b>' + esc2(exp) + '</div>';
+    s.querySelector('#mpSdBody').innerHTML = html;
+    s.querySelector('#mpSdJump').onclick = function () {
+      try {
+        if (typeof QZ !== 'undefined' && n.ref && n.ref.id) QZ.cur = n.ref.id;
+        if (typeof (window.render) === 'function') window.render();
+        if (bankId) location.hash = '#/bank/' + bankId;
+        sideClose(); try { close(); } catch (e) {}
+      } catch (e) {}
+    };
+    s.querySelector('#mpSdAi').onclick = function () {
+      try {
+        var tg = (typeof kpTags === 'function') ? kpTags(n.ref) : [];
+        if (tg.length) { kpAiOpen(tg[0]); }
+        else if (typeof toast === 'function') toast('这道题还没有考点标签，先在答题页打个标签', 2600);
+      } catch (e) {}
+    };
+    s.classList.add('show');
   }
 
   /* 在画布层补画：小笔记 + 中心题旁的「精搜」按钮 */
@@ -908,6 +985,7 @@
           '<label><input type="checkbox" data-f="tag"> 考点</label>' +
           '<label><input type="checkbox" data-f="var"> 变式</label>';
         if (gb && gb.parentNode) gb.parentNode.insertBefore(fil, gb); else bar.appendChild(fil);
+        fil.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
         fil.addEventListener('change', function (e) {
           var f = e.target.dataset.f; if (!f) return;
           FIL[f] = e.target.checked ? 1 : 0;
