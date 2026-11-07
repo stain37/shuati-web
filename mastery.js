@@ -173,7 +173,8 @@
           '<div class="mv-name">' + esc(t.name) + '<span class="mv-sub">' + t.v.ans + ' 题 · 错 ' + t.v.bad + '</span></div>' +
           bar(t.v.rate, toneOf(t.v.rate, t.v.ans)) +
           '<div class="mv-meta"><b style="color:' + toneOf(t.v.rate, t.v.ans) + '">' + t.v.rate + '%</b>' +
-          '<span>' + (t.v.ans - t.v.ok) + ' 错</span></div></div>';
+          '<span>' + (t.v.ans - t.v.ok) + ' 错</span>' +
+          '<button class="btn tiny mv-map" data-map-tag="' + esc(t.name) + '" title="在脑图里看这个考点的题">🗺</button></div></div>';
       });
     }
     html += '</div>';
@@ -211,6 +212,29 @@
   }
 
   function bind(d) {
+    var view = $('view');
+    if (view && !view.dataset.mapbind) {
+      view.dataset.mapbind = '1';
+      view.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-map-tag]');
+        if (!b) return;
+        var tag = b.getAttribute('data-map-tag'), found = null;
+        try {
+          (window.LOCAL || []).forEach(function (bank) {
+            if (found) return;
+            (bank.questions || []).forEach(function (q) {
+              if (found) return;
+              var ks = [];
+              try { ks = (typeof tagList === 'function') ? tagList(q, bank.id) : (q.tags || []); } catch (err) { ks = q.tags || []; }
+              if ((ks || []).indexOf(tag) >= 0) found = { b: bank, q: q };
+            });
+          });
+        } catch (err) {}
+        if (!found) { if (typeof toast === 'function') toast('这个考点的题不在自建题库里', 1800, 'warn'); return; }
+        if (window.MAPQ && MAPQ.openFor) MAPQ.openFor(found.b.id, found.q.id);
+        else if (typeof toast === 'function') toast('脑图模块没加载（map.js）', 1800, 'bad');
+      });
+    }
     var dueBtn = $('mvDue');
     if (dueBtn) dueBtn.onclick = function () { go('#/wrong'); };
 

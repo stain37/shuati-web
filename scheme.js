@@ -156,10 +156,28 @@
     var nm = trim(name) || ('方案 ' + (DB.list.length + 1));
     var id = uid();
     DB.list.push({ id: id, name: nm });
-    var srcTree = (fromId && DB.data[fromId]) ? DB.data[fromId].cats : null;
+    /* 复制来源方案的文件夹树：默认方案的实时树在 qbank.cats.v1 里，
+       DB.data['default'].cats 可能还是空的（只有 catsOf() 被调用过才同步） */
+    var srcTree = null;
+    if (fromId) {
+      if (fromId === DEF) {
+        var live = lsRaw(K_CATS, null);
+        srcTree = Array.isArray(live) ? live : (DB.data[DEF] ? DB.data[DEF].cats : null);
+      } else if (DB.data[fromId]) {
+        srcTree = DB.data[fromId].cats;
+      }
+    }
     DB.data[id] = { cats: srcTree ? JSON.parse(JSON.stringify(srcTree)) : [] };
-    if (fromId && MAP[fromId]) MAP[id] = JSON.parse(JSON.stringify(MAP[fromId]));
-    else MAP[id] = {};
+    /* 归属：来源方案还没拍过快照时，先按当前 b.cat 现拍一张 */
+    if (fromId) {
+      if (!MAP[fromId] || typeof MAP[fromId] !== 'object') {
+        MAP[fromId] = {};
+        if (fromId === CUR) banks().forEach(function (b) { if (b && b.id) MAP[fromId][b.id] = b.cat || ''; });
+      }
+      MAP[id] = JSON.parse(JSON.stringify(MAP[fromId] || {}));
+    } else {
+      MAP[id] = {};
+    }
     save();
     return id;
   }
