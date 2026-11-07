@@ -2150,7 +2150,12 @@ function normalizeBank(b, source) {
   return o;
 }
 function normalizeQ(q, fallbackId) {
-  const opts = (q.options || []).map(String);
+  /* 题库来源不单一：老导入器写的是 opts / exp，站内编辑保存的是 options / explain。
+     两种都认，否则「opts 版」题目一加载就只剩题干（选项和解析全空）。 */
+  var rawOpts = q.options;
+  if (!Array.isArray(rawOpts) || !rawOpts.length) rawOpts = q.opts;
+  if (!Array.isArray(rawOpts)) rawOpts = [];
+  const opts = rawOpts.map(String);
   let ans = q.answer == null ? [] : (Array.isArray(q.answer) ? q.answer : String(q.answer).replace(/[^A-Ha-h]/g, '').split(''));
   ans = Array.from(new Set(ans.map(a => String(a).toUpperCase()))).filter(a => 'ABCDEFGHIJKL'.includes(a)).sort();
   const o = {
@@ -2158,10 +2163,11 @@ function normalizeQ(q, fallbackId) {
     stem: String(q.stem || ''),
     options: opts,
     answer: ans,
-    explain: String(q.explain || ''),
+    explain: String(q.explain || q.exp || q.expl || q.analysis || ''),
     group: q.group ? String(q.group) : '',
     groupTitle: q.groupTitle ? String(q.groupTitle) : ''
   };
+  if (q.tags && q.tags.length) o.tags = q.tags.slice();
   if (q._srcKey) o._srcKey = q._srcKey;
   return o;
 }

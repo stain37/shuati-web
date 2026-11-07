@@ -547,3 +547,285 @@ body.dark #mpSide .mp-sdo.ok{background:#1d3329;border-color:#2f6b4f}
 #mpSide .mp-sdexp{margin-top:10px;font-size:12.5px;line-height:1.75;color:#5b5872;background:#fbfaff;border-left:3px solid #c9baff;padding:8px 10px;border-radius:0 8px 8px 0}
 body.dark #mpSide .mp-sdexp{background:#1e2536;color:#c9cce0;border-color:#4a3f7a}
 #mpSide .mp-sdexp b{display:block;font-size:11.5px;color:#7c5cff;margin-bottom:3px}
+
+/* ================= web330：资料节点 / 组多选 / 搜索器 ================= */
+
+/* —— 搜索器：✨ AI 模糊 + 类型下拉 + 键盘上下选 —— */
+#mpFind{gap:5px}
+#mpFind input{width:164px}
+#mpFindAi{width:28px;height:28px;border-radius:9px;border:1px solid #cfc9e6;background:rgba(255,255,255,.94);
+  font-size:13px;line-height:1;cursor:pointer;color:#8a86a0;padding:0}
+#mpFindAi:hover{border-color:#b9a8ff}
+#mpFindAi.on{background:#efe9ff;border-color:#8f7bf0;color:#5a3fd6;box-shadow:0 0 0 3px rgba(124,108,240,.12)}
+#mpFindType{height:28px;border-radius:9px;border:1px solid #cfc9e6;background:rgba(255,255,255,.94);
+  font-size:12px;color:#4b4763;padding:0 4px;outline:none;cursor:pointer}
+body.dark #mpFindAi,body.dark #mpFindType{background:rgba(20,26,38,.92);border-color:#33405a;color:#dbe2ee}
+body.dark #mpFindAi.on{background:#241f42;border-color:#7c6cf0;color:#c3b7ff}
+#mpFindPop{width:330px}
+#mpFindPop .frow .fk{display:inline-block;margin-right:5px;font-size:10px;font-style:normal;line-height:1.5;
+  color:#7b6fbf;background:#f1ecff;border-radius:5px;padding:0 4px}
+body.dark #mpFindPop .frow .fk{background:#241f42;color:#b7a9ff}
+#mpFindPop .frow .hi{background:#fff1c9;color:#8a5a00;border-radius:3px;padding:0 1px;font-weight:600}
+body.dark #mpFindPop .frow .hi{background:#4a3a10;color:#ffd782}
+#mpFindPop .frow.on{background:#eef9f6;box-shadow:inset 0 0 0 1px #5cc8b8}
+body.dark #mpFindPop .frow.on{background:#12312d;box-shadow:inset 0 0 0 1px #2f7f72}
+
+/* —— 资料节点（file）：跟题节点同尺寸，双击看原文件 —— */
+.mp-node.file{border-color:#c9d6f5;background:linear-gradient(180deg,#fff,#f7f9ff);max-width:230px}
+body.dark .mp-node.file{background:linear-gradient(180deg,#171c26,#12161f);border-color:#2f3a5a}
+.mp-node.file .mp-fico{display:inline-block;font-style:normal;margin-right:4px;font-size:14px;vertical-align:-1px}
+.mp-node.file .mp-t{font-size:12.5px;color:#26304a;font-weight:600}
+body.dark .mp-node.file .mp-t{color:#dbe2ee}
+.mp-node .mp-pill.f{background:#eef3ff;color:#3f5bd6;border-color:#cfdaff}
+body.dark .mp-node .mp-pill.f{background:#151f3a;color:#9db4ff;border-color:#2b3a63}
+
+/* —— 抽屉里的资料卡 —— */
+#mpSide .mp-sdfile{margin:2px 0 8px;font-size:12px;color:#5b5872;display:flex;align-items:center;gap:6px}
+#mpSide .mp-sdfile i{margin-left:auto;font-style:normal;color:#8a86a0;font-size:11px}
+body.dark #mpSide .mp-sdfile{color:#c9cce0}
+#mpSide .mp-sdbtn2{display:flex;gap:8px;margin-top:6px}
+#mpSide .mp-sdbtn2 .mp-sdbtn{margin-left:0;flex:1;padding:6px 0;text-align:center}
+
+/* —— 组多选 —— */
+#mpGList{max-height:264px}
+.mp-grow2.selmode{cursor:pointer}
+.mp-gck{flex:none;width:15px;height:15px;border-radius:4px;border:1.5px solid #cfc9e6;background:#fff;
+  display:inline-block;position:relative}
+.mp-gck.on{background:#5cc8b8;border-color:#3fae9c}
+.mp-gck.on:after{content:'';position:absolute;left:4px;top:1px;width:5px;height:9px;
+  border:2px solid #fff;border-top:0;border-left:0;transform:rotate(42deg)}
+body.dark .mp-gck{background:#141a26;border-color:#33405a}
+#mpGSel.on{background:#e6f7f4;border-color:#5cc8b8;color:#0e6b60}
+/* ✨ AI 模糊开关（组搜索 / 考点里的题目搜索）：没开是灰的，开了紫底发光 */
+#mpGQai,#mpKpQai{transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+#mpGQai.on,#mpKpQai.on{background:#efe9ff;border-color:#bfb2f5;color:#5b46d8;
+  box-shadow:0 0 0 2px rgba(124,92,255,.14) inset}
+body.dark #mpGQai.on,body.dark #mpKpQai.on{background:#241d4a;border-color:#5b46d8;color:#cfc3ff}
+#mpGBulk{display:flex;align-items:center;gap:5px;margin:2px 0 6px;padding:5px 6px;
+  background:#f7f5ff;border:1px solid #e6e0f5;border-radius:9px}
+#mpGBulk[hidden]{display:none}
+#mpGBulk #mpGBulkN{flex:1;font-size:11.5px;color:#5b5872;white-space:nowrap}
+#mpGBulk button{height:22px;padding:0 7px;border-radius:7px;border:1px solid #d9d3ec;background:#fff;
+  cursor:pointer;font-size:11.5px;color:#4b4763}
+#mpGBulk button:hover{border-color:#b9a8ff;color:#5a3fd6}
+#mpGBulk button.bad{border-color:#f0c9d2;color:#b0344f;background:#fff7f9}
+#mpGBulk button.bad:hover{background:#ffeef2}
+body.dark #mpGBulk{background:#171c26;border-color:#2c3448}
+body.dark #mpGBulk #mpGBulkN{color:#a9b3c6}
+body.dark #mpGBulk button{background:#1b2130;border-color:#33405a;color:#dbe2ee}@media (max-width: 620px){
+  #mpFind{right:8px}
+  #mpFind input{width:118px}
+  #mpFindAi{width:26px;height:26px}
+  #mpFindType{max-width:62px;font-size:11px;height:26px}
+  #mpFindPop{width:min(320px, calc(100vw - 28px))}
+}
+/* ================= web331 · 窗口摆件重排（和样板对齐） ================= */
+/* 标题栏只留：抓手 / 标题 / ← / ⤢ / – / ✕；其余控件全部下移到第二行工具条。
+   以前 10 个控件挤在 38px 的条里，窗口一窄 ✕ 和 – 就被挤到屏幕外，点了没反应。 */
+#mpBar{ overflow:hidden; gap:6px; }
+#mpBar > *{ flex:0 0 auto; }
+#mpBar #mpTitle{ flex:1 1 auto; min-width:0; max-width:60%; }
+#mpBar .mp-grow{ flex:1 1 0; min-width:0; }
+#mpBar button{ flex:0 0 auto; }
+#mpBar #mpMin{ font-size:15px; line-height:1; }
+
+#mpTools{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:0 0 auto;
+  padding:6px 10px; background:#f3fbf9; border-bottom:1px solid #d7efe9;
+  font-size:12.5px; color:#17685f;
+}
+#mpTools .mp-tgrow{ flex:1 1 auto; }
+#mpTools select{
+  height:26px; border-radius:8px; border:1px solid #b9e3dd; background:#fff;
+  color:#17685f; font-size:12px; padding:0 6px; outline:none; cursor:pointer;
+}
+#mpTools button{
+  height:26px; border-radius:8px; border:1px solid #b9e3dd; background:#fff;
+  color:#17685f; cursor:pointer; padding:0 8px; font-size:12px;
+}
+#mpTools button:hover{ background:#e9f8f4; }
+#mpTools #mpGroups{ padding:0 8px; }
+#mpFil{ display:flex; align-items:center; gap:8px; font-size:11.5px; color:#4d6b66; }
+#mpFil label{ display:inline-flex; align-items:center; gap:3px; cursor:pointer; white-space:nowrap; }
+#mpFil input{ accent-color:#12b3a0; cursor:pointer; }
+#mpHoldBox{ display:flex; align-items:center; gap:4px; font-size:11px; color:#5d6b7a; white-space:nowrap; }
+#mpHoldBox input{ width:38px; height:22px; border:1px solid #cfc9e6; border-radius:6px; text-align:center; font-size:11.5px; outline:none; }
+body.dark #mpTools{ background:#0f2521; border-color:#26504b; color:#9fe4da; }
+body.dark #mpTools button, body.dark #mpTools select{ background:#12302c; border-color:#2c5a55; color:#9fe4da; }
+body.dark #mpFil{ color:#9fc9c2; }
+#mpGrp{ top:76px; }
+
+/* 右下角缩放条 */
+#mpZoom{
+  position:absolute; right:10px; bottom:10px; z-index:7;
+  display:flex; align-items:center; gap:4px; padding:4px 6px; border-radius:10px;
+  background:rgba(255,255,255,.92); border:1px solid #cfc9e6;
+  box-shadow:0 6px 18px rgba(31,35,51,.10); font-size:12px; color:#4a4a63;
+}
+#mpZoom button{ width:26px; height:24px; border:0; background:transparent; border-radius:7px; cursor:pointer; color:#4a4a63; font-size:13px; line-height:1; }
+#mpZoom button:hover{ background:#efecff; }
+#mpZoom button[data-z="fit"]{ width:auto; padding:0 8px; font-size:12px; }
+#mpZVal{ min-width:38px; text-align:center; font-variant-numeric:tabular-nums; }
+body.dark #mpZoom{ background:rgba(20,26,38,.92); border-color:#33405a; color:#dbe2ee; }
+body.dark #mpZoom button{ color:#dbe2ee; }
+body.dark #mpZoom button:hover{ background:#1e2740; }
+
+/* 底部操作提示 */
+#mpHint{
+  position:absolute; left:50%; bottom:10px; transform:translateX(-50%); z-index:6;
+  display:flex; gap:10px; align-items:center; padding:6px 12px; border-radius:999px;
+  background:rgba(31,35,51,.72); color:#fff; font-size:11.5px; white-space:nowrap;
+  pointer-events:none;
+}
+#mpHint b{ color:#d9d2ff; font-weight:600; }
+body.dark #mpHint{ background:rgba(8,12,18,.80); }
+@media (max-width: 980px){ #mpHint{ display:none } }
+
+/* 连线发光层 */
+#mpGlowG{ filter:blur(5px); opacity:.55; pointer-events:none; }
+#mpGlowG path{ fill:none; stroke-linecap:round; }
+
+/* 选中卡片展开：未选中最多 3 行，点开后整段放出来 */
+.mp-node .mp-t{ display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
+.mp-node.sel{ width:max-content; min-width:200px; max-width:340px; }
+.mp-node.sel .mp-t{ display:block; -webkit-line-clamp:unset; overflow:visible; }
+/* 搜索框搬进工具条：不再压在工具上；下拉层改成 fixed 跟着走 */
+#mpTools #mpFind{ position:relative; left:auto; top:auto; z-index:auto; flex:0 1 auto; min-width:0; display:flex; align-items:center; gap:6px; }
+#mpTools #mpFind input{ width:178px; height:26px; font-size:12px; }
+#mpFindPop{ position:fixed; left:10px; top:80px; z-index:130; width:320px; max-height:min(52vh,340px); overflow:auto; display:none; }
+#mpFindPop.show{ display:block; }
+@media (max-width: 760px){
+  #mpTools #mpFind input{ width:132px; }
+  .mp-gopts{ gap:4px; font-size:11px; }
+  .mp-gopts select{ height:22px; font-size:11px; }
+}
+/* 组面板：范围 / 排序 / 复制当前组 / 收起 / 管理全部 */
+.mp-gopts{ display:flex; align-items:center; gap:6px; padding:6px 10px 2px; font-size:11.5px; color:#8a86a0; flex-wrap:wrap; }
+.mp-gopts>span{ white-space:nowrap; flex:0 0 auto; }
+.mp-gopts select{ flex:0 1 auto; min-width:0; max-width:46%; }
+.mp-gopts select{ height:24px; border:1px solid #d8d2ee; background:#fff; border-radius:7px; font-size:11.5px; padding:0 4px; color:#5d5878; }
+.mp-grow3{ flex:1 1 0; }
+#mpGDupCur,#mpGFold{ font-size:13px; }
+#mpGFoot{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#mpGFoot #mpGAll{ margin-left:auto; border:1px solid #d8d2ee; background:#fff; border-radius:8px; font-size:11.5px; padding:3px 8px; color:#5b46d8; cursor:pointer; }
+#mpGFoot #mpGAll:hover{ background:#f3f0ff; border-color:#bfb2f5; }
+/* 预览窗：缩放比例 / 右下角拖大小 / 系统打开 */
+#mpPv .mpvzl{ font-size:11px; color:#8a86a0; min-width:34px; text-align:right; }
+#mpPv #mpPvSys{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:7px;
+  color:#4a4763; text-decoration:none; border:1px solid transparent; }
+#mpPv #mpPvSys:hover{ background:#f1edff; border-color:#d8cffa; }
+#mpPv .mpvrz{ position:absolute; right:2px; bottom:2px; width:16px; height:16px; cursor:nwse-resize; }
+#mpPv .mpvrz:after{ content:''; position:absolute; right:3px; bottom:3px; width:8px; height:8px;
+  border-right:2px solid #b9b3d6; border-bottom:2px solid #b9b3d6; border-radius:0 0 3px 0; }
+#mpPv .mpvb{ overflow:auto; }
+#mpPv .mpvwrap{ transform-origin:top left; width:max-content; min-width:100%; }
+/* 变式草稿：抽屉里的三种改法 */
+.mp-sdvar{ margin-top:10px; padding:10px 12px; border:1px dashed #cbb9f6; border-radius:10px; background:#faf8ff; font-size:12.5px; color:#4a4560; }
+.mp-sdvar b{ display:block; margin-bottom:4px; font-size:12.5px; color:#5b46d8; }
+.mp-sdvar ol{ margin:4px 0 6px; padding-left:18px; }
+.mp-sdvar li{ margin:2px 0; line-height:1.55; }
+.mp-sdvar i{ color:#8a86a0; font-style:normal; font-size:11.5px; }
+#mpCtx button[disabled]{ color:#b6b1c6; cursor:not-allowed; }
+/* 窗口换焦：点到的窗口描边，其余淡一档 */
+#mpKp.wf,#mpPv.wf,#mpSide.wf,#mpGrp.wf{ outline:2px solid rgba(124,92,255,.38); outline-offset:-2px; }
+#mpKp.winblur,#mpPv.winblur,#mpSide.winblur,#mpGrp.winblur{ filter:saturate(.92); opacity:.99; }
+#mpWrap.wf #mpStage{ box-shadow: inset 0 0 0 2px rgba(124,92,255,.18); }
+/* 窄屏：标题让位给按钮，✕ / – 永远在可视区里 */
+@media (max-width: 640px){
+  #mpBar #mpTitle{ display:none; }
+  #mpBar .mp-grow{ flex:1 1 auto; }
+  #mpBar{ gap:4px; padding:0 6px; }
+  #mpTools{ padding:5px 6px; gap:5px; }
+  #mpTools #mpFind input{ width:120px; }
+  #mpZoom{ right:6px; bottom:6px; }
+  #mpHint{ display:none; }
+  #mpWrap{ border-radius:12px; }
+}
+/* ============ web336：把样板的余下三件补齐（大图缩放 / 就地看题 / 选中浮条） ============ */
+#mpPv #mpPvTab{ display:inline-flex; align-items:center; justify-content:center; height:24px; padding:0 8px; border-radius:7px;
+  font-size:11px; color:#6b5bd6; text-decoration:none; border:1px solid #ece7fb; background:#fbfaff; }
+#mpPv #mpPvTab:hover{ background:#f1edff; border-color:#d8cffa; }
+
+#mpVw .mpvzl{ font-size:11px; color:#8a86a0; min-width:36px; text-align:right; }
+#mpVw .mpvwh button{ border:0; background:none; font-size:15px; color:#8b8fa3; cursor:pointer; width:26px; height:26px; border-radius:7px; }
+#mpVw .mpvwh button:hover{ background:#f1edff; color:#5b46d8; }
+#mpVw .mpvwh #mpVwFit{ width:auto; padding:0 9px; font-size:12px; color:#6b5bd6; border:1px solid #ece7fb; }
+#mpVw .mpvwh a{ font-size:12px; color:#6b5bd6; text-decoration:none; padding:3px 7px; border-radius:7px; }
+#mpVw .mpvwh a:hover{ background:#f1edff; }
+#mpVw .mpvwrap2{ transform-origin:top center; width:max-content; max-width:100%; }
+#mpVw .mpvwb{ align-items:flex-start; }
+body.dark #mpVw{ background:rgba(18,21,32,.96); }
+body.dark #mpVw .mpvwh{ background:#1b2030; border-color:#2a3148; color:#dfe1f0; }
+body.dark #mpVw .mpvwh a, body.dark #mpVw .mpvwh #mpVwFit{ color:#a99bf5; border-color:#33395a; }
+body.dark #mpVw .mpvwh button:hover, body.dark #mpVw .mpvwh a:hover{ background:#252c40; }
+
+/* 就地看题：整屏铺一层，返回就回到刚才的组和面板 */
+#mpRq{ position:fixed; inset:0; display:none; flex-direction:column; background:rgba(24,26,38,.62);
+  backdrop-filter:blur(3px); z-index:250; }
+#mpRq.show{ display:flex; }
+#mpRq .mp-rqh{ display:flex; align-items:center; gap:10px; padding:12px 20px; color:#fff; font-size:13px; }
+#mpRq .mp-rqh b{ font-weight:600; }
+#mpRq .mp-rqhint{ font-size:12px; color:rgba(255,255,255,.72); }
+#mpRq .mp-rqbk{ border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.1); color:#fff;
+  height:28px; padding:0 12px; border-radius:9px; font-size:12px; cursor:pointer; }
+#mpRq .mp-rqbk:hover{ background:rgba(255,255,255,.22); }
+#mpRq .mp-rqb{ flex:1; overflow:auto; padding:0 20px 26px; display:flex; justify-content:center; align-items:flex-start; }
+#mpRq .mp-rqc{ width:min(760px,100%); background:#fff; border-radius:16px; padding:26px 30px 22px;
+  box-shadow:0 30px 70px rgba(10,14,26,.4); }
+#mpRq .mp-rqno{ font-size:12px; color:#8b8fa3; letter-spacing:.02em; }
+#mpRq .mp-rqstem{ margin:10px 0 16px; font-size:16px; line-height:1.75; color:#1f2233; font-weight:600; }
+#mpRq .mp-rqopts{ display:flex; flex-direction:column; gap:8px; }
+#mpRq .mp-rqo{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:10px;
+  background:#f8f7fd; border:1px solid #efecfa; font-size:14px; line-height:1.6; color:#33364a; }
+#mpRq .mp-rqo b{ flex:0 0 20px; color:#6b5bd6; }
+#mpRq .mp-rqo span{ flex:1; }
+#mpRq .mp-rqo.ok{ background:#effaf4; border-color:#c6eedb; color:#14603f; }
+#mpRq .mp-rqo.ok b{ color:#0e8a5f; }
+#mpRq .mp-rqok{ font-size:11px; color:#0e8a5f; font-style:normal; }
+#mpRq .mp-rqans{ margin:16px 0 6px; font-size:13px; color:#4b4f66; }
+#mpRq .mp-rqans b{ color:#6b5bd6; font-size:15px; }
+#mpRq .mp-rqexp{ margin-top:12px; padding:14px 16px; border-radius:12px; background:#faf9fe; border:1px dashed #e6e0fa;
+  font-size:13.5px; line-height:1.85; color:#3c4056; }
+#mpRq .mp-rqexp b{ display:block; margin-bottom:6px; font-size:12px; color:#6b5bd6; }
+#mpRq .mp-rqtags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; }
+#mpRq .mp-rqfoot{ display:flex; align-items:center; gap:8px; margin-top:18px; padding-top:14px; border-top:1px solid #f1eef9; }
+body.dark #mpRq .mp-rqc{ background:#1b2030; }
+body.dark #mpRq .mp-rqstem{ color:#eef0fa; }
+body.dark #mpRq .mp-rqo{ background:#222840; border-color:#2c3350; color:#dde1f2; }
+body.dark #mpRq .mp-rqo.ok{ background:#16302a; border-color:#215544; color:#bfeed9; }
+body.dark #mpRq .mp-rqexp{ background:#1f2536; border-color:#33395a; color:#dfe3f4; }
+body.dark #mpRq .mp-rqfoot{ border-color:#2a3148; }
+
+/* 选中文字浮条 */
+#mpRkTb{ position:fixed; z-index:270; display:none; align-items:center; gap:2px; padding:5px 6px;
+  background:#fff; border:1px solid #e6e3f0; border-radius:10px; box-shadow:0 10px 26px rgba(30,26,60,.18); }
+#mpRkTb.show{ display:flex; }
+#mpRkTb button{ width:28px; height:26px; border:0; background:none; border-radius:7px; cursor:pointer;
+  font-size:13px; color:#3b3752; line-height:1; }
+#mpRkTb button:hover{ background:#f1edff; color:#5b46d8; }
+#mpRkTb .mp-rksep{ width:1px; height:16px; background:#ece9f6; margin:0 3px; }
+body.dark #mpRkTb{ background:#1b2030; border-color:#2a3148; }
+body.dark #mpRkTb button{ color:#dfe1f0; }
+body.dark #mpRkTb button:hover{ background:#2a3148; }
+
+@media (max-width:620px){
+  #mpRq .mp-rqb{ padding:0 10px 18px; }
+  #mpRq .mp-rqc{ padding:18px 16px 16px; border-radius:14px; }
+  #mpRq .mp-rqstem{ font-size:15px; }
+  #mpRq .mp-rqhint{ display:none; }
+  #mpVw .mpvwh .mpvzl{ display:none; }
+  #mpVw .mpvwh a{ display:none; }
+}
+/* web336 补：组按钮上的组名 + 数量；换中心题的 AI 说明行 */
+#mpGroups i.mp-gbn{ font-style:normal; font-size:10px; color:#7a6ba8; background:#f0ecff; border-radius:6px;
+  padding:0 4px; margin-left:2px; }
+body.dark #mpGroups i.mp-gbn{ background:#2a2440; color:#b9aef0; }
+#mpPick .mp-pknote{ margin:0 0 8px; padding:8px 10px; border-radius:9px; background:#f6f3ff; border:1px dashed #ddd3fb;
+  font-size:11.5px; line-height:1.6; color:#6b5fa0; }
+body.dark #mpPick .mp-pknote{ background:#241f38; border-color:#3a3360; color:#b3a8dd; }
+/* web336 补：考点面板右侧拖宽把手 + 组按钮数字 */
+#mpKp .mp-kprz{ position:absolute; left:-3px; top:0; bottom:0; width:9px; cursor:ew-resize; z-index:5;
+  border-radius:5px; }
+#mpKp .mp-kprz::after{ content:''; position:absolute; left:3px; top:50%; width:3px; height:26px; margin-top:-13px;
+  border-radius:2px; background:rgba(124,92,255,.22); }
+#mpKp .mp-kprz:hover::after{ background:rgba(124,92,255,.5); }
