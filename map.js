@@ -3582,9 +3582,17 @@ function bindShell() {
     };
     LAY.name = layName(g.layout || 'tree');
     S.bankId = g.bank; S.qid = g.qid; sel = null;
-    try { relinkTags(bank); } catch (e0) {}
-    try { if (ensureTagNodes(bank)) { try { saveCur(); } catch (eT) {} } } catch (eT2) {}
-    try { if (syncVariants(true)) { try { saveCur(); } catch (e0b) {} } } catch (e0c) {}
+    /* 这三件事都是「补数据」，不需要卡在打开画布之前做：
+       先让画布出来，空闲时再补齐考点/变式，用户看到的就不再是转圈。 */
+    try {
+      var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 60); };
+      idle(function () {
+        try { relinkTags(bank); } catch (e0) {}
+        try { if (ensureTagNodes(bank)) { try { saveCur(); } catch (eT) {} } } catch (eT2) {}
+        try { if (syncVariants(true)) { try { saveCur(); } catch (e0b) {} } } catch (e0c) {}
+        try { render(true); } catch (eR0) {}
+      });
+    } catch (eI0) {}
     var s = $('#mpLayout'); if (s) s.value = LAY.name;
     /* 打开的是路径组：自动把路径模式打开，接着往下一层延伸就行 */
     try {
