@@ -2675,13 +2675,19 @@ function bindShell() {
     }).join('');
     findPopPos(inp);
     pop.classList.add('show');
+    findPopPos(inp);
   }
   /* 搜索框现在排在工具条里，下拉层改成 position:fixed 跟着输入框走（不再被窗口裁掉） */
   function findPopPos(inp) {
     var pop = $('#mpFindPop'); if (!pop || !inp) return;
     var r = inp.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(innerWidth - 328, r.left)) + 'px';
-    pop.style.top = Math.round(r.bottom + 6) + 'px';
+    var w = pop.offsetWidth || 320;
+    var h = pop.offsetHeight || 0;
+    pop.style.left = Math.round(Math.max(8, Math.min(innerWidth - w - 8, r.left))) + 'px';
+    /* 底边留 10px：结果多的时候别顶出窗口（滚不到就白做了） */
+    var top = r.bottom + 6;
+    if (h && top + h > innerHeight - 10) top = Math.max(8, innerHeight - 10 - h);
+    pop.style.top = Math.round(top) + 'px';
   }
   function srPaintHi() {
     var pop = $('#mpFindPop'); if (!pop) return;

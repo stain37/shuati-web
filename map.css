@@ -2019,3 +2019,11 @@ html[data-style="win95"] #mpStage .mp-node > .mp-k { background: var(--mpc, #000
 #mpSide #mpSdEditHost{ margin-top:10px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
 #mpSide #mpSdEditHost:empty{ display:none; }
 #mpSide #mpSdEditHost .fixbox{ border:0; box-shadow:none; background:transparent; padding:0; }
+
+/* web594: 搜索结果面板——底边跟着窗口走，四个分组尽量一屏看全；分组标题吸顶 */
+#mpWrap #mpFindPop{ max-height:min(62vh, 440px); overscroll-behavior:contain; }
+#mpWrap #mpFindPop .fgrp{ position:sticky; top:0; z-index:1; background:var(--card,#fff); backdrop-filter:blur(2px); }
+body.dark #mpWrap #mpFindPop .fgrp{ background:#141a26; }
+html[data-style="win95"] #mpWrap #mpFindPop .fgrp{ background:var(--w95-face,#c0c0c0); }
+/* web594b: 搜索结果要压在所有浮动小窗上面（资料柜、考点面板都可能盖住它） */
+#mpWrap #mpFindPop.show{ z-index:30140 !important; }
