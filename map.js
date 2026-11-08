@@ -3079,6 +3079,11 @@ function bindShell() {
   function probeRun(centerNode) {
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     PROBING = false;
+    /* AI 精搜往图上加题 = 延伸，同样归路径模式 */
+    if (!PATHM.on) {
+      try { pathSet(true); } catch (ePA1) {}
+      toast('AI 精搜加的题属于延伸：已切到路径模式，保存后就成为路径组');
+    }
     try {
       var pb0 = document.getElementById('mpProbeBar');
       if (pb0) setTimeout(function () { try { pb0.remove(); } catch (e9) {} }, 380);
@@ -3448,6 +3453,34 @@ function bindShell() {
     return out;
   }
   var NEED_SAVE = false;
+  /* 一组「普通」的基准：中心题 + 一次相似算法算出来的题/考点。
+     路径模式往上加的题都不进 base，所以随时能退回「只算过一次」的样子。 */
+  function gSnap(g) {
+    if (!g) return;
+    var live = {};
+    DATA.nodes.forEach(function (n) { if (!n.draft) live[n.id] = 1; });
+    g.base = {
+      nodes: DATA.nodes.filter(function (n) { return !n.draft; }).map(serNode),
+      edges: DATA.edges.filter(function (e) { return live[e.a] && live[e.b]; })
+        .map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; })
+    };
+  }
+  /* 从 base 还原成普通组（没有 base 的老组：把带 lv/path 的路径节点摘掉） */
+  function gRestoreBase(g) {
+    if (!g) return false;
+    var bank = null; try { bank = bankById(g.bank); } catch (e0) {}
+    if (g.base && g.base.nodes && g.base.nodes.length) {
+      DATA.nodes = g.base.nodes.map(function (n) { return deNode(n, bank); });
+      DATA.edges = (g.base.edges || []).map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; });
+      return true;
+    }
+    var drop = {};
+    DATA.nodes.forEach(function (n) { if (n.path || (n.lv != null && n.lv > 0)) drop[n.id] = 1; });
+    if (!Object.keys(drop).length) return false;
+    DATA.nodes = DATA.nodes.filter(function (n) { return !drop[n.id]; });
+    DATA.edges = DATA.edges.filter(function (e) { return !drop[e.a] && !drop[e.b]; });
+    return true;
+  }
   function saveCur() {
     var g = gCur(); if (!g) return;
     if (LOADING_G) { NEED_SAVE = true; return; }
@@ -3549,6 +3582,8 @@ function bindShell() {
     var go = function () {
       PATHM.on = false;
       try { writeLS('qbank.map.path.v1', false); } catch (e1) {}
+      /* 普通组就是「只算过一次」的那批题：把路径延伸出来的节点收回去，回到 base */
+      try { gRestoreBase(gCur()); } catch (e2b) {}
       DATA.nodes.forEach(function (n) {
         if (n.path) { try { delete n.path; } catch (e2) {} }
         if (n.lv != null) { try { delete n.lv; } catch (e3) {} }
@@ -3560,7 +3595,7 @@ function bindShell() {
       try { gSaveNow(); } catch (e5b) {}
       try { render(true); } catch (e6) {}
       try { renderGrp(); } catch (e7) {}
-      try { toast('已转成普通组（路径展开的节点都留着）'); } catch (e8) {}
+      try { toast('已退回普通组：只保留第一次相似算法算出来的 ' + DATA.nodes.length + ' 个节点'); } catch (e8) {}
     };
     if (noAsk) { go(); return true; }
     try {
@@ -4094,6 +4129,25 @@ function bindShell() {
     };
     LAY.name = layName(g.layout || 'tree');
     S.bankId = g.bank; S.qid = g.qid; sel = null;
+    /* 老组没有 base：路径组就按「去掉路径延伸节点」推回一次相似的结果；普通组直接记现在的 */
+    try {
+      if (!g.base) {
+        if (g.path) {
+          var _pn = {};
+          DATA.nodes.forEach(function (n) { if (n.path || (n.lv != null && n.lv > 0)) _pn[n.id] = 1; });
+          var _live = {};
+          DATA.nodes.forEach(function (n) { if (!_pn[n.id]) _live[n.id] = 1; });
+          g.base = {
+            nodes: DATA.nodes.filter(function (n) { return _live[n.id]; }).map(serNode),
+            edges: DATA.edges.filter(function (e) { return _live[e.a] && _live[e.b]; })
+              .map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; })
+          };
+        } else {
+          gSnap(g);
+        }
+        try { gSave(); } catch (eB1) {}
+      }
+    } catch (eB2) {}
     /* 这三件事都是「补数据」，不需要卡在打开画布之前做：
        先让画布出来，空闲时再补齐考点/变式，用户看到的就不再是转圈。 */
     try {
@@ -4131,6 +4185,7 @@ function bindShell() {
     var g = { id: gNewId(), name: name, star: false, bank: bank, qid: qid, layout: layout || 'grid', nodes: nodes, edges: edges };
     G.list.unshift(g); G.active = g.id; gSave();
     loadGroup(g); renderGrp();
+    try { if (!g.base) { gSnap(g); gSave(); } } catch (eB0) {}
     return g;
   }
   /* 以「任意一道题」为中心重新建一张图（变式题也行），存成一个新组 */
@@ -4161,6 +4216,8 @@ function bindShell() {
       bank: bank.id, qid: isVar ? '' : q0.id, layout: LAY.name, path: 0,
       nodes: DATA.nodes.map(serNode),
       edges: DATA.edges.map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; }) };
+    /* 这几张节点就是「一次相似算法」的结果，存成 base：以后从路径模式退回来就还原它 */
+    g.base = { nodes: g.nodes, edges: g.edges };
     G.list.unshift(g); G.active = g.id; gSave(); renderGrp();
     try { sideClose(); } catch (e4) {}
     var got = Math.max(0, DATA.nodes.filter(function (n) { return n.type === 'sim'; }).length);
@@ -5824,6 +5881,7 @@ function bindShell() {
     /* 相似题自己带的考点也摆上来（build 只摆中心题的） */
     try { ensureTagNodes(bank); } catch (eTN0) {}
     try { rescoreSims(); } catch (eRS0) {}
+    try { gSnap(gCur()); } catch (eBS0) {}
     try {
       if (!DATA.nodes.some(function (n) { return n.type === 'sim'; })) {
         setTimeout(function () { toast('本地没有 ≥75% 的相似题 —— 点中心题下面的 ✨ AI 精搜让它再挑一遍'); }, 500);
@@ -6701,6 +6759,11 @@ function bindShell() {
   /* ===== 现场加题：从题库里挑一道，摆到这张图上（和中心题连一条线） ===== */
   function qAddOpen() {
     var bank = bankById(S.bankId); if (!bank) { toast('题库没打开'); return; }
+    /* 普通组 = 只跑一遍相似算法的结果，不由人手塞题：加题属于延伸，自动进路径模式 */
+    if (!PATHM.on) {
+      try { pathSet(true); } catch (ePA0) {}
+      toast('加题属于延伸：已切到路径模式，保存后就成为路径组');
+    }
     var have = {};
     DATA.nodes.forEach(function (m) { if (m.ref && m.ref.id) have[String(m.ref.id)] = 1; });
 
