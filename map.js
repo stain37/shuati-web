@@ -52,6 +52,23 @@
     var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
     return [q.stem || '', opts.join(' '), q.exp || q.expl || q.analysis || q.explain || ''].join(' ');
   }
+  /* 题干相似度：把题干拆成相邻两字（bigram），算 Dice 系数 2|A∩B|/(|A|+|B|)
+     —— 比「TF-IDF 余弦」稳：不受题干长短影响，也不会因为共享一堆虚词就虚高 */
+  function diceGrams(a, b) {
+    var A = grams(norm(String(a || ''))), B = grams(norm(String(b || '')));
+    var na = 0, nb = 0, inter = 0, k;
+    for (k in A) na += A[k];
+    for (k in B) nb += B[k];
+    if (!na || !nb) return 0;
+    for (k in A) if (B[k]) inter += Math.min(A[k], B[k]);
+    return (2 * inter) / (na + nb);
+  }
+  /* 页面上那个百分比：题干 Dice 占九成多，标签/选项只做微调，保证「数字大 = 题干真的像」 */
+  function stemPct(qa, qb, tj, oj) {
+    var d = diceGrams(qa && qa.stem, qb && qb.stem);
+    var p = d * 0.94 + (tj || 0) * 0.04 + (oj || 0) * 0.02;
+    return Math.round(Math.max(0, Math.min(0.99, p)) * 100);
+  }
   function tagList(q, bankId) {
     var key = (q && q._bank ? q._bank : bankId) + '#' + (q && q.id);
     /* 站里的标签真正存在 qbank.tags.v1，入口是 window.tagsOf(key)；直接读 LS 在不同版本上会读空 */
@@ -125,10 +142,7 @@
     var curG2 = grams(norm(qText(q)), true), curOpt = grams(norm((q.options || []).join(' ')));
     /* 页面上显示的那个百分比只按「题干」算：题干几乎一样的两道题，算出来就是 85–95%，
        不会因为解析长短把百分比稀释掉 */
-    var curStem = grams(norm(String(q.stem || '')));
     var cand = [];
-    var relaxed = [];
-    var needRelax = !!window.__MPRELAX;   /* 只给「变式题找相似题」用：放宽到 55%，还空就取最接近的 3 道 */
     for (i = 0; i < n; i++) {
       if (String(pool[i].id) === String(q.id)) continue;
       var sim = cos(curG, vecs[i]);
@@ -139,20 +153,12 @@
       var sc = sim + 0.35 * tj + 0.12 * oj;
       /* 显示的百分比 = 真实相似度（题干余弦为主，标签/选项各加一点），不是「跟最像的那道比」
          用户要求：低于 75% 的不上图 */
-      var stC = 0;
-      try { stC = cos(curStem, grams(norm(String(pool[i].stem || '')))); } catch (eS) { stC = sim; }
-      var pct = Math.round(Math.max(0, Math.min(0.99, stC + 0.06 * tj)) * 100);
+      var pct = stemPct(q, pool[i], tj, oj);
+      /* 用户定的规矩：没有 75% 就是没有，不为了凑数量硬塞 */
       if (pct >= 75) cand.push({ q: pool[i], sim: sim, score: sc, pct: pct });
-      else if (needRelax) relaxed.push({ q: pool[i], sim: sim, score: sc, pct: pct });
     }
-    cand.sort(function (a, b) { return b.score - a.score; });
     cand.sort(function (a, b) { return b.pct - a.pct; });
     cand = cand.slice(0, 6);
-    if (needRelax && !cand.length && relaxed.length) {
-      /* 变式题的题干是改写过的，题干余弦天然偏低：按综合分取最接近的 3 道，别让画面空着 */
-      relaxed.sort(function (a, b) { return b.score - a.score; });
-      cand = relaxed.slice(0, 3).map(function (x) { x.weak = 1; return x; });
-    }
     var mx = cand.length ? cand[0].score : 1;
 
     var nodes = [{ id: 'c', type: 'center', ref: q, x: 0, y: 0, label: q.stem }];
@@ -4075,6 +4081,7 @@ function bindShell() {
       idle(function () {
         try { relinkTags(bank); } catch (e0) {}
         try { if (ensureTagNodes(bank)) { try { saveCur(); } catch (eT) {} } } catch (eT2) {}
+      try { if (rescoreSims()) { render(true); try { saveCur(); } catch (eR) {} } } catch (eR2) {}
         try { if (syncVariants(true)) { try { saveCur(); } catch (e0b) {} } } catch (e0c) {}
         try { render(true); } catch (eR0) {}
       });
@@ -4137,6 +4144,27 @@ function bindShell() {
     G.list.unshift(g); G.active = g.id; gSave(); renderGrp();
     try { sideClose(); } catch (e4) {}
     toast('已按这道' + (isVar ? '变式题' : '题') + '重新找相似题：' + Math.max(0, DATA.nodes.length - 1) + ' 道过线');
+  }
+  /* 老组里存的百分比是旧算法算出来的，打开时按「题干 Dice」重算一遍；非路径组里低于 75% 的直接摘掉
+     （路径组不动：那是用户一层层走出来的路线，不能因为他改了阈值就把路径剪断） */
+  function rescoreSims() {
+    var c = null;
+    DATA.nodes.forEach(function (n) { if (n.type === 'center' && !c) c = n; });
+    if (!c || !c.ref) return false;
+    var isPathGroup = !!DATA.nodes.some(function (n) { return n.path || (n.lv != null && n.lv > 0); });
+    var changed = false, drop = {};
+    DATA.nodes.forEach(function (n) {
+      if (n.type !== 'sim' || !n.ref) return;
+      if (isPathGroup) return;
+      var p = stemPct(c.ref, n.ref, 0, 0);
+      if (p < 75) { drop[n.id] = 1; changed = true; return; }
+      if (n.score !== p) { n.score = p; changed = true; }
+    });
+    if (Object.keys(drop).length) {
+      DATA.nodes = DATA.nodes.filter(function (n) { return !drop[n.id]; });
+      DATA.edges = DATA.edges.filter(function (e) { return !drop[e.a] && !drop[e.b]; });
+    }
+    return changed;
   }
   function gNewFromCur() {
     if (!DATA.nodes.length) return;
@@ -5773,6 +5801,7 @@ function bindShell() {
     try { syncVariants(true); } catch (eVS) {}
     /* 相似题自己带的考点也摆上来（build 只摆中心题的） */
     try { ensureTagNodes(bank); } catch (eTN0) {}
+    try { rescoreSims(); } catch (eRS0) {}
     var g = gCur();
     if (g && g.auto !== false) { g.name = String(q.stem || '').slice(0, 14); }
     sel = null;
@@ -5856,6 +5885,7 @@ function bindShell() {
     } else {
       DATA = build(bank, q);
       try { ensureTagNodes(bank); } catch (eTN1) {}
+    try { rescoreSims(); } catch (eRS1) {}
       sel = null;
       applyLayout(LAY.name);
       gAddFrom(String(q.stem || '').slice(0, 14), DATA.nodes.map(serNode),
