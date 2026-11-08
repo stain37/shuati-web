@@ -5267,6 +5267,18 @@ function bindShell() {
     }
   }
 
+  /* 标签有、但题找不到时给一句人话（题库可能没加载 / 标签存在别的方案里） */
+  function kpEmptyNote(name) {
+    var banks = 0, tagged = 0;
+    try { banks = (typeof allBanks === 'function') ? allBanks().length : 0; } catch (e0) {}
+    try {
+      var all = readLS('qbank.tags.v1', {}) || {};
+      tagged = Object.keys(all).length;
+    } catch (e1) {}
+    return '「' + esc(name) + '」这个考点下面没找到题（扫了 ' + banks + ' 个题库、' + tagged + ' 条标签记录）。' +
+      '如果考点页里有题，可能是标签存在别的题库方案里，切回去再看。';
+  }
+
   function kpPaint() {
     if (!KP.node) return;
     var all = kpQsOf(kpTagName(KP.node));
@@ -5293,7 +5305,7 @@ function bindShell() {
       return '<div class="mp-kq" data-qid="' + esc(x.id) + '">' +
         '<i>' + (start + i + 1) + '</i><span><b>' + esc(String(x.stem || '').slice(0, 40)) + '</b>' +
         '<em>答案 ' + (ans || '—') + '</em></span></div>';
-    }).join('') : '<div class="mp-kempty">' + (q ? ('没搜到「' + esc(raw) + '」' + (ai ? '' : '，可以试试 ✨')) : '这个考点还没有题') + '</div>';
+    }).join('') : '<div class="mp-kempty">' + (q ? ('没搜到「' + esc(raw) + '」' + (ai ? '' : '，可以试试 ✨')) : kpEmptyNote(kpTagName(KP.node))) + '</div>';
     $('#mpKpPg').textContent = '第 ' + (KP.page + 1) + ' / ' + total + ' 页';
     $('#mpKpPrev').disabled = KP.page <= 0;
     $('#mpKpNext').disabled = (KP.page + 1) >= total;
