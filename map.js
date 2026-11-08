@@ -1705,7 +1705,8 @@ function bindShell() {
       '<button id="mpSdFull" class="mp-sdico mp-sdico2" title="跳到题库里的这道题（真全屏）">⤢</button>' +
       '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button>' +
       '<div class="mp-sdrow2" id="mpSdRow2"><button id="mpSdAi" class="mp-sdbtn" title="生成这道题的解析，写进原解析下面">✨ 解析这道题</button>' +
-      '<button id="mpSdVar" class="mp-sdbtn">✨ 出变式题</button></div></div>' +
+      '<button id="mpSdVar" class="mp-sdbtn">✨ 出变式题</button>' +
+      '<button id="mpSdEdit" class="mp-sdbtn" title="改题干 / 选项 / 答案 / 解析（内置题库改的是本机补丁）">✎ 改这道题</button></div></div>' +
       '<div id="mpSdBody" class="mp-sdbody"></div>';
     (document.getElementById('mpWrap') || document.body).appendChild(s);
     s.querySelector('#mpSdX').onclick = sideClose;
@@ -2084,6 +2085,15 @@ function bindShell() {
       if (savedH > 160) { s.style.height = savedH + 'px'; s.style.maxHeight = 'none'; }
     } catch (e0) {}
     var q = (n.ref && typeof n.ref === 'object') ? n.ref : {};
+    /* 老存档只存了 {id, stem}：点开时按 id 去所有题库里把整道题捞回来（选项/答案/解析都在里面） */
+    if ((n.type === 'sim' || n.type === 'center' || n.type === 'variant') && !n.type.match(/^file$/) &&
+        q && !(Array.isArray(q.options) && q.options.length) && !(Array.isArray(q.opts) && q.opts.length)) {
+      var full = findQAny((n.ref && n.ref.id) || n.refId, n.xbk || (n.ref && n.ref._bank));
+      if (full) {
+        n.ref = full; q = full;
+        if (!n.xbk) n.xbk = full._bank || bankOfQ(full) || null;
+      }
+    }
     var bankId = (n.ref && n.ref._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || '';
     function esc2(x) { return String(x == null ? '' : x).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
     /* 资料节点：抽屉里只给「就地看着 / 新标签打开」 */
@@ -2147,6 +2157,39 @@ function bindShell() {
     var vb2 = s.querySelector('#mpSdVar');
     if (vb2) vb2.onclick = function () { try { openVarPanel(n); } catch (e) {} };
     s.querySelector('#mpSdAi').onclick = function () { try { qAiRun(n); } catch (eQ0) {} };
+    var edBtn = s.querySelector('#mpSdEdit');
+    if (edBtn) {
+      var canEditQ = (n.type === 'sim' || n.type === 'center' || n.type === 'variant');
+      edBtn.style.display = (canEditQ && typeof window.openQEditor === 'function') ? '' : 'none';
+      edBtn.onclick = function () {
+        try {
+          var host = s.querySelector('#mpSdEditHost');
+          if (!host) {
+            host = document.createElement('div');
+            host.id = 'mpSdEditHost';
+            host.className = 'mp-sdedit';
+            s.querySelector('#mpSdBody').appendChild(host);
+          }
+          if (host.dataset.on === '1') { host.innerHTML = ''; host.dataset.on = '0'; return; }
+          var qid0 = (q && q.id != null) ? q.id : n.refId;
+          var bid = (q && q._bank) || n.xbk || (n.ref && n.ref._bank) || bankOfQ(q) || S.bankId;
+          var fk = (typeof window.favKey === 'function') ? window.favKey({ id: bid }, q) : (bid + '#' + qid0);
+          var tgt = { bankId: bid, qid: qid0, title: (q && q._bname) || '', patch: true };
+          host.dataset.dbg = JSON.stringify({ bid: bid, qid: qid0, xbk: n.xbk || null, qb: (q && q._bank) || null });
+          host.dataset.on = '1';
+          window.openQEditor(host, fk, q, tgt, function () {
+            /* 保存后把这张卡的题面换成新的，选项/解析立刻跟着变 */
+            var fresh = findQAny(n.refId || (q && q.id), bid);
+            if (fresh) { n.ref = fresh; n.label = fresh.stem; }
+            host.dataset.on = '0'; host.innerHTML = '';
+            try { sideOpen(n); } catch (eR) {}
+            try { render(true); } catch (eR2) {}
+            toast('改好了，这张卡已经用上新题面');
+          });
+          winFocus('#mpSdEditHost');
+        } catch (eEd) { toast('改题面板没打开：' + eEd.message); }
+      };
+    }
     s.classList.add('show');
     try { winFocus('#mpSide'); } catch (e0) {}
   }
@@ -3140,9 +3183,52 @@ function bindShell() {
   function serNode(n) {
     return { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y,
       refId: (n.type === 'tag' || n.type === 'file') ? null : (n.ref && n.ref.id),
+      xb: n.xbk || (n.ref && n.ref._bank) || null,
       fid: n.fid || null, ext: n.ext || null,
       lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0,
       va: n.variantAi ? 1 : 0, src: n.srcQid || null };
+  }
+  /* 跨题库找题：先按存的题库 id 找，再退回「哪个库有这道题就用哪个库」。
+     老存档没存题库时，题只会退化成 {id, stem} 的空壳（抽屉里就只剩一行题干）。 */
+  /* 这道题到底属于哪个题库：先看引用是否同一个对象，再看 id + 题干是否一致 */
+  function bankOfQ(q) {
+    if (!q) return null;
+    if (q._bank) return q._bank;
+    var banks0 = [];
+    try { banks0 = (typeof allBanks === 'function') ? allBanks() : []; } catch (e0) { banks0 = []; }
+    for (var i = 0; i < banks0.length; i++) {
+      var list = (banks0[i] && banks0[i].questions) || [];
+      for (var k = 0; k < list.length; k++) {
+        if (list[k] === q) return banks0[i].id;
+      }
+    }
+    for (var j = 0; j < banks0.length; j++) {
+      var l2 = (banks0[j] && banks0[j].questions) || [];
+      for (var m = 0; m < l2.length; m++) {
+        if (String(l2[m].id) === String(q.id) && String(l2[m].stem || '') === String(q.stem || '')) return banks0[j].id;
+      }
+    }
+    return null;
+  }
+  function findQAny(refId, bankId) {
+    if (refId == null || refId === '') return null;
+    var banks0 = [];
+    try { banks0 = (typeof allBanks === 'function') ? allBanks() : []; } catch (e0) { banks0 = []; }
+    var order = [];
+    if (bankId) {
+      var b0 = banks0.filter(function (b) { return String(b && b.id) === String(bankId); })[0];
+      if (b0) order.push(b0);
+    }
+    banks0.forEach(function (b) {
+      if (order.indexOf(b) < 0) order.push(b);
+    });
+    for (var i = 0; i < order.length; i++) {
+      var list = (order[i] && order[i].questions) || [];
+      for (var k = 0; k < list.length; k++) {
+        if (String(list[k].id) === String(refId)) return list[k];
+      }
+    }
+    return null;
   }
   function deNode(n, bank) {
     var out = { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y };
@@ -3154,6 +3240,12 @@ function bindShell() {
     else if (n.type === 'file') { out.fid = n.fid || null; out.ext = n.ext || null; out.ref = null; }
     else {
       var q = ((bank && bank.questions) || []).filter(function (x) { return String(x.id) === String(n.refId); })[0];
+      if (!q && n.xb) {
+        var b2 = (typeof bankById === 'function') ? bankById(n.xb) : null;
+        q = ((b2 && b2.questions) || []).filter(function (x) { return String(x.id) === String(n.refId); })[0];
+      }
+      if (!q) q = findQAny(n.refId, n.xb);
+      if (q) out.xbk = n.xb || q._bank || bankOfQ(q) || null;
       out.ref = q || { id: n.refId, stem: n.label };
     }
     return out;
@@ -6402,6 +6494,7 @@ function bindShell() {
     },
     longMs: function () { return LONG_MS; },
     openFor: openFor,
+    nodes: function () { return DATA.nodes.map(function (n) { return { id: n.id, type: n.type, refId: n.refId, xbk: n.xbk || null, label: String(n.label || '').slice(0, 18), opts: (n.ref && n.ref.options || []).length, rid: (n.ref && n.ref.id) || null, rbank: (n.ref && n.ref._bank) || null }; }); },
     groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, n: (g.nodes || []).length }; }) }; },
     newGroup: gNewFromCur,
     state: function () { return { on: S.on, min: S.min, n: DATA.nodes.length, layout: LAY.name, sel: sel, max: isMax() }; }

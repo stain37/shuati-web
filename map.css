@@ -2012,3 +2012,10 @@ html[data-style="win95"] #mpStage .mp-node.file    { --mpc: #a16207; }
 #mpWrap #mpNodes .mp-node > .mp-k { background: var(--mpc, #8b6cf0) !important; color: #fff !important; font-weight: 600; }
 html[data-style="win95"] #mpStage .mp-node > .mp-k { background: var(--mpc, #000080) !important; color: #fff !important; }
 #mpWrap #mpNodes .mp-node.tag > .mp-k { display: none !important; }
+
+/* web568：抽屉里的「✎ 改这道题」面板（复用站里的 openQEditor） */
+#mpSide .mp-sdrow2{ display:flex; gap:8px; flex-wrap:wrap; }
+#mpSide .mp-sdrow2 .mp-sdbtn{ flex:1 1 40%; }
+#mpSide #mpSdEditHost{ margin-top:10px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
+#mpSide #mpSdEditHost:empty{ display:none; }
+#mpSide #mpSdEditHost .fixbox{ border:0; box-shadow:none; background:transparent; padding:0; }
