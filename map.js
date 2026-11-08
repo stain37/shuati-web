@@ -1352,7 +1352,7 @@ function bindShell() {
     DATA.nodes.forEach(function (n) { pos[n.id] = n; });
     /* 连线：量每张卡片的真实宽高，把端点正好落在边框上（不再猜尺寸） */
     var boxOf = {};
-    var HEAVY = (DATA.nodes.length > 28);   /* 大图：动画和光晕都省掉，先保流畅 */
+    var HEAVY = (DATA.nodes.length > 18);   /* 大图：动画和光晕都省掉，先保流畅 */
     nodesEl.querySelectorAll('.mp-node').forEach(function (el, _ni) {
       /* 入场动画：bounce-in + 交错（每个节点只播一次，重绘不闪） */
       try {
@@ -3071,7 +3071,18 @@ function bindShell() {
     if (d && Array.isArray(d.list)) { G.list = d.list; G.active = d.active || (d.list[0] && d.list[0].id) || null; }
     else { G.list = []; G.active = null; }
   }
-  function gSave() { writeLS(G_KEY, { active: G.active, list: G.list }); }
+  /* 存档合并写：一次交互里常常连着调好几次 gSave，每次都把「所有组」序列化进 localStorage
+     是打开卡顿的主因之一 —— 合并到 140ms 一次，关窗/切后台再强制刷一次。 */
+  var GSAVE_T = null;
+  function gSaveNow() {
+    try { clearTimeout(GSAVE_T); GSAVE_T = null; } catch (e0) {}
+    try { writeLS(G_KEY, { active: G.active, list: G.list }); } catch (e1) {}
+  }
+  function gSave() {
+    try { clearTimeout(GSAVE_T); } catch (e0) {}
+    GSAVE_T = setTimeout(gSaveNow, 140);
+  }
+  try { window.addEventListener('pagehide', gSaveNow); document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') gSaveNow(); }); } catch (e2) {}
   function gNewId() { return 'g' + Date.now().toString(36) + Math.floor(Math.random() * 900 + 100); }
   function gCur() { var a = G.active; return G.list.filter(function (x) { return x.id === a; })[0] || null; }
 
@@ -3096,8 +3107,10 @@ function bindShell() {
     }
     return out;
   }
+  var NEED_SAVE = false;
   function saveCur() {
     var g = gCur(); if (!g) return;
+    if (LOADING_G) { NEED_SAVE = true; return; }
     g.bank = S.bankId; g.qid = S.qid; g.layout = LAY.name;
     /* 路径组：开着路径模式、或图里已经有「路径展开」出来的节点（带 lv / path） */
     g.path = (PATHM.on || DATA.nodes.some(function (n) { return !!(n.path || (n.lv != null && n.lv > 0)); })) ? 1 : 0;
@@ -3558,7 +3571,11 @@ function bindShell() {
       });
     });
   }
-  function loadGroup(g) {    var bank = null; try { bank = bankById(g.bank); } catch (e) {}
+  var LOADING_G = false;
+  function loadGroup(g) {
+    LOADING_G = true;
+    setTimeout(function () { LOADING_G = false; if (NEED_SAVE) { NEED_SAVE = false; try { saveCur(); } catch (eNS) {} } }, 0);
+    var bank = null; try { bank = bankById(g.bank); } catch (e) {}
     DATA = {
       nodes: (g.nodes || []).map(function (n) { return deNode(n, bank); }),
       edges: (g.edges || []).map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; })
