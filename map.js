@@ -127,6 +127,8 @@
        不会因为解析长短把百分比稀释掉 */
     var curStem = grams(norm(String(q.stem || '')));
     var cand = [];
+    var relaxed = [];
+    var needRelax = !!window.__MPRELAX;   /* 只给「变式题找相似题」用：放宽到 55%，还空就取最接近的 3 道 */
     for (i = 0; i < n; i++) {
       if (String(pool[i].id) === String(q.id)) continue;
       var sim = cos(curG, vecs[i]);
@@ -141,10 +143,16 @@
       try { stC = cos(curStem, grams(norm(String(pool[i].stem || '')))); } catch (eS) { stC = sim; }
       var pct = Math.round(Math.max(0, Math.min(0.99, stC + 0.06 * tj)) * 100);
       if (pct >= 75) cand.push({ q: pool[i], sim: sim, score: sc, pct: pct });
+      else if (needRelax) relaxed.push({ q: pool[i], sim: sim, score: sc, pct: pct });
     }
     cand.sort(function (a, b) { return b.score - a.score; });
     cand.sort(function (a, b) { return b.pct - a.pct; });
     cand = cand.slice(0, 6);
+    if (needRelax && !cand.length && relaxed.length) {
+      /* 变式题的题干是改写过的，题干余弦天然偏低：按综合分取最接近的 3 道，别让画面空着 */
+      relaxed.sort(function (a, b) { return b.score - a.score; });
+      cand = relaxed.slice(0, 3).map(function (x) { x.weak = 1; return x; });
+    }
     var mx = cand.length ? cand[0].score : 1;
 
     var nodes = [{ id: 'c', type: 'center', ref: q, x: 0, y: 0, label: q.stem }];
@@ -153,7 +161,7 @@
     cand.forEach(function (it, idx) {
       var rel = it.pct / 100;
       var id = 's' + idx;
-      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: it.pct });
+      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: it.pct, weak: it.weak ? 1 : 0 });
       edges.push({ a: 'c', b: id, kind: 'sim', w: rel });
       simQ.push({ id: id, q: it.q });
     });
@@ -1596,7 +1604,7 @@ function bindShell() {
       var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.xbk && String(n.xbk) !== String(S.bankId) ? (n.ai ? '相似题 · 他库 · AI' : '相似题 · 他库') : (n.ai ? '相似题 · AI 精搜' : '相似题'))) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
       var pill = n.type === 'sim' ? (n.score == null
         ? '<span class="mp-pill d">待定</span>'
-        : '<span class="mp-pill">相似 ' + n.score + '%</span>')
+        : (n.weak ? '<span class="mp-pill d">弱相关</span>' : '<span class="mp-pill">相似 ' + n.score + '%</span>'))
         : n.type === 'variant' ? (n.variantAi ? '<span class="mp-pill v">AI</span>' : '')
         : n.type === 'tag' ? '' : n.type === 'file' ? '<span class="mp-pill f">' + esc(String(n.ext || 'file').toUpperCase()) + '</span>' : '<span class="mp-pill c">当前</span>';
       var text = n.type === 'tag' ? esc(n.label) : n.type === 'file'
@@ -1765,6 +1773,7 @@ function bindShell() {
       '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button>' +
       '<div class="mp-sdrow2" id="mpSdRow2"><button id="mpSdAi" class="mp-sdbtn" title="生成这道题的解析，写进原解析下面">✨ 解析这道题</button>' +
       '<button id="mpSdVar" class="mp-sdbtn">✨ 出变式题</button>' +
+      '<button id="mpSdSim" class="mp-sdbtn" title="拿这道题（含变式题）当中心，重新找一遍相似题">🔍 找相似题</button>' +
       '<button id="mpSdEdit" class="mp-sdbtn" title="改题干 / 选项 / 答案 / 解析（内置题库改的是本机补丁）">✎ 改这道题</button></div></div>' +
       '<div id="mpSdBody" class="mp-sdbody"></div>';
     (document.getElementById('mpWrap') || document.body).appendChild(s);
@@ -2180,7 +2189,12 @@ function bindShell() {
     var isVariant = (n.type === 'variant');
     var varBtn = s.querySelector('#mpSdVar');
     if (varBtn) varBtn.style.display = isVariant ? 'none' : '';
-    var r2b = document.getElementById('mpSdRow2'); if (r2b) r2b.style.display = isVariant ? 'none' : '';
+    var r2b = document.getElementById('mpSdRow2'); if (r2b) r2b.style.display = '';
+    if (isVariant) {
+      var sAi0 = s.querySelector('#mpSdAi'); if (sAi0) sAi0.style.display = 'none';
+      var sVar0 = s.querySelector('#mpSdVar'); if (sVar0) sVar0.style.display = 'none';
+      var sSim0 = s.querySelector('#mpSdSim'); if (sSim0) sSim0.style.display = '';
+    }
     s.querySelector('#mpSdAi').style.display = '';
     var sdf2 = s.querySelector('#mpSdFull');
     /* AI 变式题不能当中心题，也就不给「跳到题库这道题」的 ⤢ */
@@ -2215,6 +2229,8 @@ function bindShell() {
     s.querySelector('#mpSdBody').innerHTML = html;
     var vb2 = s.querySelector('#mpSdVar');
     if (vb2) vb2.onclick = function () { try { openVarPanel(n); } catch (e) {} };
+    var sb2 = s.querySelector('#mpSdSim');
+    if (sb2) sb2.onclick = function () { try { simFromNode(n); } catch (e) { try { toast('这道题找不了相似题：' + e.message); } catch (e2) {} } };
     s.querySelector('#mpSdAi').onclick = function () { try { qAiRun(n); } catch (eQ0) {} };
     var edBtn = s.querySelector('#mpSdEdit');
     if (edBtn) {
@@ -2444,8 +2460,37 @@ function bindShell() {
     for (var j = 0; j < hay.length && i < need.length; j++) if (hay.charAt(j) === need.charAt(i)) i++;
     return i >= need.length;
   }
+  var SR_AI_WORDS = [];
+  /* ✨ AI 模糊：让模型把关键词扩成同义说法/常见错别字，再拿这些词去搜（没配模型就退回本地同义词表） */
+  function srAiExpand(kw, done) {
+    kw = String(kw || '').trim();
+    if (!kw) { SR_AI_WORDS = []; if (done) done(); return; }
+    var finish = function (words) {
+      SR_AI_WORDS = (words || []).filter(function (w0) { return w0 && String(w0).length > 0; }).slice(0, 10);
+      if (done) done();
+    };
+    var ready = false; try { ready = !!(typeof aiReady === 'function' && aiReady()); } catch (e0) {}
+    if (!ready || typeof aiChat !== 'function') { finish([]); return; }
+    var ctl = null; try { ctl = { signal: (new AbortController()).signal }; } catch (e1) { ctl = null; }
+    var p = null;
+    try {
+      p = aiChat([
+        { role: 'system', content: '你是医学考试题库的搜索助手。把用户输入的关键词扩展成 4–8 个可能出现在题干或解析里的同义词、简称、常见错别字，只输出一行 JSON：{"words":["…"]}，不要解释。' },
+        { role: 'user', content: kw }
+      ], null, ctl ? ctl.signal : null, { stream: false, temp: 0.2, maxTokens: 260 });
+    } catch (e2) { finish([]); return; }
+    var to = setTimeout(function () { finish([]); }, 15000);
+    Promise.resolve(p).then(function (txt) {
+      clearTimeout(to);
+      var m = String(txt || '').match(/\{[\s\S]*\}/);
+      var words = [];
+      if (m) { try { words = (JSON.parse(m[0]).words || []); } catch (e3) {} }
+      finish(words);
+    }, function () { clearTimeout(to); finish([]); });
+  }
   function srAlts(qq) {
     var out = [qq];
+    if (SR.ai) SR_AI_WORDS.forEach(function (w0) { var w1 = srHay(w0); if (w1 && out.indexOf(w1) < 0) out.push(w1); });
     SR_SYN.forEach(function (p) {
       if (p.indexOf(qq) >= 0 || qq.indexOf(p[0]) >= 0) p.forEach(function (a) { if (out.indexOf(a) < 0) out.push(a); });
     });
@@ -2486,18 +2531,49 @@ function bindShell() {
     return 0;
   }
   function srBody(n) {
-    if (n.type === 'tag' || n.type === 'file') return String(n.label || '');
+    if (n.type === 'file') {
+      var ff = null; try { ff = fById(n.fid); } catch (e0) {}
+      return [String(n.label || ''), ff ? String(ff.name || '') : ''].join(' ');
+    }
+    if (n.type === 'tag') {
+      /* 考点：名称 + 这个考点的「考点小结」（可编辑那块）+ 题库里打这个标签的题的解析 */
+      var bits = [String(n.label || '')];
+      try {
+        var g0 = gCur(), nm = norm(n.label || '');
+        var note = (g0 && g0.m2 && (g0.m2[n.label] || g0.m2[nm])) || (g0 && g0.kp && g0.kp[nm]) || '';
+        if (note) bits.push(String(note));
+      } catch (e1) {}
+      try {
+        var bn = bankById(S.bankId);
+        var qs2 = (bn && bn.questions) || [];
+        var hit = 0;
+        for (var qi = 0; qi < qs2.length && hit < 40; qi++) {
+          var qq2 = qs2[qi];
+          if (!qq2) continue;
+          if (tagList(qq2, bn.id).map(norm).indexOf(norm(n.label || '')) < 0) continue;
+          hit++;
+          bits.push(String(qq2.explain || qq2.exp || ''));
+          if (bits.join(' ').length > 2600) break;
+        }
+      } catch (e2) {}
+      return bits.join(' ').slice(0, 2600);
+    }
+    /* 题目 / 变式题：变式题存的是 {t,o,a,e}，普通题是 {stem,options,explain} */
     var q = (n.ref && typeof n.ref === 'object') ? n.ref : {};
-    var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
-    return [q.stem || n.label || '', opts.join(' '), q.exp || q.expl || q.analysis || q.explain || ''].join(' ').slice(0, 800);
+    var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : (Array.isArray(q.o) ? q.o : []));
+    var stem = q.stem || q.t || n.label || '';
+    var exp = q.explain || q.exp || q.expl || q.analysis || q.e || '';
+    var ans = q.answer || q.a || '';
+    return [stem, opts.join(' '), ans, exp].join(' ').slice(0, 1200);
   }
   function srKindOf(n) {
     if (n.type === 'tag') return 'tag';
     if (n.type === 'file') return 'file';
+    if (n.type === 'variant') return 'variant';
     return 'q';
   }
-  var SR_KIND_NAME = { q: '题目', tag: '考点', note: '笔记', file: '资料' };
-  var SR_ORDER = ['q', 'tag', 'note', 'file'];
+  var SR_KIND_NAME = { q: '相似题', variant: '变式题', tag: '考点', file: '资料', note: '笔记' };
+  var SR_ORDER = ['q', 'variant', 'tag', 'file', 'note'];
   function findRows(q, ai, type) {
     var kw = String(q || '').trim();
     if (!kw) return [];
@@ -2554,10 +2630,16 @@ function bindShell() {
     var sel2 = $('#mpFindType');
     SR.type = sel2 ? sel2.value : 'all';
     if (!String(q || '').trim()) { pop.classList.remove('show'); pop.innerHTML = ''; SR.rows = []; SR.idx = -1; return; }
+    /* ✨ AI 模糊：第一次搜这个词时问模型要同义说法/错别字，回来用这些词再搜一遍 */
+    if (SR.ai && SR.aiKw !== String(q || '').trim()) {
+      SR.aiKw = String(q || '').trim(); SR_AI_WORDS = [];
+      srAiExpand(SR.aiKw, function () { try { findRun(); } catch (eA) {} });
+    }
+    if (!SR.ai) SR.aiKw = '';
     var rows = findRows(q, SR.ai, SR.type);
     if (!rows.length) {
       SR.rows = []; SR.idx = -1;
-      pop.innerHTML = '<div class="fgrp">没有匹配' + (SR.ai ? '' : '，试试点 ✨ 开 AI 模糊') + '</div>';
+      pop.innerHTML = '<div class="fgrp">没有匹配' + (SR.ai ? '（AI 扩展：' + (SR_AI_WORDS.join(' / ') || '无') + '）' : '，试试点 ✨ 开 AI 模糊') + '</div>';
       findPopPos(inp);
       pop.classList.add('show');
       return;
@@ -2565,12 +2647,21 @@ function bindShell() {
     var groups = {}, order = [];
     rows.forEach(function (r) { if (!groups[r.k]) { groups[r.k] = []; order.push(r.k); } groups[r.k].push(r); });
     order.sort(function (a, b) { return SR_ORDER.indexOf(a) - SR_ORDER.indexOf(b); });
+    /* 每个分组先给 8 条，剩下的报个数，别一屏糊死 */
+    var moreK = {};
+    order.forEach(function (k) {
+      moreK[k] = Math.max(0, groups[k].length - 8);
+      if (groups[k].length > 8) groups[k] = groups[k].slice(0, 8);
+    });
     /* 按分组后的视觉顺序重排，键盘上下选才跟眼前一致 */
     var flat = [];
     order.forEach(function (k) { flat = flat.concat(groups[k]); });
     SR.rows = flat; SR.idx = 0;
-    pop.innerHTML = order.map(function (k) {
-      return '<div class="fgrp">' + SR_KIND_NAME[k] + ' · ' + groups[k].length + '</div>' + groups[k].map(function (r) {
+    var aiHead = (SR.ai && SR_AI_WORDS.length)
+      ? '<div class="fgrp fai">✨ AI 扩展：' + esc(SR_AI_WORDS.join(' / ')) + '</div>'
+      : (SR.ai ? '<div class="fgrp fai">✨ AI 模糊：已开（模型没配或没回话，先用本地同义词）</div>' : '');
+    pop.innerHTML = aiHead + order.map(function (k) {
+      return '<div class="fgrp">' + SR_KIND_NAME[k] + ' · ' + groups[k].length + (moreK[k] ? '（还有 ' + moreK[k] + ' 条）' : '') + '</div>' + groups[k].map(function (r) {
         var i = flat.indexOf(r);
         return '<div class="frow' + (i === SR.idx ? ' on' : '') + '" data-i="' + i + '">' +
           '<i class="fk">' + SR_KIND_NAME[r.k] + '</i>' + srHi(r.text, q, SR.ai) + '</div>';
@@ -4014,6 +4105,38 @@ function bindShell() {
     G.list.unshift(g); G.active = g.id; gSave();
     loadGroup(g); renderGrp();
     return g;
+  }
+  /* 以「任意一道题」为中心重新建一张图（变式题也行），存成一个新组 */
+  function simFromNode(n) {
+    if (!n) return;
+    var base = (n.ref && typeof n.ref === 'object') ? n.ref : {};
+    var isVar = (n.type === 'variant');
+    var q0 = isVar ? {
+      id: 'v:' + (n.srcQid || '') + ':' + String(n.label || '').slice(0, 12),
+      stem: base.t || base.stem || n.label || '',
+      options: base.o || base.options || [],
+      answer: base.a || base.answer || '',
+      explain: base.e || base.explain || '',
+      _bank: S.bankId
+    } : base;
+    if (!q0 || !q0.stem) { toast('这道题没有题干，找不了相似题'); return; }
+    var bank = bankById(q0._bank || S.bankId) || bankById(S.bankId);
+    if (!bank) { toast('先打开一个题库'); return; }
+    try { saveCur(); } catch (e0) {}
+    window.__MPRELAX = 1;
+    try { DATA = build(bank, q0); } finally { window.__MPRELAX = 0; }
+    try { if (syncVariants(true)) { /* 补上变式 */ } } catch (e1) {}
+    try { ensureTagNodes(bank); } catch (e2) {}
+    LAY.name = layName(LAY.name); sel = null;
+    applyLayout(LAY.name);
+    try { fit(); } catch (e3) {}
+    var g = { id: gNewId(), name: String(q0.stem || '新组').replace(/\s+/g, ' ').slice(0, 14), star: false,
+      bank: bank.id, qid: isVar ? '' : q0.id, layout: LAY.name, path: 0,
+      nodes: DATA.nodes.map(serNode),
+      edges: DATA.edges.map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; }) };
+    G.list.unshift(g); G.active = g.id; gSave(); renderGrp();
+    try { sideClose(); } catch (e4) {}
+    toast('已按这道' + (isVar ? '变式题' : '题') + '重新找相似题：' + Math.max(0, DATA.nodes.length - 1) + ' 道过线');
   }
   function gNewFromCur() {
     if (!DATA.nodes.length) return;
