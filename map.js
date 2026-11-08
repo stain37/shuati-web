@@ -4143,7 +4143,9 @@ function bindShell() {
       edges: DATA.edges.map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; }) };
     G.list.unshift(g); G.active = g.id; gSave(); renderGrp();
     try { sideClose(); } catch (e4) {}
-    toast('已按这道' + (isVar ? '变式题' : '题') + '重新找相似题：' + Math.max(0, DATA.nodes.length - 1) + ' 道过线');
+    var got = Math.max(0, DATA.nodes.filter(function (n) { return n.type === 'sim'; }).length);
+    if (!got) toast('本地没有 ≥75% 的相似题（题干对不上就是不硬凑）—— 试试 ✨ AI 精搜');
+    else toast('已按这道' + (isVar ? '变式题' : '题') + '重新找相似题：' + got + ' 道过线');
   }
   /* 老组里存的百分比是旧算法算出来的，打开时按「题干 Dice」重算一遍；非路径组里低于 75% 的直接摘掉
      （路径组不动：那是用户一层层走出来的路线，不能因为他改了阈值就把路径剪断） */
@@ -5802,6 +5804,11 @@ function bindShell() {
     /* 相似题自己带的考点也摆上来（build 只摆中心题的） */
     try { ensureTagNodes(bank); } catch (eTN0) {}
     try { rescoreSims(); } catch (eRS0) {}
+    try {
+      if (!DATA.nodes.some(function (n) { return n.type === 'sim'; })) {
+        setTimeout(function () { toast('本地没有 ≥75% 的相似题 —— 点中心题下面的 ✨ AI 精搜让它再挑一遍'); }, 500);
+      }
+    } catch (eNS0) {}
     var g = gCur();
     if (g && g.auto !== false) { g.name = String(q.stem || '').slice(0, 14); }
     sel = null;
