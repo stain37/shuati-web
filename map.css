@@ -516,7 +516,7 @@ body.dark #mpSlash button{color:#dfe1f0}
 body.dark #mpFil{color:#b9bcd0}
 #mpWrap.nf-sim .mp-node.sim{display:none}
 #mpWrap.nf-tag .mp-node.tag{display:none}
-#mpWrap.nf-var .mp-node.var{display:none}
+#mpWrap.nf-var .mp-node.variant,#mpWrap.nf-var .mp-node.var{display:none}
 /* ---- 组面板拖动/改名 ---- */
 #mpGList [data-g].drag{opacity:.5}
 #mpGList [data-g].over{box-shadow:inset 0 -2px 0 #7c5cff}
@@ -829,3 +829,18 @@ body.dark #mpPick .mp-pknote{ background:#241f38; border-color:#3a3360; color:#b
 #mpKp .mp-kprz::after{ content:''; position:absolute; left:3px; top:50%; width:3px; height:26px; margin-top:-13px;
   border-radius:2px; background:rgba(124,92,255,.22); }
 #mpKp .mp-kprz:hover::after{ background:rgba(124,92,255,.5); }
+
+/* web338 补：考点总结的保存状态 + AI 分析弹窗的知识库 / 上传 / 状态行（照样板 kpStat / aimKb / aimUp / aimNote） */
+#mpKp .mp-kstat{ margin-left:8px; font-size:10.5px; font-weight:400; color:#8a90a3; }
+#mpAi .mp-aikb{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 10px; }
+#mpAi .mp-aik{ display:inline-flex; align-items:center; gap:4px; padding:4px 9px; border-radius:999px;
+  border:1px solid #e3e6f0; background:#f7f8fc; font-size:11.5px; color:#5a6072; cursor:pointer;
+  user-select:none; }
+#mpAi .mp-aik.on{ border-color:#bfb2f5; background:#efe9ff; color:#5b46d8; }
+#mpAi .mp-aiup{ display:inline-block; margin-top:8px; padding:5px 10px; border-radius:8px;
+  border:1px dashed #cfd6e6; background:#fafbff; font-size:11.5px; color:#5b6377; cursor:pointer; }
+#mpAi .mp-aiup:hover{ border-color:#bfb2f5; color:#5b46d8; }
+#mpAi .mp-ainote{ min-height:16px; margin-top:8px; font-size:11px; color:#8a90a3; }
+body.dark #mpAi .mp-aik{ border-color:#343b52; background:#252b3d; color:#c2c8d8; }
+body.dark #mpAi .mp-aik.on{ border-color:#5b46d8; background:#302a52; color:#cfc6ff; }
+body.dark #mpAi .mp-aiup{ border-color:#3a4258; background:#252b3d; color:#c2c8d8; }

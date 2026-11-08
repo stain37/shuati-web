@@ -418,8 +418,23 @@
     window.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !S.on) return;
       e.preventDefault(); e.stopPropagation();
+      var pop = document.getElementById('mpFindPop');
+      if (pop && pop.classList.contains('show')) {          /* 先关搜索下拉，别一路把关窗口也走掉 */
+        pop.classList.remove('show');
+        var fq = document.getElementById('mpFindQ');
+        if (fq && document.activeElement === fq) fq.blur();
+        return;
+      }
       var sd = document.getElementById('mpSide');
       if (sd && sd.classList.contains('show')) { sideClose(); return; }
+      var pk = document.getElementById('mpPick');
+      if (pk && pk.classList.contains('show')) { pickClose(); return; }
+      var aim = document.getElementById('mpAi');
+      if (aim && aim.classList.contains('show')) { aim.classList.remove('show'); return; }
+      var agm = document.getElementById('mpAg');
+      if (agm && agm.classList.contains('show')) { agClose(); return; }
+      var ned = document.getElementById('mpNoteEd');
+      if (ned && ned.classList.contains('show')) { closeNoteEd(); return; }
       var rq = document.getElementById('mpRq');
       if (rq && rq.classList.contains('show')) { rqClose(); return; }
       var tb = document.getElementById('mpRkTb');
@@ -1454,6 +1469,8 @@
           try { writeLS('qbank.mapfil.v1', FIL); } catch (err) {}
           applyFil(); render();
         });
+        /* 建段时先按已存的过滤状态勾好，别出现「画面没有变式、勾选框却是空的」 */
+        try { applyFil(); } catch (err) {}
       }
       nb.onclick = function (e) { e.stopPropagation(); addNote(); };
     }
@@ -2099,7 +2116,7 @@
         '<div class="mp-kpp"><button type="button" class="mp-kbtn" id="mpKpPrev">‹</button>' +
         '<span id="mpKpPg">第 1 / 1 页</span>' +
         '<button type="button" class="mp-kbtn" id="mpKpNext">›</button></div>' +
-        '<div class="mp-kpsub">考点总结（Markdown，边写边渲染）</div>' +
+        '<div class="mp-kpsub">考点总结（Markdown，边写边渲染）<span class="mp-kstat" id="mpKpStat">所见即所得 · 选中文字出工具条 · 行首打 / 换块</span></div>' +
         '<div class="mp-rtew"><div class="mp-rtebar" id="mpRteBar">' +
           '<button type="button" data-cmd="bold" title="加粗"><b>B</b></button>' +
           '<button type="button" data-cmd="italic" title="斜体"><i>I</i></button>' +
@@ -2155,12 +2172,19 @@
       });
     })();
     var ta = $('#mpKpMd');
+    var kpT = 0;
+    var kpStatus = function (t) { var e0 = document.getElementById('mpKpStat'); if (e0) e0.textContent = t; };
     ta.addEventListener('input', function () {
       var g = gCur(); if (!g) return;
       var m = kpMd(); m[kpTagName(KP.node)] = rteMd();
-      try { if (typeof saveCur === 'function') saveCur(); } catch (e) {}
       $('#mpKpPrev2').innerHTML = md2h(rteMd());
       rteSlashCheck();
+      kpStatus('未保存…');
+      clearTimeout(kpT);
+      kpT = setTimeout(function () {
+        try { if (typeof saveCur === 'function') saveCur(); } catch (e) {}
+        kpStatus('已保存');
+      }, 600);
     });
     ta.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { rteSlashHide(); }
@@ -2401,8 +2425,13 @@
         '<div class="mp-aic">' +
           '<div class="mp-ais">提示词（想让 AI 怎么总结）</div>' +
           '<textarea id="mpAiP" class="mp-ait">把这几道题的共同考点、问法变化、最容易错的地方整理成复习提纲，300 字以内。</textarea>' +
+          '<div class="mp-ais">参考哪些知识库</div>' +
+          '<div id="mpAiKb" class="mp-aikb"></div>' +
           '<div class="mp-ais">参考哪些资料（可勾选，也可多选）</div>' +
           '<div id="mpAiFiles" class="mp-aif"></div>' +
+          '<label class="mp-aiup" for="mpAiUp">＋ 上传资料</label>' +
+          '<input type="file" id="mpAiUp" multiple hidden>' +
+          '<div class="mp-ainote"><span id="mpAiNote"></span></div>' +
         '</div>' +
         '<div class="mp-aif2"><button type="button" class="mp-kbtn" data-close="1">取消</button>' +
         '<button type="button" class="mp-kbtn pri" id="mpAiGo">开始分析</button></div>' +
@@ -2412,26 +2441,81 @@
       if (e.target === d || e.target.closest('[data-close]')) d.classList.remove('show');
     });
     d.querySelector('#mpAiGo').addEventListener('click', kpAiRun);
+    d.querySelector('#mpAiUp').addEventListener('change', function () {
+      var fs = [].slice.call(this.files || []); this.value = '';
+      if (!fs.length) return;
+      fs.forEach(addFile);
+      aiNote('已把 ' + fs.length + ' 份资料放进资料柜…');
+      setTimeout(function () { kpAiFilesPaint(); aiNote(''); }, 700);
+    });
   }
-  function kpAiOpen() {
-    kpAiEnsure();
-    var d = document.getElementById('mpAi');
-    var box = document.getElementById('mpAiFiles');
+  /* 参考知识库（读 kb.js 存在 localStorage 里的目录，勾选只记在内存里，不动知识库本身的选择） */
+  var AIKB = null;
+  var AI_TAG = null;
+  function kpKbList() {
+    var l = [];
+    try { l = readLS('qbank.kb.list.v1', []) || []; } catch (e) { l = []; }
+    return Array.isArray(l) ? l.filter(function (k) { return k && k.name; }) : [];
+  }
+  function aiKbSel() {
+    if (AIKB) return AIKB;
+    var ids = null;
+    try { ids = readLS('qbank.kb.sel.v1', null); } catch (e) { ids = null; }
+    AIKB = {};
+    kpKbList().forEach(function (k) { AIKB[k.id || k.name] = !ids || ids.indexOf(k.id) >= 0; });
+    return AIKB;
+  }
+  function aiNote(t) { var n = document.getElementById('mpAiNote'); if (n) n.textContent = t || ''; }
+  function kpAiKbPaint() {
+    var box = document.getElementById('mpAiKb'); if (!box) return;
+    var list = kpKbList(), sel = aiKbSel();
+    box.innerHTML = list.length ? list.map(function (k) {
+      var key = k.id || k.name, on = !!sel[key];
+      return '<span class="mp-aik' + (on ? ' on' : '') + '" data-k="' + esc(key) + '" title="' + esc(k.name) + '">📚 ' + esc(String(k.name).slice(0, 14)) + '</span>';
+    }).join('') : '<i class="mp-kpa0">还没有知识库，先去「知识库」页加一点资料</i>';
+  }
+  function kpAiFilesPaint() {
+    var box = document.getElementById('mpAiFiles'); if (!box) return;
     box.innerHTML = FILES.length ? FILES.map(function (f) {
       return '<label class="mp-aiff"><input type="checkbox" value="' + f.id + '"> <i class="mp-kati">' + fIcon(f) + '</i>' +
         esc(String(f.name).slice(0, 16)) + '</label>';
     }).join('') : '<i class="mp-kpa0">资料柜是空的，先放点资料进来（不勾也能分析）</i>';
+  }
+  function kpAiOpen() {
+    kpAiEnsure();
+    if (KP.node) AI_TAG = kpTagName(KP.node);
+    var d = document.getElementById('mpAi');
+    kpAiFilesPaint();
+    kpAiKbPaint();
+    aiNote('');
+    var kb = document.getElementById('mpAiKb');
+    if (kb && !kb.__bound) {
+      kb.__bound = 1;
+      kb.addEventListener('click', function (e) {
+        var c = e.target.closest('.mp-aik'); if (!c) return;
+        var sel = aiKbSel(), k = c.dataset.k;
+        sel[k] = !sel[k];
+        c.classList.toggle('on', !!sel[k]);
+      });
+    }
     d.classList.add('show');
   }
   function kpAiRun() {
     var fb = kpFilesBox(); if (!fb) return;
-    if (!KP.node) { toast('先点一个考点'); return; }
+    /* 弹窗开着的时候考点面板可能已经被关掉（kpClose 会把 KP.node 置空），
+       所以开弹窗时就把考点名记下来，分析照样能跑 */
+    var name = KP.node ? kpTagName(KP.node) : (AI_TAG || '');
+    if (!name) { toast('先点一个考点'); return; }
     var rows = (KP.rows && KP.rows.length ? KP.rows : []).slice(0, 8);
-    var name = kpTagName(KP.node);
     var pick = [].slice.call(document.querySelectorAll('#mpAiFiles input:checked')).map(function (x) { return fById(x.value); }).filter(Boolean);
+    var ksel = aiKbSel();
+    var kbs = kpKbList().filter(function (k) { return ksel[k.id || k.name]; }).map(function (k) { return String(k.name).slice(0, 20); });
     var L = [];
     L.push('# ' + name);
-    L.push('> 由本地规则依据 ' + rows.length + ' 道同考点题整理' + (pick.length ? ('，参考资料：' + pick.map(function (f) { return f.name; }).join('、')) : '') + '（接 AI 后换成模型总结）');
+    L.push('> 由本地规则依据 ' + rows.length + ' 道同考点题整理' +
+      (pick.length ? ('，参考资料：' + pick.map(function (f) { return f.name; }).join('、')) : '') +
+      (kbs.length ? ('，参考知识库：' + kbs.slice(0, 3).join('、') + (kbs.length > 3 ? (' 等 ' + kbs.length + ' 个') : '')) : '') +
+      '（接 AI 后换成模型总结）');
     L.push('');
     L.push('## 一句话');
     var ans = rows[0] && answerText(rows[0]);
@@ -2480,8 +2564,11 @@
     var q = $('#mpKpQ'); if (q) q.value = '';
     var qa = $('#mpKpQai'); if (qa) qa.classList.remove('on');
     var m = kpMd()[kpTagName(n)] || '';
-    $('#mpKpMd').value = m;
-    $('#mpKpPrev2').innerHTML = md2h(m);
+    /* contenteditable 不能用 .value 赋值（web337 的 bug：重开考点编辑器是空的，一打字就把旧内容冲掉） */
+    if (typeof rteSet === 'function') rteSet(m);
+    else { var ed0 = $('#mpKpMd'); if (ed0) ed0.innerHTML = md2h(m); $('#mpKpPrev2').innerHTML = md2h(m); }
+    var st0 = document.getElementById('mpKpStat');
+    if (st0) st0.textContent = m ? '已保存' : '所见即所得 · 选中文字出工具条 · 行首打 / 换块';
     kpPaint();
   }
 
