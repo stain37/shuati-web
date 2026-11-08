@@ -3601,6 +3601,29 @@ function bindShell() {
     return changed;
   }
 
+  /* 在别的页面（答题页的「AI 变式题」）新生成的变式，回到脑图时要能自动冒出来：
+     窗口重新获得焦点 / 从后台回来时对一次，3 秒内不重复跑 */
+  var VAR_SYNC_T = 0;
+  function varSyncLazy() {
+    if (!S.on) return;
+    if (Date.now() - VAR_SYNC_T < 3000) return;
+    VAR_SYNC_T = Date.now();
+    setTimeout(function () {
+      try {
+        if (syncVariants(true)) {
+          try { applyLayout(LAY.name); } catch (e0) { render(true); }
+          try { saveCur(); } catch (e1) {}
+        }
+      } catch (e2) {}
+    }, 120);
+  }
+  try { window.addEventListener('focus', varSyncLazy); } catch (eV0) {}
+  try {
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) varSyncLazy();
+    });
+  } catch (eV1) {}
+
   /* 老存档里可能只有题、没有考点节点：按题目现在的小标签把考点补齐（不重复建） */
   function ensureTagNodes(bank) {
     var added = 0;
