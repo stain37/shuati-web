@@ -3874,6 +3874,9 @@ function bindShell() {
           '<span class="muted2">' + gCount(g) + '</span></div>' +
         '<button class="gmore" data-more="' + g.id + '" title="更多">⋯</button></div>';
     }).join('');
+    /* 重画列表时把滚动位置留住：滚到下面点一条，重画后跳回顶部，
+       高亮那条会「跑到上面去」，看起来就像点错了行。 */
+    var __sc0 = 0; try { __sc0 = $('#mpGList').scrollTop || 0; } catch (eSc) {}
     $('#mpGList').innerHTML = rows || (q || kind !== 'all' ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组<button type="button" class="mp-kbtn" id="mpGClear" style="margin-left:8px">清空筛选</button></div>'
       : '<div class="mp-agrow" style="color:#8a86a0">还没有组，点「＋」用当前题建一组</div>');
     (function () {
@@ -3885,6 +3888,7 @@ function bindShell() {
         renderGrp();
       };
     })();
+    try { if (__sc0) $('#mpGList').scrollTop = __sc0; } catch (eSc2) {}
     var __sig = hitList.map(function (g) { return g.id; }).join('|') + '#' + (GSELMODE ? 1 : 0) + '#' + hitList.length;
     var __anim = (window.__grpSig !== __sig);
     window.__grpSig = __sig;
@@ -4073,7 +4077,9 @@ function bindShell() {
       if (GSELMODE) return;  /* 多选时上下键只挪高亮，别切组 */
       rows[nx].click();      /* 走和鼠标点行完全相同的那条路 */
     });
+    var dgGuard = 0;   /* 刚拖动排序过：这一次 click 是「拖完松手」带的，不能当成点行 */
     if (list) list.onclick = function (e) {
+      if (Date.now() < dgGuard) { dgGuard = 0; return; }
       var st = e.target.closest('[data-star]');
       if (st) { e.stopPropagation(); gStar(st.getAttribute('data-star')); return; }
       var mo = e.target.closest('[data-more]');
@@ -4113,7 +4119,7 @@ function bindShell() {
       });
       list.addEventListener('pointermove', function (e) {
         if (!dg) return;
-        if (!dg.on && Math.abs(e.clientY - dg.y) < 5) return;
+        if (!dg.on && Math.abs(e.clientY - dg.y) < 9) return;
         if (!dg.on) { dg.on = true; dg.row.classList.add('drag'); }
         var rows = [].slice.call(list.querySelectorAll('[data-g]'));
         var tgt = rows.filter(function (r) { return e.clientY > r.getBoundingClientRect().top + r.offsetHeight / 2; }).pop();
@@ -4135,6 +4141,9 @@ function bindShell() {
         G.list.forEach(function (g, i) { g.ord = i; });
         try { gSave(); } catch (err) {}
         renderGrp();
+        /* 重排后 DOM 换了一批节点，松手时浏览器补发的 click 会落到「换到这儿的那一行」上，
+           看起来就像「点下面切到上面」。给这次 click 打个短暂屏蔽。 */
+        dgGuard = Date.now() + 350;
       });
     }
     var menu = $('#mpGMenu');
