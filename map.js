@@ -1507,6 +1507,7 @@ function bindShell() {
         '<i class="mp-k">' + head + '</i><div class="mp-t">' + text + '</div>' + pill + '</div>';
     }).join('');
 
+    try { filNote(); } catch (eFN3) {}
     nodesEl.querySelectorAll('.mp-node').forEach(function (el) {
       el.addEventListener('dblclick', function (e) {
         if (e.target.closest('.mp-probe')) return;
@@ -3378,6 +3379,31 @@ function bindShell() {
     return changed;
   }
 
+  /* 老存档里可能只有题、没有考点节点：按题目现在的小标签把考点补齐（不重复建） */
+  function ensureTagNodes(bank) {
+    var added = 0;
+    var qs = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center' || n.type === 'variant'; });
+    qs.forEach(function (n) {
+      if (!n.ref || n.type === 'variant') return;
+      var tags = [];
+      try { tags = kpTags(n.ref).slice(0, 4); } catch (e0) { return; }
+      tags.forEach(function (t) {
+        var nrm = norm(t);
+        var tn = DATA.nodes.filter(function (m) { return m.type === 'tag' && norm(m.label) === nrm; })[0];
+        if (!tn) {
+          tn = { id: 't_' + nrm.slice(0, 12) + '_' + Math.floor(Math.random() * 999), type: 'tag', ref: t, label: t, x: n.x + 180, y: n.y + 80 };
+          DATA.nodes.push(tn);
+          added++;
+        }
+        var dup = DATA.edges.some(function (e) {
+          return (e.a === n.id && e.b === tn.id) || (e.a === tn.id && e.b === n.id);
+        });
+        if (!dup) { DATA.edges.push({ a: n.id, b: tn.id, kind: 'tag', w: 0.42 }); added++; }
+      });
+    });
+    return added;
+  }
+
   function relinkTags(bank) {
     if (!bank || !DATA || !DATA.nodes || !DATA.nodes.length) return;
     var tags = DATA.nodes.filter(function (n) { return n.type === 'tag' && n.label; });
@@ -3407,6 +3433,7 @@ function bindShell() {
     LAY.name = layName(g.layout || 'tree');
     S.bankId = g.bank; S.qid = g.qid; sel = null;
     try { relinkTags(bank); } catch (e0) {}
+    try { if (ensureTagNodes(bank)) { try { saveCur(); } catch (eT) {} } } catch (eT2) {}
     try { if (syncVariants(true)) { try { saveCur(); } catch (e0b) {} } } catch (e0c) {}
     var s = $('#mpLayout'); if (s) s.value = LAY.name;
     /* 打开的是路径组：自动把路径模式打开，接着往下一层延伸就行 */
@@ -4179,8 +4206,37 @@ function bindShell() {
     try { var s = readLS('qbank.mapfil.v1', null); if (s) { d.sim = s.sim ? 1 : 0; d.tag = s.tag ? 1 : 0; d.var = s.var ? 1 : 0; } } catch (e) {}
     return d;
   })();
+  /* 过滤掉节点后，画布左下角留一句提示 + 一键全显示，免得「我明明有考点却不显示」 */
+  function filNote() {
+    var w = document.getElementById('mpWrap'); if (!w) return;
+    var box = document.getElementById('mpFilNote');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'mpFilNote';
+      box.hidden = true;
+      box.onclick = function () {
+        FIL.sim = 1; FIL.tag = 1; FIL.var = 1;
+        try { writeLS('qbank.mapfil.v1', FIL); } catch (e0) {}
+        try {
+          var boxes = document.querySelectorAll('#mpTools input[type=checkbox][data-f]');
+          for (var i = 0; i < boxes.length; i++) boxes[i].checked = true;
+        } catch (e1) {}
+        applyFil(); render(true);
+      };
+      (w || document.body).appendChild(box);
+    }
+    var hidden = [];
+    if (!FIL.tag) { var nt = DATA.nodes.filter(function (n) { return n.type === 'tag'; }).length; if (nt) hidden.push('考点 ' + nt); }
+    if (!FIL.sim) { var ns = DATA.nodes.filter(function (n) { return n.type === 'sim'; }).length; if (ns) hidden.push('相似题 ' + ns); }
+    if (!FIL.var) { var nv = DATA.nodes.filter(function (n) { return n.type === 'variant'; }).length; if (nv) hidden.push('变式 ' + nv); }
+    if (!hidden.length) { box.hidden = true; return; }
+    box.textContent = '已隐藏：' + hidden.join(' · ') + '（点这里全部显示）';
+    box.hidden = false;
+  }
+
   function applyFil() {
     var w = $('#mpWrap'); if (!w) return;
+    try { filNote(); } catch (eFN) {}
     w.classList.toggle('nf-sim', !FIL.sim);
     w.classList.toggle('nf-tag', !FIL.tag);
     w.classList.toggle('nf-var', !FIL.var);

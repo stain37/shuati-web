@@ -1872,3 +1872,8 @@ body.dark #mpQAdd .qaq{ background:#10151f; border-color:#2a3148; color:#e7e5f2;
 /* ===== web540：变式节点的小徽标 ===== */
 #mpNodes .mp-node.variant .mp-pill.v{ background:rgba(124,108,240,.16); color:#5b46d6; }
 body.dark #mpNodes .mp-node.variant .mp-pill.v{ background:rgba(159,143,255,.22); color:#cfc4ff; }
+/* ===== web542：过滤提示胶囊 ===== */
+#mpFilNote{ position:absolute; left:14px; bottom:44px; z-index:30025; padding:6px 12px; border-radius:999px;
+  background:rgba(232,168,60,.16); border:1px solid rgba(232,168,60,.55); color:#8a5a00; font-size:12px; cursor:pointer; }
+body.dark #mpFilNote{ background:rgba(232,168,60,.18); color:#ffd28a; border-color:rgba(232,168,60,.5); }
+#mpFilNote:hover{ background:rgba(232,168,60,.28); }
