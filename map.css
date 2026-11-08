@@ -1882,3 +1882,9 @@ body.dark #mpFilNote{ background:rgba(232,168,60,.18); color:#ffd28a; border-col
 #mpWrap.heavy .mp-node .mp-pill{ box-shadow:none !important; }
 #mpWrap.heavy #mpGlowG{ display:none !important; }
 #mpWrap.heavy .mp-node.in{ animation:none !important; }
+
+/* ===== web553：AI 精搜节点上显示「为什么像」 ===== */
+#mpNodes .mp-node .mp-why{ margin:2px 0 0; font-size:11px; line-height:1.35; color:#7a6bd6;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+body.dark #mpNodes .mp-node .mp-why{ color:#b8abff; }
+#mpNodes .mp-node.lod2 .mp-why, #mpNodes .mp-node.lod3 .mp-why{ display:none; }

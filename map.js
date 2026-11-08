@@ -1550,8 +1550,9 @@ function bindShell() {
         op = n.id === fid ? 1 : (0.70 + 0.30 * (1 - d0 / maxD));
       }
       var depAttr = (n._d != null && n._d > 0) ? ' data-dep="' + n._d + '"' : '';
+      var why = (n.aiWhy ? '<div class="mp-why">AI：' + esc(String(n.aiWhy).slice(0, 40)) + '</div>' : '');
       return '<div class="' + cls + '" data-id="' + n.id + '"' + depAttr + ' style="left:' + n.x + 'px;top:' + n.y + 'px;opacity:' + op.toFixed(3) + '">' +
-        '<i class="mp-k">' + head + '</i><div class="mp-t">' + text + '</div>' + pill + '</div>';
+        '<i class="mp-k">' + head + '</i><div class="mp-t">' + text + '</div>' + why + pill + '</div>';
     }).join('');
 
     try { filNote(); } catch (eFN3) {}
@@ -2790,33 +2791,55 @@ function bindShell() {
     } catch (e1) {}
     setTimeout(function () { probeRun(centerNode); }, 30);
   }
-  /* AI 精排：本地粗筛出来的候选，再让模型判一次「是不是同一个考点」。
-     只发 8 道、题干截 80 字，返回 JSON {keep:[序号]}；任何失败都回退到本地结果。 */
+  /* AI 精排：完全照站里 sim.js 的那套来（同一份 aiChat 调用方式、同一种 JSON 格式），
+     所以参数名必须是 temp / maxTokens，格式必须是 {"picks":[{"i":1,"why":"…"}]}。 */
+  function aiReady() {
+    try {
+      if (typeof window.aiChat !== 'function') return false;
+      var c = (typeof aiCfg === 'function') ? aiCfg() : null;
+      return !!(c && c.model);
+    } catch (e) { return false; }
+  }
+
   function aiRerank(centerQ, cands) {
     return new Promise(function (resolve) {
-      if (typeof window.aiChat !== 'function' || !cands.length) { resolve(null); return; }
+      if (!aiReady() || !cands.length) { resolve(null); return; }
       var cut = function (s, n) { s = String(s || '').replace(/\s+/g, ' '); return s.length > n ? s.slice(0, n) + '…' : s; };
       var lines = cands.map(function (c, i) {
-        return (i + 1) + '. ' + cut(c.q.stem, 80) + '\n   选项：' + cut((c.q.options || []).join(' / '), 60);
+        var tg = qTags(c.q).slice(0, 3).join('·');
+        return (i + 1) + '. [' + tg + '] ' + cut(c.q.stem, 120)
+          + '\n   选项：' + cut((c.q.options || []).join(' / '), 70);
       }).join('\n');
-      var prompt = '你是医学考试题库的教研。下面「待判」里有几道题，请判断每一道是否与「目标题」考同一个知识点（同一个考点，会出现在同一节复习里；只是同一章、同一系统的不要）。\n\n'
-        + '目标题：' + cut(centerQ.stem, 120) + '\n    选项：' + cut((centerQ.options || []).join(' / '), 80) + '\n\n待判：\n' + lines
-        + '\n\n只输出 JSON，不要解释：{"keep":[序号,...]}。序号是上面 1..' + cands.length + ' 的数字；都不像就输出 {"keep":[]}。';
-      var t = setTimeout(function () { try { resolve(null); } catch (e0) {} }, 9000);
+      var sys = '你是医学题库的助教。用户给了 1 道「当前题」和若干「候选题」，'
+        + '请挑出与当前题考查同一知识点、或容易混淆的候选，最多 5 个，按相关度从高到低。'
+        + '只输出一行 JSON：{"picks":[{"i":候选序号,"why":"不超过 18 个字说明为什么像"}]}。'
+        + '不要输出别的任何文字；一条都不像就输出 {"picks":[]}。';
+      var user = '当前题：\n' + cut(centerQ.stem, 220)
+        + '\n选项：' + (centerQ.options || []).map(function (o, i) { return 'ABCDEFGH'[i] + '.' + cut(o, 24); }).join(' ')
+        + '\n\n候选题：\n' + lines;
+
+      var ctl = ('AbortController' in window) ? new AbortController() : null;
+      var done = false;
+      var fin = function (v) { if (done) return; done = true; clearTimeout(t); resolve(v); };
+      var t = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e0) {} fin(null); }, 20000);
+      var p;
       try {
-        window.aiChat([{ role: 'user', content: prompt }], null, null, { temperature: 0, max_tokens: 120 })
-          .then(function (txt) {
-            clearTimeout(t);
-            try {
-              var m = String(txt || '').match(/\{[\s\S]*\}/);
-              var o = m ? JSON.parse(m[0]) : null;
-              var keep = (o && o.keep) || [];
-              var idx = keep.map(function (n) { return parseInt(n, 10) - 1; }).filter(function (n) { return n >= 0 && n < cands.length; });
-              resolve(idx.length || keep.length === 0 ? idx : null);
-            } catch (e1) { resolve(null); }
-          })
-          .catch(function () { clearTimeout(t); resolve(null); });
-      } catch (e2) { clearTimeout(t); resolve(null); }
+        p = window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }],
+          null, ctl ? ctl.signal : null, { stream: false, temp: 0.2, maxTokens: 600 });
+      } catch (e1) { fin(null); return; }
+      Promise.resolve(p).then(function (txt) {
+        try {
+          var m = String(txt || '').match(/\{[\s\S]*\}/);
+          var o = m ? JSON.parse(m[0]) : null;
+          var picks = (o && o.picks) || [];
+          var out = [];
+          picks.forEach(function (pk) {
+            var i = (typeof pk.i === 'number' ? pk.i : parseInt(pk.i || pk.index || pk.n, 10)) - 1;
+            if (i >= 0 && i < cands.length) out.push({ i: i, why: String(pk.why || pk.reason || '').slice(0, 40) });
+          });
+          fin(out.length ? out : []);
+        } catch (e2) { fin(null); }
+      }).catch(function () { fin(null); });
     });
   }
 
@@ -2863,7 +2886,7 @@ function bindShell() {
       list.forEach(function (it, i) {
         var ang = (-Math.PI / 2) + (i - (list.length - 1) / 2) * 0.5 + Math.PI * 0.12;
         var id = 'ps' + Date.now().toString(36) + i;
-        DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, xbk: (it.q._bank || S.bankId), label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, aiPick: !!byAi, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
+        DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, xbk: (it.q._bank || S.bankId), label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, aiPick: !!byAi, aiWhy: it.why || '', x: Math.cos(ang) * R, y: Math.sin(ang) * R });
         DATA.edges.push({ a: centerNode.id, b: id, kind: 'sim', w: it.s });
       });
       try { saveCur(); } catch (e) {}
@@ -2875,12 +2898,19 @@ function bindShell() {
     };
 
     try { if (typeof toast === 'function') toast('AI 正在判定这 ' + cand.length + ' 道……', 1600, 'ok'); } catch (eS0) {}
-    aiRerank(q0, cand).then(function (idx) {
-      if (idx === null) { place(cand.slice(0, 5), false); return; }
-      var keep = idx.map(function (i) { return cand[i]; }).filter(Boolean);
+    aiRerank(q0, cand).then(function (picks) {
+      if (picks === null) {
+        if (typeof toast === 'function') toast('模型没回话（或没配模型），先用本地结果', 2200, 'warn');
+        place(cand.slice(0, 5), false);
+        return;
+      }
+      var keep = picks.map(function (p) {
+        var it = cand[p.i];
+        return it ? { q: it.q, s: it.s, why: p.why } : null;
+      }).filter(Boolean);
       if (!keep.length) {
         render(true);
-        if (typeof toast === 'function') toast('AI 认为这几道都不算同一个考点，这次没加', 2200, 'ok');
+        if (typeof toast === 'function') toast('AI 认为这几道都不算同一个考点，这次没加', 2400, 'ok');
         return;
       }
       place(keep, true);
@@ -2898,10 +2928,12 @@ function bindShell() {
       if (sims.length < 2) return;
       g.aiRev = 1; gSave();
       var cands = sims.map(function (n) { return { q: n.ref, s: (n.score || 0) / 100, node: n }; });
-      aiRerank(q, cands).then(function (idx) {
-        if (idx === null) return;
+      aiRerank(q, cands).then(function (picks) {
+        if (picks === null) return;
+        var keepIdx = {};
+        picks.forEach(function (p) { keepIdx[p.i] = 1; });
         var drop = {};
-        cands.forEach(function (c, i) { if (idx.indexOf(i) < 0) drop[c.node.id] = 1; });
+        cands.forEach(function (c, i) { if (!keepIdx[i]) drop[c.node.id] = 1; });
         var nDrop = Object.keys(drop).length;
         if (!nDrop) return;
         DATA.nodes = DATA.nodes.filter(function (n) { return !drop[n.id]; });
