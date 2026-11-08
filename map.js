@@ -5150,6 +5150,57 @@ function bindShell() {
     finally { if (go) { go.disabled = false; go.textContent = '开始分析'; } }
   }
 
+  /* 真·模型生成：把考点、这批题的题干/选项/答案/解析、选定的知识库与提示词一起发给模型，
+     让它写「知识点是什么 / 怎么认 / 这批题卡在哪 / 还没考到的延伸 / 口诀」。
+     本地规则那版先垫在编辑器里，模型回来再覆盖——这样点一下立刻有东西看，不是干等。 */
+  function kpAiModel(name, rows, fileNames, kbNames) {
+    return new Promise(function (resolve) {
+      if (!aiReady()) { resolve(null); return; }
+      var cut = function (s, n) { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+      var ansTxt = function (q) {
+        var a = q.answer || q.ans;
+        if (Array.isArray(a)) return a.join('');
+        if (typeof a === 'number') return 'ABCDEFGH'[a] || '';
+        return String(a == null ? '' : a).toUpperCase().replace(/[^A-H]/g, '').slice(0, 4);
+      };
+      var qLines = rows.slice(0, 10).map(function (q, i) {
+        var opts = (q.options || []).map(function (o, j) { return 'ABCDEFGH'[j] + '.' + cut(o, 30); }).join(' ');
+        var exp = cut(q.exp || q.explain || q.expl || '', 160);
+        return (i + 1) + '. ' + cut(q.stem, 160) + (opts ? ('\n   选项：' + opts) : '')
+          + '\n   答案：' + (ansTxt(q) || '未标') + (exp ? ('\n   原解析：' + exp) : '');
+      }).join('\n');
+      var userAsk = '';
+      try { var p0 = document.getElementById('mpAiP'); userAsk = p0 ? String(p0.value || '').trim() : ''; } catch (eP) {}
+      if (!userAsk) userAsk = '总结';
+
+      var sys = '你是医学考试的助教，帮用户把一个「考点」整理成能直接复习的小结。'
+        + '只依据下面给的题目与解析；资料没写到的医学细节不要编造，宁可写「题库里没覆盖，建议自己补」。'
+        + '输出 Markdown（不要代码块包裹），固定这几节：'
+        + '「## 知识点是什么」「## 怎么认（判据）」「## 这批题卡在哪」「## 还没考到的延伸」「## 口诀 / 记忆钩子」。'
+        + '要具体、可背：判据写成「看到 X 就想到 Y」这种；不要空话、不要重复题干。';
+      var user = '考点：' + name
+        + '\n用户希望：' + cut(userAsk, 60)
+        + (kbNames.length ? ('\n可参考知识库：' + kbNames.slice(0, 4).join('、')) : '')
+        + (fileNames.length ? ('\n用户选了资料：' + fileNames.join('、')) : '')
+        + '\n这批题（共 ' + rows.length + ' 道，下面是前 ' + Math.min(10, rows.length) + ' 道）：\n' + (qLines || '（题库里没有命中这个考点的题）');
+
+      var ctl = ('AbortController' in window) ? new AbortController() : null;
+      var done = false;
+      var fin = function (v) { if (done) return; done = true; clearTimeout(t); resolve(v); };
+      var t = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e0) {} fin(null); }, 60000);
+      var p;
+      try {
+        p = window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }],
+          null, ctl ? ctl.signal : null, { stream: false, temp: 0.4, maxTokens: 1400 });
+      } catch (e1) { fin(null); return; }
+      Promise.resolve(p).then(function (txt) {
+        var out = String(txt || '').trim().replace(/^```(?:md|markdown)?\s*/i, '').replace(/```\s*$/, '').trim();
+        if (!out || out.length < 40) { fin(null); return; }
+        fin(out);
+      }).catch(function () { fin(null); });
+    });
+  }
+
   function kpAiDo(name) {
     /* 这块是「考点的小结」，不是「题目清单」：
        知识点是什么 → 怎么认 → 这批题卡在哪 → 还没考到的延伸 → 口诀 */
@@ -5249,8 +5300,28 @@ function bindShell() {
     var aiEl = document.getElementById('mpAi'); if (aiEl) aiEl.classList.remove('show');
     var nd = 0;
     try { nd = aiDrafts(name, rows.slice(0, 8)); } catch (e) {}
-    toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')
-      : '分析完了，已写进右侧编辑器（可以接着改）');
+    var st = document.getElementById('mpKpStat');
+    if (!aiReady()) {
+      if (st) st.textContent = '本地规则生成 · 没配模型（设置里填 API 才是真 AI）';
+      toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')
+        : '分析完了，已写进右侧编辑器（可以接着改；这是本地规则版，配了模型会换成 AI 写）');
+      return;
+    }
+    if (st) st.textContent = '本地草稿 · AI 正在写…';
+    var pickNames = pick.map(function (f) { return String(f.name || '').slice(0, 24); });
+    kpAiModel(name, rows, pickNames, kbs).then(function (out) {
+      if (!out) {
+        if (st) st.textContent = 'AI 没回话，先用本地规则版（可以点 ✨ 重试）';
+        toast('模型没回话，先用本地规则版');
+        return;
+      }
+      var m2 = kpMd(); m2[name] = out;
+      try { saveCur(); } catch (e2) {}
+      try { rteSet(out); } catch (e3) {}
+      var pv2 = document.getElementById('mpKpPrev2'); if (pv2) pv2.innerHTML = md2h(out);
+      if (st) st.textContent = 'AI 生成 · 改完自动保存';
+      toast('AI 写完了：' + name);
+    });
   }
   function answerText(q) {
     try {
