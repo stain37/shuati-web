@@ -14,18 +14,23 @@
 
   var WIN_KEY = 'qbank.mapwin.v1';
   var LAY_KEY = 'qbank.maplayout.v1';
+  var LAY_RINGS = [];   /* 分层（同心环）当前每一圈的半径与层号，画参考圈用 */
+  /* 三种排法：网格（严格行列）、树形（横向思维导图，左右分叉）、放射（从中心往外散开）。
+     分层 / 力导向已下线，老存盘里的名字统一映射到网格。 */
   var LAYOUTS = [
-    { k: 'radial', n: '放射' },
-    { k: 'ring', n: '环形' },
+    { k: 'grid', n: '网格' },
     { k: 'tree', n: '树形' },
-    { k: 'columns', n: '分栏' },
-    { k: 'force', n: '力导向' }
+    { k: 'radial', n: '放射' }
   ];
+  /* 老存档里的名字映射到新名字（环形→放射、分栏→树形） */
+  var LAY_ALIAS = { grid: 'grid', radial: 'radial', tree: 'tree', ring: 'radial', layer: 'grid', force: 'grid', columns: 'tree', matrix: 'grid', rows: 'grid' };
+  function layName(k) { return LAY_ALIAS[k] || 'grid'; }
   var S = { on: false, min: false, x: null, y: null, w: null, h: null, bankId: '', qid: '' };
   var V = { tx: 0, ty: 0, k: 1 };
   var DATA = { nodes: [], edges: [] };
-  var LAY = { name: 'radial' };
+  var LAY = { name: 'grid' };
   var MAXP = null;
+  var LAST_DRAG_AT = 0;
   var sel = null;
   var root = null;
 
@@ -94,21 +99,127 @@
 
     var nodes = [{ id: 'c', type: 'center', ref: q, x: 0, y: 0, label: q.stem }];
     var edges = [];
+    var simQ = [];   /* 相似题的题目对象：用来判断它和考点是不是同一个标签 */
     cand.forEach(function (it, idx) {
       var rel = mx > 0 ? it.score / mx : 0;
       var id = 's' + idx;
       nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, score: Math.round(36 + rel * 60) });
       edges.push({ a: 'c', b: id, kind: 'sim', w: rel });
+      simQ.push({ id: id, q: it.q });
     });
     curTags.filter(function (x) { return !isBigTag(x); }).slice(0, 4).forEach(function (t, idx) {
       var id = 't' + idx;
       nodes.push({ id: id, type: 'tag', ref: t, label: t, x: 0, y: 0 });
       edges.push({ a: 'c', b: id, kind: 'tag', w: 0.5 });
     });
+    /* 同一个考点的相似题，也要连到那个考点（之前只有中心题连，看着像别的题跟考点没关系） */
+    var tagNodes = nodes.filter(function (n2) { return n2.type === 'tag'; });
+    simQ.forEach(function (sn) {
+      var st = tagList(sn.q, bank.id).map(norm);
+      if (!st.length) return;
+      tagNodes.forEach(function (tn) {
+        if (st.indexOf(norm(tn.label)) >= 0) edges.push({ a: sn.id, b: tn.id, kind: 'tag', w: 0.42 });
+      });
+    });
     return { nodes: nodes, edges: edges };
   }
 
   /* ---------- 布局 ---------- */
+  /* ---- 力学布局内核（照 d3-force 的写法：alpha 衰减 + 弹簧 / 库伦斥力 / 矩形碰撞 / 径向约束）----
+     参考的两个方案：force.js 的 F=k/r^2 与 k(d-L) 弹簧，d3 的 forceCollide/forceLink/forceRadial。
+     节点用「卡片真实尺寸」参与斥力和碰撞：大卡自然把旁边的小卡推得更开。 */
+  function mpSim(nodesArr, edges, radial, ticks) {
+    var N = nodesArr.length, idx = Object.create(null);
+    nodesArr.forEach(function (n, i) { idx[n.id] = i; n.vx = 0; n.vy = 0; });
+    var links = [];
+    (edges || []).forEach(function (e) {
+      var s = idx[e.a], t = idx[e.b];
+      if (s == null || t == null || s === t) return;
+      links.push({ s: s, t: t, w: (e.w == null ? 0.5 : e.w) });
+    });
+    var deg = new Array(N); for (var z = 0; z < N; z++) deg[z] = 0;
+    links.forEach(function (l) { deg[l.s]++; deg[l.t]++; });
+    var alpha = 1, decay = 1 - Math.pow(0.0015, 1 / Math.max(60, ticks || 300));
+    var iters = ticks || 300;
+    for (var it = 0; it < iters; it++) {
+      alpha += (0 - alpha) * decay;
+
+      /* 弹簧：相似度越高、期望长度越短；两端连接多的节点被拉得轻一点（d3 forceLink 的做法） */
+      links.forEach(function (l) {
+        var A = nodesArr[l.s], B = nodesArr[l.t];
+        var dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1;
+        var want = 330 - 150 * l.w;
+        var k = (d - want) / d * alpha * 0.55 / Math.max(1, Math.min(deg[l.s], deg[l.t]));
+        A.vx += dx * k; A.vy += dy * k;
+        B.vx -= dx * k; B.vy -= dy * k;
+      });
+
+      /* 斥力 + 矩形碰撞：斥力按两张卡的面积加权（大卡推得远） */
+      for (var i = 0; i < N; i++) {
+        var A2 = nodesArr[i];
+        for (var j = i + 1; j < N; j++) {
+          var B2 = nodesArr[j];
+          var dx2 = B2.x - A2.x, dy2 = B2.y - A2.y;
+          var d2 = dx2 * dx2 + dy2 * dy2, dd = Math.sqrt(d2) || 1;
+          var area = (A2.w * A2.h + B2.w * B2.h) / 90000;
+          var f = area * alpha * 1500 / Math.max(900, d2);
+          A2.vx -= dx2 / dd * f; A2.vy -= dy2 / dd * f;
+          B2.vx += dx2 / dd * f; B2.vy += dy2 / dd * f;
+          var ox = (A2.w + B2.w) / 2 + 16 - Math.abs(dx2);
+          var oy = (A2.h + B2.h) / 2 + 12 - Math.abs(dy2);
+          if (ox > 0 && oy > 0) {
+            if (ox < oy) { var mx = ox / 2 + 0.5, sx2 = dx2 >= 0 ? 1 : -1; A2.x -= sx2 * mx; B2.x += sx2 * mx; }
+            else { var my = oy / 2 + 0.5, sy2 = dy2 >= 0 ? 1 : -1; A2.y -= sy2 * my; B2.y += sy2 * my; }
+            A2.vx *= 0.6; A2.vy *= 0.6; B2.vx *= 0.6; B2.vy *= 0.6;
+          }
+        }
+      }
+
+      /* 径向约束：每层的卡片被拉回自己那一圈（d3 forceRadial） */
+      for (var q = 0; q < N; q++) {
+        var n = nodesArr[q], rr = radial[n.id];
+        if (rr != null) {
+          var rd = Math.hypot(n.x, n.y) || 1;
+          var k2 = (rr - rd) * alpha * 0.30;
+          n.vx += n.x / rd * k2; n.vy += n.y / rd * k2;
+        }
+        /* 限速：弹簧/斥力在某些极端图上会数值发散，夹住就好 */
+        n.vx = Math.max(-80, Math.min(80, n.vx));
+        n.vy = Math.max(-80, Math.min(80, n.vy));
+        n.x += n.vx; n.y += n.vy;
+        if (!isFinite(n.x) || !isFinite(n.y)) { n.x = 0; n.y = 0; n.vx = 0; n.vy = 0; }
+        n.x = Math.max(-40000, Math.min(40000, n.x));
+        n.y = Math.max(-40000, Math.min(40000, n.y));
+        n.vx *= 0.58; n.vy *= 0.58;
+      }
+    }
+  }
+
+  /* 收尾：只把互相压住的卡片沿最短方向推开，不再加别的力（层、半径都不动） */
+  function finalCollide(arr, iters) {
+    for (var t = 0; t < (iters || 120); t++) {
+      var hit = false;
+      for (var i = 0; i < arr.length; i++) {
+        for (var j = i + 1; j < arr.length; j++) {
+          var A = arr[i], B = arr[j];
+          var dx = B.x - A.x, dy = B.y - A.y;
+          var ox = (A.w + B.w) / 2 + 14 - Math.abs(dx);
+          var oy = (A.h + B.h) / 2 + 10 - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          if (ox < oy) {
+            var mx = (ox / 2 + 0.5) * (dx >= 0 ? 1 : -1);
+            A.x -= mx; B.x += mx;
+          } else {
+            var my = (oy / 2 + 0.5) * (dy >= 0 ? 1 : -1);
+            A.y -= my; B.y += my;
+          }
+          hit = true;
+        }
+      }
+      if (!hit) break;
+    }
+  }
+
   function layoutPositions(name) {
     var ns = DATA.nodes;
     var c = ns.filter(function (n) { return n.type === 'center'; })[0];
@@ -118,73 +229,464 @@
     if (c) out[c.id] = { x: 0, y: 0 };
     var R = 340;
 
-    if (name === 'ring') {
-      var all = sims.concat(tags);
-      all.forEach(function (n, i) {
-        var a = -Math.PI / 2 + i * Math.PI * 2 / Math.max(1, all.length);
-        out[n.id] = { x: Math.cos(a) * R, y: Math.sin(a) * R };
+    if (name === 'tree') {
+      /* 树形 = 横向「思维导图」：根在最左，每往下一层就向右一列；
+         兄弟按相似度从上往下排，父节点永远落在它孩子们的正中间（Reingold–Tilford 的简化版）。
+         连线只往右走，不会像径向树那样绕回去，所以看着干净。 */
+      var tNodesAll = DATA.nodes;
+      var tTags = tNodesAll.filter(function (n) { return n.type === 'tag'; });
+      var tQ = tNodesAll.filter(function (n) { return n.type !== 'tag'; });
+      var tBy = Object.create(null);
+      tNodesAll.forEach(function (n) { tBy[n.id] = n; });
+      var tAdj = Object.create(null);
+      tQ.forEach(function (n) { tAdj[n.id] = []; });
+      DATA.edges.forEach(function (e) {
+        if (!tAdj[e.a] || !tAdj[e.b]) return;
+        tAdj[e.a].push(e.b); tAdj[e.b].push(e.a);
       });
-    } else if (name === 'tree') {
-      sims.forEach(function (n, i) {
-        var side = (i % 2) ? 1 : -1;
-        var row = Math.floor(i / 2);
-        out[n.id] = { x: side * 380, y: -60 + row * 150 };
+      var tRoot = c ? c.id : (tQ[0] ? tQ[0].id : '');
+      var tPar = Object.create(null), tDep = Object.create(null), tOrd = [];
+      if (tRoot) { tDep[tRoot] = 0; tOrd.push(tRoot); }
+      for (var ti = 0; ti < tOrd.length; ti++) {
+        var tcur = tOrd[ti];
+        var tns = (tAdj[tcur] || []).slice();
+        tns.sort(function (p, q2) {
+          var sp = (tBy[p] && tBy[p].score) || 0, sq = (tBy[q2] && tBy[q2].score) || 0;
+          return sq - sp;
+        });
+        for (var tn2 = 0; tn2 < tns.length; tn2++) {
+          var nx2 = tns[tn2];
+          if (tDep[nx2] != null) continue;
+          tDep[nx2] = tDep[tcur] + 1; tPar[nx2] = tcur; tOrd.push(nx2);
+        }
+      }
+      var tMaxDep = 0;
+      tQ.forEach(function (n) {
+        if (tDep[n.id] == null) { tDep[n.id] = 0; tPar[n.id] = null; }
+        tMaxDep = Math.max(tMaxDep, tDep[n.id]);
       });
-      tags.forEach(function (n, i) {
-        out[n.id] = { x: (i - (tags.length - 1) / 2) * 190, y: -330 };
+      var tKids = Object.create(null);
+      tQ.forEach(function (n) { tKids[n.id] = []; });
+      tQ.forEach(function (n) { var p2 = tPar[n.id]; if (p2 && tKids[p2]) tKids[p2].push(n.id); });
+      var rLeafCnt = Object.create(null);
+      var leafCountOf = function (id) {
+        var ks = tKids[id] || [];
+        if (!ks.length) { rLeafCnt[id] = 1; return 1; }
+        var sum2 = 0; ks.forEach(function (k2) { sum2 += leafCountOf(k2); });
+        rLeafCnt[id] = sum2; return sum2;
+      };
+      if (tRoot) leafCountOf(tRoot);
+      /* 后序：叶子按顺序往下排，父节点取孩子的中位 */
+      var tY = Object.create(null), tCursor = 0, LEAFG = 96;
+      var tPlace = function (id) {
+        var ks = tKids[id] || [];
+        if (!ks.length) { tY[id] = tCursor; tCursor += LEAFG; return tY[id]; }
+        var ys = ks.map(tPlace);
+        var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+        tY[id] = (lo + hi) / 2; return tY[id];
+      };
+      if (tRoot) tPlace(tRoot);
+      /* 没挂上的人单独摆一列，别丢 */
+      var tLoose = tQ.filter(function (n) { return tY[n.id] == null; });
+      tLoose.forEach(function (n) { tY[n.id] = tCursor; tCursor += LEAFG; tDep[n.id] = 1; });
+      /* 左右分会：第 1 层的分支一半往左、一半往右，整棵树高度减半，也才像张开的树 */
+      var tSide = Object.create(null);
+      var roots1 = (tKids[tRoot] || []).slice();
+      /* 左右两边按「叶子数」均衡分（贪心），不然一边压得满满当当、另一边空着 */
+      roots1.sort(function (p, q3) { return (rLeafCnt[q3] || 0) - (rLeafCnt[p] || 0); });
+      var sideLoad = { '1': 0, '-1': 0 };
+      roots1.forEach(function (id) {
+        var sd0 = (sideLoad['1'] <= sideLoad['-1']) ? 1 : -1;
+        tSide[id] = sd0; sideLoad[sd0] += (rLeafCnt[id] || 1);
       });
-    } else if (name === 'columns') {
-      sims.forEach(function (n, i) { out[n.id] = { x: -400, y: (i - (sims.length - 1) / 2) * 132 }; });
-      tags.forEach(function (n, i) { out[n.id] = { x: 400, y: (i - (tags.length - 1) / 2) * 132 }; });
-    } else if (name === 'force') {
-      var arr = sims.concat(tags);
-      arr.forEach(function (n, i) {
-        var a = (i / Math.max(1, arr.length)) * Math.PI * 2;
-        out[n.id] = { x: Math.cos(a) * (R + i * 12), y: Math.sin(a) * (R + i * 12) };
+      var sideOf = function (id) {
+        var cur3 = id, guard = 0;
+        while (cur3 && tSide[cur3] == null && guard++ < 40) cur3 = tPar[cur3];
+        return (cur3 && tSide[cur3] != null) ? tSide[cur3] : 1;
+      };
+      var COLX = 332;
+      var tMaxY = 0;
+      tQ.forEach(function (n) {
+        var sd = (n.id === tRoot) ? 1 : sideOf(n.id);
+        out[n.id] = { x: Math.round(tDep[n.id] * COLX * sd), y: Math.round(tY[n.id]) };
+        tMaxY = Math.max(tMaxY, tY[n.id]);
       });
-      /* 简单斥力迭代（一次性算，不做动画） */
-      for (var it = 0; it < 140; it++) {
-        arr.forEach(function (a) {
-          var pa = out[a.id], fx = 0, fy = 0;
-          arr.forEach(function (b) {
-            if (a === b) return;
-            var pb = out[b.id];
-            var dx = pa.x - pb.x, dy = pa.y - pb.y;
-            var d2 = Math.max(4000, dx * dx + dy * dy);
-            var f = 260000 / d2;
-            var d = Math.sqrt(d2);
-            fx += dx / d * f; fy += dy / d * f;
-          });
-          /* 拉回圆环，避免飞散 */
-          var r0 = Math.hypot(pa.x, pa.y) || 1;
-          fx += (R - r0) * pa.x / r0 * 0.16;
-          fy += (R - r0) * pa.y / r0 * 0.16;
-          pa.x += fx; pa.y += fy;
+      /* 考点：最右一列，等距排齐 */
+      if (tTags.length) {
+        var tagX = (tMaxDep + 1) * COLX;
+        var gapT = Math.max(96, Math.round((tMaxY || 1) / Math.max(1, tTags.length)));
+        tTags.forEach(function (n, i2) {
+          out[n.id] = { x: tagX, y: Math.round(i2 * gapT) };
         });
       }
-      tags.forEach(function (n) { if (out[n.id]) out[n.id].y -= 40; });
+      /* 整体居中 */
+      var txs = [], tys = [];
+      Object.keys(out).forEach(function (id) { txs.push(out[id].x); tys.push(out[id].y); });
+      var tcx = (Math.min.apply(null, txs) + Math.max.apply(null, txs)) / 2;
+      var tcy = (Math.min.apply(null, tys) + Math.max.apply(null, tys)) / 2;
+      Object.keys(out).forEach(function (id) { out[id] = { x: Math.round(out[id].x - tcx), y: Math.round(out[id].y - tcy) }; });
+      LAY_RINGS.length = 0;
+    } else if (name === 'layer') {
+      /* 分层 = 同心环：第 k 层是从中心往外点 k 下的那一圈（k-hop），四面铺开、不挤在一行；
+         同层顺序按「上一层邻居的平均角度」排（Sugiyama 重心法 / GNN 邻域聚合的顺序版），
+         这样每个孩子都落在它父母所在的方位，线基本不交叉。 */
+      var tagNodes = DATA.nodes.filter(function (n) { return n.type === 'tag'; });
+      var qnodes = DATA.nodes.filter(function (n) { return n.type !== 'tag'; });
+      var adj = Object.create(null);
+      qnodes.forEach(function (n) { adj[n.id] = []; });
+      DATA.edges.forEach(function (e) {
+        if (!adj[e.a] || !adj[e.b]) return;
+        adj[e.a].push(e.b); adj[e.b].push(e.a);
+      });
+      var depth = Object.create(null), queue = [c ? c.id : 'c'];
+      if (!adj[queue[0]]) queue = (qnodes[0] ? [qnodes[0].id] : []);
+      if (queue.length) depth[queue[0]] = 0;
+      for (var qi = 0; qi < queue.length; qi++) {
+        var cur = queue[qi], dcur = depth[cur];
+        (adj[cur] || []).forEach(function (nx) {
+          if (depth[nx] == null) { depth[nx] = dcur + 1; queue.push(nx); }
+        });
+      }
+      var maxD = 0;
+      qnodes.forEach(function (n) { if (depth[n.id] == null) depth[n.id] = -1; else maxD = Math.max(maxD, depth[n.id]); });
+      qnodes.forEach(function (n) { if (depth[n.id] === -1) depth[n.id] = maxD + 1; });
+
+      var widthOf = function (n) {
+        if (n.type === 'center') return 300;
+        if (n.type === 'tag') return 168;
+        if (n.type === 'variant') return 250;
+        if (n.type === 'note') return 210;
+        if (n.type === 'file') return 190;
+        return 268;
+      };
+      var byDepth = Object.create(null);
+      qnodes.forEach(function (n) { n._d = depth[n.id]; (byDepth[depth[n.id]] = byDepth[depth[n.id]] || []).push(n); });
+
+      LAY_RINGS.length = 0;
+      var ang = Object.create(null);
+      var ringLists = [];
+      var prevR = 0;
+      var applyRing = function (rl) {
+        var step = Math.PI * 2 / rl.nodes.length;
+        rl.nodes.forEach(function (n, i) {
+          var a = rl.start + step * i;
+          out[n.id] = { x: Math.round(Math.cos(a) * rl.r), y: Math.round(Math.sin(a) * rl.r) };
+          ang[n.id] = a;
+        });
+      };
+      var depths = Object.keys(byDepth).map(Number).sort(function (a, b) { return a - b; });
+      depths.forEach(function (d) {
+        var list = byDepth[d];
+        if (!list || !list.length) return;
+        if (d === 0) {
+          out[list[0].id] = { x: 0, y: 0 };
+          ang[list[0].id] = -Math.PI / 2;
+          return;
+        }
+        /* 每个节点：先算它父母所在方位的「圆弧平均角」 */
+        list.forEach(function (n) {
+          var ns = adj[n.id] || [], sx = 0, sy = 0, cnt = 0;
+          ns.forEach(function (id) {
+            if (ang[id] != null && depth[id] != null && depth[id] < d) {
+              sx += Math.cos(ang[id]); sy += Math.sin(ang[id]); cnt++;
+            }
+          });
+          n._ba = cnt ? Math.atan2(sy, sx) : null;
+        });
+        list.sort(function (a, b) {
+          if (a._ba == null && b._ba == null) return (b.score || 0) - (a.score || 0);
+          if (a._ba == null) return 1;
+          if (b._ba == null) return -1;
+          return a._ba - b._ba;
+        });
+        /* 半径：至少要放得下这一圈卡片的宽度，且比里圈大一圈 */
+        var wsum = 0;
+        list.forEach(function (n) { wsum += widthOf(n) + 34; });
+        var needR = wsum / (Math.PI * 2) * 1.12 + 90;
+        if (needR < 380) needR = 380;
+        var Rr = Math.max(prevR + 300, Math.round(needR));
+        var step0 = Math.PI * 2 / list.length;
+        var sx2 = 0, sy2 = 0, mc = 0;
+        list.forEach(function (n) { if (n._ba != null) { sx2 += Math.cos(n._ba); sy2 += Math.sin(n._ba); mc++; } });
+        var startA = -Math.PI / 2;
+        if (mc) startA = Math.atan2(sy2, sx2) - step0 * (list.length - 1) / 2;
+        var rl = { r: Rr, d: d, nodes: list, start: startA };
+        applyRing(rl);
+        ringLists.push(rl);
+        LAY_RINGS.push({ r: Rr, d: d });
+        prevR = Rr;
+      });
+
+      /* 考点：不参与分层，接在最外一圈外面，按名字整齐排圈 */
+      if (tagNodes.length) {
+        /* 考点按「它连着的题所在方位的平均角」排，而不是按名字：
+           名字排序会让每根点线横穿整张图；按方位排后考点就落在相关题那一侧，线短、几乎不交叉 */
+        var tagAng = Object.create(null);
+        tagNodes.forEach(function (n) {
+          var sx = 0, sy = 0, cnt = 0;
+          DATA.edges.forEach(function (e) {
+            if (e.kind !== 'tag') return;
+            var other = e.a === n.id ? e.b : (e.b === n.id ? e.a : null);
+            if (other == null || ang[other] == null) return;
+            sx += Math.cos(ang[other]); sy += Math.sin(ang[other]); cnt++;
+          });
+          tagAng[n.id] = cnt ? Math.atan2(sy, sx) : Math.PI / 2;
+        });
+        tagNodes.sort(function (a, b) { return tagAng[a.id] - tagAng[b.id]; });
+        var ti = 0, tagRing = 0;
+        while (ti < tagNodes.length) {
+          var Rt = Math.max(prevR + 300, 430) + tagRing * 250;
+          var fit = Math.max(4, Math.floor((Math.PI * 2 * Rt) / 200));
+          var chunk = tagNodes.slice(ti, ti + fit);
+          var rlT = { r: Rt, d: 'tag' + (tagRing ? ' ' + (tagRing + 1) : ''), nodes: chunk, start: -Math.PI / 2 };
+          applyRing(rlT);
+          LAY_RINGS.push({ r: Rt, d: rlT.d });
+          ti += fit; tagRing++;
+          prevR = Rt;
+        }
+      }
+
+      /* 局部搜索：同一圈里相邻两张卡对调，线变少了就留着（Sugiyama 的 transpose 步） */
+      try {
+        var crossNow = function () {
+          var pts = DATA.nodes.filter(function (n) { return out[n.id]; });
+          var seg = [];
+          DATA.edges.forEach(function (e) { if (out[e.a] && out[e.b]) seg.push([out[e.a], out[e.b]]); });
+          var ccw = function (a, b, c) { return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x); };
+          var hit = function (s, t) {
+            return ccw(s[0], t[0], s[1]) !== ccw(s[0], t[1], s[1]) && ccw(t[0], s[0], t[1]) !== ccw(t[0], s[1], t[1]);
+          };
+          var c = 0;
+          for (var i0 = 0; i0 < seg.length; i0++) for (var j0 = i0 + 1; j0 < seg.length; j0++) if (hit(seg[i0], seg[j0])) c++;
+          return c;
+        };
+        var best = crossNow();
+        for (var pass = 0; !window.__LAYNAIVE && pass < 14 && best > 0; pass++) {
+          var moved = false;
+          ringLists.forEach(function (rl) {
+            for (var k = 0; k + 1 < rl.nodes.length; k++) {
+              var a0 = rl.nodes[k], b0 = rl.nodes[k + 1];
+              rl.nodes[k] = b0; rl.nodes[k + 1] = a0; applyRing(rl);
+              var c2 = crossNow();
+              if (c2 < best) { best = c2; moved = true; }
+              else { rl.nodes[k] = a0; rl.nodes[k + 1] = b0; applyRing(rl); }
+            }
+          });
+          if (!moved) break;
+        }
+      } catch (eX) {}
+    } else if (name === 'grid') {
+      /* 网格：严格的行列对齐（规则图形），行 = 从中心点第几下（k-hop），
+         列 = 同层里按「父母的平均列位」排（Sugiyama 重心法），交叉最少、也最整齐 */
+      var gTag = DATA.nodes.filter(function (n) { return n.type === 'tag'; });
+      var gQ = DATA.nodes.filter(function (n) { return n.type !== 'tag'; });
+      var gAdj = Object.create(null);
+      gQ.forEach(function (n) { gAdj[n.id] = []; });
+      DATA.edges.forEach(function (e) {
+        if (!gAdj[e.a] || !gAdj[e.b]) return;
+        gAdj[e.a].push(e.b); gAdj[e.b].push(e.a);
+      });
+      var gDep = Object.create(null), gQ2 = [c ? c.id : 'c'];
+      if (!gAdj[gQ2[0]]) gQ2 = (gQ[0] ? [gQ[0].id] : []);
+      if (gQ2.length) gDep[gQ2[0]] = 0;
+      for (var gi = 0; gi < gQ2.length; gi++) {
+        var gcur = gQ2[gi], gd = gDep[gcur];
+        (gAdj[gcur] || []).forEach(function (nx) {
+          if (gDep[nx] == null) { gDep[nx] = gd + 1; gQ2.push(nx); }
+        });
+      }
+      var gMax = 0;
+      gQ.forEach(function (n) { if (gDep[n.id] == null) gDep[n.id] = 1; else gMax = Math.max(gMax, gDep[n.id]); });
+      LAY_RINGS.length = 0;
+      var byRow = Object.create(null);
+      gQ.forEach(function (n) { (byRow[gDep[n.id]] = byRow[gDep[n.id]] || []).push(n); });
+      var COLG = 300, ROWG = 178;
+      var colOf = Object.create(null);
+      var rows = Object.keys(byRow).map(Number).sort(function (a, b) { return a - b; });
+      var widest = 0;
+      rows.forEach(function (r) { widest = Math.max(widest, byRow[r].length); });
+      rows.forEach(function (r) {
+        var list = byRow[r];
+        /* 同层排序：父母的平均列位（没有父母的按相似度） */
+        list.forEach(function (n) {
+          var ns = gAdj[n.id] || [], sum = 0, cnt = 0;
+          ns.forEach(function (id) { if (colOf[id] != null) { sum += colOf[id]; cnt++; } });
+          n._bc = cnt ? sum / cnt : 1e6;
+        });
+        list.sort(function (a, b) {
+          if (a._bc !== b._bc) return a._bc - b._bc;
+          return (b.score || 0) - (a.score || 0);
+        });
+        var off = (widest - list.length) / 2;
+        list.forEach(function (n, i) {
+          var col = i + off;
+          colOf[n.id] = col;
+          out[n.id] = { x: Math.round(col * COLG), y: Math.round(r * ROWG) };
+        });
+      });
+      /* 考点：最后一行，等距排齐 */
+      if (gTag.length) {
+        var gRow = gMax + 2, gOff = (widest - gTag.length) / 2;
+        gTag.sort(function (a, b) { return String(a.label || '').localeCompare(String(b.label || ''), 'zh'); });
+        gTag.forEach(function (n, i) {
+          out[n.id] = { x: Math.round((i + gOff) * 168), y: Math.round(gRow * ROWG) };
+        });
+      }
+      /* 整体居中 */
+      var gxs = [], gys = [];
+      Object.keys(out).forEach(function (id) { gxs.push(out[id].x); gys.push(out[id].y); });
+      var gcx = (Math.min.apply(null, gxs) + Math.max.apply(null, gxs)) / 2;
+      var gcy = (Math.min.apply(null, gys) + Math.max.apply(null, gys)) / 2;
+      Object.keys(out).forEach(function (id) { out[id] = { x: Math.round(out[id].x - gcx), y: Math.round(out[id].y - gcy) }; });
+      (function gridCollide() {
+        var pk = DATA.nodes.filter(function (n) { return out[n.id]; }).map(function (n) {
+          var w = n.type === 'center' ? 300 : n.type === 'tag' ? 168 : 268;
+          return { id: n.id, x: out[n.id].x, y: out[n.id].y, w: w, h: n.type === 'center' ? 112 : 100 };
+        });
+        finalCollide(pk, 90);
+        pk.forEach(function (a) { out[a.id] = { x: Math.round(a.x), y: Math.round(a.y) }; });
+      })();
+    } else if (name === 'force') {
+      /* 力导向：中心钉住，其余交给力学内核（弹簧 + 面积加权斥力 + 矩形碰撞） */
+      var arrF = sims.concat(tags);
+      arrF.forEach(function (n, i) {
+        var a = (i / Math.max(1, arrF.length)) * Math.PI * 2;
+        out[n.id] = { x: Math.cos(a) * (R + i * 8), y: Math.sin(a) * (R + i * 8) };
+      });
+      var WofF = function (n) {
+        if (n.type === 'center') return 300;
+        if (n.type === 'tag') return 168;
+        if (n.type === 'variant') return 250;
+        return 268;
+      };
+      var packF = arrF.map(function (n) {
+        return { id: n.id, x: out[n.id].x, y: out[n.id].y, w: WofF(n), h: 104 };
+      });
+      if (c && out[c.id]) packF.push({ id: c.id, x: 0, y: 0, w: 300, h: 116 });
+      var radF = Object.create(null);
+      var arcF = 0;
+      packF.forEach(function (a) { arcF += a.w + 26; });
+      var RF = Math.round(Math.max(360, arcF / (Math.PI * 2)));
+      packF.forEach(function (a) { radF[a.id] = (a.id === (c && c.id)) ? 0 : RF; });
+      mpSim(packF, DATA.edges, radF, 300);
+      finalCollide(packF, 160);
+      packF.forEach(function (a) { if (a.id !== (c && c.id)) out[a.id] = { x: Math.round(a.x), y: Math.round(a.y) }; });
     } else {
-      sims.forEach(function (nd, i) {
-        var a = (i / Math.max(1, sims.length)) * Math.PI * 2 + (Math.PI / 2);
-        out[nd.id] = { x: Math.cos(a) * R, y: Math.sin(a) * R * 0.80 };
+      /* 放射：所有卡片围成一圈，半径按「卡宽总和 / 2π」算，保证不叠 */
+      var Wr = function (n) {
+        if (n.type === 'center') return 300;
+        if (n.type === 'tag') return 168;
+        if (n.type === 'variant') return 250;
+        if (n.type === 'note') return 210;
+        if (n.type === 'file') return 190;
+        return 268;
+      };
+      /* 放射 = 一圈圈往外放光：每层单独算「半径要多大才放得下这一层的卡」，
+         同层均匀铺满整圈、并逐层旋转半个步长（错开相位），所以看着是一束束射线，不是死板的同心圆。 */
+      var gNodes = sims.concat(tags);
+      var gAdj2 = Object.create(null);
+      gNodes.forEach(function (n) { gAdj2[n.id] = []; });
+      DATA.edges.forEach(function (e) {
+        if (!gAdj2[e.a] || !gAdj2[e.b]) return;
+        gAdj2[e.a].push(e.b); gAdj2[e.b].push(e.a);
       });
-      tags.forEach(function (nd, i) {
-        var span = 0.86;
-        var a = -Math.PI / 2 + (i - (tags.length - 1) / 2) * span;
-        out[nd.id] = { x: Math.cos(a) * (R * 0.86), y: Math.sin(a) * (R * 0.86) - 90 };
+      var rootG = c ? c.id : (gNodes[0] ? gNodes[0].id : '');
+      var gPar = Object.create(null), gDep = Object.create(null), gOrd = [];
+      if (rootG) { gDep[rootG] = 0; gOrd.push(rootG); }
+      for (var gii = 0; gii < gOrd.length; gii++) {
+        var gcc = gOrd[gii];
+        (gAdj2[gcc] || []).forEach(function (nx) {
+          if (gDep[nx] != null) return;
+          gDep[nx] = gDep[gcc] + 1; gPar[nx] = gcc; gOrd.push(nx);
+        });
+      }
+      gNodes.forEach(function (n) { if (gDep[n.id] == null) { gDep[n.id] = 1; gPar[n.id] = rootG || null; } });
+      LAY_RINGS.length = 0;
+      var gBy = Object.create(null);
+      gNodes.forEach(function (n) { (gBy[gDep[n.id]] = gBy[gDep[n.id]] || []).push(n); });
+      var gAng = Object.create(null);
+      if (rootG) { out[rootG] = { x: 0, y: 0 }; gAng[rootG] = -Math.PI / 2; }
+      var prevR2 = 0;
+      Object.keys(gBy).map(Number).sort(function (p, q2) { return p - q2; }).forEach(function (d) {
+        var list = gBy[d];
+        if (!list) return;
+        if (d === 0) return;
+        /* 同层排序：跟着父母所在的方位走，这样每条射线是连贯的 */
+        list.forEach(function (n) {
+          var p4 = gPar[n.id];
+          n._ga = (p4 && gAng[p4] != null) ? gAng[p4] : (d * 0.9);
+        });
+        list.sort(function (p, q2) { return p._ga - q2._ga; });
+        /* 一层人太多就拆成两圈（内外各一半），整张图不会越铺越大 */
+        var PER = 12;
+        var groups = [];
+        for (var g0 = 0; g0 < list.length; g0 += PER) groups.push(list.slice(g0, g0 + PER));
+        var baseR = Math.max(prevR2 + 195, 320);
+        groups.forEach(function (gp, gi2) {
+          var cnt = gp.length;
+          var step2 = Math.PI * 2 / cnt;
+          var needR2 = (250 * cnt) / (Math.PI * 2) * 0.86;
+          var Rr2 = Math.max(baseR + gi2 * 210, Math.round(needR2) + gi2 * 210);
+          var off2 = -Math.PI / 2 + (d % 2 ? step2 / 2 : 0) + d * 0.22 + gi2 * (step2 / 2);
+          gp.forEach(function (n, i) {
+            var a2 = off2 + step2 * i;
+            gAng[n.id] = a2;
+            out[n.id] = { x: Math.round(Math.cos(a2) * Rr2), y: Math.round(Math.sin(a2) * Rr2) };
+          });
+          baseR = Rr2;
+        });
+        prevR2 = baseR;
       });
+      (function radCollide() {
+        var pk = gNodes.filter(function (n) { return out[n.id]; }).map(function (n) {
+          return { id: n.id, x: out[n.id].x, y: out[n.id].y, w: Wr(n), h: 104 };
+        });
+        finalCollide(pk, 140);
+        pk.forEach(function (aa) { out[aa.id] = { x: Math.round(aa.x), y: Math.round(aa.y) }; });
+      })();
     }
     return out;
   }
 
+  /* 换排法时让卡片「滑」到新位置，而不是啪一下跳过去 */
+  function animLayout(oldPos) {
+    var ns = $('#mpNodes'); if (!ns) return;
+    ns.querySelectorAll('.mp-node').forEach(function (el) {
+      var id = el.dataset.id, o = oldPos[id]; if (!o) return;
+      var nx = parseFloat(el.style.left) || 0, ny = parseFloat(el.style.top) || 0;
+      var dx = o[0] - nx, dy = o[1] - ny;
+      if (!dx && !dy) return;
+      if (Math.abs(dx) + Math.abs(dy) < 3) return;
+      try {
+        /* 卡片本身靠 translate(-50%,-50%) 居中，补位移时必须把它带上，否则动画期间会偏半张卡 */
+        el.animate(
+          [{ transform: 'translate(-50%,-50%) translate(' + dx + 'px,' + dy + 'px)' },
+           { transform: 'translate(-50%,-50%) translate(0,0)' }],
+          { duration: 420, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'none' }
+        );
+      } catch (e) {}
+    });
+  }
+
   function applyLayout(name) {
+    if (name) name = layName(name);
     if (name && LAYOUTS.some(function (l) { return l.k === name; })) LAY.name = name;
+    var oldPos = {};
+    var hadNodes = !!((DATA.nodes || []).length);
+    DATA.nodes.forEach(function (n) { oldPos[n.id] = [n.x, n.y]; });
     var pos = layoutPositions(LAY.name);
     DATA.nodes.forEach(function (n) { var p = pos[n.id]; if (p) { n.x = p.x; n.y = p.y; } });
     writeLS(LAY_KEY, LAY.name);
     var s = $('#mpLayout');
     if (s) s.value = LAY.name;
+    var wrap = $('#mpWrap');
+    if (wrap) {
+      wrap.classList.toggle('lay-layer', LAY.name === 'layer');
+      wrap.classList.toggle('lay-grid', LAY.name === 'grid');
+      wrap.classList.toggle('lay-tree', LAY.name === 'tree');
+    }
     render();
+    if (hadNodes) { try { animLayout(oldPos); } catch (eA) {} }
   }
 
   /* ---------- 外壳 ---------- */
@@ -214,11 +716,16 @@
               '<option value="both">组名 + 组内内容</option><option value="name">只搜组名</option><option value="content">只搜组内内容</option></select>' +
             '<span>排序</span><select id="mpGSort" title="排序方式">' +
               '<option value="manual">自定义</option><option value="name">名称</option><option value="size">节点数</option></select>' +
+            '<span>逻辑</span><select id="mpGLogic" title="并集＝命中任意一个词就算；交集＝每个词都得命中（更准）">' +
+              '<option value="or">并集</option><option value="and">交集</option></select>' +
+            '<span>类型</span><select id="mpGKind" title="路径组＝在路径模式下沿着相似题一层层展开出来的组（中心不动）">' +
+              '<option value="all">全部</option><option value="path">🧭 路径组</option><option value="tree">普通组</option></select>' +
             '<span class="mp-grow3"></span></div>' +
           '<div id="mpGBulk" hidden><span id="mpGBulkN">已选 0 组</span>' +
             '<button type="button" data-b="all">全选</button>' +
             '<button type="button" data-b="none">清空</button>' +
             '<button type="button" data-b="dup">复制…</button>' +
+            '<button type="button" data-b="exp" title="把选中的组导出成 JSON 文件">导出…</button>' +
             '<button type="button" data-b="del" class="bad">删除</button>' +
             '<button type="button" data-b="off">取消</button></div>' +
           '<div id="mpGList"></div>' +
@@ -257,7 +764,7 @@
     function syncBack() {
       var kp = document.getElementById('mpKp'), gp = $('#mpGrp'), b = $('#mpBack');
       if (!b) return;
-      var show = !!(sel || (kp && (kp.classList.contains('show') || kp.classList.contains('full'))) || (gp && gp.classList.contains('show')));
+      var show = !!(sel || (typeof NAV !== 'undefined' && NAV.length) || (kp && (kp.classList.contains('show') || kp.classList.contains('full'))) || (gp && gp.classList.contains('show')));
       b.hidden = !show;
     }
     if (!window.__mpBackT) {
@@ -279,7 +786,9 @@
     var half = Math.round((innerWidth - 24) / 2);
     return { x: side === 'left' ? 8 : innerWidth - half - 8, y: 96, w: half, h: innerHeight - 104 };
   }
-  function sideAt(x) { return x <= 34 ? 'left' : (x >= innerWidth - 34 ? 'right' : null); }
+  function sideAt(x) { return x <= 40 ? 'left' : (x >= innerWidth - 40 ? 'right' : null); }
+  /* 第 24 轮：只做二分。顶部不再有「放大到整屏」的预览——双击标题栏就能最大化，
+     拖窗口稍碰顶边就整屏反而是误触。 */
   function snapPrevShow(x) {
     var el = $('#mpSnap'); if (!el) return;
     var side = sideAt(x);
@@ -292,10 +801,11 @@
   }
 
   function isMax() { return !!MAXP && S.w >= innerWidth - 40; }
+  var SNAPB = null;   /* 吸附/最大化前那块矩形，拖离吸附位时用它还原 */
   function setMax(on) {
     if (on) {
       if (isMax()) return;
-      MAXP = { x: S.x, y: S.y, w: S.w, h: S.h };
+      MAXP = { x: S.x, y: S.y, w: S.w, h: S.h }; SNAPB = { x: S.x, y: S.y, w: S.w, h: S.h };
       S.x = 8; S.y = 104; S.w = innerWidth - 16; S.h = innerHeight - 112;
     } else {
       if (!MAXP) return;
@@ -308,20 +818,43 @@
   /* ---------- 窗口换焦：点哪块哪块亮，其它开着的窗口淡一档（照样板） ---------- */
   var WINS = ['#mpKp', '#mpPv', '#mpSide', '#mpGrp', '#mpWrap'];
   var WIN_TOP = '';
+  var WIN_STACK = [];
+  /* 层级统一在这里算，不再各自往上加数字（第 26 轮那个「青色标题栏残留旧层级」就是这么来的）：
+     聚焦中的窗口拿 30070，开着但没聚焦的一律 30010，关掉的清掉内联值回落 CSS。
+     #mpKp.full 的 30090 是 !important，不受影响，所以全屏永远压在遮罩上。 */
+  function winZ(s, focused) {
+    var el = $(s); if (!el) return;
+    if (!winOpen(s)) { el.style.zIndex = ''; return; }
+    el.style.zIndex = focused ? '30070' : '30010';
+  }
+  function winFocus(s) {
+    if (!s) return;
+    var i = WIN_STACK.indexOf(s);
+    if (i >= 0) WIN_STACK.splice(i, 1);
+    WIN_STACK.push(s);
+    WIN_TOP = s;
+    winFocusPaint();
+  }
   function winOpen(s) {
     var el = $(s); if (!el) return false;
     if (s === '#mpWrap') return !el.hidden;
     return el.classList.contains('show');
   }
   function winFocusPaint() {
+    /* 焦点栈：关掉的窗口自动出栈，焦点回到上一个还开着的窗口，不会「全都失焦」 */
+    WIN_STACK = WIN_STACK.filter(function (x) { return winOpen(x); });
+    if (WIN_TOP && !winOpen(WIN_TOP)) WIN_TOP = WIN_STACK.length ? WIN_STACK[WIN_STACK.length - 1] : '';
+    if (WIN_TOP) winFocus2(WIN_TOP);
     WINS.forEach(function (s) {
       var el = $(s); if (!el) return;
       var open = winOpen(s);
-      if (!open) { el.classList.remove('wf', 'winblur'); return; }
+      if (!open) { el.classList.remove('wf', 'winblur'); winZ(s, false); return; }
       el.classList.toggle('wf', s === WIN_TOP);
       el.classList.toggle('winblur', !!WIN_TOP && s !== WIN_TOP);
+      winZ(s, s === WIN_TOP);
     });
   }
+  function winFocus2(s) { if (!s) return; var i = WIN_STACK.indexOf(s); if (i >= 0) WIN_STACK.splice(i, 1); WIN_STACK.push(s); }
   function bindWinFocus() {
     if (document.__mpWinF) return; document.__mpWinF = 1;
     document.addEventListener('pointerdown', function (e) {
@@ -330,17 +863,52 @@
         var el = $(WINS[i]);
         if (el && winOpen(WINS[i]) && el.contains(e.target)) { hit = WINS[i]; break; }
       }
-      WIN_TOP = hit;
-      winFocusPaint();
+      if (hit) winFocus(hit); else { WIN_TOP = ''; winFocusPaint(); }
     }, true);
   }
 
-  function bindShell() {
+    /* 标题栏按钮：直接用 pointerdown 触发，不依赖 click。
+     手机上 click 可能因为长按/拖动判定、被父层吞掉而根本不来，
+     上一轮用户报「✕ 和 – 都用不了」就是这个原因。 */
+  function pressBind(el, fn) {
+    if (!el) return;
+    var last = 0;
+    var fire = function (e) {
+      /* 只认左键 / 触摸：触摸在个别浏览器会给 -1，也算左键 */
+      try {
+        if (e && e.button != null && e.button !== 0) {
+          var touchish = (e.pointerType === 'touch' || e.pointerType === 'pen') && e.button === -1;
+          if (!touchish) return;
+        }
+      } catch (err) {}
+      if (e && e.cancelable) { try { e.preventDefault(); } catch (err) {} }
+      try { e.stopPropagation(); } catch (err) {}
+      var now = Date.now(); if (now - last < 320) return; last = now;
+      try { fn(); } catch (err) {}
+    };
+    el.addEventListener('pointerdown', fire, true);
+    el.addEventListener('mousedown', function (e) { if (!window.PointerEvent) fire(e); }, true);
+    el.addEventListener('touchstart', function (e) { if (!window.PointerEvent) fire(e); }, { capture: true, passive: false });
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') fire(e); });
+    el.addEventListener('click', function (e) { fire(e); });
+  }
+
+function bindShell() {
     try { bindWinFocus(); } catch (e) {}
+  try { bindAway(); } catch (e) {}
     var bar = $('#mpBar'), wrap = $('#mpWrap'), rz = $('#mpRz'), stage = $('#mpStage');
     var d = null;
     bar.addEventListener('pointerdown', function (e) {
       if (e.target.closest('button,select,input,label,textarea')) return;
+      /* 吸附/最大化状态下按住标题栏往外拖：先把窗口还原成吸附前的尺寸，再跟着手指走 */
+      if (SNAPB) {
+        var pr = SNAPB; SNAPB = null; MAXP = null;
+        var ratio = Math.min(1, Math.max(0, (e.clientX - S.x) / Math.max(1, S.w)));
+        S.w = pr.w; S.h = pr.h;
+        S.x = Math.round(e.clientX - ratio * S.w);
+        S.y = Math.max(4, Math.round(e.clientY - 18));
+        try { apply(); } catch (err0) {}
+      }
       d = { x: e.clientX, y: e.clientY, ox: S.x, oy: S.y, moved: false };
       try { bar.setPointerCapture(e.pointerId); } catch (err) {}
       e.preventDefault();
@@ -368,16 +936,20 @@
     bar.addEventListener('pointerup', function (e) {
       if (!d) return;
       var moved = d.moved; d = null;
+      LAST_DRAG_AT = Date.now();
       var sp = $('#mpSnap'); if (sp) sp.hidden = true;
       var side = moved ? sideAt(e.clientX) : null;
       if (side) {
         var r = halfRect(side);
+        SNAPB = { x: S.x, y: S.y, w: S.w, h: S.h };
         MAXP = null; S.x = r.x; S.y = r.y; S.w = r.w; S.h = r.h;
         apply(); save(); setTimeout(fit, 60);
       } else { save(); }
     });
     bar.addEventListener('dblclick', function (e) {
       if (e.target.closest('button,select,input,label,textarea')) return;
+      /* 拖完手一松浏览器还会补一个 click，紧接着双击会误触发最大化 */
+      if (Date.now() - LAST_DRAG_AT < 350) return;
       setMax(!isMax());
     });
 
@@ -388,6 +960,7 @@
     });
     rz.addEventListener('pointermove', function (e) {
       if (!d || d.mode !== 'rz') return;
+    SNAPB = null;
       S.w = Math.max(560, d.ow + e.clientX - d.x);
       S.h = Math.max(380, d.oh + e.clientY - d.y);
       MAXP = null;
@@ -395,37 +968,85 @@
     });
     rz.addEventListener('pointerup', function () { if (d) { d = null; save(); fit(); } });
 
-    $('#mpX').onclick = function () { close(); };
-    $('#mpMin').onclick = function () { S.min = true; apply(); };
-    $('#mpMax').onclick = function () { setMax(!isMax()); };
-    $('#mpChip').onclick = function () { S.min = false; apply(); setTimeout(fit, 60); };
+    pressBind($('#mpX'), function () { close(); });
+    pressBind($('#mpMin'), function () { S.min = true; apply(); });
+    pressBind($('#mpMax'), function () { setMax(!isMax()); });
+    /* 最小化胶囊：可以拖着走（位置记住），点一下才还原；拖动不算点击 */
+  (function bindChip() {
+    var c = $('#mpChip'); if (!c || c.__cb) return; c.__cb = 1;
+    var pos = null;
+    try { pos = JSON.parse(localStorage.getItem('qbank.map.chip.v1') || 'null'); } catch (e) {}
+    if (pos && typeof pos.x === 'number') {
+      c.style.left = pos.x + 'px'; c.style.top = pos.y + 'px';
+      c.style.right = 'auto'; c.style.bottom = 'auto';
+    }
+    var d = null;
+    c.addEventListener('pointerdown', function (e) {
+      var r = c.getBoundingClientRect();
+      d = { x: e.clientX, y: e.clientY, l: r.left, t: r.top, moved: false };
+      try { c.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    c.addEventListener('pointermove', function (e) {
+      if (!d) return;
+      var dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+      if (!d.moved) return;
+      var nx = Math.max(4, Math.min(innerWidth - 70, d.l + dx));
+      var ny = Math.max(4, Math.min(innerHeight - 40, d.t + dy));
+      c.style.left = nx + 'px'; c.style.top = ny + 'px';
+      c.style.right = 'auto'; c.style.bottom = 'auto';
+    });
+    c.addEventListener('pointerup', function () {
+      if (!d) return;
+      var moved = d.moved; d = null;
+      if (moved) {
+        var r = c.getBoundingClientRect();
+        try { localStorage.setItem('qbank.map.chip.v1', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })); } catch (e) {}
+        return;
+      }
+      S.min = false; apply(); setTimeout(fit, 60);
+    });
+  })();
     $('#mpLayout').onchange = function () { applyLayout(this.value); setTimeout(fit, 40); };
 
-    /* 右下角缩放条：− / 百分比 / + / 适应 */
+    /* 右下角缩放条：− / 百分比 / + / 适应 —— 和标题栏一样用 pointerdown 触发，
+       这样手机上被其它层挡一下或者 click 没合成出来，也还能用 */
     var zb = $('#mpZoom');
-    if (zb) zb.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-z]'); if (!b) return;
-      e.stopPropagation();
-      var r = stageRect();
-      if (b.dataset.z === 'in') zoom(r.left + r.width / 2, r.top + r.height / 2, 1.15);
-      else if (b.dataset.z === 'out') zoom(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.15);
-      else fit();
-    });
+    if (zb) {
+      pressBind(zb.querySelector('[data-z="out"]'), function () {
+        var r = stageRect(); zoom(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.15);
+      });
+      pressBind(zb.querySelector('[data-z="in"]'), function () {
+        var r = stageRect(); zoom(r.left + r.width / 2, r.top + r.height / 2, 1.15);
+      });
+      pressBind(zb.querySelector('[data-z="fit"]'), function () { fit(); });
+    }
 
     /* Esc：先退最大化，再取消选中，最后关窗口。
        挂在 window 的捕获阶段并 stopPropagation —— 否则事件会继续传给 app.js 的
        全局 Esc（退回上一路由，会把 hash 清掉、整页跳回首页）。 */
     window.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !S.on) return;
+    /* 焦点在站里别处（侧栏/题库管理器）时，Esc 归站点自己处理 */
+    if ($('#mpWrap') && $('#mpWrap').classList.contains('mp-away')) return;
       e.preventDefault(); e.stopPropagation();
-      var pop = document.getElementById('mpFindPop');
+      var sdset = document.getElementById('mpSdSet');
+  if (sdset && sdset.classList.contains('show')) { sdset.classList.remove('show'); return; }
+  var pop = document.getElementById('mpFindPop');
       if (pop && pop.classList.contains('show')) {          /* 先关搜索下拉，别一路把关窗口也走掉 */
         pop.classList.remove('show');
         var fq = document.getElementById('mpFindQ');
         if (fq && document.activeElement === fq) fq.blur();
         return;
       }
-      var sd = document.getElementById('mpSide');
+      var cx = document.getElementById('mpCtx');
+    if (cx && cx.classList.contains('show')) { cx.classList.remove('show'); return; }
+    var vw = document.getElementById('mpVw');
+    if (vw && vw.classList.contains('show')) { try { vwClose(); } catch (e) {} return; }
+    var pv = document.getElementById('mpPv');
+    if (pv && pv.classList.contains('show')) { try { pvClose(); } catch (e) {} return; }
+    var sd = document.getElementById('mpSide');
       if (sd && sd.classList.contains('show')) { sideClose(); return; }
       var pk = document.getElementById('mpPick');
       if (pk && pk.classList.contains('show')) { pickClose(); return; }
@@ -441,14 +1062,44 @@
       if (tb && tb.classList.contains('show')) { rkTbHide(); return; }
       var kp = document.getElementById('mpKp');
       if (kp && kp.classList.contains('full')) { kpFull(false); return; }
+    var gp2 = document.getElementById('mpGrp');
+    if (gp2 && gp2.classList.contains('show')) {
+      gp2.classList.remove('show');
+      var gb2 = document.getElementById('mpGroups'); if (gb2) gb2.classList.remove('on');
+      return;
+    }
+    if (kp && kp.classList.contains('show')) { try { kpClose(); } catch (e) {} return; }
       if (isMax()) { setMax(false); return; }
       if (sel) { sel = null; render(); return; }
       close();
     }, true);
 
-    /* 画布：拖空白平移 + 滚轮缩放 */
-    var pg = null;
+    /* 画布：拖空白平移 + 滚轮缩放 + 双指捏合缩放 */
+    var pg = null, PTS = {}, pinch = null;
+    /* 只认真实的双指触摸：鼠标永远参与不了捏合。
+       以前把鼠标指针也记进 PTS，一旦某次 pointerup 丢了（比如在窗口外松手），
+       这条记录就永远留在表里 —— 之后单指/单鼠标拖动会被当成「双指在拉开」= 莫名其妙地缩放。 */
+    function ptLive(p) { return p && p.type !== 'mouse' && (Date.now() - p.t) < 4000; }
+    function ptCount() { var n = 0, k; for (k in PTS) if (ptLive(PTS[k])) n++; return n; }
+    function ptIds() { var out = [], k; for (k in PTS) { if (ptLive(PTS[k])) out.push(k); } return out; }
+    function pinchState() {
+      var ids = ptIds(); if (ids.length < 2) return null;
+      var a = PTS[ids[0]], b = PTS[ids[1]];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    }
+    function ptUp(e) {
+      try { delete PTS[e.pointerId]; } catch (err) {}
+      if (ptCount() < 2) pinch = null;
+      if (e.pointerType === 'mouse') { try { delete PTS[e.pointerId]; } catch (err2) {} pinch = null; }
+      if (!ptCount() && pg) { pg = null; stage.style.cursor = ''; }
+      if (!ptCount() && stage && stage.classList.contains('mp-pan')) {
+        stage.classList.remove('mp-pan');
+        try { var sel1 = window.getSelection(); if (sel1) sel1.removeAllRanges(); } catch (err3) {}
+      }
+    }
     stage.addEventListener('pointerdown', function (e) {
+      PTS[e.pointerId] = { x: e.clientX, y: e.clientY, type: e.pointerType || 'mouse', t: Date.now() };
+      if (ptCount() >= 2) { pinch = pinchState(); pg = null; stage.style.cursor = 'grabbing'; return; }
       if (e.target.closest('.mp-node')) return;
       /* 点画布空白：把右侧知识点面板收起来（和样板一样） */
       var kp0 = document.getElementById('mpKp');
@@ -456,14 +1107,35 @@
       try { sideClose(); } catch (err) {}
       pg = { x: e.clientX, y: e.clientY, tx: V.tx, ty: V.ty };
       stage.style.cursor = 'grabbing';
+      /* 平移画布时把文字选择关掉：不然手指划过卡片，会顺手把卡片里的字选上（看着像被复制了） */
+      stage.classList.add('mp-pan');
+      try { var sel0 = window.getSelection(); if (sel0) sel0.removeAllRanges(); } catch (err1) {}
+      try { e.preventDefault(); } catch (err2) {}
     });
     window.addEventListener('pointermove', function (e) {
+      if (PTS[e.pointerId]) { PTS[e.pointerId].x = e.clientX; PTS[e.pointerId].y = e.clientY; PTS[e.pointerId].t = Date.now(); }
+      /* 鼠标按键已经松了还留着记录 = 脏数据，直接清掉，别让它把平移当成捏合 */
+      if (e.pointerType === 'mouse' && e.buttons === 0) { try { delete PTS[e.pointerId]; } catch (err0) {} }
+      if (ptCount() >= 2) {
+        var s2 = pinchState();
+        if (pinch && s2 && s2.d > 6 && pinch.d > 6) {
+          var f2 = s2.d / pinch.d;
+          if (Math.abs(f2 - 1) > 0.004) zoom(s2.cx, s2.cy, f2);
+        }
+        pinch = s2;
+        return;
+      }
       if (!pg) return;
       V.tx = pg.tx + e.clientX - pg.x;
       V.ty = pg.ty + e.clientY - pg.y;
+      if (Math.abs(e.clientX - pg.x) + Math.abs(e.clientY - pg.y) > 4) CLICK_GUARD = Date.now() + 350;
+      clampView();
       paintView();
     });
-    window.addEventListener('pointerup', function () { if (pg) { pg = null; stage.style.cursor = ''; } });
+    window.addEventListener('pointerup', ptUp);
+    window.addEventListener('blur', function () { for (var k in PTS) delete PTS[k]; pinch = null; pg = null; });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) { for (var k in PTS) delete PTS[k]; pinch = null; pg = null; } });
+    window.addEventListener('pointercancel', ptUp);
     stage.addEventListener('wheel', function (e) {
       e.preventDefault();
       var f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
@@ -471,19 +1143,82 @@
     }, { passive: false });
   }
 
+  var CLICK_GUARD = 0;
+
+  /* 点站里别的地方（侧栏、题库管理器…）= 脑图让出焦点：沉到站点弹层下面并变淡 */
+  function mapAway(on) {
+    var w = $('#mpWrap'); if (!w) return;
+    w.classList.toggle('mp-away', !!on);
+    /* 让焦时不再把整块沉到侧栏下面（那样标题栏会被站内顶栏吃掉、找不到），
+       改成：脑图保持 30000，侧栏用 CSS 提到 30010 压在上面（只压左侧 248px），
+       右半边连标题栏一起照样看得见、点得回。 */
+    w.style.zIndex = '30000';
+    var b = $('#mpBar'); if (b) b.style.zIndex = '30001';
+    var c = $('#mpChip'); if (c) c.style.zIndex = '30002';
+  }
+  /* 反过来：脑图拿到焦点时，侧栏退成半透明，两边不会都像「当前」 */
+  function mapFocus(on) {
+    try { document.body.classList.toggle('mp-focus', !!on); } catch (e) {}
+  }
+  function bindAway() {
+    if (document.__awayB) return; document.__awayB = 1;
+    document.addEventListener('pointerdown', function (e) {
+      var away = !e.target.closest('#mpWrap') && !e.target.closest('#mpChip');
+      mapAway(away); mapFocus(!away);
+      /* 小窗（pip）也是站内的一块浮窗：点它就把 #pipLayer 抬到脑图上面，
+         点回脑图再放回去 —— 否则小窗永远埋在大白板底下，看着像「没反应」 */
+      var onPip = !!e.target.closest('.pip-win, #pipLayer, iframe.pip-frame');
+      try { document.body.classList.toggle('pip-top', onPip); } catch (e2) {}
+    }, true);
+  }
+
   function stageRect() { var st = $('#mpStage'); return st ? st.getBoundingClientRect() : { left: 0, top: 0, width: 900, height: 600 }; }
   function zoom(cx, cy, f) {
     var r = stageRect();
+    /* 缩放夹在 50%–180%：再小字看不清，再大一张图就散了 */
     var k2 = Math.max(0.5, Math.min(1.8, V.k * f));
     var px = cx - r.left, py = cy - r.top;
     V.tx = px - (px - V.tx) * (k2 / V.k);
     V.ty = py - (py - V.ty) * (k2 / V.k);
     V.k = k2;
+    clampView();
     paintView();
+  }
+
+  /* 画布内容的粗包围盒（节点半径留一点余量），用来拦「把整张图甩到天边」 */
+  function contentBox() {
+    if (!DATA || !DATA.nodes || !DATA.nodes.length) return null;
+    var x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
+    DATA.nodes.forEach(function (n) {
+      if (n.x < x1) x1 = n.x; if (n.x > x2) x2 = n.x;
+      if (n.y < y1) y1 = n.y; if (n.y > y2) y2 = n.y;
+    });
+    return { x1: x1 - 120, y1: y1 - 50, x2: x2 + 120, y2: y2 + 50 };
+  }
+  /* 至少留 120px 内容在视口里，四个方向都回弹 */
+  function clampView() {
+    var r = stageRect(), b = contentBox();
+    if (!b || !r.width) return;
+    var keep = 120;
+    var L = b.x1 * V.k + V.tx, R = b.x2 * V.k + V.tx;
+    var T = b.y1 * V.k + V.ty, B = b.y2 * V.k + V.ty;
+    if (R < keep) V.tx += keep - R;
+    else if (L > r.width - keep) V.tx -= L - (r.width - keep);
+    if (B < keep) V.ty += keep - B;
+    else if (T > r.height - keep) V.ty -= T - (r.height - keep);
+  }
+  /* 分级显示（LOD）：缩得越小，文字越少；图很大时关掉光晕，省重绘 */
+  function paintLOD() {
+    var w = $('#mpWrap'); if (!w) return;
+    /* 分级显示：只在真的很小的时候才把题干藏掉，50% 左右还要能读一行 */
+    w.classList.toggle('lod1', V.k < 0.86);
+    w.classList.toggle('lod2', V.k < 0.62);
+    w.classList.toggle('lod3', V.k <= 0.30);
   }
   function paintView() {
     var stage = $('#mpStage'); if (!stage) return;
     stage.style.setProperty('--k', V.k);
+    try { paintLOD(); } catch (eL) {}
     var nodesEl = $('#mpNodes'), svg = $('#mpEdges');
     var tf = 'translate(' + V.tx + 'px,' + V.ty + 'px) scale(' + V.k + ')';
     nodesEl.style.transform = tf;
@@ -492,13 +1227,23 @@
     var s2 = 'translate(' + V.tx + ',' + V.ty + ') scale(' + V.k + ')';
     if (g) g.setAttribute('transform', s2);
     if (gg) gg.setAttribute('transform', s2);
+    /* 分层参考线的层号：反向缩回去，缩到 40% 也还能看清 */
+    if (svg) svg.style.setProperty('--iz', (1 / Math.max(0.2, V.k)).toFixed(3));
     var zv = $('#mpZVal');
     if (zv) zv.textContent = Math.round(V.k * 100) + '%';
   }
 
   function apply() {
     var wrap = $('#mpWrap'), bar = $('#mpBar'), rz = $('#mpRz'), chip = $('#mpChip');
-    if (!S.on) { wrap.hidden = true; chip.hidden = true; var sp0 = $('#mpSnap'); if (sp0) sp0.hidden = true; return; }
+    /* 关窗时必须把 display 也写成 none：样式表里 #mpWrap 是 display:flex，
+       单靠 hidden 属性压不住（id 选择器比 [hidden] 优先级高），窗口就会「看着还在」，
+       于是 ✕ / – / ⤢ / 适应 点了都像没反应。 */
+    if (!S.on) {
+      wrap.hidden = true; wrap.style.display = 'none';
+      bar.style.display = 'none'; rz.style.display = 'none';
+      chip.hidden = true; var sp0 = $('#mpSnap'); if (sp0) sp0.hidden = true;
+      return;
+    }
     /* 只在桌面宽度下才认为「上次是按整屏存的」，否则手机上每次 apply 都会把宽高和位置重置回默认 */
     if (S.w != null && !MAXP && innerWidth > 700 && S.w >= innerWidth - 40) { S.w = null; }
     if (S.w == null) {
@@ -506,6 +1251,21 @@
       S.h = Math.min(820, Math.round(innerHeight * 0.82));
       S.x = innerWidth - S.w - 28;
       S.y = 104;
+    }
+    /* 手机：直接铺满整屏，别留边（边距一留，面板和工具条就都挤不全） */
+    var PH = innerWidth <= 760;
+    wrap.classList.toggle('mp-ph', PH);
+    if (PH) {
+      S.w = innerWidth; S.h = innerHeight; S.x = 0; S.y = 0; MAXP = null;
+      wrap.hidden = false;
+      wrap.style.left = '0px'; wrap.style.top = '0px';
+      wrap.style.width = S.w + 'px'; wrap.style.height = S.h + 'px';
+      bar.style.left = '0px'; bar.style.top = '0px'; bar.style.width = S.w + 'px';
+      rz.style.display = 'none';
+      wrap.style.display = S.min ? 'none' : 'flex';
+      bar.style.display = S.min ? 'none' : '';
+      chip.hidden = !S.min;
+      return;
     }
     /* 窄屏（手机）别再按 560 的最小宽硬撑，否则标题栏的 ✕ / – 会被挤到屏幕外 */
     var minW = Math.min(560, Math.max(280, innerWidth - 16));
@@ -519,7 +1279,7 @@
     wrap.style.width = S.w + 'px'; wrap.style.height = S.h + 'px';
     bar.style.left = S.x + 'px'; bar.style.top = (S.y - 38) + 'px'; bar.style.width = S.w + 'px';
     rz.style.left = (S.x + S.w - 18) + 'px'; rz.style.top = (S.y + S.h - 18) + 'px';
-    wrap.style.display = S.min ? 'none' : '';
+    wrap.style.display = S.min ? 'none' : 'flex';
     bar.style.display = S.min ? 'none' : '';
     rz.style.display = S.min ? 'none' : '';
     chip.hidden = !S.min;
@@ -529,6 +1289,13 @@
   /* ---------- 渲染 ---------- */
 
   /* 只重画连线（拖节点 / 改位置时用，不重渲染节点） */
+  function filShow(n) {
+    if (!n) return false;
+    if (n.type === 'sim' && !FIL.sim) return false;
+    if (n.type === 'tag' && !FIL.tag) return false;
+    if (n.type === 'variant' && !FIL.var) return false;
+    return true;
+  }
   function drawEdges() {
     var g = $('#mpEdgeG'); if (!g) return;
     var nodesEl = $('#mpNodes'); if (!nodesEl) return;
@@ -536,7 +1303,42 @@
     DATA.nodes.forEach(function (n) { pos[n.id] = n; });
     /* 连线：量每张卡片的真实宽高，把端点正好落在边框上（不再猜尺寸） */
     var boxOf = {};
-    nodesEl.querySelectorAll('.mp-node').forEach(function (el) {
+    nodesEl.querySelectorAll('.mp-node').forEach(function (el, _ni) {
+      /* 入场动画：bounce-in + 交错（每个节点只播一次，重绘不闪） */
+      try {
+        if (ANIM_ONCE && !el.dataset.an) {
+          el.dataset.an = '1';
+          el.style.setProperty('--ad', Math.min(420, _ni * 45) + 'ms');
+          el.classList.add('in');
+          /* 中心题以下的卡片走 fade-in-up（从下往上淡入），不弹跳 */
+          try {
+            var nd0 = pos[el.dataset.id];
+            if (nd0) {
+              var cn0 = DATA.nodes.filter(function (x) { return x.type === 'center'; })[0];
+              if (cn0 && nd0.y > cn0.y + 20) el.classList.add('inb');
+            }
+          } catch (e0) {}
+          el.addEventListener('animationend', function () { el.classList.remove('in', 'inb'); }, { once: true });
+          /* 相似度百分数：从 0 滚上去（counter-roll） */
+          var pl = el.querySelector('.mp-pill');
+          if (pl) {
+            var mm = /(\d+)/.exec(pl.textContent || '');
+            if (mm) {
+              var target = parseInt(mm[1], 10), pre = (pl.textContent || '').split(mm[1])[0], suf = (pl.textContent || '').split(mm[1])[1] || '%';
+              var t0 = null;
+              var step = function (ts) {
+                if (!document.body.contains(el)) return;
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / 620);
+                var e = 1 - Math.pow(1 - p, 3);
+                pl.textContent = pre + Math.round(target * e) + suf;
+                if (p < 1) requestAnimationFrame(step);
+              };
+              requestAnimationFrame(step);
+            }
+          }
+        }
+      } catch (e0) {}
       boxOf[el.dataset.id] = { w: el.offsetWidth || 200, h: el.offsetHeight || 64 };
     });
     function cut(n, ox, oy) {
@@ -548,33 +1350,121 @@
       var t2 = Math.min(ex, ey);
       return { x: n.x + ux * t2, y: n.y + uy * t2 };
     }
+    var maxD = 1;
+    if (fid && pos[fid]) DATA.nodes.forEach(function (n) { maxD = Math.max(maxD, Math.hypot(n.x - pos[fid].x, n.y - pos[fid].y)); });
+    var glowList = [];
     var paths = DATA.edges.map(function (e) {
       var a = pos[e.a], b = pos[e.b];
       if (!a || !b) return '';
+      /* 过滤勾掉的那类节点，连线也要跟着消失（否则只剩一堆悬空的线） */
+      if (!filShow(a) || !filShow(b)) return '';
       var A = cut(a, b.x, b.y), B = cut(b, a.x, a.y);
       var hot = fid && (e.a === fid || e.b === fid);
       var w = hot ? (2.2 + (e.w || 0) * 2.2) : (1.2 + (e.w || 0) * 1.8);
-      var op = hot ? 1 : (fid ? 0.38 : 0.85);
+      /* 不亮的线也按「离焦点多远」线性变淡（越远越淡，焦点附近仍留一点） */
+      var op = 0.85;
+      if (fid) {
+        var far = hot ? 0 : Math.max(0, Math.hypot(b.x - pos[fid].x, b.y - pos[fid].y) / maxD);
+        op = hot ? 1 : (0.52 - 0.30 * Math.min(1, far));
+        if (op < 0.16) op = 0.16;
+      }
       /* 相似题 / AI 变式带一点弧度（一堆直线交叉太碎），考点 / 笔记 / 资料走直线 */
       var dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy) || 1;
+      /* 跨半张图的长连线最碍眼：压暗压细，让近处的边先说话 */
+      if (len > 760) { w *= 0.7; op *= 0.5; }
       var bend = (e.kind === 'sim' || e.kind === 'variant') ? Math.min(46, len * 0.085) : 0;
       var mx = (A.x + B.x) / 2 - (dy / len) * bend, my = (A.y + B.y) / 2 + (dx / len) * bend;
+      /* 环形/径向布局：弧线一律往外鼓（背向圆心），线不往中心扎堆，交叉看起来少很多 */
+      if (bend && (LAY.name === 'radial' || LAY.name === 'layer' || LAY.name === 'tree')) {
+        var mx0 = (A.x + B.x) / 2, my0 = (A.y + B.y) / 2, r0 = Math.hypot(mx0, my0) || 1;
+        var push = bend * 1.5;
+        mx = mx0 + (mx0 / r0) * push;
+        my = my0 + (my0 / r0) * push;
+      }
       var d = bend
         ? 'M' + A.x.toFixed(1) + ',' + A.y.toFixed(1) + ' Q' + mx.toFixed(1) + ',' + my.toFixed(1) + ' ' + B.x.toFixed(1) + ',' + B.y.toFixed(1)
         : 'M' + A.x.toFixed(1) + ',' + A.y.toFixed(1) + ' L' + B.x.toFixed(1) + ',' + B.y.toFixed(1);
-      return '<path d="' + d + '" class="mp-e ' + e.kind + (hot ? ' hot' : '') + '" stroke-width="' + w.toFixed(1) + '" style="opacity:' + op + '"/>';
+      /* 光晕层按相似度（e.w）线性给粗细和亮度：96% 的线明显比 52% 的粗亮 */
+      if (hot) glowList.push({ d: d, kind: e.kind, gc: e.kind === 'sim' ? 0 : 1, wt: (e.w == null ? 0.6 : e.w) });
+      return '<path d="' + d + '" class="mp-e ' + e.kind + (hot ? ' hot' : '') + '" stroke-width="' + w.toFixed(1) + '" style="opacity:' + op.toFixed(2) + '"/>';
     }).join('');
     g.innerHTML = paths;
-    /* 光晕层：只给连到当前选中节点的线描一层粗的，交给 CSS 模糊去发光 */
+    /* 光晕层：连到焦点的线各描一层粗的，宽度/亮度跟着相似度走，交给 CSS blur 去发光 */
     var glow = $('#mpGlowG');
-    if (glow) {
-      glow.innerHTML = fid ? g.querySelectorAll('path.hot').length ? Array.prototype.map.call(g.querySelectorAll('path.hot'), function (p) {
-        return '<path d="' + p.getAttribute('d') + '" class="' + p.getAttribute('class') + '" stroke-width="' + (5 + 5 * (fid ? 0.6 : 0.3)).toFixed(1) + '"/>';
-      }).join('') : '' : '';
-    }
+    var PERF = (DATA && DATA.nodes && (DATA.nodes.length > 60 || DATA.edges.length > 110));
+    if (glow && !PERF) {
+      glow.innerHTML = fid ? glowList.map(function (x) {
+        var gw = (4.5 + 6.5 * x.wt).toFixed(1);
+        var go = (0.34 + 0.40 * x.wt).toFixed(2);
+        return '<path d="' + x.d + '" class="mp-e gh ' + x.kind + '" stroke-width="' + gw + '" style="opacity:' + go + '"/>';
+      }).join('') : '';
+    } else if (glow) { glow.innerHTML = ''; }
+    try { drawLayerGuides(); } catch (eLG) {}
   }
 
-  function render() {
+  /* 分层布局下画「层」参考线 + 层号：借 GNN 的 k-hop 概念，第 k 层 = 从中心题往外点 k 下 */
+  function drawLayerGuides() {
+    var g = $('#mpEdgeG'); if (!g) return;
+    if ((LAY.name !== 'layer' && LAY.name !== 'tree') || !DATA || !DATA.nodes) return;
+    var byY = Object.create(null);
+    DATA.nodes.forEach(function (n) {
+      if (typeof n.x !== 'number' || typeof n.y !== 'number') return;
+      if (!filShow(n)) return;
+      var k = Math.round(n.y);
+      (byY[k] = byY[k] || []).push(n);
+    });
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var frag = document.createDocumentFragment();
+    var seenD = Object.create(null);
+    /* 同心环模式：画层圈 + 圈号，不再画水平线 */
+    if (LAY_RINGS.length) {
+      LAY_RINGS.forEach(function (ring) {
+        var ci = document.createElementNS(svgNS, 'circle');
+        ci.setAttribute('cx', '0'); ci.setAttribute('cy', '0'); ci.setAttribute('r', ring.r);
+        ci.setAttribute('class', 'mp-layring');
+        frag.appendChild(ci);
+        var lab = typeof ring.d === 'string' && ring.d.indexOf('tag') === 0 ? '考点' : (ring.d === 0 ? '中心题' : '第 ' + ring.d + ' 层');
+        var tx0 = document.createElementNS(svgNS, 'text');
+        var ang0 = -Math.PI * 0.75;
+        tx0.setAttribute('x', (Math.cos(ang0) * ring.r).toFixed(0));
+        tx0.setAttribute('y', (Math.sin(ang0) * ring.r - 8).toFixed(0));
+        tx0.setAttribute('class', 'mp-laytxt');
+        tx0.textContent = lab;
+        frag.appendChild(tx0);
+      });
+      g.appendChild(frag);
+      return;
+    }
+    Object.keys(byY).map(Number).sort(function (a, b) { return a - b; }).forEach(function (y) {
+      var arr = byY[y];
+      var tagRow = arr.every(function (n) { return n.type === 'tag'; });
+      var d = (arr[0] && arr[0]._d != null) ? arr[0]._d : null;
+      var label = tagRow ? '考点' : (d === 0 ? '中心题' : (d != null ? '第 ' + d + ' 层' : ''));
+      /* 同一层折成多行时只在第一行标一次 */
+      if (!tagRow && d != null && seenD[d]) label = '';
+      if (!tagRow && d != null) seenD[d] = 1;
+      var minX = Infinity, maxX = -Infinity;
+      arr.forEach(function (n) { minX = Math.min(minX, n.x - 150); maxX = Math.max(maxX, n.x + 150); });
+      if (!isFinite(minX)) return;
+      var ln = document.createElementNS(svgNS, 'line');
+      ln.setAttribute('x1', (minX - 66).toFixed(0)); ln.setAttribute('y1', (y + 96).toFixed(0));
+      ln.setAttribute('x2', (maxX + 66).toFixed(0)); ln.setAttribute('y2', (y + 96).toFixed(0));
+      ln.setAttribute('class', 'mp-layline');
+      frag.appendChild(ln);
+      if (label) {
+        var tx = document.createElementNS(svgNS, 'text');
+        tx.setAttribute('x', (minX - 72).toFixed(0)); tx.setAttribute('y', (y + 100).toFixed(0));
+        tx.setAttribute('class', 'mp-laytxt');
+        tx.textContent = label;
+        frag.appendChild(tx);
+      }
+    });
+    g.appendChild(frag);
+  }
+
+  /* noFit=true：画完不要自动「适应窗口」。从资料柜拖文件进来时必须这样，
+     否则刚放到鼠标位置的那张卡会被 fit() 的重新取景带走，看着就是「拖过去偏了」。 */
+  function render(noFit) {
     var nodesEl = $('#mpNodes'), g = $('#mpEdgeG');
     if (!nodesEl) return;
     var pos = {};
@@ -594,9 +1484,11 @@
     });
 
     nodesEl.innerHTML = DATA.nodes.map(function (n) {
-      var cls = 'mp-node ' + n.type + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '');
-      var head = n.type === 'center' ? '中心题' : n.type === 'sim' ? '相似题' : n.type === 'file' ? '资料' : '考点';
-      var pill = n.type === 'sim' ? '<span class="mp-pill">相似 ' + n.score + '%</span>'
+      var cls = 'mp-node ' + n.type + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '') + (n.draft ? ' draft' : '');
+      var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.ai ? '相似题 · AI 精搜' : '相似题')) : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
+      var pill = n.type === 'sim' ? (n.score == null
+        ? '<span class="mp-pill d">待定</span>'
+        : '<span class="mp-pill">相似 ' + n.score + '%</span>')
         : n.type === 'tag' ? '' : n.type === 'file' ? '<span class="mp-pill f">' + esc(String(n.ext || 'file').toUpperCase()) + '</span>' : '<span class="mp-pill c">当前</span>';
       var text = n.type === 'tag' ? esc(n.label) : n.type === 'file'
         ? '<i class="mp-fico">' + fileIco(n.ext) + '</i>' + esc(String(n.label || '').slice(0, 40))
@@ -606,7 +1498,8 @@
         var d0 = Math.hypot(n.x - pos[fid].x, n.y - pos[fid].y);
         op = n.id === fid ? 1 : (0.70 + 0.30 * (1 - d0 / maxD));
       }
-      return '<div class="' + cls + '" data-id="' + n.id + '" style="left:' + n.x + 'px;top:' + n.y + 'px;opacity:' + op.toFixed(3) + '">' +
+      var depAttr = (n._d != null && n._d > 0) ? ' data-dep="' + n._d + '"' : '';
+      return '<div class="' + cls + '" data-id="' + n.id + '"' + depAttr + ' style="left:' + n.x + 'px;top:' + n.y + 'px;opacity:' + op.toFixed(3) + '">' +
         '<i class="mp-k">' + head + '</i><div class="mp-t">' + text + '</div>' + pill + '</div>';
     }).join('');
 
@@ -620,6 +1513,11 @@
         e.stopPropagation();
         var n = DATA.nodes.find(function (x) { return x.id === el.dataset.id; });
         if (!n) return;
+        /* 路径模式：点相似题 / 考点 → 就地延伸，中心题不动 */
+        if (PATHM.on && (n.type === 'sim' || n.type === 'tag')) {
+          sel = n.id; render();
+          try { if (pathExpand(n)) return; } catch (err0) {}
+        }
         if (n.type === 'tag') {
           sel = (sel === n.id) ? null : n.id;
           render();
@@ -647,7 +1545,7 @@
 
     var qb = DATA.nodes.filter(function (n) { return n.type === 'center'; })[0];
     $('#mpTitle').textContent = '相似题脑图 · ' + String((qb && qb.label) || '').slice(0, 26);
-    fit();
+    if (!noFit) fit();
   }
 
   function fit() {
@@ -655,12 +1553,23 @@
     var r = stageRect();
     var xs = DATA.nodes.map(function (n) { return n.x; }), ys = DATA.nodes.map(function (n) { return n.y; });
     if (!xs.length) return;
-    var minX = Math.min.apply(null, xs) - 110, maxX = Math.max.apply(null, xs) + 110;
-    var minY = Math.min.apply(null, ys) - 86, maxY = Math.max.apply(null, ys) + 86;
-    var k = Math.min(1.25, Math.max(0.6, Math.min(r.width / (maxX - minX), r.height / (maxY - minY))));
+    /* 手机屏窄，卡片本身还有宽度，边距按屏宽缩放；最小缩放也放宽，否则两侧卡片会被切掉 */
+    var ph = innerWidth <= 760;
+    /* 卡片本身有宽度（最宽 300），取景时至少留半个卡宽，否则最外圈的卡会被切掉 */
+    var padX = ph ? 96 : 156, padY = ph ? 78 : (LAY.name === 'layer' ? 122 : 92);
+    /* 底部的提示条是浮在画布上的，取景时要把它让出来，否则最后一层卡片会被它压住 */
+    var hb = document.getElementById('mpHint');
+    var padB = (hb && !hb.hidden) ? (hb.offsetHeight + 22) : 0;
+    var minX = Math.min.apply(null, xs) - padX, maxX = Math.max.apply(null, xs) + padX;
+    var minY = Math.min.apply(null, ys) - padY, maxY = Math.max.apply(null, ys) + padY + padB;
+    /* 分层布局是竖着堆的，允许缩得更小，否则最上面一层会顶到工具条后面 */
+    /* 各布局的实际跨度差别很大：能缩到把整张图装进窗口为止，缩放下限按布局给 */
+    var kmin = ph ? 0.22 : (LAY.name === 'grid' ? 0.20
+      : (LAY.name === 'radial' || LAY.name === 'force' ? 0.20 : (LAY.name === 'layer' ? 0.30 : 0.24))), kmax = ph ? 1.0 : 1.25;
+    var k = Math.min(kmax, Math.max(kmin, Math.min(r.width / (maxX - minX), r.height / (maxY - minY))));
     V.k = k;
     V.tx = r.width / 2 - ((minX + maxX) / 2) * k;
-    V.ty = r.height / 2 - ((minY + maxY) / 2) * k;
+    V.ty = r.height / 2 - ((minY + maxY) / 2) * k - padB / 2;
     paintView();
   }
 
@@ -669,7 +1578,12 @@
   /* ================= 批4：小笔记 / 搜索 / 拖入 / 精搜（web321） ================= */
   var B4_KEY = 'qbank.maphole.v1';
   var HOLD = (function () { var v = parseFloat(localStorage.getItem(B4_KEY) || ''); return (v >= 0.4 && v <= 5) ? v : 1.2; })();
+  /* 长按多久算「展开」（短按就是打开抽屉看题） */
+  var LKEY = 'qbank.map.long.v1';
+  var LONG_MS = (function () { var v = parseInt(localStorage.getItem(LKEY) || '', 10); return (v >= 300 && v <= 3000) ? v : 800; })();
   var DZ = { tid: 0, hot: false, armed: false };
+  /* 只在「刚打开脑图」和「换中心题」时播一次入场弹跳，其余重绘不动 */
+  var ANIM_ONCE = false;
   var B4 = { on: false };
 
   function notesOf() {
@@ -718,19 +1632,189 @@
     if (s) return s;
     s = document.createElement('div');
     s.id = 'mpSide';
-    s.innerHTML = '<div class="mp-sdh"><b id="mpSdName">题目</b><i id="mpSdKick"></i><span class="mp-grow"></span>' +
-      '<button id="mpSdFull" class="mp-sdico" title="就地看着这道题的完整版（不离开脑图）">⤢</button>' +
-      '<button id="mpSdJump" class="mp-sdbtn">跳到这道题</button>' +
-      '<button id="mpSdAi" class="mp-sdbtn">分析考点</button>' +
-      '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button></div>' +
+    s.innerHTML = '<div class="mp-sdh" id="mpSdh"><b id="mpSdName">题目</b><i id="mpSdKick"></i><span class="mp-grow"></span>' +
+      '<button id="mpSdGear" class="mp-sdico" title="下拉手势：多快算「甩掉」">⚙</button>' +
+      '<button id="mpSdFull" class="mp-sdico mp-sdico2" title="跳到题库里的这道题（真全屏）">⤢</button>' +
+      '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button>' +
+      '<div class="mp-sdrow2" id="mpSdRow2"><button id="mpSdAi" class="mp-sdbtn">✨ 分析考点</button>' +
+      '<button id="mpSdVar" class="mp-sdbtn">✨ 出变式题</button></div></div>' +
       '<div id="mpSdBody" class="mp-sdbody"></div>';
-    document.body.appendChild(s);
+    (document.getElementById('mpWrap') || document.body).appendChild(s);
     s.querySelector('#mpSdX').onclick = sideClose;
+    var gear = s.querySelector('#mpSdGear');
+    if (gear) gear.onclick = function (e) { e.stopPropagation(); sdSetOpen(); };
     s.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    /* 点抽屉里的空白（不是选项 / 按钮 / 解析块）就收起，和样板一致。
+       但「拖一下」不能算点：记下按下的位置，松手时位移 > 8px 就当拖动，忽略这次 click。 */
+    var SDD = null;
+    s.addEventListener('pointerdown', function (e) {
+      SDD = { x: e.clientX, y: e.clientY, t: Date.now() };
+    }, true);
+    s.addEventListener('click', function (e) {
+      var moved = SDD ? Math.hypot(e.clientX - SDD.x, e.clientY - SDD.y) : 0;
+      var quick = SDD ? (Date.now() - SDD.t) < 600 : true;
+      SDD = null;
+      if (moved > 8 || !quick) return;              /* 拖动 / 长按：不收起 */
+      if (e.target.id === 'mpSdBody' || (e.target.classList && e.target.classList.contains('mp-sdbody'))) sideClose();
+    });
+    /* 抓标题条往上拖 = 拉高；往下甩过 90px = 收起；高度记住 */
+    (function () {
+      var hd = s.querySelector('#mpSdh');
+      if (!hd) return;
+      var dd = null;
+      hd.addEventListener('pointerdown', function (e) {
+        if (e.target.closest('button,input,select')) return;
+        dd = { y: e.clientY, h: s.getBoundingClientRect().height, t: Date.now(), dy: 0 };
+        try { hd.setPointerCapture(e.pointerId); } catch (err) {}
+        e.preventDefault(); e.stopPropagation();
+      });
+      hd.addEventListener('pointermove', function (e) {
+        if (!dd) return;
+        var nh = dd.h + (dd.y - e.clientY);
+        var maxH = Math.round(Math.min(innerHeight - 120, window.innerHeight * 0.86));
+        nh = Math.max(180, Math.min(maxH, nh));
+        dd.dy = Math.max(dd.dy, e.clientY - dd.y);
+        dd.nh = dd.h + (dd.y - e.clientY);      /* 未夹紧的目标高度，用来判断「拖到底」 */
+        s.style.height = nh + 'px';
+        s.style.maxHeight = 'none';
+      });
+      hd.addEventListener('pointerup', function (e) {
+        if (!dd) return;
+        var dy = Math.max(dd.dy, e.clientY - dd.y);
+        var dt = Math.max(1, Date.now() - dd.t);
+        var hh = s.getBoundingClientRect().height;
+        var raw = (dd.nh === undefined) ? dd.h : dd.nh;   /* 未夹紧的目标高度 */
+        dd = null;
+        /* ① 速度：慢慢往下拉 = 改高度；快速往下一甩 = 收起（阈值可在 ⚙ 里设，默认 1.2 px/ms）
+           ② 拖到底：一路压到很矮（< 140px）再松手，不管快慢都收起 —— 拖到底就「自己消失」 */
+        var vel = dy / dt;                       /* px / ms */
+        var vth = sdVel();
+        var flick = dy > 36 && vel >= vth;
+        var bottom = raw < 140 && dy > 40;
+        if (flick || bottom) { s.style.height = ''; s.style.maxHeight = ''; sideClose(); return; }
+        hh = Math.max(180, Math.min(Math.round(Math.min(innerHeight - 120, window.innerHeight * 0.86)), hh));
+        s.style.height = hh + 'px';
+        try { localStorage.setItem('qbank.map.sdh.v1', String(hh)); } catch (err) {}
+      });
+      hd.addEventListener('pointercancel', function () { dd = null; });
+    })();
     return s;
+  }
+  /* 下拉手势阈值：px/ms，越大越不容易被「甩掉」 */
+  function sdVel() {
+    var v = 0;
+    try { v = parseFloat(localStorage.getItem('qbank.map.sdvel.v1') || ''); } catch (e) {}
+    if (!isFinite(v) || v <= 0) v = 1.2;
+    return Math.max(0.3, Math.min(4, v));
+  }
+  function sdSetOpen() {
+    var p = document.getElementById('mpSdSet');
+    if (!p) {
+      p = document.createElement('div'); p.id = 'mpSdSet';
+      p.innerHTML = '<div class="mp-sds-h">下拉手势</div>' +
+        '<div class="mp-sds-r"><span>多快算「甩掉」</span><b id="mpSdSetV"></b></div>' +
+        '<input type="range" id="mpSdSetR" min="0.4" max="3" step="0.1">' +
+        '<div class="mp-sds-t">慢慢往下拉 = 改高度；快速往下一甩 = 收起。数值越小越容易关掉。</div>' +
+        '<div class="mp-sds-b"><button id="mpSdSetRst">恢复默认 1.2</button><button id="mpSdSetX">好了</button></div>';
+      (document.getElementById('mpWrap') || document.body).appendChild(p);
+      var r = p.querySelector('#mpSdSetR'), vv = p.querySelector('#mpSdSetV');
+      var paint = function () {
+        var v = sdVel(); r.value = String(v); vv.textContent = v.toFixed(1) + ' px/ms';
+      };
+      paint();
+      r.oninput = function () {
+        var v = Math.max(0.4, Math.min(3, parseFloat(r.value) || 1.2));
+        try { localStorage.setItem('qbank.map.sdvel.v1', String(v)); } catch (e) {}
+        vv.textContent = v.toFixed(1) + ' px/ms';
+      };
+      p.querySelector('#mpSdSetRst').onclick = function () {
+        try { localStorage.removeItem('qbank.map.sdvel.v1'); } catch (e) {}
+        paint();
+      };
+      p.querySelector('#mpSdSetX').onclick = function () { p.classList.remove('show'); };
+    }
+    p.classList.add('show');
+    /* 挂在 ⚙ 下面，别飘到左上角 */
+    try {
+      var g = document.getElementById('mpSdGear'); var gr = g ? g.getBoundingClientRect() : null;
+      var pw = p.offsetWidth || 280, ph = p.offsetHeight || 170;
+      if (gr) {
+        p.style.left = Math.round(Math.max(8, Math.min(innerWidth - pw - 8, gr.right - pw))) + 'px';
+        p.style.top = Math.round(Math.min(innerHeight - ph - 8, gr.bottom + 6)) + 'px';
+      }
+    } catch (e) {}
   }
   function sideClose() {
     var s = document.getElementById('mpSide'); if (s) s.classList.remove('show');
+  }
+
+  /* ⤢ 真全屏：真的跳到题库里的这道题（走站里自己的路由），
+     站里左上角「‹ 返回」把 hash 退回后，自动把组别 / 选中 / 视口还原 */
+  var MP_RET = null;
+  function jumpBank(n) {
+    var bid = S.bankId || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || '';
+    var qid = (n && n.ref && n.ref.id) || '';
+    try {
+      sessionStorage.setItem('qbank.map.ret.v1', JSON.stringify({
+        bid: bid, gid: G.active, sel: sel, tx: V.tx, ty: V.ty, k: V.k, qid: qid,
+        /* 从哪儿来的：主页就回主页，答到第几题就回第几题 */
+        fromHash: String(location.hash || '#/'),
+        qcur: (typeof QZ !== 'undefined' && QZ && QZ.cur) ? QZ.cur : ''
+      }));
+    } catch (e) {}
+    try {
+      if (typeof QZ !== 'undefined' && QZ && qid) { QZ.bankId = bid; QZ.cur = qid; }
+      if (typeof window.render === 'function') window.render();
+    } catch (e) {}
+    try { sideClose(); close(); } catch (e) {}
+    if (bid) { try { location.hash = '#/bank/' + encodeURIComponent(bid); } catch (e) {} }
+    mpReturnWatch();
+  }
+  function mpReturnWatch() {
+    if (MP_RET) return;
+    MP_RET = function () {
+      var h = String(location.hash || '');
+      if (h.indexOf('#/bank') === 0) return;
+      window.removeEventListener('hashchange', MP_RET); MP_RET = null;
+      var snap = null;
+      try {
+        snap = JSON.parse(sessionStorage.getItem('qbank.map.ret.v1') || 'null');
+        sessionStorage.removeItem('qbank.map.ret.v1');
+      } catch (e) {}
+      if (!snap || !snap.bid) return;
+      try { openFor(snap.bid, snap.qid || ''); } catch (e) { return; }
+      setTimeout(function () {
+        try {
+          if (snap.gid) {
+            var gg = (G.list || []).filter(function (x) { return x.id === snap.gid; })[0];
+            if (gg) { G.active = gg.id; loadGroup(gg); }
+          }
+        } catch (e) {}
+        setTimeout(function () {
+          try { V.tx = snap.tx; V.ty = snap.ty; V.k = snap.k; paintView(); } catch (e) {}
+          /* 关键：把底下的页面也送回原来的位置 —— 从主页点进来的就回主页，
+             从第 3 题点进来的就回第 3 题，而不是一律停在答题页 */
+          try {
+            if (snap.qcur && typeof QZ !== 'undefined' && QZ) QZ.cur = snap.qcur;
+            var fh = String(snap.fromHash || '');
+            /* '' / '#' / '#/' 都算主页；否则回到原来那个页面（含原来那道题） */
+            var target = (!fh || fh === '#') ? '#/' : fh;
+            if (target !== String(location.hash || '')) {
+              if (typeof window.render === 'function') { try { window.render(); } catch (e1) {} }
+              try { location.hash = target; } catch (e2) {}
+            }
+          } catch (e) {}
+          try {
+            if (snap.sel) {
+              var nd = (DATA.nodes || []).filter(function (x) { return x.id === snap.sel; })[0];
+              if (nd) { sel = nd.id; sideOpen(nd); render(true); }
+            }
+          } catch (e) {}
+          if (typeof toast === 'function') toast('回到刚才那一组了', 1600, 'good');
+        }, 420);
+      }, 900);
+    };
+    window.addEventListener('hashchange', MP_RET);
   }
 
   /* ⤢ 就地看着这道题：在脑图里铺一张大卡（不离开地图，返回即回到刚才的组） */
@@ -825,6 +1909,10 @@
   }
   function sideOpen(n) {
     var s = sideEnsure();
+    try {
+      var savedH = parseInt(localStorage.getItem('qbank.map.sdh.v1') || '0', 10);
+      if (savedH > 160) { s.style.height = savedH + 'px'; s.style.maxHeight = 'none'; }
+    } catch (e0) {}
     var q = (n.ref && typeof n.ref === 'object') ? n.ref : {};
     var bankId = (n.ref && n.ref._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || '';
     function esc2(x) { return String(x == null ? '' : x).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
@@ -833,7 +1921,7 @@
       var ff = (typeof fById === 'function') ? fById(n.fid) : null;
       s.querySelector('#mpSdName').textContent = '资料';
       s.querySelector('#mpSdKick').textContent = String(n.ext || (ff ? fileExtOf(ff) : '') || '文件').toUpperCase();
-      s.querySelector('#mpSdJump').style.display = 'none';
+    var r2 = document.getElementById('mpSdRow2'); if (r2) r2.style.display = 'none';
       s.querySelector('#mpSdAi').style.display = 'none';
       var sdf = s.querySelector('#mpSdFull'); if (sdf) sdf.style.display = 'none';
       s.querySelector('#mpSdBody').innerHTML =
@@ -847,12 +1935,17 @@
       if (bOpen) bOpen.onclick = function () { try { vwOpen(ff.id); } catch (e) {} };
       if (bTab) bTab.onclick = function () { try { var w = window.open(ff.url, '_blank'); if (w) w.opener = null; } catch (e) {} };
       s.classList.add('show');
+      try { winFocus('#mpSide'); } catch (e0) {}
       return;
     }
-    s.querySelector('#mpSdJump').style.display = '';
+    var isVariant = (n.type === 'variant');
+    var varBtn = s.querySelector('#mpSdVar');
+    if (varBtn) varBtn.style.display = isVariant ? 'none' : '';
+    var r2b = document.getElementById('mpSdRow2'); if (r2b) r2b.style.display = isVariant ? 'none' : '';
     s.querySelector('#mpSdAi').style.display = '';
     var sdf2 = s.querySelector('#mpSdFull');
-    if (sdf2) { sdf2.style.display = ''; sdf2.onclick = function () { try { rqOpen(n); } catch (e) {} }; }
+    /* AI 变式题不能当中心题，也就不给「跳到题库这道题」的 ⤢ */
+    if (sdf2) { sdf2.style.display = isVariant ? 'none' : ''; if (!isVariant) sdf2.onclick = function () { try { jumpBank(n); } catch (e) {} }; }
     var typeName = n.type === 'center' ? '中心题' : n.type === 'sim' ? '相似题' : '题目';
     var kick = n.type === 'sim' ? ('相似 ' + (n.score == null ? '?' : n.score) + '%') : (n.type === 'center' ? '当前这题' : '');
     s.querySelector('#mpSdName').textContent = typeName;
@@ -878,14 +1971,8 @@
         '<i>这里不会替你自动编题目：改写后的题请照录原文再存进题库。</i></div>';
     }
     s.querySelector('#mpSdBody').innerHTML = html;
-    s.querySelector('#mpSdJump').onclick = function () {
-      try {
-        if (typeof QZ !== 'undefined' && n.ref && n.ref.id) QZ.cur = n.ref.id;
-        if (typeof (window.render) === 'function') window.render();
-        if (bankId) location.hash = '#/bank/' + bankId;
-        sideClose(); try { close(); } catch (e) {}
-      } catch (e) {}
-    };
+    var vb2 = s.querySelector('#mpSdVar');
+    if (vb2) vb2.onclick = function () { try { makeVarDraft(n); } catch (e) {} };
     s.querySelector('#mpSdAi').onclick = function () {
       try {
         var tg = (typeof kpTags === 'function') ? kpTags(n.ref) : [];
@@ -894,6 +1981,7 @@
       } catch (e) {}
     };
     s.classList.add('show');
+    try { winFocus('#mpSide'); } catch (e0) {}
   }
 
   /* 在画布层补画：小笔记 + 中心题旁的「精搜」按钮 */
@@ -941,11 +2029,12 @@
       resizeNote(el, nt);
       nodesEl.appendChild(el);
     });
+    ANIM_ONCE = false;
     var c = DATA.nodes.filter(function (n) { return n.type === 'center'; })[0];
     if (c && !document.querySelector('.mp-probe')) {
       var b = document.createElement('button');
-      b.className = 'mp-probe'; b.type = 'button'; b.textContent = '✨ 精搜';
-      b.title = '在整个题库里再找一遍相似题，够像的直接并进来';
+      b.className = 'mp-probe'; b.type = 'button'; b.textContent = PROBING ? '精搜中…' : '✨ AI 精搜';
+      b.title = '全库再找一遍相似题，够像的直接并进来';
       b.onclick = function (e) { e.stopPropagation(); probe(c); };
       var host = nodesEl.querySelector('.mp-node[data-id="' + c.id + '"]');
       if (host) host.appendChild(b);
@@ -1058,6 +2147,7 @@
     box.dataset.edit = id;
     $('#mpNeTa').value = nt.text || '';
     box.classList.add('show');
+    try { winFocus('#mpPv'); } catch (e0) {}
     setTimeout(function () { $('#mpNeTa').focus(); }, 40);
   }
   function closeNoteEd() { var b = $('#mpNoteEd'); if (b) { b.classList.remove('show'); b.dataset.edit = ''; } }
@@ -1267,6 +2357,7 @@
   function dzArm() {
     var w = $('#mpWrap'); if (!w || DZ.armed) return;
     DZ.armed = true; w.classList.add('dzhover');
+    try { winFocus('#mpWrap'); } catch (e0) {}
     clearTimeout(DZ.tid);
     DZ.tid = setTimeout(function () { DZ.hot = true; w.classList.add('dzhot'); }, Math.round(HOLD * 1000));
   }
@@ -1284,10 +2375,13 @@
       addFileNode(of, e.clientX, e.clientY);
       return;
     }
-    if (!DZ.hot) { if (typeof toast === 'function') toast('再停一会儿才接哦（现在 ' + HOLD + ' 秒）', 1600, 'warn'); dzReset(); return; }
+    /* 题目卡拖进来：松手立即换中心，不走「停 1.2 秒」那道门（那道门是给误拖兜底的） */
+    var qid0 = '';
+    try { qid0 = e.dataTransfer.getData('text/qid') || ''; } catch (err) {}
+    if (!qid0 && !DZ.hot) { if (typeof toast === 'function') toast('再停一会儿才接哦（现在 ' + HOLD + ' 秒）', 1600, 'warn'); dzReset(); return; }
     e.preventDefault(); e.stopPropagation();
-    var qid = '';
-    try { qid = e.dataTransfer.getData('text/qid') || e.dataTransfer.getData('text/plain'); } catch (err) {}
+    var qid = qid0;
+    if (!qid) { try { qid = e.dataTransfer.getData('text/qid') || ''; } catch (err) {} }
     dzReset();
     if (!qid) return;
     var bank = null; try { bank = bankById(S.bankId); } catch (err) {}
@@ -1327,7 +2421,7 @@
     if (exist) {
       exist.x = x; exist.y = y; sel = exist.id;
       try { saveCur(); } catch (e) {}
-      render();
+      render(true);
       if (typeof toast === 'function') toast('这张资料已经在图上了，挪到这儿了', 1600);
       return exist;
     }
@@ -1336,7 +2430,7 @@
     DATA.nodes.push(node);
     sel = id;
     try { saveCur(); } catch (e) {}
-    render();
+    render(true);
     if (typeof toast === 'function') toast('已把资料挂到画布：' + String(f.name || '').slice(0, 14), 1800, 'good');
     return node;
   }
@@ -1346,7 +2440,12 @@
       var card = document.querySelector('#view .qcard') || document.querySelector('#view .stem');
       if (card && !card.dataset.mapdrag) {
         card.dataset.mapdrag = '1'; card.draggable = true; card.style.cursor = 'grab';
-        card.addEventListener('dragstart', function (e) {
+        try {
+        d.addEventListener('pointerdown', function () {
+          try { document.body.classList.add('pip-top'); } catch (e3) {}
+        }, true);
+      } catch (e4) {}
+      card.addEventListener('dragstart', function (e) {
           try {
             e.dataTransfer.setData('text/qid', String(QZ.cur));
             e.dataTransfer.setData('text/plain', String(QZ.cur));
@@ -1355,6 +2454,168 @@
         });
       }
     } catch (e) {}
+  }
+
+  /* ---------- 小窗（iframe ?pip=1）里的题卡也能拖进来换成中心 ----------
+     小窗是独立文档，map.js 的 markDraggables() 够不到它；同一来源下可以直接进去挂拖拽。
+     拿不到题目 id 时就按题干文字在题库里反查。 */
+  function qidByStem(txt) {
+    var t = String(txt || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!t) return '';
+    var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
+    if (!bank) return '';
+    var qs = bank.questions || [];
+    for (var i = 0; i < qs.length; i++) {
+      var st = String(qs[i].stem || '').replace(/\s+/g, ' ').trim();
+      if (st && (st.slice(0, 60) === t || st === t)) return String(qs[i].id);
+    }
+    return '';
+  }
+  function hookPip(ifr) {
+    if (!ifr || ifr.__pipHooked) return;
+    ifr.__pipHooked = 1;
+    var once = function () {
+      var d = null;
+      try { d = ifr.contentDocument; } catch (e) { return; }
+      if (!d || d.__pipDragHooked) return;
+      d.__pipDragHooked = 1;
+      /* 小窗里「下一题」会重建题卡，所以 draggable 用委托：指到/按到哪张卡就标哪张；
+         dragstart 时再按当下这张卡的题干反查题目 id */
+      var mark = function (el) {
+        var c = el && el.closest ? el.closest('#view .qcard, #view .stem') : null;
+        if (c && !c.__md) { c.__md = 1; c.draggable = true; c.style.cursor = 'grab'; }
+      };
+      d.addEventListener('pointerover', function (e) { mark(e.target); }, true);
+      d.addEventListener('pointerdown', function (e) {
+        mark(e.target);
+        try { document.body.classList.add('pip-top'); } catch (e3) {}
+      }, true);
+      d.addEventListener('dragstart', function (e) {
+        var stem = '';
+        try { var s1 = d.querySelector('#view .qcard .stem') || d.querySelector('#view .stem'); stem = s1 ? s1.textContent : ''; } catch (err) {}
+        var qid = qidByStem(stem);
+        try {
+          if (qid) e.dataTransfer.setData('text/qid', qid);
+          e.dataTransfer.setData('text/plain', qid || '');
+          e.dataTransfer.effectAllowed = 'copy';
+        } catch (err) {}
+      }, true);
+    };
+    try { ifr.addEventListener('load', function () { setTimeout(once, 260); }); } catch (e) {}
+    setTimeout(once, 320);
+  }
+  function hookPips() {
+    try {
+      var fs = document.querySelectorAll('iframe.pip-frame, iframe[src*="pip=1"]');
+      for (var i = 0; i < fs.length; i++) hookPip(fs[i]);
+    } catch (e) {}
+  }
+
+  /* ---------- 拖「小窗」压到脑图上：边缘发光 + 右上角倒计时，停够时间就换中心 ----------
+     小窗是整块窗口在跟着鼠标走（不是 HTML5 拖拽），所以用「窗口矩形和脑图矩形重叠面积」判断，
+     而不是光标位置——光标永远在小窗自己身上。 */
+  var PIPD = null;
+  function pipOverlap(wr) {
+    var w = $('#mpWrap'); if (!w) return 0;
+    var r = w.getBoundingClientRect();
+    var ox = Math.max(0, Math.min(wr.right, r.right) - Math.max(wr.left, r.left));
+    var oy = Math.max(0, Math.min(wr.bottom, r.bottom) - Math.max(wr.top, r.top));
+    var area = Math.max(1, wr.width * wr.height);
+    return (ox * oy) / area;
+  }
+  function pipTip(show, txt) {
+    var t = document.getElementById('mpPipTip');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'mpPipTip';
+      (document.getElementById('mpWrap') || document.body).appendChild(t);
+    }
+    t.textContent = txt || '';
+    t.classList.toggle('show', !!show);
+  }
+  function pipQidNow() {
+    try {
+      var ifr = document.querySelector('iframe.pip-frame, iframe[src*="pip=1"]');
+      if (!ifr) return '';
+      var d = ifr.contentDocument; if (!d) return '';
+      var s1 = d.querySelector('#view .qcard .stem') || d.querySelector('#view .stem');
+      return s1 ? qidByStem(s1.textContent) : '';
+    } catch (e) { return ''; }
+  }
+  function bindPipDrop() {
+    if (document.__pipDropB) return; document.__pipDropB = 1;
+    document.addEventListener('pointerdown', function (e) {
+      if (!e.target.closest || !e.target.closest('.pip-win')) return;
+      PIPD = { armed: false, left: false };
+      /* 一按住小窗：小窗立刻升到最前（拖起来的时候不能被脑图压着） */
+      var pl = document.getElementById('pipLayer');
+      if (pl) pl.style.zIndex = '30060';
+      try { document.body.classList.add('pip-top'); } catch (e0) {}
+      /* 同时脑图先亮「准备接收」的静态光边（还没进窗就有反馈） */
+      var w = $('#mpWrap'); if (w) w.classList.add('dzarm');
+    }, true);
+    document.addEventListener('pointermove', function (e) {
+      if (!PIPD) return;
+      /* 拖动过程中反复确认层级（别的模块可能顺手改掉） */
+      var lp = document.getElementById('pipLayer');
+      if (lp && lp.style.zIndex !== '30060') lp.style.zIndex = '30060';
+      var pw = document.querySelector('.pip-win.on') || document.querySelector('.pip-win');
+      if (!pw) return;
+      var ov = pipOverlap(pw.getBoundingClientRect());
+      var inside = ov >= 0.34;
+      if (inside && !PIPD.armed) {
+        PIPD.armed = true; PIPD.left = false;
+        var ww = $('#mpWrap'); if (ww) ww.classList.add('dzpull');
+        dzArm();
+        /* 倒计时显示：0.8s 这样往下跳 */
+        var t0 = Date.now();
+        clearInterval(PIPD.iv);
+        var iv = null;
+        iv = setInterval(function () {
+          if (!PIPD) { clearInterval(iv); return; }
+          var left = Math.max(0, HOLD - (Date.now() - t0) / 1000);
+          pipTip(true, left > 0 ? ('停一下换中心 · ' + left.toFixed(1) + ' 秒') : '松手就换成中心题');
+          if (left <= 0) { clearInterval(iv); clearInterval(PIPD && PIPD.iv); }
+        }, 80);
+        PIPD.iv = iv;
+      } else if (!inside && PIPD.armed) {
+        PIPD.armed = false; PIPD.left = true;
+        clearInterval(PIPD.iv); pipTip(false);
+        dzReset();
+        var wz = $('#mpWrap'); if (wz) wz.classList.remove('dzpull');
+      }
+    }, true);
+    document.addEventListener('pointerup', function (e) {
+      if (!PIPD) return;
+      var wasHot = DZ.hot, armed = PIPD.armed;
+      try { clearInterval(PIPD.iv); } catch (e0) {}
+      PIPD = null;
+      pipTip(false);
+      var wEnd = $('#mpWrap');
+      if (wEnd) { wEnd.classList.remove('dzarm'); wEnd.classList.remove('dzpull'); }
+      /* 松手后交还给 CSS（body.pip-top 决定它该在哪一层） */
+      try { var lz = document.getElementById('pipLayer'); if (lz) lz.style.zIndex = ''; } catch (e1) {}
+      if (wasHot && armed) {
+        dzReset();
+        if (wEnd) { wEnd.classList.add('dzflash'); setTimeout(function () { wEnd.classList.remove('dzflash'); }, 420); }
+        var qid = pipQidNow();
+        var bank = null; try { bank = bankById(S.bankId); } catch (err) {}
+        var q = bank && (bank.questions || []).filter(function (x) { return String(x.id) === String(qid); })[0];
+        if (q) {
+          recenter(q);
+          if (typeof toast === 'function') toast('已把这道题设成中心题', 1500, 'good');
+        } else if (typeof toast === 'function') {
+          toast('这道题不在当前题库里', 1600, 'warn');
+        }
+      } else {
+        dzReset();
+      }
+    }, true);
+    document.addEventListener('pointercancel', function () {
+      if (PIPD) {
+        clearInterval(PIPD.iv); PIPD = null; pipTip(false); dzReset();
+        var wc = $('#mpWrap'); if (wc) { wc.classList.remove('dzarm'); wc.classList.remove('dzpull'); }
+      }
+    }, true);
   }
 
   /* ---------- 精搜：全库再扫一遍 ---------- */
@@ -1366,12 +2627,35 @@
   }
   function inter(a, b) { var n = 0; for (var k in a) if (b[k]) n++; return n; }
   function overlap(a, b) { var n = inter(a, b); var mn = Math.min(Object.keys(a).length, Object.keys(b).length) || 1; return n / mn; }
+  var PROBING = false;
   function probe(centerNode) {
+    if (PROBING) return;
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     if (!bank) return;
-    var q0 = (bank.questions || []).filter(function (x) { return x.id === centerNode.refId; })[0];
-    if (!q0) return;
-    var have = {}; DATA.nodes.forEach(function (n) { if (n.refId) have[n.refId] = 1; });
+    PROBING = true; render(true);
+    try {
+      var w0 = document.getElementById('mpWrap');
+      if (w0 && !document.getElementById('mpProbeBar')) {
+        var pb = document.createElement('i');
+        pb.id = 'mpProbeBar';
+        w0.appendChild(pb);
+      }
+    } catch (e1) {}
+    setTimeout(function () { probeRun(centerNode); }, 30);
+  }
+  function probeRun(centerNode) {
+    var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
+    PROBING = false;
+    try {
+      var pb0 = document.getElementById('mpProbeBar');
+      if (pb0) setTimeout(function () { try { pb0.remove(); } catch (e9) {} }, 380);
+    } catch (e0) {}
+    if (!bank) { render(true); return; }
+    /* 中心节点只存 ref（题目对象），没有 refId —— 老写法在这里静默 return，按钮看着「没反应」 */
+    var cid = centerNode.refId || (centerNode.ref && centerNode.ref.id);
+    var q0 = (bank.questions || []).filter(function (x) { return String(x.id) === String(cid); })[0];
+    if (!q0) { render(true); if (typeof toast === 'function') toast('中心题不在这个题库里了', 1800, 'warn'); return; }
+    var have = {}; DATA.nodes.forEach(function (n) { var k = n.refId || (n.ref && n.ref.id); if (k) have[k] = 1; });
     var t0 = qTags(q0).map(function (s) { return String(s).toLowerCase(); });
     var s0 = bg(q0.stem), o0 = bg((q0.options || []).join(' '));
     var cand = [];
@@ -1386,19 +2670,24 @@
     });
     cand.sort(function (a, b) { return b.s - a.s; });
     cand = cand.slice(0, 5);
-    if (!cand.length) { if (typeof toast === 'function') toast('全库扫了一遍，没有更像的了', 1800, 'ok'); return; }
+    if (!cand.length) {
+      render(true);
+      if (typeof toast === 'function') toast('全库里没有更相似的题了', 1800, 'ok');
+      return;
+    }
     var maxR = 320;
     DATA.nodes.forEach(function (n) { maxR = Math.max(maxR, Math.hypot(n.x, n.y)); });
     var R = maxR + 90, n0 = DATA.nodes.length;
     cand.forEach(function (it, i) {
       var ang = (-Math.PI / 2) + (i - (cand.length - 1) / 2) * 0.5 + Math.PI * 0.12;
       var id = 'ps' + Date.now().toString(36) + i;
-      DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), x: Math.cos(ang) * R, y: Math.sin(ang) * R });
+      DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
       DATA.edges.push({ a: centerNode.id, b: id, kind: 'sim', w: it.s });
     });
     try { saveCur(); } catch (e) {}
     render();
-    if (typeof toast === 'function') toast('精搜：补进 ' + cand.length + ' 道更像的题', 1800, 'good');
+    setTimeout(fit, 60);
+    if (typeof toast === 'function') toast('AI 精搜：新增 ' + cand.length + ' 道高相似题，已并入本组', 2200, 'good');
   }
 
   /* ---------- 初始化（只跑一次） ---------- */
@@ -1467,10 +2756,26 @@
           var f = e.target.dataset.f; if (!f) return;
           FIL[f] = e.target.checked ? 1 : 0;
           try { writeLS('qbank.mapfil.v1', FIL); } catch (err) {}
-          applyFil(); render();
+          applyFil(); render(true);
+          try { drawEdges(); } catch (err2) {}
         });
         /* 建段时先按已存的过滤状态勾好，别出现「画面没有变式、勾选框却是空的」 */
         try { applyFil(); } catch (err) {}
+      }
+      /* 路径模式：点相似题就地延伸，中心不动（最多 10 步） */
+      if (!$('#mpPath')) {
+        var pb2 = document.createElement('button');
+        pb2.id = 'mpPath';
+        pb2.type = 'button';
+        pb2.title = '路径模式：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步）';
+        pb2.textContent = '🧭 路径';
+        var anchor = $('#mpFil');
+        if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(pb2, anchor);
+        else if (tg && tg.parentNode) tg.parentNode.insertBefore(pb2, tg);
+        else tools.appendChild(pb2);
+        pb2.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        pb2.onclick = function (e) { e.stopPropagation(); pathSet(!PATHM.on); };
+        try { paintPath(); } catch (e1) {}
       }
       nb.onclick = function (e) { e.stopPropagation(); addNote(); };
     }
@@ -1484,6 +2789,22 @@
         var v = parseFloat(this.value); if (!(v >= 0.4 && v <= 5)) v = 1.2;
         this.value = v; HOLD = v; try { localStorage.setItem(B4_KEY, String(v)); } catch (e) {}
         if (typeof toast === 'function') toast('拖入要停 ' + v + ' 秒才收', 1500, 'ok');
+      });
+    }
+    if (tools && !$('#mpLongBox')) {
+      var lb = document.createElement('span');
+      lb.id = 'mpLongBox';
+      lb.innerHTML = '<span>长按</span><input id="mpLong" type="number" min="0.3" max="3" step="0.1" value="' + (LONG_MS / 1000).toFixed(1) + '"><span>秒</span>';
+      var hb2 = $('#mpHoldBox');
+      if (hb2 && hb2.parentNode) hb2.parentNode.insertBefore(lb, hb2.nextSibling);
+      else { var tg3 = tools.querySelector('.mp-tgrow'); if (tg3 && tg3.parentNode) tg3.parentNode.insertBefore(lb, tg3); else tools.appendChild(lb); }
+      $('#mpLong').addEventListener('change', function () {
+        var v = Math.round(parseFloat(this.value) * 1000);
+        if (!(v >= 300 && v <= 3000)) v = 800;
+        this.value = (v / 1000).toFixed(1);
+        LONG_MS = v;
+        try { localStorage.setItem(LKEY, String(v)); } catch (e) {}
+        if (typeof toast === 'function') toast('长按 ' + (v / 1000).toFixed(1) + ' 秒展开相似题与考点', 1600, 'ok');
       });
     }
     if (!document.getElementById('mpNoteEd')) {
@@ -1504,14 +2825,17 @@
     }
     if (wrap && !wrap.dataset.dzb) {
       wrap.dataset.dzb = '1';
-      wrap.addEventListener('dragenter', function (e) { if (canTake(e.dataTransfer)) { e.preventDefault(); dzArm(); } });
-      wrap.addEventListener('dragover', function (e) { if (canTake(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dzArm(); } });
+      /* 发光只属于「小窗拖进来」这一路（bindPipDrop），题卡/资料柜拖拽不发光 */
+    wrap.addEventListener('dragenter', function (e) { if (canTake(e.dataTransfer)) { e.preventDefault(); } });
+      wrap.addEventListener('dragover', function (e) { if (canTake(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
       wrap.addEventListener('dragleave', function (e) { if (!wrap.contains(e.relatedTarget)) dzReset(); });
       wrap.addEventListener('drop', onDrop);
       window.addEventListener('dragend', dzReset);
       document.addEventListener('drop', function () { setTimeout(dzReset, 30); }, true);
     }
     markDraggables();
+    bindPipDrop();
+    hookPips(); setTimeout(hookPips, 900); setTimeout(hookPips, 2200);
   }
 
   /* ================= 知识组（web320） ================= */
@@ -1531,10 +2855,13 @@
   function serNode(n) {
     return { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y,
       refId: (n.type === 'tag' || n.type === 'file') ? null : (n.ref && n.ref.id),
-      fid: n.fid || null, ext: n.ext || null };
+      fid: n.fid || null, ext: n.ext || null,
+      lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0 };
   }
   function deNode(n, bank) {
     var out = { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y };
+    if (n.lv != null) out.lv = n.lv;
+    if (n.path) out.path = true;
     if (n.type === 'tag') out.ref = n.label;
     else if (n.type === 'file') { out.fid = n.fid || null; out.ext = n.ext || null; out.ref = null; }
     else {
@@ -1546,19 +2873,392 @@
   function saveCur() {
     var g = gCur(); if (!g) return;
     g.bank = S.bankId; g.qid = S.qid; g.layout = LAY.name;
-    g.nodes = DATA.nodes.map(serNode);
-    g.edges = DATA.edges.map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; });
+    /* 路径组：开着路径模式、或图里已经有「路径展开」出来的节点（带 lv / path） */
+    g.path = (PATHM.on || DATA.nodes.some(function (n) { return !!(n.path || (n.lv != null && n.lv > 0)); })) ? 1 : 0;
+    /* 草稿节点不进存档：没确认的 AI 结果刷新就没了，别污染这一组 */
+    var live = {};
+    DATA.nodes.forEach(function (n) { if (!n.draft) live[n.id] = 1; });
+    g.nodes = DATA.nodes.filter(function (n) { return !n.draft; }).map(serNode);
+    g.edges = DATA.edges.filter(function (e) { return live[e.a] && live[e.b]; })
+      .map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; });
     gSave();
   }
-  function loadGroup(g) {
-    var bank = null; try { bank = bankById(g.bank); } catch (e) {}
+  /* ===== 路径模式：在已有关系网上就地延伸，中心题永远不动 ===== */
+  var PATHM = { on: false, max: 10 };
+  try { PATHM.on = readLS('qbank.map.path.v1', false) === true; } catch (eP) {}
+  function pathSet(on) {
+    PATHM.on = !!on;
+    try { writeLS('qbank.map.path.v1', PATHM.on); } catch (e1) {}
+    paintPath();
+    render(true);
+    toast(PATHM.on ? '路径模式已开：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步）' : '路径模式已关');
+  }
+  function paintPath() {
+    var b = $('#mpPath'); if (!b) return;
+    b.classList.toggle('on', PATHM.on);
+    b.textContent = PATHM.on ? '🧭 路径中' : '🧭 路径';
+    b.title = PATHM.on ? '路径模式已开：点相似题就地延伸（最多 ' + PATHM.max + ' 步），再点一下关闭' : '路径模式：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步）';
+  }
+  /* 拿一道题的「邻居」：题干相似度 + 考点重合，排除已经在本组里的题 */
+  function pathNeighbors(q, bank, limit) {
+    var pool = (bank.questions || []).filter(function (x) { return x && x.stem && String(x.id) !== String(q.id); });
+    if (!pool.length) return [];
+    var have = Object.create(null);
+    DATA.nodes.forEach(function (m) { if (m.ref && m.ref.id) have[String(m.ref.id)] = 1; });
+    var curG = grams(norm(qText(q))), curTags = tagList(q, bank.id);
+    var df = Object.create(null), n = pool.length, vecs = [], i;
+    for (i = 0; i < n; i++) {
+      var v = grams(norm(qText(pool[i]))); vecs.push(v);
+      for (var k in v) df[k] = (df[k] || 0) + 1;
+    }
+    var idf = Object.create(null);
+    for (var kk in df) idf[kk] = Math.log(1 + n / df[kk]);
+    function cos(a, b) {
+      var dot = 0, na = 0, nb = 0, key;
+      for (key in a) { na += Math.pow(a[key] * idf[key], 2); }
+      for (key in b) { nb += Math.pow(b[key] * idf[key], 2); }
+      for (key in a) { if (b[key]) dot += (a[key] * idf[key]) * (b[key] * idf[key]); }
+      return (na && nb) ? dot / Math.sqrt(na * nb) : 0;
+    }
+    function jac(a, b) {
+      if (!a.length || !b.length) return 0;
+      var s1 = a.map(norm), s2 = b.map(norm), inter = 0;
+      s1.forEach(function (x) { if (s2.indexOf(x) >= 0) inter++; });
+      return inter / (s1.length + s2.length - inter);
+    }
+    var out = [];
+    for (i = 0; i < n; i++) {
+      if (have[String(pool[i].id)]) continue;
+      var sim = cos(curG, vecs[i]);
+      var sc = sim + 0.35 * jac(curTags, tagList(pool[i], bank.id));
+      if (sc > 0.04) out.push({ q: pool[i], sim: sim, score: sc });
+    }
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out.slice(0, limit || 4);
+  }
+  /* 给一个新节点补「考点线」：命中已有考点就接过去，没有就新建一个考点节点 */
+  /* ===== 一键理顺：合并重复连线 + 分层重排（中心 → 相似题一圈 → 考点外圈） ===== */
+  function tidyGraph() {
+    var nodesEl = $('#mpNodes');
+    var pos = Object.create(null);
+    DATA.nodes.forEach(function (n) { pos[n.id] = n; });
+    /* 1) 合并重复连线：同一对节点只留权重最高的一条；指向不存在节点的线丢掉 */
+    var keep = Object.create(null), merged = 0, dropped = 0, edges = [];
+    DATA.edges.forEach(function (e) {
+      if (!pos[e.a] || !pos[e.b]) { dropped++; return; }
+      var k = (String(e.a) < String(e.b)) ? (e.a + '>' + e.b) : (e.b + '>' + e.a);
+      if (keep[k] != null) {
+        var pe = edges[keep[k]];
+        if ((e.w == null ? 0.4 : e.w) > (pe.w == null ? 0.4 : pe.w)) edges[keep[k]] = e;
+        merged++;
+        return;
+      }
+      keep[k] = edges.length; edges.push(e);
+    });
+    DATA.edges = edges;
+
+    /* 2) 分层重排：中心归零，相似题按当前角度排序后均匀铺在一圈，考点按连线方向推到外圈 */
+    var c = DATA.nodes.filter(function (n) { return n.type === 'center'; })[0];
+    if (c) { c.x = 0; c.y = 0; }
+    var cx = c ? c.x : 0, cy = c ? c.y : 0;
+    var ring = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'variant'; });
+    ring.sort(function (a, b) {
+      return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
+    });
+    /* 按「度数 + 相似度」排一遍：连接多的题分散开摆，避免高亮线全挤在一侧 */
+    var deg = {};
+    DATA.edges.forEach(function (e) { deg[e.a] = (deg[e.a] || 0) + 1; deg[e.b] = (deg[e.b] || 0) + 1; });
+    ring.sort(function (a, b) {
+      var da = (deg[a.id] || 0) + (a.score || 0) / 40;
+      var db = (deg[b.id] || 0) + (b.score || 0) / 40;
+      if (db !== da) return db - da;
+      return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
+    });
+    var n = ring.length;
+    /* 卡片实测尺寸（长题干会到 230~280px 宽），按圆周能放下的数量分圈，别再挤成一坨 */
+    var boxSize = {};
+    var maxW = 236, maxH = 107;
+    try {
+      nodesEl.querySelectorAll('.mp-node').forEach(function (el) {
+        var w = el.offsetWidth || 0, h = el.offsetHeight || 0;
+        if (w > 40) { boxSize[el.dataset.id] = { w: w, h: h }; if (w > maxW) maxW = w; if (h > maxH) maxH = h; }
+      });
+    } catch (eS) {}
+    var R = 560;
+    var cap1 = Math.max(6, Math.floor(2 * Math.PI * R / (maxW + 26)));
+    if (n <= cap1) {
+      ring.forEach(function (nd, i) {
+        var a0 = -Math.PI / 2 + i * 2 * Math.PI / Math.max(1, n);
+        nd.x = Math.round(cx + Math.cos(a0) * R);
+        nd.y = Math.round(cy + Math.sin(a0) * R);
+      });
+    } else {
+      var R2 = 980;
+      var cap2 = Math.max(6, Math.floor(2 * Math.PI * R2 / (maxW + 26)));
+      ring.forEach(function (nd, i) {
+        if (i < cap1) {
+          var a1 = -Math.PI / 2 + i * 2 * Math.PI / Math.max(1, cap1);
+          nd.x = Math.round(cx + Math.cos(a1) * R);
+          nd.y = Math.round(cy + Math.sin(a1) * R);
+        } else {
+          var k2 = i - cap1;
+          var a2 = -Math.PI / 2 + Math.PI / Math.max(1, Math.min(cap2, n - cap1)) + k2 * 2 * Math.PI / Math.max(1, Math.min(cap2, n - cap1));
+          nd.x = Math.round(cx + Math.cos(a2) * R2);
+          nd.y = Math.round(cy + Math.sin(a2) * R2);
+        }
+      });
+      R = R2;
+    }
+
+    var tags = DATA.nodes.filter(function (m) { return m.type === 'tag'; });
+    var infos = tags.map(function (tn) {
+      var sx = 0, sy = 0, cnt = 0;
+      DATA.edges.forEach(function (e) {
+        var oid = e.a === tn.id ? e.b : (e.b === tn.id ? e.a : null);
+        if (!oid || !pos[oid]) return;
+        var o = pos[oid];
+        var dx = o.x - cx, dy = o.y - cy, len = Math.hypot(dx, dy) || 1;
+        sx += dx / len; sy += dy / len; cnt++;
+      });
+      return { tn: tn, ang: cnt ? Math.atan2(sy, sx) : -Math.PI / 2, cnt: cnt };
+    });
+    /* 3) 松弛：卡片按近似尺寸互相推开，避免任何两张叠在一起（只推 X/Y，不动层级） */
+    try {
+      var boxes = DATA.nodes.filter(function (m) { return m.type === 'sim' || m.type === 'variant' || m.type === 'tag' || m.type === 'center'; });
+      var sz = function (m) { var b = boxSize[m.id] || {}; return { w: (b.w || 200) / 2 + 12, h: (b.h || 90) / 2 + 12 }; };
+      var relaxIt = function (rounds) {
+        for (var it2 = 0; it2 < rounds; it2++) {
+          for (var i2 = 0; i2 < boxes.length; i2++) {
+            for (var j2 = i2 + 1; j2 < boxes.length; j2++) {
+              var p1 = boxes[i2], p2 = boxes[j2];
+              var s1 = sz(p1), s2 = sz(p2);
+              var ox = (s1.w + s2.w) - Math.abs(p2.x - p1.x), oy = (s1.h + s2.h) - Math.abs(p2.y - p1.y);
+              if (ox > 0 && oy > 0) {
+                var sx2 = (p2.x >= p1.x) ? 1 : -1, sy2 = (p2.y >= p1.y) ? 1 : -1;
+                if (ox < oy) { p1.x -= sx2 * ox / 2; p2.x += sx2 * ox / 2; }
+                else { p1.y -= sy2 * oy / 2; p2.y += sy2 * oy / 2; }
+              }
+            }
+          }
+        }
+      };
+      relaxIt(50);
+      /* 力导向微调：连线像弹簧拉近、节点互相排斥，让线更短、交叉更少 */
+      var idx = {};
+      boxes.forEach(function (b) { idx[b.id] = b; });
+      var links = DATA.edges.filter(function (e) { return idx[e.a] && idx[e.b]; }).map(function (e) {
+        return { a: idx[e.a], b: idx[e.b], w: (e.w == null ? 0.4 : e.w) };
+      });
+      for (var itF = 0; itF < 90; itF++) {
+        for (var li = 0; li < links.length; li++) {
+          var L = links[li], dxL = L.b.x - L.a.x, dyL = L.b.y - L.a.y;
+          var dL = Math.hypot(dxL, dyL) || 1;
+          var want = 260 - 90 * L.w;
+          var f = (dL - want) * 0.012 * (0.4 + L.w);
+          var uxL = dxL / dL, uyL = dyL / dL;
+          L.a.x += uxL * f; L.a.y += uyL * f;
+          L.b.x -= uxL * f; L.b.y -= uyL * f;
+        }
+        for (var i3 = 0; i3 < boxes.length; i3++) {
+          for (var j3 = i3 + 1; j3 < boxes.length; j3++) {
+            var q1 = boxes[i3], q2 = boxes[j3];
+            var dxR = q2.x - q1.x, dyR = q2.y - q1.y;
+            var dR = Math.hypot(dxR, dyR) || 1;
+            if (dR > 620) continue;
+            var rep = 26000 / (dR * dR);
+            var uxR = dxR / dR, uyR = dyR / dR;
+            q1.x -= uxR * rep; q1.y -= uyR * rep;
+            q2.x += uxR * rep; q2.y += uyR * rep;
+          }
+        }
+      }
+      /* 力导向会把卡片拉近，最后再推一遍，保证没有重叠 */
+      relaxIt(70);
+      boxes.forEach(function (b) { b.x = Math.round(b.x); b.y = Math.round(b.y); });
+    } catch (eR) {}
+
+    infos.sort(function (a, b) { return a.ang - b.ang; });
+    /* 同角度的考点往两边错开，别叠在一起 */
+    infos.forEach(function (it, i) {
+      var off = (i - (infos.length - 1) / 2) * 0.30;
+      var R2 = R + 300;
+      it.tn.x = Math.round(cx + Math.cos(it.ang + off) * R2);
+      it.tn.y = Math.round(cy + Math.sin(it.ang + off) * R2);
+    });
+
+    render();
+    saveCur();
+    toast('已理顺：合并 ' + merged + ' 条重复线' + (dropped ? '、清掉 ' + dropped + ' 条悬空线' : '') + '，按 中心→相似题→考点 重排');
+    return true;
+  }
+
+  /* 把一个考点节点跟图上「所有带这个考点的题」连起来（含已经在图上的老题） */
+  function linkTagAll(tn, bank) {
+    if (!tn || tn.type !== 'tag') return 0;
+    var nm = norm(tn.label), added = 0;
+    DATA.nodes.forEach(function (m) {
+      if (!(m.type === 'sim' || m.type === 'center' || m.type === 'variant')) return;
+      if (!m.ref || !m.ref.stem) return;
+      var has = tagList(m.ref, bank.id).map(norm).indexOf(nm) >= 0;
+      if (!has) return;
+      var dup = DATA.edges.some(function (e) { return (e.a === m.id && e.b === tn.id) || (e.a === tn.id && e.b === m.id); });
+      if (dup) return;
+      DATA.edges.push({ a: m.id, b: tn.id, kind: 'tag', w: 0.42 });
+      added++;
+    });
+    return added;
+  }
+  function pathTagLink(node, bank, list, noCreate) {
+    var tags = tagList(node.ref, bank.id).filter(function (x) { return !isBigTag(x); }).slice(0, 3);
+    tags.forEach(function (t, ti) {
+      var nrm = norm(t);
+      var tn = DATA.nodes.filter(function (m) { return m.type === 'tag' && norm(m.label) === nrm; })[0];
+      if (!tn && noCreate) return;
+      if (!tn) {
+        tn = { id: 'pt' + Date.now().toString(36) + ti + Math.floor(Math.random() * 999), type: 'tag', ref: t, label: t,
+          x: node.x + 150, y: node.y + (ti * 90) - 45, lv: (node.lv || 0) };
+        DATA.nodes.push(tn);
+        list.push(tn);
+      }
+      var dup = DATA.edges.some(function (e) { return (e.a === node.id && e.b === tn.id) || (e.a === tn.id && e.b === node.id); });
+      if (!dup) DATA.edges.push({ a: node.id, b: tn.id, kind: 'tag', w: 0.42 });
+    });
+  }
+  function pathExpand(n) {
+    if (!n) return false;
+    var bank = null; try { bank = bankById(S.bankId); } catch (e0) {}
+    if (!bank) { toast('当前没有打开的题库'); return true; }
+    var lv = (n.lv || 0) + 1;
+    if (PATHM.on && lv > PATHM.max) { toast('路径最多延伸 ' + PATHM.max + ' 步，先换个起点吧'); return true; }
+    var picks, fromTag = false;
+    if (n.type === 'tag') {
+      fromTag = true;
+      var nm = norm(n.label);
+      var haveT = Object.create(null);
+      DATA.nodes.forEach(function (m) { if (m.ref && m.ref.id) haveT[String(m.ref.id)] = 1; });
+      picks = (bank.questions || []).filter(function (x) {
+        return x && x.stem && !haveT[String(x.id)] && tagList(x, bank.id).map(norm).indexOf(nm) >= 0;
+      }).slice(0, 4).map(function (x) { return { q: x, sim: 0, score: 0.3 }; });
+    } else {
+      if (!n.ref || !n.ref.stem) { toast('这一张不是题目节点'); return true; }
+      picks = pathNeighbors(n.ref, bank, 4);
+    }
+    if (!picks.length) { toast('这条路上没有更多新题了'); return true; }
+    var mx = picks[0].score || 1;
+    /* 朝「远离已有中心」的方向排开，别再压到中心题上 */
+    var cn = DATA.nodes.filter(function (m) { return m.type === 'center'; })[0] || { x: 0, y: 0 };
+    var base = Math.atan2(n.y - cn.y, n.x - cn.x);
+    if (!isFinite(base) || (Math.abs(n.x - cn.x) < 1 && Math.abs(n.y - cn.y) < 1)) base = -Math.PI / 2;
+    var R = 285, added = [];
+    picks.forEach(function (it, i) {
+      var ang = base + (i - (picks.length - 1) / 2) * 0.52;
+      var id = 'pn' + Date.now().toString(36) + i + Math.floor(Math.random() * 999);
+      var nd = {
+        id: id, type: 'sim', ref: it.q, label: it.q.stem, lv: lv, path: true,
+        score: Math.round(38 + (mx ? (it.score / mx) : 0.5) * 56),
+        x: n.x + Math.cos(ang) * R, y: n.y + Math.sin(ang) * R
+      };
+      DATA.nodes.push(nd); added.push(nd);
+      DATA.edges.push({ a: n.id, b: id, kind: 'sim', w: mx ? (it.score / mx) : 0.5 });
+      pathTagLink(nd, bank, added, true);
+    });
+    if (fromTag) added.forEach(function (nd2) { pathTagLink(nd2, bank, added, true); });
+    saveCur();
+    /* 分层模式下新展开出来的题也要按「同心环的第 k 层」摆，不能散在原节点旁边 */
+    if (LAY.name === 'layer') { try { applyLayout('layer'); } catch (eL1) { render(true); } }
+    else render(true);
+    toast((PATHM.on ? '路径延伸第 ' + lv + ' 步：' : '展开：') + '+' + picks.length + ' 题（中心题没动）');
+    /* 被点对象自己的考点：还没在图上时问一句要不要挂出来 */
+    try {
+      var ownTags = (n.type === 'sim' && n.ref && n.ref.stem) ? tagList(n.ref, bank.id).filter(function (x) { return !isBigTag(x); }) : (n.type === 'tag' ? [n.label] : []);
+      /* 已经在图上的考点：把它跟图上所有同类题连一遍（老题、新题都连） */
+      ownTags.forEach(function (t) {
+        var ex = DATA.nodes.filter(function (m) { return m.type === 'tag' && norm(m.label) === norm(t); })[0];
+        if (ex) { if (linkTagAll(ex, bank) > 0) { saveCur(); render(true); } }
+      });
+      var missing = ownTags.filter(function (t) {
+        return !DATA.nodes.some(function (m) { return m.type === 'tag' && norm(m.label) === norm(t); });
+      });
+      if (missing.length) {
+        var showTag = function (t) {
+          var tNode = DATA.nodes.filter(function (m) { return m.type === 'tag' && norm(m.label) === norm(t); })[0];
+          if (!tNode) {
+            /* 摆到「离整张图质心最远的一侧」，别再压到已有卡片上 */
+            var sx = 0, sy = 0;
+            DATA.nodes.forEach(function (m) { sx += m.x; sy += m.y; });
+            sx = sx / Math.max(1, DATA.nodes.length); sy = sy / Math.max(1, DATA.nodes.length);
+            var ang0 = Math.atan2(n.y - sy, n.x - sx);
+            if (!isFinite(ang0) || (Math.abs(n.y - sy) < 1 && Math.abs(n.x - sx) < 1)) ang0 = -Math.PI / 2;
+            /* 在 12 个方向 × 3 个半径里挑「离所有卡片最远」的位置，避免压住别的题 */
+            var best = null;
+            [300, 380, 460].forEach(function (rr) {
+              for (var ai = 0; ai < 12; ai++) {
+                var a2 = ang0 + (ai - 6) * 0.52;
+                var px2 = n.x + Math.cos(a2) * rr, py2 = n.y + Math.sin(a2) * rr;
+                var mn = 1e9;
+                DATA.nodes.forEach(function (m) {
+                  if (m === n) return;
+                  mn = Math.min(mn, Math.hypot(m.x - px2, m.y - py2));
+                });
+                var score2 = mn - Math.abs(ai - 6) * 6 - (rr - 300) * 0.12;
+                if (!best || score2 > best.s) best = { x: px2, y: py2, s: score2 };
+              }
+            });
+            tNode = { id: 'pt' + Date.now().toString(36) + Math.floor(Math.random() * 999), type: 'tag', ref: t, label: t,
+              x: (best ? best.x : n.x + 300), y: (best ? best.y : n.y - 300), lv: lv };
+            DATA.nodes.push(tNode);
+          }
+          linkTagAll(tNode, bank);
+          saveCur(); render();
+        };
+        if (missing.length === 1) {
+          mpAsk({ title: '要把这个考点也挂出来吗？', text: '「' + missing[0] + '」还没在图上。挂出来后，图上其他带这个考点的题也会连到它。', ok: '显示考点', no: '先不用' })
+            .then(function (ok) { if (ok) showTag(missing[0]); });
+        } else {
+          showTag(missing[0]);
+          toast('已把这个考点挂出来：' + missing[0]);
+        }
+      }
+    } catch (eT) {}
+    return true;
+  }
+
+  /* 老存档里只有「中心题 → 考点」这一根线；补上「同一考点的相似题 → 考点」 */
+  function relinkTags(bank) {
+    if (!bank || !DATA || !DATA.nodes || !DATA.nodes.length) return;
+    var tags = DATA.nodes.filter(function (n) { return n.type === 'tag' && n.label; });
+    if (!tags.length) return;
+    var has = Object.create(null);
+    DATA.edges.forEach(function (e) { has[e.a + '>' + e.b] = 1; });
+    DATA.nodes.forEach(function (n) {
+      if (n.type !== 'sim' && n.type !== 'center') return;
+      var q = n.ref && n.ref.stem ? n.ref : null;
+      if (!q) return;
+      var st = tagList(q, bank.id).map(norm);
+      if (!st.length) return;
+      tags.forEach(function (tn) {
+        if (st.indexOf(norm(tn.label)) < 0) return;
+        var key = n.id + '>' + tn.id;
+        if (has[key]) return;
+        has[key] = 1;
+        DATA.edges.push({ a: n.id, b: tn.id, kind: 'tag', w: 0.42 });
+      });
+    });
+  }
+  function loadGroup(g) {    var bank = null; try { bank = bankById(g.bank); } catch (e) {}
     DATA = {
       nodes: (g.nodes || []).map(function (n) { return deNode(n, bank); }),
       edges: (g.edges || []).map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; })
     };
-    LAY.name = (g.layout && LAYOUTS.some(function (l) { return l.k === g.layout; })) ? g.layout : 'radial';
+    LAY.name = layName(g.layout || 'tree');
     S.bankId = g.bank; S.qid = g.qid; sel = null;
+    try { relinkTags(bank); } catch (e0) {}
     var s = $('#mpLayout'); if (s) s.value = LAY.name;
+    /* 打开的是路径组：自动把路径模式打开，接着往下一层延伸就行 */
+    try {
+      if (g.path) { PATHM.on = true; writeLS('qbank.map.path.v1', true); }
+      paintPath();
+    } catch (eP0) {}
     render(); setTimeout(fit, 50);
     try { paintGrpBtn(); } catch (e) {}
   }
@@ -1570,7 +3270,7 @@
   }
   function gAddFrom(name, nodes, edges, bank, qid, layout) {
     saveCur();
-    var g = { id: gNewId(), name: name, star: false, bank: bank, qid: qid, layout: layout || 'radial', nodes: nodes, edges: edges };
+    var g = { id: gNewId(), name: name, star: false, bank: bank, qid: qid, layout: layout || 'grid', nodes: nodes, edges: edges };
     G.list.unshift(g); G.active = g.id; gSave();
     loadGroup(g); renderGrp();
     return g;
@@ -1599,16 +3299,48 @@
   }
   function gDel(id) {
     var g = G.list.filter(function (x) { return x.id === id; })[0]; if (!g) return;
-    if (!confirm('删掉「' + g.name + '」这一组？（只删这一组，不影响题库和标签）')) return;
-    G.list = G.list.filter(function (x) { return x.id !== id; });
-    if (G.active === id) {
-      G.active = (G.list[0] && G.list[0].id) || null;
-      var n = gCur(); if (n) loadGroup(n); else { DATA = { nodes: [], edges: [] }; render(); }
+    mpAsk({ title: '删掉这一组？', text: '「' + String(g.name || '未命名组') + '」· 只删这一组，不影响题库和标签。', ok: '删除', danger: true })
+      .then(function (ok) { if (ok) doDel(); });
+    function doDel() {
+      G.list = G.list.filter(function (x) { return x.id !== id; });
+      if (G.active === id) {
+        G.active = (G.list[0] && G.list[0].id) || null;
+        var n = gCur(); if (n) loadGroup(n); else { DATA = { nodes: [], edges: [] }; render(); }
+      }
+      gSave(); renderGrp();
     }
-    gSave(); renderGrp();
   }
-  function gStar(id) {
-    var g = G.list.filter(function (x) { return x.id === id; })[0]; if (!g) return;
+  /* 站里那种自定义确认框（不再用浏览器原生 confirm，样式跟面板一致） */
+  function mpAsk(o) {
+    return new Promise(function (resolve) {
+      var d = document.createElement('div');
+      d.className = 'mp-ask';
+      d.innerHTML = '<div class="mp-askc" role="dialog">' +
+        '<b>' + esc(o.title || '确认') + '</b>' +
+        (o.text ? '<p>' + esc(o.text) + '</p>' : '') +
+        (o.list && o.list.length ? '<ul>' + o.list.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : '') +
+        '<div class="mp-askb"><button type="button" data-no>取消</button>' +
+        '<button type="button" data-yes class="' + (o.danger ? 'bad' : 'prim') + '">' + esc(o.ok || '确定') + '</button></div></div>';
+      document.body.appendChild(d);
+      function done(v) {
+        try { d.remove(); } catch (e) { if (d.parentNode) d.parentNode.removeChild(d); }
+        document.removeEventListener('keydown', key, true);
+        resolve(v);
+      }
+      function key(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+        else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
+      }
+      document.addEventListener('keydown', key, true);
+      d.addEventListener('click', function (e) {
+        if (e.target.closest('[data-yes]')) return done(true);
+        if (e.target.closest('[data-no]') || e.target === d) return done(false);
+      });
+      try { d.querySelector('[data-yes]').focus(); } catch (e) {}
+    });
+  }
+
+  function gStar(id) {    var g = G.list.filter(function (x) { return x.id === id; })[0]; if (!g) return;
     g.star = !g.star; gSave(); renderGrp();
   }
 
@@ -1632,6 +3364,21 @@
     });
     var sb = $('#mpGSel'); if (sb) sb.classList.toggle('on', GSELMODE);
   }
+  /* 照侧栏「导出」：把选中的组导成 JSON 文件，换台机器也能再导回来 */
+  function gExpMany(ids) {
+    var out = (ids || []).map(function (id) { var g = G.list.filter(function (x) { return x.id === id; })[0]; return g; }).filter(Boolean);
+    if (!out.length) { toast('先勾几组'); return; }
+    var pack = { kind: 'shuati.mapgroups', v: 1, at: new Date().toISOString(), groups: out };
+    try {
+      var blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '知识组-' + out.length + '组-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { URL.revokeObjectURL(a.href); a.remove(); } catch (e) {} }, 1500);
+      toast('已导出 ' + out.length + ' 组');
+    } catch (e) { toast('导出失败：' + (e && e.message)); }
+  }
   function gDupMany(ids) {
     if (!ids.length) return 0;
     var added = 0;
@@ -1653,11 +3400,14 @@
     var names = ids.map(function (id) {
       var g = G.list.filter(function (x) { return x.id === id; })[0]; return g ? String(g.name || '未命名组') : '';
     }).filter(Boolean);
-    var tip = '删掉这 ' + names.length + ' 组？\n' +
-      names.slice(0, 8).map(function (s) { return '· ' + s; }).join('\n') +
-      (names.length > 8 ? '\n…还有 ' + (names.length - 8) + ' 组' : '') +
-      '\n\n只删组，不影响题库和标签。';
-    if (!confirm(tip)) return 0;
+    mpAsk({
+      title: '删掉这 ' + names.length + ' 组？',
+      text: '只删组，不影响题库和标签。',
+      list: names.slice(0, 8).concat(names.length > 8 ? ['…还有 ' + (names.length - 8) + ' 组'] : []),
+      ok: '删除', danger: true
+    }).then(function (ok) { if (ok) doDel(); });
+    return names.length;
+    function doDel() {
     var act = G.active;
     G.list = G.list.filter(function (g) { return ids.indexOf(g.id) < 0; });
     G.list.forEach(function (g, k) { g.ord = k; });
@@ -1668,7 +3418,7 @@
     try { gSave(); } catch (e) {}
     gSelClear(); renderGrp();
     if (typeof toast === 'function') toast('已删除 ' + names.length + ' 组', 1600);
-    return names.length;
+    }
   }
 
   function gCount(g) {
@@ -1702,6 +3452,14 @@
      ✨ 开着时再走一遍 srScore 的模糊匹配（拆字 / 错别字 / 近义） */
   function gMatch(g, q) {
     if (!q) return true;
+    /* 照侧边栏题库管理器的「并集 / 交集」：空格分词，交集＝每个词都得命中 */
+    var parts = String(q).split(/\s+/).filter(Boolean);
+    var and = (($('#mpGLogic') || {}).value) === 'and';
+    var one = function (q1) { return gMatchOne(g, norm(q1)); };
+    return and ? parts.every(one) : parts.some(one);
+  }
+  function gMatchOne(g, q) {
+    if (!q) return true;
     var sc = gScope();
     var fuzzy = gFuzzy();
     if (sc !== 'content') {
@@ -1723,22 +3481,46 @@
     if (sm === 'name') list.sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || ''), 'zh'); });
     else if (sm === 'size') list.sort(function (a, b) { return (b.nodes || []).length - (a.nodes || []).length; });
     else list.sort(function (a, b) { return ((b.star ? 1 : 0) - (a.star ? 1 : 0)) || ((a.ord || 0) - (b.ord || 0)); });
-    var hitList = list.filter(function (g) { return gMatch(g, q); });
+    var qraw = String(($('#mpGQ') || {}).value || '').trim();
+    var kind = (($('#mpGKind') || {}).value) || 'all';
+    var hitList = list.filter(function (g) {
+      if (kind === 'path' && !g.path) return false;
+      if (kind === 'tree' && g.path) return false;
+      return gMatch(g, qraw || q);
+    });
     var rows = hitList.map(function (g) {
       var on = g.id === G.active ? ' on' : '';
       var ck = GSELMODE ? '<i class="mp-gck' + (GSEL[g.id] ? ' on' : '') + '" data-ck="' + g.id + '"></i>' : '';
       return '<div class="mp-grow2' + on + (GSELMODE ? ' selmode' : '') + '" data-g="' + g.id + '">' + ck +
         '<i class="gst' + (g.star ? ' on' : '') + '" data-star="' + g.id + '">' + (g.star ? '★' : '☆') + '</i>' +
-        '<div class="gmain"><b>' + esc(g.name || '未命名组') + '</b><span class="muted2">' + gCount(g) + '</span></div>' +
+        '<div class="gmain"><b>' + esc(g.name || '未命名组') + '</b>' +
+          (g.path ? '<i class="gpath" title="路径组：沿着相似题一层层展开">🧭</i>' : '') +
+          '<span class="muted2">' + gCount(g) + '</span></div>' +
         '<button class="gmore" data-more="' + g.id + '" title="更多">⋯</button></div>';
     }).join('');
     $('#mpGList').innerHTML = rows || (q ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组</div>'
       : '<div class="mp-agrow" style="color:#8a86a0">还没有组，点「＋」用当前题建一组</div>');
-    $('#mpGFoot').innerHTML = '<span>共 ' + G.list.length + ' 组 · ' +
+    var __sig = hitList.map(function (g) { return g.id; }).join('|') + '#' + (GSELMODE ? 1 : 0) + '#' + hitList.length;
+    var __anim = (window.__grpSig !== __sig);
+    window.__grpSig = __sig;
+    var nPath = G.list.filter(function (g) { return g.path; }).length;
+    $('#mpGFoot').innerHTML = '<span>共 ' + G.list.length + ' 组（🧭 ' + nPath + ' 路径 / ' + (G.list.length - nPath) + ' 普通）· ' +
       G.list.reduce(function (a, g) { return a + (g.nodes || []).length; }, 0) + ' 节点' +
       (q ? '（筛出 ' + hitList.length + ' 组）' : '') + '</span>' +
       '<button type="button" id="mpGAll" title="清空搜索、退出多选，从头看">管理全部 ›</button>' +
       '<span>' + (GSELMODE ? '点行勾选 · 再点 ☑ 退出' : '点行切换 · ☆标星') + '</span>';
+    try {
+      window.__grpSeen = window.__grpSeen || {};
+      var __seen = window.__grpSeen, __ix = 0;
+      $('#mpGList').querySelectorAll('.mp-grow2').forEach(function (r) {
+        var gid = r.getAttribute('data-g');
+        if (!gid || __seen[gid]) return;
+        __seen[gid] = 1;
+        r.style.setProperty('--ad', Math.min(300, __ix * 35) + 'ms'); __ix++;
+        r.classList.add('gin');
+        r.addEventListener('animationend', function () { r.classList.remove('gin'); }, { once: true });
+      });
+    } catch (e0) {}
     try { gBulkSync(); } catch (e) {}
     try { paintGrpBtn(); } catch (e) {}
   }
@@ -1780,7 +3562,8 @@
     var p = $('#mpGroups'); if (p) p.onclick = function () {
       var g = $('#mpGrp'); var on = g.classList.toggle('show');
       p.classList.toggle('on', on);
-      if (on) { try { paintGrpBtn(); } catch (e0) {}; renderGrp(); var i = $('#mpGQ'); if (i) { i.value = ''; setTimeout(function () { i.focus(); }, 30); } }
+      window.__grpSeen = {};
+      if (on) { try { winFocus('#mpGrp'); } catch (e0) {}; try { paintGrpBtn(); } catch (e0) {}; renderGrp(); var i = $('#mpGQ'); if (i) { i.value = ''; setTimeout(function () { i.focus(); }, 30); } }
     };
     document.addEventListener('pointerdown', function (e) {
       var g = $('#mpGrp'); if (!g || !g.classList.contains('show')) return;
@@ -1842,17 +3625,43 @@
       if (k === 'off') { GSELMODE = false; gSelClear(); renderGrp(); return; }
       if (k === 'none') { gSelClear(); renderGrp(); return; }
       if (k === 'all') {
-        var qq = norm(($('#mpGQ') || {}).value || '');
+        var qq = String(($('#mpGQ') || {}).value || '').trim();
         G.list.forEach(function (g) { if (gMatch(g, qq)) GSEL[g.id] = 1; });
         renderGrp(); return;
       }
       var ids = gSelIds(); if (!ids.length) return;
       if (k === 'dup') gDupMany(ids);
+      else if (k === 'exp') gExpMany(ids);
       else if (k === 'del') gDelMany(ids);
     };
     var nb = $('#mpGNew'); if (nb) nb.onclick = function () { gNewFromCur(); };
     var ai = $('#mpGAi'); if (ai) ai.onclick = function () { agOpen(); };
+    var glog = $('#mpGLogic'); if (glog) glog.onchange = function () { renderGrp(); };
+    var gk = $('#mpGKind');
+    if (gk) {
+      try { var kv = readLS('qbank.mapgkind.v1', 'all'); if (kv) gk.value = kv; } catch (eK) {}
+      gk.onchange = function () { try { writeLS('qbank.mapgkind.v1', gk.value); } catch (eK2) {} renderGrp(); };
+    }
     var list = $('#mpGList');
+    if (list) list.addEventListener('contextmenu', function (e) {
+      var row = e.target.closest('[data-g]'); if (!row) return;
+      e.preventDefault(); e.stopPropagation();
+      gMenu(row.getAttribute('data-g'), Math.min(e.clientX, innerWidth - 190), Math.min(e.clientY, innerHeight - 200));
+    });
+    if (list) list.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+      var rows = [].slice.call(list.querySelectorAll('[data-g]')); if (!rows.length) return;
+      var cur = rows.findIndex(function (r) { return r.classList.contains('on'); });
+      if (e.key === 'Enter') { if (cur >= 0) { e.preventDefault(); gOpen(rows[cur].getAttribute('data-g')); } return; }
+      e.preventDefault();
+      var nx = cur + (e.key === 'ArrowDown' ? 1 : -1);
+      if (nx < 0) nx = rows.length - 1;
+      if (nx >= rows.length) nx = 0;
+      rows.forEach(function (r, i) { r.classList.toggle('on', i === nx); });
+      rows[nx].scrollIntoView({ block: 'nearest' });
+      if (GSELMODE) return;  /* 多选时上下键只挪高亮，别切组 */
+      rows[nx].click();      /* 走和鼠标点行完全相同的那条路 */
+    });
     if (list) list.onclick = function (e) {
       var st = e.target.closest('[data-star]');
       if (st) { e.stopPropagation(); gStar(st.getAttribute('data-star')); return; }
@@ -2056,7 +3865,7 @@
     AGP.forEach(function (c) {
       var nd = agNodesFor(c);
       fillLayout(nd.nodes);
-      var g = { id: gNewId(), name: c.name, star: false, bank: S.bankId, qid: c.qs[0].id, layout: 'radial',
+      var g = { id: gNewId(), name: c.name, star: false, bank: S.bankId, qid: c.qs[0].id, layout: 'grid',
         nodes: nd.nodes.map(serNode), edges: nd.edges };
       G.list.unshift(g);
     });
@@ -2104,7 +3913,7 @@
     var w = $('#mpWrap'); if (!w || $('#mpKp')) return;
     w.insertAdjacentHTML('beforeend',
       '<div id="mpKp" class="mp-kp">' +
-        '<div class="mp-kph"><b id="mpKpName">考点</b><span id="mpKpCnt" class="mp-kcnt"></span>' +
+        '<div class="mp-kph"><button type="button" class="mp-kico" id="mpKpBack" title="返回上一个焦点">‹</button><b id="mpKpName">考点</b><span id="mpKpCnt" class="mp-kcnt"></span>' +
         '<span style="flex:1"></span>' +
         '<button type="button" class="mp-kico" id="mpKpAi" title="AI 一键分析考点">✨</button>' +
         '<button type="button" class="mp-kico" id="mpKpFull" title="局部全屏">⤢</button>' +
@@ -2116,7 +3925,7 @@
         '<div class="mp-kpp"><button type="button" class="mp-kbtn" id="mpKpPrev">‹</button>' +
         '<span id="mpKpPg">第 1 / 1 页</span>' +
         '<button type="button" class="mp-kbtn" id="mpKpNext">›</button></div>' +
-        '<div class="mp-kpsub">考点总结（Markdown，边写边渲染）<span class="mp-kstat" id="mpKpStat">所见即所得 · 选中文字出工具条 · 行首打 / 换块</span></div>' +
+        '<div class="mp-kpsub">考点总结（点进去直接改，边改边存）<span class="mp-kstat" id="mpKpStat">所见即所得 · 选中文字出工具条 · 行首打 / 换块</span></div>' +
         '<div class="mp-rtew"><div class="mp-rtebar" id="mpRteBar">' +
           '<button type="button" data-cmd="bold" title="加粗"><b>B</b></button>' +
           '<button type="button" data-cmd="italic" title="斜体"><i>I</i></button>' +
@@ -2127,15 +3936,18 @@
           '<button type="button" data-block="ul" title="列表">•</button>' +
           '<button type="button" data-block="code" title="代码">&lt;/&gt;</button>' +
         '</div>' +
-        '<div id="mpKpMd" class="mp-kpmd mp-rte" contenteditable="true" data-ph="# 一句话&#10;**考点**是什么、判据、易错点……"></div></div>' +
-        '<div id="mpKpPrev2" class="mp-kprev"></div>' +
+        '</div>' +
+        '<div class="exp rich-edit mp-kprich" id="mpKpMd" contenteditable="true" spellcheck="false" data-note-for="kp" title="点进来就能改：支持 Markdown（**加粗**、## 标题、- 列表、```代码```、$公式$、颜色），选中文字会出工具条；Ctrl+V 可以直接粘截图"></div>' +
+        '<div id="mpKpPrev2" class="mp-kprev" hidden></div>' +
         '<div class="mp-kpsub">图与附件 <i class="mp-kpah">都在本地，跟着这个考点存</i></div>' +
         '<div id="mpKpAtt" class="mp-kpatt"></div>' +
         '<div class="mp-kpaf"><button type="button" class="mp-kbtn" id="mpKpUp">＋ 从资料柜选</button>' +
-        '<span class="mp-kpah" id="mpKpUpTip">先把图片/资料放进左下角资料柜</span></div>' +
+        '<span class="mp-kpah" id="mpKpUpTip">图片会缩略显示，PDF / Word / HTML 点开就能看</span></div>' +
         '<i class="mp-kprz" id="mpKpRz" title="拖动改宽度"></i>' +
       '</div>');
     $('#mpKpX').onclick = kpClose;
+    var kpb = $('#mpKpBack');
+    if (kpb) kpb.onclick = function () { back(); };
     $('#mpKpFull').onclick = function () { kpFull(!$('#mpKp').classList.contains('full')); };
     $('#mpKpQ').addEventListener('input', function () { KP.q = this.value.trim(); KP.page = 0; kpPaint(); });
     var kqa = $('#mpKpQai');
@@ -2178,7 +3990,7 @@
       var g = gCur(); if (!g) return;
       var m = kpMd(); m[kpTagName(KP.node)] = rteMd();
       $('#mpKpPrev2').innerHTML = md2h(rteMd());
-      rteSlashCheck();
+      if (ta.tagName !== 'TEXTAREA') rteSlashCheck();
       kpStatus('未保存…');
       clearTimeout(kpT);
       kpT = setTimeout(function () {
@@ -2190,6 +4002,7 @@
       if (e.key === 'Escape') { rteSlashHide(); }
       if (e.key === 'Enter' && !e.shiftKey) { setTimeout(rteSlashCheck, 20); }
     });
+    try { if (typeof richImgInitOnce === 'function') richImgInitOnce(); } catch (e0) {}
     rteBind();
   }
 
@@ -2212,23 +4025,57 @@
   function rteEl() { return document.getElementById('mpKpMd'); }
   function rteMd() {
     var el = rteEl(); if (!el) return '';
+    if (el.tagName === 'TEXTAREA') return el.value || '';
     try { if (typeof mdFromHtml === 'function') return mdFromHtml(el); } catch (e) {}
     return el.innerText || '';
   }
   function rteSet(md) {
     var el = rteEl(); if (!el) return;
+    if (el.tagName === 'TEXTAREA') {
+      el.value = md || '';
+      var pv0 = document.getElementById('mpKpPrev2');
+      if (pv0) pv0.innerHTML = md2h(md || '');
+      return;
+    }
     try { el.innerHTML = (typeof mdToHtml === 'function') ? mdToHtml(md || '') : md2h(md || ''); }
     catch (e) { el.textContent = md || ''; }
     var pv = document.getElementById('mpKpPrev2'); if (pv) pv.innerHTML = md2h(md || '');
   }
+  function mdWrap(before, after) {
+    var el = rteEl(); if (!el || el.tagName !== 'TEXTAREA') return false;
+    el.focus();
+    var s0 = el.selectionStart, e0 = el.selectionEnd, v = el.value;
+    var mid = v.slice(s0, e0) || '文字';
+    el.value = v.slice(0, s0) + before + mid + after + v.slice(e0);
+    el.selectionStart = s0 + before.length;
+    el.selectionEnd = s0 + before.length + mid.length;
+    el.dispatchEvent(new Event('input'));
+    return true;
+  }
+  var MD_CMD = { bold: ['**', '**'], italic: ['*', '*'], strikeThrough: ['~~', '~~'] };
+  var MD_BLK = { h2: ['## ', ''], quote: ['> ', ''], ul: ['- ', ''], code: ['```\n', '\n```'] };
   function rteCmd(cmd) {
     var el = rteEl(); if (!el) return;
+    if (el.tagName === 'TEXTAREA') {
+      var p = MD_CMD[cmd]; if (!p) return;
+      mdWrap(p[0], p[1]);
+      return;
+    }
     el.focus();
     try { document.execCommand(cmd, false, null); } catch (e) {}
     el.dispatchEvent(new Event('input'));
   }
   function rteBlock(kind) {
     var el = rteEl(); if (!el) return;
+    if (el.tagName === 'TEXTAREA') {
+      var b = MD_BLK[kind] || ['', ''];
+      var s1 = el.selectionStart, v1 = el.value;
+      var ls = v1.lastIndexOf('\n', s1 - 1) + 1;
+      el.value = v1.slice(0, ls) + b[0] + v1.slice(ls);
+      el.selectionStart = el.selectionEnd = s1 + b[0].length;
+      el.dispatchEvent(new Event('input'));
+      return;
+    }
     el.focus();
     var sel = window.getSelection();
     var line = sel && sel.anchorNode ? (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentNode : sel.anchorNode) : null;
@@ -2374,7 +4221,7 @@
       return '<div class="mp-kat" data-id="' + f.id + '">' + thumb +
         '<span class="mp-katn">' + esc(String(f.name).slice(0, 14)) + '</span>' +
         '<button type="button" class="mp-katx" data-del="1" title="从考点移除">✕</button></div>';
-    }).join('') : '<i class="mp-kpa0">还没有图或附件——点下面「从资料柜选」</i>';
+    }).join('') : '<i class="mp-kpa0">还没有图或附件。点下面上传：图片会缩略显示，PDF / Word / HTML 点开就能看；这些附件跟着这个知识点一起存。</i>';
     if (!box.__bound) {
       box.__bound = 1;
       box.addEventListener('click', function (e) {
@@ -2500,6 +4347,79 @@
     }
     d.classList.add('show');
   }
+  /* ===== 分析考点 → 先落一簇「草稿节点」（考点 + 相关题），确认后才进存档 ===== */
+  var DRAFT_IDS = [];
+  function draftBarShow(n) {
+    var bar = document.getElementById('mpDraft');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'mpDraft';
+      bar.innerHTML = '<span id="mpDraftN"></span>' +
+        '<button type="button" id="mpDraftKeep">保留这些草稿</button>' +
+        '<button type="button" id="mpDraftDrop">撤销</button>';
+      document.getElementById('mpWrap').appendChild(bar);
+      document.getElementById('mpDraftKeep').onclick = draftKeep;
+      document.getElementById('mpDraftDrop').onclick = draftDrop;
+    }
+    var t = document.getElementById('mpDraftN');
+    if (t) t.textContent = '已生成 ' + n + ' 个草稿节点（虚线框）';
+    bar.classList.add('show');
+  }
+  function draftHide() { var b = document.getElementById('mpDraft'); if (b) b.classList.remove('show'); }
+  function draftKeep() {
+    DATA.nodes.forEach(function (n) { if (n.draft) n.draft = false; });
+    DRAFT_IDS = [];
+    try { saveCur(); } catch (e) {}
+    render();
+    draftHide();
+    toast('草稿已保留，存进这一组了', 1800, 'good');
+  }
+  function draftDrop() {
+    var ids = {};
+    DATA.nodes.forEach(function (n) { if (n.draft) ids[n.id] = 1; });
+    DATA.nodes = DATA.nodes.filter(function (n) { return !ids[n.id]; });
+    DATA.edges = DATA.edges.filter(function (e) { return !ids[e.a] && !ids[e.b]; });
+    DRAFT_IDS = [];
+    try { saveCur(); } catch (e) {}
+    render(true);
+    draftHide();
+    toast('草稿已撤掉');
+  }
+  function aiDrafts(name, rows) {
+    var src = DATA.nodes.filter(function (n) { return n.id === sel; })[0] ||
+      DATA.nodes.filter(function (n) { return n.type === 'center'; })[0];
+    if (!src) return 0;
+    /* 只搬「已有的东西」：题目自带的标签 + 同考点的题，不自己编考点内容 */
+    var tags = [];
+    (rows || []).forEach(function (q) {
+      (qTags(q) || []).forEach(function (t) { if (t !== name && !isBigTag(t) && tags.indexOf(t) < 0) tags.push(t); });
+    });
+    if (name && tags.indexOf(name) < 0) tags.unshift(name);
+    var have = {};
+    DATA.nodes.forEach(function (n) { if (n.type === 'tag') have['t:' + n.label] = 1; });
+    tags = tags.filter(function (t) { return !have['t:' + t]; }).slice(0, 4);
+    var used = {};
+    DATA.nodes.forEach(function (n) { if (n.ref && n.ref.id) used[String(n.ref.id)] = 1; });
+    var qs = (rows || []).filter(function (q) { return !used[String(q.id)]; }).slice(0, 4);
+    var items = tags.map(function (t) { return { type: 'tag', label: t }; })
+      .concat(qs.map(function (q) {
+        return { type: 'sim', ref: q, label: String(q.stem || '').slice(0, 40), score: null };
+      }));
+    if (!items.length) return 0;
+    snap();
+    var R = 250, n0 = items.length;
+    items.forEach(function (it, i) {
+      var a = (-Math.PI / 2) + (i / n0) * Math.PI * 2;
+      var id = 'd' + Date.now().toString(36) + i + Math.floor(Math.random() * 90 + 10);
+      DATA.nodes.push(Object.assign({ id: id, x: Math.round(src.x + Math.cos(a) * R), y: Math.round(src.y + Math.sin(a) * R), draft: true }, it));
+      DATA.edges.push({ a: src.id, b: id, kind: it.type === 'sim' ? 'sim' : 'tag' });
+      DRAFT_IDS.push(id);
+    });
+    render(true);
+    draftBarShow(items.length);
+    return items.length;
+  }
+
   function kpAiRun() {
     var fb = kpFilesBox(); if (!fb) return;
     /* 弹窗开着的时候考点面板可能已经被关掉（kpClose 会把 KP.node 置空），
@@ -2539,7 +4459,10 @@
     rteSet(txt);
     var pv = document.getElementById('mpKpPrev2'); if (pv) pv.innerHTML = md2h(txt);
     document.getElementById('mpAi').classList.remove('show');
-    toast('分析完了，已写进右侧编辑器（可以接着改）');
+    var nd = 0;
+    try { nd = aiDrafts(name, rows); } catch (e) {}
+    toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')
+      : '分析完了，已写进右侧编辑器（可以接着改）');
   }
   function answerText(q) {
     try {
@@ -2558,8 +4481,10 @@
     }
     KP.node = n; KP.page = 0; KP.q = '';
     kpEnsure();
+    try { sideClose(); } catch (e) {}   /* 换成考点面板时，题目抽屉让位，别停在旧题上 */
     var p = $('#mpKp'); if (!p) return;
     p.classList.add('show');
+    try { winFocus('#mpKp'); } catch (e0) {}
     $('#mpKpName').textContent = kpTagName(n);
     var q = $('#mpKpQ'); if (q) q.value = '';
     var qa = $('#mpKpQai'); if (qa) qa.classList.remove('on');
@@ -2568,8 +4493,14 @@
     if (typeof rteSet === 'function') rteSet(m);
     else { var ed0 = $('#mpKpMd'); if (ed0) ed0.innerHTML = md2h(m); $('#mpKpPrev2').innerHTML = md2h(m); }
     var st0 = document.getElementById('mpKpStat');
-    if (st0) st0.textContent = m ? '已保存' : '所见即所得 · 选中文字出工具条 · 行首打 / 换块';
+    if (st0) st0.textContent = m ? '已保存' : 'Markdown 源码 · 上面写，下面实时显示';
     kpPaint();
+    /* 面板从右边盖上来，画布往左让一段，正在看的考点不会被糊住 */
+    if (!KP.shift) {
+      var pr = p.getBoundingClientRect();
+      var sh = Math.max(0, Math.round(Math.min(pr.width * 0.64, innerWidth * 0.32, 300)));
+      if (sh > 40) { KP.shift = sh; try { V.tx -= sh; paintView(); } catch (e) {} }
+    }
   }
 
   /* 局部「居中全屏」：面板变成屏幕中间的大卡片，后面压一层遮罩 */
@@ -2583,11 +4514,14 @@
     }
     p.classList.toggle('full', !!on);
     m.classList.toggle('show', !!on);
+    /* 全屏时把「拖宽」留下的内联宽度让出来，否则 432px 的记录会压过 1000px 的中心浮卡 */
+    if (on) { if (p._w === undefined) p._w = p.style.width || ''; p.style.width = ''; }
+    else if (p._w !== undefined) { p.style.width = p._w; p._w = undefined; }
     /* .full 时把面板提到 body 上，否则会被 #mpWrap 的层叠上下文压到遮罩下面 */
     if (on) {
       if (!p._home) p._home = p.parentNode;
       if (p.parentNode !== document.body) document.body.appendChild(p);
-      p.style.zIndex = '100';
+      p.style.zIndex = '30090';
     } else {
       if (p._home && p.parentNode === document.body && p._home.appendChild) p._home.appendChild(p);
       p.style.zIndex = '';
@@ -2597,6 +4531,10 @@
   function kpClose() {
     var p = $('#mpKp'); if (p) { p.classList.remove('show'); p.classList.remove('full'); }
     KP.node = null;
+    /* 面板收起时把画布让出来的那一段挪回去 */
+    if (KP.shift) {
+      try { V.tx += KP.shift; KP.shift = 0; paintView(); } catch (e) {}
+    }
   }
 
   function kpPaint() {
@@ -2662,9 +4600,46 @@
   }
 
   /* 点相似题 → 跳到那道题，并在当前组里以它为中心重画 */
-  function recenter(q) {
+  /* 换中心题：先把每张卡「停在原来的位置」，再一起滑到新位置（FLIP），
+     不然整张图会啪地闪一下重排，看着很跳。 */
+  function flipFrom(oldPos) {
+    var nodesEl = $('#mpNodes'); if (!nodesEl) return;
+    var moved = [];
+    DATA.nodes.forEach(function (n) {
+      var o = oldPos[n.id]; if (!o) return;
+      if (o.x === n.x && o.y === n.y) return;
+      var el = nodesEl.querySelector('.mp-node[data-id="' + n.id + '"]');
+      if (el) moved.push({ el: el, ox: o.x, oy: o.y, nx: n.x, ny: n.y });
+    });
+    if (!moved.length) return;
+    var g = $('#mpEdgeG'), glow = $('#mpGlowG');
+    if (g) g.style.opacity = '0';
+    if (glow) glow.style.opacity = '0';
+    moved.forEach(function (m) {
+      m.el.style.transition = 'none';
+      m.el.style.left = m.ox + 'px'; m.el.style.top = m.oy + 'px';
+    });
+    void nodesEl.offsetWidth;   /* 强制回流，否则起点不生效 */
+    moved.forEach(function (m) {
+      m.el.style.transition = 'left .38s cubic-bezier(.22,.61,.36,1), top .38s cubic-bezier(.22,.61,.36,1)';
+      m.el.style.left = m.nx + 'px'; m.el.style.top = m.ny + 'px';
+    });
+    clearTimeout(flipFrom.__t);
+    flipFrom.__t = setTimeout(function () {
+      moved.forEach(function (m) { m.el.style.transition = ''; });
+      try { drawEdges(); } catch (e) {}
+      if (g) g.style.opacity = '';
+      if (glow) glow.style.opacity = '';
+    }, 400);
+  }
+
+  function recenter(q, noNav) {
+    ANIM_ONCE = true;
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     if (!bank) return;
+    if (!noNav) navPush();
+    var oldPos = {};
+    (DATA.nodes || []).forEach(function (n) { oldPos[n.id] = { x: n.x, y: n.y }; });
     S.qid = q.id;
     DATA = build(bank, q);
     var g = gCur();
@@ -2672,11 +4647,21 @@
     sel = null;
     applyLayout(LAY.name);
     saveCur(); renderGrp();
+    try { flipFrom(oldPos); } catch (e) {}
+    /* 结构不变时位置本来就一样，加一层很轻的淡入，看起来像「换」而不是「闪」 */
+    try {
+      var ns = document.querySelectorAll('#mpNodes .mp-node');
+      for (var i = 0; i < ns.length; i++) ns[i].classList.add('fadein');
+      setTimeout(function () {
+        for (var j = 0; j < ns.length; j++) { try { ns[j].classList.remove('fadein'); } catch (e2) {} }
+      }, 300);
+    } catch (e) {}
   }
 
   /* ---------- 对外 ---------- */
   /* 从别的页面（掌握度/统计）带着题库+题号打开 */
   function openFor(bankId, qid) {
+    ANIM_ONCE = true;
     if (!bankId) return;
     var go = function () {
       try {
@@ -2696,6 +4681,7 @@
   }
 
   function open() {
+    ANIM_ONCE = true;
     /* 换窗口/换分辨率后，把上次存的窗口大小夹回可视范围，免得缩成一条 */
     try {
       var maxW = Math.max(560, innerWidth - 40), maxH = Math.max(420, innerHeight - 96);
@@ -2717,8 +4703,14 @@
     S.on = true; S.min = false; S.bankId = bank.id; S.qid = q.id;
     var old = readLS(WIN_KEY, null);
     if (old && old.w) { S.x = old.x; S.y = old.y; S.w = old.w; S.h = old.h; }
-    var lv = readLS(LAY_KEY, 'radial');
-    LAY.name = LAYOUTS.some(function (l) { return l.k === lv; }) ? lv : 'radial';
+    var lv = readLS(LAY_KEY, 'grid');
+    /* 老版本默认是「放射」，一次性迁到「树形」；之后用户自己选放射就尊重 */
+    try {
+      if (lv === 'radial' && !localStorage.getItem('qbank.mapdef.tree.v1')) {
+        lv = 'tree'; localStorage.setItem('qbank.mapdef.tree.v1', '1'); writeLS(LAY_KEY, 'tree');
+      }
+    } catch (eM) {}
+    LAY.name = layName(lv);
     ensure();
     try { initB4(); } catch (e) {}
     gLoad();
@@ -2768,22 +4760,32 @@
   var FK = 'qbank.mapfiles.v1';
   var FILES = (function () { try { return JSON.parse(localStorage.getItem(FK) || '[]') || []; } catch (e) { return []; } })();
   function fSave() {
-    try { localStorage.setItem(FK, JSON.stringify(FILES.slice(-12))); }
-    catch (e) { toast('浏览器存储只有 5MB，先删几个大文件'); }
+    /* 只存元数据：文件本体在 IndexedDB 里 */
+    try {
+      var meta = FILES.slice(-40).map(function (f) {
+        return { id: f.id, name: f.name, mime: f.mime, size: f.size };
+      });
+      localStorage.setItem(FK, JSON.stringify(meta));
+    } catch (e) { toast('本地存储写不进去了，先删几个文件'); }
   }
   function filesEnsure() {
     if ($('#mpFiles')) { paintFiles(); return; }
-    var d = document.createElement('div');
+    try { filesHydrate(); } catch (e0) {}    var d = document.createElement('div');
     d.id = 'mpFiles';
     d.innerHTML = '<div class="mfh"><b>资料柜</b><span class="mfc" id="mfcN">0</span>' +
       '<span class="mfg"></span>' +
       '<button type="button" id="mfAdd" title="上传资料（图片 / PDF / Word / HTML）">＋</button>' +
       '<button type="button" id="mfMin" title="收起">—</button></div>' +
+      '<div class="mfq"><input id="mfQ" placeholder="搜资料名…"><select id="mfType" title="只看某一类">' +
+      '<option value="all">全部</option><option value="img">图片</option><option value="pdf">PDF</option>' +
+      '<option value="doc">Word</option><option value="html">网页</option><option value="txt">其它</option></select></div>' +
       '<div class="mfl" id="mfList"></div>' +
       '<input type="file" id="mfInput" multiple hidden>';
     $('#mpWrap').appendChild(d);
     $('#mfAdd').onclick = function () { $('#mfInput').click(); };
     $('#mfMin').onclick = function () { d.classList.toggle('min'); };
+    $('#mfQ').addEventListener('input', function () { paintFiles(); });
+    $('#mfType').addEventListener('change', function () { paintFiles(); });
     $('#mfInput').onchange = function () { [].slice.call(this.files).forEach(addFile); this.value = ''; };
     $('#mfList').addEventListener('dragstart', function (e) {
       var r = e.target.closest('.mfrow'); if (!r) { try { e.preventDefault(); } catch (err) {} return; }
@@ -2796,21 +4798,73 @@
     $('#mfList').addEventListener('dragend', function () { try { dzReset(); } catch (e) {} });
     $('#mfList').addEventListener('click', function (e) {
       var r = e.target.closest('.mfrow'); if (!r) return;
-      if (e.target.closest('.mfd')) { FILES = FILES.filter(function (f) { return f.id !== r.dataset.id; }); fSave(); paintFiles(); return; }
+      if (e.target.closest('.mfd')) { var delId = r.dataset.id; FILES = FILES.filter(function (f) { return f.id !== delId; }); try { idbDel(delId); } catch (err) {} fSave(); paintFiles(); return; }
       pvOpen(r.dataset.id);
     });
     paintFiles();
   }
-  function addFile(file) {
-    var fr = new FileReader();
-    fr.onload = function () {
-      FILES.push({
-        id: 'f' + Date.now() + Math.random().toString(36).slice(2, 6),
-        name: file.name, mime: file.type || '', size: file.size, url: fr.result
+  /* ===== 文件本体放 IndexedDB（localStorage 只留元数据）=====
+     localStorage 只有 5MB，一张扫描件就能顶满；文件本体改存 IDB，
+     打开时换成 blob: URL，预览 / 拖到画布 / 新标签打开 都不受影响。 */
+  var MF_DB = 'shuati-mapfiles';
+  function idbOpen() {
+    return new Promise(function (res, rej) {
+      var r;
+      try { r = indexedDB.open(MF_DB, 1); } catch (e) { rej(e); return; }
+      r.onupgradeneeded = function () { try { r.result.createObjectStore('files'); } catch (e) {} };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+  }
+  function idbTx(mode, fn) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (res, rej) {
+        var t = db.transaction('files', mode), s = t.objectStore('files'), out;
+        try { out = fn(s); } catch (e) { rej(e); return; }
+        t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
+        t.onerror = function () { rej(t.error); };
+        t.onabort = function () { rej(t.error); };
       });
-      fSave(); paintFiles(); toast('已放进资料柜：' + String(file.name).slice(0, 14));
-    };
-    fr.readAsDataURL(file);
+    });
+  }
+  function idbPut(id, blob) { return idbTx('readwrite', function (s) { s.put(blob, id); }); }
+  function idbGet(id) { return idbTx('readonly', function (s) { return s.get(id); }); }
+  function idbDel(id) { return idbTx('readwrite', function (s) { s.delete(id); }); }
+  function blobUrl(blob) { try { return URL.createObjectURL(blob); } catch (e) { return ''; } }
+  /* 老数据（dataURL 塞在 localStorage 里）迁到 IDB，顺手把 localStorage 瘦下来 */
+  function filesHydrate() {
+    var list = FILES.slice();
+    list.forEach(function (f) {
+      if (f.url) return;
+      idbGet(f.id).then(function (b) {
+        if (b) { f.url = blobUrl(b); f.__dirty = 1; paintFiles(); }
+      }).catch(function () {});
+    });
+    /* 迁移：url 还是 data: 的，转成 Blob 存进 IDB */
+    var legacy = list.filter(function (f) { return /^data:/.test(String(f.url || '')); });
+    if (!legacy.length) { if (FILES.some(function (f) { return f.url && !/^(data:|blob:)/.test(f.url); })) fSave(); return; }
+    legacy.forEach(function (f) {
+      try {
+        fetch(f.url).then(function (r) { return r.blob(); }).then(function (b) {
+          return idbPut(f.id, b).then(function () {
+            f.url = blobUrl(b); f.__migrated = 1;
+            if (legacy.every(function (x) { return x.__migrated; })) { fSave(); paintFiles(); }
+          });
+        }).catch(function () {});
+      } catch (e) {}
+    });
+  }
+  function addFile(file) {
+    var id = 'f' + Date.now() + Math.random().toString(36).slice(2, 6);
+    var meta = { id: id, name: file.name, mime: file.type || '', size: file.size, url: blobUrl(file) };
+    FILES.push(meta);
+    idbPut(id, file).catch(function () {
+      /* IDB 不可用（隐私模式等）就退回 dataURL，只在本次会话里用 */
+      var fr = new FileReader();
+      fr.onload = function () { meta.url = fr.result; paintFiles(); };
+      fr.readAsDataURL(file);
+    });
+    fSave(); paintFiles(); toast('已放进资料柜：' + String(file.name).slice(0, 14));
   }
   function fIcon(f) {
     var m = String(f.mime || ''), n = String(f.name || '');
@@ -2821,27 +4875,115 @@
     return 'TXT';
   }
   function fSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function fKind(f) {
+    var m = String(f.mime || ''), n = String(f.name || '');
+    if (m.indexOf('image') === 0) return 'img';
+    if (m.indexOf('pdf') >= 0 || /\.pdf$/i.test(n)) return 'pdf';
+    if (/\.(docx?|wps)$/i.test(n)) return 'doc';
+    if (m.indexOf('html') >= 0 || /\.(html?|mht)$/i.test(n)) return 'html';
+    return 'txt';
+  }
+  function fHay(f) { return String(f.name || '').toLowerCase(); }
+  function fileRows() {
+    var qi = $('#mfQ'), ti = $('#mfType');
+    var q = qi ? srHay(qi.value || '') : '';
+    var t = ti ? ti.value : 'all';
+    return FILES.filter(function (f) {
+      if (t !== 'all' && fKind(f) !== t) return false;
+      if (q && fHay(f).indexOf(q) < 0) return false;
+      return true;
+    });
+  }
   function paintFiles() {
     var box = $('#mfList'); if (!box) return;
     var n = $('#mfcN'); if (n) n.textContent = FILES.length;
-    box.innerHTML = FILES.length ? FILES.map(function (f) {
+    var rows = fileRows();
+    box.innerHTML = rows.length ? rows.map(function (f) {
       return '<div class="mfrow" data-id="' + f.id + '" draggable="true" title="拖到画布上 = 挂成资料节点">' +
         '<i class="mfi">' + fIcon(f) + '</i>' +
         '<span class="mfn">' + esc(String(f.name).slice(0, 16)) + '</span>' +
         '<span class="mfs">' + fSize(f.size || 0) + '</span>' +
         '<button type="button" class="mfd" title="删掉">✕</button></div>';
-    }).join('') : '<div class="mfe">把图片 / PDF / HTML 拖进脑图，或点上面 ＋ 上传<br><i>放进资料柜后，还能把文件从柜子拖到画布上摆着</i></div>';
+    }).join('') : (FILES.length ? '<div class="mfe">没有匹配的资料<i>换个关键字，或者把类型切回「全部」</i></div>'
+      : '<div class="mfe">把图片 / PDF / HTML 拖进脑图，或点上面 ＋ 上传<br><i>放进资料柜后，还能把文件从柜子拖到画布上摆着</i></div>');
   }
   function fById(id) { return FILES.filter(function (f) { return f.id === id; })[0]; }
+  /* 文件本体在 IDB 里，用到时再取（老数据也顺手迁一下） */
+  function ensureUrl(f, cb) {
+    if (!f) return;
+    if (f.url) { cb(f); return; }
+    idbGet(f.id).then(function (b) {
+      if (!b) { toast('文件本体读不出来了，可能没存进去'); return; }
+      f.url = blobUrl(b); cb(f);
+    }).catch(function () { toast('文件本体读不出来了'); });
+  }
   function pvHtml(f) {
     var m = String(f.mime || '');
     if (m.indexOf('image') === 0) return '<img class="mppi" src="' + f.url + '" alt="">';
-    if (m.indexOf('pdf') >= 0 || /\.(pdf|html?|mht)$/i.test(f.name)) return '<iframe class="mppe" src="' + f.url + '"></iframe>';
+    /* HTML 用 sandbox 隔离：允许脚本跑，但不给 same-origin —— 它读不到题库和资料柜的数据 */
+    if (m.indexOf('html') >= 0 || /\.(html?|htm)$/i.test(f.name)) {
+      return '<iframe class="mppe" sandbox="allow-scripts allow-popups allow-forms allow-modals" src="' + f.url + '"></iframe>';
+    }
+    if (m.indexOf('pdf') >= 0 || /\.pdf$/i.test(f.name)) return '<iframe class="mppe" data-pdf="1" src="about:blank"></iframe>';
+    if (/\.mht$/i.test(f.name)) return '<iframe class="mppe" sandbox="allow-scripts allow-popups" src="' + f.url + '"></iframe>';
     if (m.indexOf('text') === 0) return '<pre class="mppt">（点「放大」看全文）</pre>';
-    return '<div class="mppe mppx">这种格式没法直接看，点「放大」后用系统打开</div>';
+    /* Word：浏览器排不了 docx，给一张说明卡，指到标题栏的 ↗ 系统打开 */
+    if (/\.(docx?|wps|rtf)$/i.test(String(f.name || '')) || m.indexOf('word') >= 0 || m.indexOf('officedocument') >= 0) {
+      return '<div class="mppd"><b>Word 文档</b>' +
+        '<span>浏览器没法直接排版 .docx，点标题栏的 <i>↗</i> 用系统默认程序（Word / WPS）打开</span>' +
+        '<em>' + esc(String(f.name || '')) + '</em></div>';
+    }
+    return '<div class="mppe mppx">这种格式没法直接看，点标题栏的 ↘ 用系统打开</div>';
+  }
+  /* 图只有 1×1（占位图）或压根加载不出来时，别给用户留一块莫名其妙的白板 */
+  /* PDF 走站内 pdf.js 阅读器（手机浏览器不认内嵌 PDF，iframe 直接白板） */
+  var PDF_URLS = [];
+  function pvPdf(box, f) {
+    if (!box) return;
+    var fr = box.querySelector('iframe.mppe[data-pdf]'); if (!fr) return;
+    var view = function (u) {
+      var v = 'pdfjs/web/viewer.html?file=' + encodeURIComponent(u) + '#disableworker=true';
+      try { fr.src = v; } catch (e) {}
+    };
+    var u = String(f.url || '');
+    if (!u) { fr.outerHTML = '<div class="mpvph"><b>文件本体还没读出来</b><br>稍等一会儿再点开，或者重新上传一次</div>'; return; }
+    if (/^data:/.test(u)) {
+      /* 还没迁到 IDB 的老数据：先转成 blob，再交给阅读器 */
+      try {
+        fetch(u).then(function (r) { return r.blob(); }).then(function (b) {
+          var bu = blobUrl(b); PDF_URLS.push(bu); view(bu);
+        }).catch(function () { try { fr.src = u; } catch (e) {} });
+      } catch (e) { try { fr.src = u; } catch (e2) {} }
+    } else { view(u); }
+  }
+  function pvGuard(box, f) {
+    if (!box) return;
+    var im = box.querySelector('img.mppi');
+    if (!im) return;
+    var done = false;
+    var nm = esc(String(f.name || ''));
+    var tiny = function () {
+      if (done) return; done = true;
+      box.innerHTML = '<div class="mpvph"><b>这张图只有 ' + im.naturalWidth + '×' + im.naturalHeight + ' 像素</b><br>' +
+        '多半是占位图或缩略图，换一张正常大小的图就能看了<br><i>' + nm + '</i></div>';
+    };
+    var fail = function () {
+      if (done) return; done = true;
+      box.innerHTML = '<div class="mpvph"><b>图片没能加载出来</b><br>' +
+        '也许这份资料已经被删掉，或者文件本身坏了<br><i>' + nm + '</i></div>';
+    };
+    im.addEventListener('load', function () {
+      if (im.naturalWidth <= 2 || im.naturalHeight <= 2) tiny();
+    });
+    im.addEventListener('error', fail);
+    if (im.complete) {
+      if (!im.naturalWidth || !im.naturalHeight) fail();
+      else if (im.naturalWidth <= 2 || im.naturalHeight <= 2) tiny();
+    }
   }
   function pvOpen(id) {
     var f = fById(id); if (!f) return;
+    if (!f.url) { ensureUrl(f, function () { pvOpen(id); }); return; }
     var p = $('#mpPv');
     if (!p) {
       p = document.createElement('div');
@@ -2895,14 +5037,19 @@
       h.addEventListener('pointerdown', function (e) {
         if (e.target.closest('button')) return;
         var r = p.getBoundingClientRect();
-        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+        /* 用 offsetLeft/offsetTop + 指针位移，避免把「视口坐标」当「相对窗口坐标」用（会和 #mpWrap 的偏移叠加） */
+        drag = { px: p.offsetLeft, py: p.offsetTop, x: e.clientX, y: e.clientY };
+        p.dataset.moved = '1';
         p.style.right = 'auto'; p.style.bottom = 'auto';
+        p.style.left = drag.px + 'px'; p.style.top = drag.py + 'px';
+        p.style.width = p.style.width || (Math.round(r.width) + 'px');
+        p.style.height = p.style.height || (Math.round(r.height) + 'px');
         try { h.setPointerCapture(e.pointerId); } catch (err) {}
       });
       h.addEventListener('pointermove', function (e) {
         if (!drag) return;
-        p.style.left = Math.max(6, e.clientX - drag.dx) + 'px';
-        p.style.top = Math.max(6, e.clientY - drag.dy) + 'px';
+        p.style.left = Math.max(6, drag.px + e.clientX - drag.x) + 'px';
+        p.style.top = Math.max(6, drag.py + e.clientY - drag.y) + 'px';
       });
       h.addEventListener('pointerup', function () { drag = null; });
     }
@@ -2910,14 +5057,25 @@
     p.dataset.z = 1;
     $('#mpPvN').textContent = String(f.name).slice(0, 22);
     $('#mpPvB').innerHTML = '<div class="mpvwrap" style="zoom:1">' + pvHtml(f) + '</div>';
+    pvGuard($('#mpPvB'), f);
+    pvPdf($('#mpPvB'), f);
+    pvPdf($('#mpPvB'), f);
     var zl = $('#mpPvZL'); if (zl) zl.textContent = '100%';
     try { $('#mpPvSys').href = f.url || ''; } catch (e) {}
     try { $('#mpPvTab').href = f.url || ''; } catch (e) {}
-    if (!p.style.left) { p.style.left = '18px'; p.style.bottom = '150px'; }
+    /* 默认贴在窗口右侧（和样板一样），拖动过就留在拖到的位置 */
+    if (!p.dataset.moved) {
+      p.style.left = 'auto'; p.style.top = ''; p.style.bottom = '';
+      p.style.right = '12px';
+      p.style.width = 'min(520px,44vw)';
+      p.style.height = 'min(560px,calc(100% - 96px))';
+      p.style.top = '52px';
+    }
     p.classList.add('show');
   }
   function vwOpen(id) {
     var f = fById(id); if (!f) return;
+    if (!f.url) { ensureUrl(f, function () { vwOpen(id); }); return; }
     var v = $('#mpVw');
     if (!v) {
       v = document.createElement('div');
@@ -2966,6 +5124,9 @@
     try { $('#mpVwTab').href = f.url; } catch (e) {}
     v.dataset.z = 1;
     $('#mpVwB').innerHTML = '<div class="mpvwrap2" style="zoom:1">' + pvHtml(f) + '</div>';
+    pvGuard($('#mpVwB'), f);
+    pvPdf($('#mpVwB'), f);
+    pvPdf($('#mpVwB'), f);
     var zl = $('#mpVwZL'); if (zl) zl.textContent = '100%';
     v.classList.add('show');
     try {
@@ -3073,33 +5234,128 @@
     }
   }
 
+  /* 长按进度：从左上角起绕一圈的蓝光 */
+  var RING = null;
+  function ringHide() {
+    if (RING && RING.parentNode) RING.parentNode.removeChild(RING);
+    RING = null;
+  }
+  function ringShow(el, ms) {
+    ringHide();
+    if (!el || !el.getBoundingClientRect) return;
+    var r = el.getBoundingClientRect();
+    if (!r.width) return;
+    var d = Math.max(r.width, r.height) + 26;
+    var R = d / 2 - 3, C = 2 * Math.PI * R;
+    var box = document.createElement('div');
+    box.id = 'mpRing';
+    box.style.cssText = 'position:fixed;pointer-events:none;z-index:30075;' +
+      'left:' + Math.round(r.left + r.width / 2 - d / 2) + 'px;top:' + Math.round(r.top + r.height / 2 - d / 2) + 'px;' +
+      'width:' + d + 'px;height:' + d + 'px;';
+    box.innerHTML = '<svg width="' + d + '" height="' + d + '" viewBox="0 0 ' + d + ' ' + d + '" ' +
+      'style="transform:rotate(-135deg);overflow:visible">' +
+      '<circle cx="' + (d / 2) + '" cy="' + (d / 2) + '" r="' + R + '" fill="none" stroke="rgba(79,140,255,.16)" stroke-width="3"/>' +
+      '<circle class="mpr-arc" cx="' + (d / 2) + '" cy="' + (d / 2) + '" r="' + R + '" fill="none" stroke="#4f8cff" stroke-width="3" ' +
+      'stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + C.toFixed(1) + '" ' +
+      'style="transition:stroke-dashoffset ' + ms + 'ms linear;filter:drop-shadow(0 0 6px rgba(79,140,255,.95))"/></svg>';
+    document.body.appendChild(box);
+    RING = box;
+    requestAnimationFrame(function () {
+      var a = box.querySelector('.mpr-arc');
+      if (a) a.setAttribute('stroke-dashoffset', '0');
+    });
+  }
+  /* 长按到底：就地展开这道题的相似题与考点（中心题不动） */
+  function longPressNode(n) {
+    if (!n) return;
+    if (n.type === 'tag') { try { kpOpen(n); } catch (e) {} return; }
+    try { pathExpand(n); } catch (e) { if (typeof toast === 'function') toast('展开失败：' + (e && e.message)); }
+  }
+
   function bindNodeDrag() {
     var st = $('#mpStage'); if (!st || st.__dgb) return; st.__dgb = 1;
     var d = null;
+    /* 拖完浏览器还会补一个 click —— 不吞掉的话，拖节点会误开抽屉、拖画布会误选中 */
+    st.addEventListener('click', function (e) {
+      if (Date.now() >= CLICK_GUARD) return;
+      CLICK_GUARD = 0;
+      e.stopPropagation(); e.preventDefault();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }, true);
     st.addEventListener('pointerdown', function (e) {
       var el = e.target.closest('.mp-node'); if (!el) return;
       if (e.target.closest('.mp-probe')) return;
       var n = DATA.nodes.filter(function (x) { return x.id === el.dataset.id; })[0];
       if (!n) return;
       if (n.pinned) { return; }
-      d = { el: el, n: n, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false };
+      d = { el: el, n: n, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y, moved: false, cx: e.clientX, cy: e.clientY, raf: 0, lp: 0 };
+      /* 鼠标左键按住：进度环；到点展开相似题与考点（短按仍然是打开底部抽屉） */
+      if ((e.pointerType === 'mouse' || !e.pointerType) && e.button === 0) {
+        ringShow(el, LONG_MS);
+        d.lp2 = setTimeout(function () {
+          if (!d || d.moved) return;
+          var dd = d; d = null;
+          ringHide();
+          CLICK_GUARD = Date.now() + 1500;
+          try { dd.el.classList.remove('dragging'); } catch (err) {}
+          longPressNode(dd.n);
+        }, LONG_MS);
+      }
+      /* 触屏没有右键：按住 0.52 秒不动 = 打开节点菜单（iOS 不会为普通元素触发 contextmenu） */
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        d.lp = setTimeout(function () {
+          if (!d || d.moved) return;
+          var dd = d; d = null;
+          try { dd.el.classList.remove('dragging'); } catch (err) {}
+          try { ctxShow(dd.cx, dd.cy, dd.n); } catch (err) {}
+        }, 520);
+      }
+      /* 拖的时候必须挂上 .dragging：.mp-node 上有 left/top 的 0.32s 过渡，
+         不关掉的话卡片会一路「追」手指，看着就像位置偏了。 */
+      el.classList.add('dragging');
       try { el.setPointerCapture(e.pointerId); } catch (err) {}
     }, true);
     st.addEventListener('pointermove', function (e) {
       if (!d) return;
-      var dx = (e.clientX - d.sx) / V.k, dy = (e.clientY - d.sy) / V.k;
+      /* 触摸会合并移动事件，取最后一个点，跟手更紧 */
+      var ev = e;
+      try { var co = e.getCoalescedEvents && e.getCoalescedEvents(); if (co && co.length) ev = co[co.length - 1]; } catch (err) {}
+      d.cx = ev.clientX; d.cy = ev.clientY;
+      if (d.lp && (Math.abs(d.cx - d.sx) + Math.abs(d.cy - d.sy)) > 6) { clearTimeout(d.lp); d.lp = 0; }
+      if (d.lp2 && (Math.abs(d.cx - d.sx) + Math.abs(d.cy - d.sy)) > 6) { clearTimeout(d.lp2); d.lp2 = 0; ringHide(); }
+      var dx = (d.cx - d.sx) / V.k, dy = (d.cy - d.sy) / V.k;
       if (!d.moved && Math.abs(dx) + Math.abs(dy) > 3) { d.moved = true; snap(); }
       if (!d.moved) return;
-      d.n.x = Math.round(d.ox + dx); d.n.y = Math.round(d.oy + dy);
-      d.el.style.left = d.n.x + 'px'; d.el.style.top = d.n.y + 'px';
-      drawEdges();
       e.stopPropagation();
+      if (d.raf) return;
+      d.raf = requestAnimationFrame(function () {
+        var dd = d; if (!dd) return;
+        dd.raf = 0;
+        var ddx = (dd.cx - dd.sx) / V.k, ddy = (dd.cy - dd.sy) / V.k;
+        dd.n.x = Math.round(dd.ox + ddx); dd.n.y = Math.round(dd.oy + ddy);
+        dd.el.style.left = dd.n.x + 'px'; dd.el.style.top = dd.n.y + 'px';
+        drawEdges();
+      });
     }, true);
     st.addEventListener('pointerup', function () {
       if (!d) return;
-      var moved = d.moved, el = d.el; d = null;
+      var moved = d.moved, el = d.el;
+      if (d.lp) { clearTimeout(d.lp); d.lp = 0; }
+      if (d.lp2) { clearTimeout(d.lp2); d.lp2 = 0; }
+      ringHide();
+      if (d.raf) { try { cancelAnimationFrame(d.raf); } catch (e) {} }
+      d = null;
       el.classList.remove('dragging');
-      if (moved) { try { saveCur(); } catch (e) {} }
+      if (moved) { CLICK_GUARD = Date.now() + 350; try { saveCur(); } catch (e) {} }
+    }, true);
+    st.addEventListener('pointercancel', function () {
+      if (!d) return;
+      if (d.lp) { clearTimeout(d.lp); d.lp = 0; }
+      if (d.lp2) { clearTimeout(d.lp2); d.lp2 = 0; }
+      ringHide();
+      if (d.raf) { try { cancelAnimationFrame(d.raf); } catch (e) {} }
+      try { d.el.classList.remove('dragging'); } catch (e) {}
+      d = null;
     }, true);
   }
 
@@ -3132,7 +5388,9 @@
     DATA.nodes.push({ id: id, type: 'variant', ref: n.ref, refId: n.ref && n.ref.id, label: '变式草稿 · 换问法', x: ox, y: oy, draft: true, score: 0 });
     DATA.edges.push({ a: n.id, b: id, kind: 'variant' });
     try { saveCur(); } catch (e) {}
-    render();
+    /* 分层模式下，新挂出来的变式题也要按分层排（否则会散在画布上） */
+    if (LAY.name === 'layer') { try { applyLayout('layer'); } catch (eL0) { render(); } }
+    else render();
     toast('已挂一张「变式草稿」：点开看三种改法（不自动编题目）', 3000);
   }
   function ctxShow(x, y, n) {
@@ -3295,12 +5553,44 @@
   }, true);
 
   /* 顶栏「← 返回」：一层层往回退（考点面板 → 知识组 → 选中 → 关窗） */
+  /* 返回栈：换中心题 / 从考点跳题目之前，先把「看的是哪张图、视口在哪」压栈，
+     这样 ← 返回 能退回上一个焦点（点考点 → 跳到题目 → 返回 → 回到考点） */
+  var NAV = [];
+  function navPush() {
+    try {
+      NAV.push({ qid: S.qid, gid: G.active, tx: V.tx, ty: V.ty, k: V.k, sel: sel });
+      if (NAV.length > 20) NAV.shift();
+    } catch (e) {}
+  }
+  function navBack() {
+    if (!NAV.length) return false;
+    var s = NAV.pop(), bk = null;
+    try { bk = bankById(S.bankId); } catch (e) {}
+    if (!bk) return false;
+    var q = (bk.questions || []).filter(function (x) { return String(x.id) === String(s.qid); })[0];
+    if (!q) return false;
+    if (s.gid && s.gid !== G.active) { try { G.active = s.gid; loadGroup(s.gid); } catch (e) {} }
+    recenter(q, true);
+    V.tx = s.tx; V.ty = s.ty; V.k = s.k;
+    try { paintView(); } catch (e) {}
+    if (s.sel) {
+      var n = DATA.nodes.filter(function (x) { return x.id === s.sel; })[0];
+      if (n) {
+        sel = n.id; render();
+        try { if (n.type === 'tag') kpOpen(n); else sideOpen(n); } catch (e) {}
+      }
+    }
+    return true;
+  }
+
   function back() {
     var kp = document.getElementById('mpKp');
     if (kp && kp.classList.contains('full')) { kpFull(false); return; }
     if (kp && kp.classList.contains('show')) { kpClose(); return; }
     var gp = $('#mpGrp');
     if (gp && gp.classList.contains('show')) { gp.classList.remove('show'); return; }
+    /* 还有上一层焦点就退回去，再没有才取消选中 */
+    if (navBack()) return;
     if (sel) { sel = null; render(); return; }
     close();
   }
@@ -3309,6 +5599,20 @@
     kpOpen: function (n) { kpOpen(n); }, kpClose: kpClose,
     open: open, close: close, toggle: toggle,
     layout: function (k) { applyLayout(k); return LAY.name; },
+    /* 调试/自检用：手动放一个进度环、手动触发一次长按展开 */
+    ring: function (id, ms) {
+      var el = id ? document.querySelector('.mp-node[data-id="' + id + '"]') : document.querySelector('.mp-node');
+      ringShow(el, ms || LONG_MS);
+      return { ms: ms || LONG_MS, on: !!RING };
+    },
+    ringOff: function () { ringHide(); return true; },
+    longPress: function (id) {
+      var n = DATA.nodes.filter(function (x) { return x.id === id; })[0];
+      if (!n) return false;
+      longPressNode(n);
+      return true;
+    },
+    longMs: function () { return LONG_MS; },
     openFor: openFor,
     groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, n: (g.nodes || []).length }; }) }; },
     newGroup: gNewFromCur,

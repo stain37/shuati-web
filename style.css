@@ -3431,3 +3431,52 @@ html.cx-now *,html.cx-now *::before,html.cx-now *::after{
 .qside .qs-sch{flex:none;font-size:10.5px;line-height:16px;padding:0 5px;border-radius:8px;margin-left:4px;
   background:var(--primary-soft,rgba(20,184,166,.16));color:var(--primary,#0f766e);cursor:pointer}
 .qside .qs-tg .qs-tg-sub{margin-left:auto;font-size:11.5px;opacity:.6}
+/* ===== 手机：白板 / 批注工具栏（≤760px）===== */
+@media (max-width:760px){
+  .ink-wrap{ width:calc(100vw - 8px); bottom:calc(6px + env(safe-area-inset-bottom)); }
+  .ink-tools{ padding:6px 7px; gap:5px; border-radius:13px; }
+  .ink-tools .ink-row{ gap:5px; }
+  .ink-tb .ink-seg{ gap:3px; }
+  .ink-tb .ink-seg button{ min-width:26px; height:26px; padding:0 4px; font-size:12px; }
+  .ink-tb .ink-seg button.pri{ padding:0 10px; }
+  .ink-tools input[type=range]{ width:64px; }
+  .ink-lbl{ font-size:11px; }
+  .ink-head{ flex-wrap:wrap; gap:6px; padding:8px 10px; }
+  .ink-head .ink-hint2{ display:none; }        /* 那句长说明手机上没必要占两行 */
+  .ink-head b{ font-size:13px; }
+  .ink-hist{ font-size:11px; padding:4px 8px; }
+  .ink-body{ padding:0; }
+}
+@media (max-width:760px){
+  .ink-wrap{ left:8px; transform:none; width:calc(100vw - 16px); }
+}
+@media (max-width:760px){
+  /* 白板全屏：min-width:520px 会把 390/492 的屏撑出去，这就是「显示不全」的根因 */
+  .ink-full{ left:0!important; top:0!important; transform:none!important;
+    width:100vw!important; height:100vh!important; min-width:0!important; min-height:0!important;
+    max-width:none!important; border-radius:0!important; }
+  .ink-full .ink-stage{ height:calc(100vh - 150px)!important; }
+  .ink-full .ink-tools{ border-radius:0 0 0 0; }
+  .ink-full .ink-head{ padding:8px 10px; }
+}
+/* ===== 脑图拿到焦点时，侧栏退到后面（与 map.js 的 body.mp-focus 配对） ===== */
+body.mp-focus .qside{ opacity:.72; filter:saturate(.9); }
+body.mp-focus .qside:hover, body.mp-focus .qside:focus-within{ opacity:1; filter:none; }
+.qside{ transition:transform .26s var(--ease), opacity .18s ease, filter .18s ease; }
+/* ===== 侧栏与脑图的层级：侧栏打开时压在脑图之上（只压左侧），脑图有焦点时退回去 ===== */
+body.qside-open .qside{ z-index:30010; }
+body.mp-focus .qside{ z-index:70; }
+/* ===== 小窗（pip）与脑图的聚焦：点小窗时把它抬到脑图上面 ===== */
+body.pip-top #pipLayer{ z-index:30060 !important; }
+body.pip-top #pipLayer .pip-win{ box-shadow:0 22px 52px rgba(31,35,51,.26); }
+body.pip-top .pip-win.on{ box-shadow:0 18px 44px rgba(31,35,51,.22); }
+body.mp-focus:not(.pip-top) #pipLayer{ z-index:90; }
+/* ===== web417：小窗永远在最前面（脑图、面板、站点弹窗都不压它） ===== */
+#pipLayer{ z-index:30080 !important; }
+body.mp-away #pipLayer, body.mp-focus #pipLayer, body.pip-top #pipLayer, body.qside-open #pipLayer{ z-index:30080 !important; }
+#pipLayer .pip-win{ box-shadow:0 20px 48px rgba(31,35,51,.20), 0 2px 6px rgba(31,35,51,.06); }
+/* ===== web427：小窗（pip-guest）里题目头部是白底 → 暗色主题下变白条 ===== */
+html.pip-guest body.pip-guest-body{ background:var(--bg,#f6f6fb) !important; }
+html.pip-guest .qhead{ background:var(--card,#fff) !important; }
+html.pip-guest body.dark .qhead{ background:var(--card,#231038) !important; }
+html.pip-guest .qhead .tag{ background:rgba(127,127,160,.14) !important; }

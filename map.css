@@ -844,3 +844,963 @@ body.dark #mpPick .mp-pknote{ background:#241f38; border-color:#3a3360; color:#b
 body.dark #mpAi .mp-aik{ border-color:#343b52; background:#252b3d; color:#c2c8d8; }
 body.dark #mpAi .mp-aik.on{ border-color:#5b46d8; background:#302a52; color:#cfc6ff; }
 body.dark #mpAi .mp-aiup{ border-color:#3a4258; background:#252b3d; color:#c2c8d8; }
+
+/* ===== web342：标题栏按钮在触屏上的可点性（用户报 ✕ / – 点不动） ===== */
+#mpBar button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+@media (pointer: coarse){
+  #mpBar{ height:44px; gap:2px; padding:0 4px; }
+  #mpBar .mp-grip{ display:none; }
+  #mpBar button{ width:36px; height:36px; font-size:15px; border-radius:10px; }
+  #mpBar button + button{ margin-left:2px; }
+  #mpBar #mpTitle{ font-size:13px; max-width:52%; }
+  #mpChip{ bottom:16px; right:12px; }
+}
+/* ===== web343：视觉对齐「脑图样板.html」（用户要求 UI 一模一样） ===== */
+#mpWrap{
+  /* 这里不再写死主题变量：站点皮肤（skins.css）与深色主题已经提供了
+     --bg / --card / --line / --text / --primary …，脑图直接沿用即可。
+     只在站点没给的情况下才用下面这几个兜底（写在 ::where 里，优先级最低）。 */
+  --ok:#17a673; --warn:#e0952a; --bad:#d9534f;
+  --r:12px; --shadow:0 1px 2px rgba(31,35,51,.06), 0 8px 24px rgba(31,35,51,.06);
+  font:14px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--ink);
+}
+/* 标题栏：样板 #mwBar —— 41px、上圆角、无下边框、向上投影 */
+#mpBar{
+  height:41px; gap:8px; padding:0 8px;
+  background:linear-gradient(180deg,#e8f8f5,#d6f0eb);
+  border:1px solid #a9d9d3; border-bottom:0; border-radius:14px 14px 0 0;
+  box-shadow:0 -6px 20px rgba(15,60,60,.08); cursor:grab;
+}
+#mpBar #mpTitle{ font-size:13px; font-weight:600; color:#17685f; max-width:62%; }
+#mpBar button{ width:26px; height:26px; border-radius:8px; font-size:13px; color:#17685f; }
+#mpBar button:hover{ background:rgba(23,104,95,.12); }
+#mpBar .mp-grip{ color:#2f9b8f; }
+/* 画布底：样板 --bg + 点阵 */
+#mpStage{ background:#efeef7; }
+/* 各面板统一成样板的卡片语言 */
+#mpSide,#mpFiles,#mpPv,#mpKp,#mpPick,#mpVw,#mpCtx,#mpSnap,#mpAi,#mpAg,#mpGrp,#mpRq,#mpNoteEd,#mpFindPop{
+  color:var(--ink); border:1px solid var(--line); border-radius:14px;
+  background:rgba(255,255,255,.95);
+  box-shadow:0 18px 40px rgba(31,35,51,.12);
+}
+#mpSide .mp-sdkick,#mpSide .mp-sdq,#mpFiles .mfh span,#mpPv .mp-pvzl,#mpKp .mp-kstat,#mpCtx,#mpZoom{
+  color:var(--sub);
+}
+#mpSide button,#mpFiles button,#mpPv button,#mpKp button,#mpPick button{
+  border:1px solid var(--line); background:#fff; border-radius:9px; color:var(--ink);
+}
+#mpSide button:hover,#mpFiles button:hover,#mpPv button:hover,#mpKp button:hover,#mpPick button:hover{
+  background:var(--primary-weak); border-color:#c9befa; color:#5b46d8;
+}
+/* 右下缩放条 / 底部提示：样板 .zoomBox / #hint */
+#mpZoom{
+  background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:11px;
+  padding:5px 7px; box-shadow:var(--shadow); color:var(--ink);
+}
+#mpZoom button{ border:0; background:transparent; color:var(--ink); }
+#mpHint{
+  background:rgba(31,35,51,.82); color:#fff; font-size:12px; padding:7px 12px;
+  border-radius:999px; box-shadow:none;
+}
+/* 最小化胶囊：样板 #mwChip */
+#mpChip{
+  right:18px; bottom:74px; padding:10px 14px; border-radius:999px;
+  border:1px solid #a9d9d3; background:#eefaf8; color:#17685f;
+  box-shadow:0 16px 36px rgba(15,60,60,.18); font-size:13px;
+}
+/* 节点卡片：样板 .card 观感（白底、14 圆角、轻阴影、紫色小圆点） */
+#mpStage .mp-node{
+  background:#fff; border:1px solid var(--line); border-radius:14px;
+  box-shadow:0 10px 26px rgba(31,35,51,.10); color:var(--ink);
+}
+#mpStage .mp-node.sel{ border-color:#c9befa; box-shadow:0 14px 34px rgba(124,108,240,.20); }
+#mpStage .mp-node .mp-head{ color:var(--sub); font-size:11.5px; }
+#mpStage .mp-node .mp-pill{
+  background:var(--primary-weak); color:#5b46d8; border-radius:999px;
+}
+
+/* ===== web343b：整层抬到站点所有浮层之上 =====
+   站点自己有 950 / 1000 / 1200 / 1300 / 1400 / 9990 / 9999 / 21474 这些 z-index
+   （答题页的浮动题卡、顶部条、toast 都在其中）。原来脑图窗口只有 96/97，
+   在手机上会被这些浮层压住 —— 按钮看得见、点下去却被上层元素吃掉，
+   这就是「右上角 ✕ 和 – 都用不了」的真正原因。 */
+#mpWrap{ z-index:30000; }
+#mpBar{ z-index:30001; }
+#mpRz{ z-index:30000; }
+#mpChip{ z-index:30002; }
+#mpSnap{ z-index:30005; }
+#mpFindPop{ z-index:30010; }
+#mpSide{ z-index:30020; }
+#mpFiles{ z-index:30020; }
+#mpPv{ z-index:30030; }
+#mpKp{ z-index:30030; }
+#mpKpMask{ z-index:30029; }
+#mpKp.full{ z-index:30031; }
+#mpPick{ z-index:30040; }
+#mpNoteEd{ z-index:30045; }
+#mpAi{ z-index:30045; }
+#mpAg{ z-index:30045; }
+#mpCtx{ z-index:30050; }
+#mpRq{ z-index:30050; }
+#mpVw{ z-index:30060; }
+#mpSlash{ z-index:30060; }
+#mpRkTb{ z-index:30070; }
+
+/* ===== web344：修「✕ / – / ⤢ / 适应 点了没反应」 =====
+   1) #mpWrap 的 display:flex 会盖过 [hidden] 属性 → 关窗后窗口还挂在屏幕上，
+      后面所有按钮都像失灵。给 [hidden] 加回来。
+   2) 右下缩放条原来 z-index:7，会被题目抽屉(#mpSide)等面板压住 → 抬到面板之上。 */
+#mpWrap[hidden]{ display:none !important; }
+#mpChip[hidden]{ display:none !important; }
+#mpSnap[hidden]{ display:none !important; }
+#mpFindPop[hidden]{ display:none !important; }
+#mpGBulk[hidden]{ display:none !important; }
+#mpBack[hidden]{ display:none !important; }
+#mpZoom{ z-index:30065; }
+#mpHint{ z-index:30018; }
+#mpZoom button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+/* ===== web346：拖动跟手 =====
+   .mp-node 上原本有 left/top 的 .32s 过渡（放置卡片时好看），
+   但拖动时没挂 .dragging，卡片就一路「追」鼠标/手指。 */
+#mpStage .mp-node{ touch-action:none; }
+#mpStage .mp-node.dragging{
+  transition:none !important;
+  cursor:grabbing;
+  z-index:6;
+  box-shadow:0 16px 36px rgba(31,35,51,.22);
+  will-change:left,top;
+}#mpStage .mp-node{ -webkit-user-select:text; user-select:text; }
+@media (pointer:coarse){ #mpStage .mp-node{ -webkit-user-select:none; user-select:none; } }
+/* ===== web347：预览里的小图 / 坏图别再留白板 ===== */
+#mpPv .mpvph,#mpVw .mpvph{ padding:34px 22px; text-align:center; color:#7b7f93; font-size:13px; line-height:1.85; }
+#mpPv .mpvph b,#mpVw .mpvph b{ display:block; margin-bottom:4px; font-size:14px; color:#2b2b3c; }
+#mpPv .mpvph i,#mpVw .mpvph i{ font-style:normal; font-size:11.5px; color:#a2a0b3; word-break:break-all; }
+body.dark #mpPv .mpvph,body.dark #mpVw .mpvph{ color:#a8adc2; }
+body.dark #mpPv .mpvph b,body.dark #mpVw .mpvph b{ color:#e7e9f5; }
+/* ===== web351：画布支持双指捏合缩放（别让浏览器自己缩放页面） ===== */
+#mpStage{ touch-action:none; }
+/* ===== web352：资料柜按类型 / 名字过滤 ===== */
+#mpFiles .mfq{ display:flex; gap:6px; padding:0 8px 6px; }
+#mpFiles .mfq input{ flex:1; min-width:0; height:26px; border:1px solid var(--line,#e2e0ee); border-radius:8px; padding:0 8px; font-size:12px; background:#fff; }
+#mpFiles .mfq select{ height:26px; border:1px solid var(--line,#e2e0ee); border-radius:8px; font-size:11.5px; background:#fff; color:#5c5f70; }
+body.dark #mpFiles .mfq input,body.dark #mpFiles .mfq select{ background:#1b2030; border-color:#2a3148; color:#e7e9f5; }
+#mpFiles.min .mfq{ display:none; }/* ===== web355：AI 分析生成的「草稿节点」 ===== */
+#mpStage .mp-node.draft{ border-style:dashed; border-color:#b9a8f2; background:rgba(250,248,255,.96); }
+#mpStage .mp-node.draft .mp-k{ color:#7c6cf0; }
+#mpStage .mp-node .mp-pill.d{ background:#f3efff; color:#6b5bd6; }
+#mpDraft{ position:absolute; left:50%; bottom:52px; transform:translateX(-50%); display:none; gap:8px; align-items:center;
+  padding:8px 12px; border-radius:999px; background:rgba(255,255,255,.96); border:1px dashed #bfb2f5;
+  box-shadow:0 14px 34px rgba(31,35,51,.16); font-size:12px; color:#4b4763; z-index:30066; white-space:nowrap; }
+#mpDraft.show{ display:flex; }
+#mpDraft button{ height:26px; padding:0 12px; border-radius:999px; border:1px solid var(--line,#e2e0ee); background:#fff;
+  font:inherit; font-size:12px; color:#3f3b57; cursor:pointer; }
+#mpDraft #mpDraftKeep{ background:#7c6cf0; border-color:#7c6cf0; color:#fff; }
+#mpDraft button:hover{ filter:brightness(.97); }
+body.dark #mpDraft{ background:rgba(24,29,42,.96); border-color:#4a3f7a; color:#d9d4f2; }
+body.dark #mpDraft button{ background:#1d2333; border-color:#2e364c; color:#dfe3f2; }
+@media (max-width:520px){ #mpDraft{ bottom:44px; font-size:11px; padding:6px 8px; } }
+/* ===== web357：Word 说明卡 ===== */
+#mpPv .mppd,#mpVw .mppd{ padding:34px 24px; text-align:center; color:#7b7f93; font-size:13px; line-height:1.9; }
+#mpPv .mppd b,#mpVw .mppd b{ display:block; margin-bottom:6px; font-size:15px; color:#2b2b3c; }
+#mpPv .mppd i,#mpVw .mppd i{ font-style:normal; color:#7c5cff; font-weight:600; }
+#mpPv .mppd em,#mpVw .mppd em{ display:block; margin-top:12px; font-style:normal; font-size:11.5px; color:#a2a0b3; word-break:break-all; }
+body.dark #mpPv .mppd,body.dark #mpVw .mppd{ color:#a8adc2; }
+body.dark #mpPv .mppd b,body.dark #mpVw .mppd b{ color:#e7e9f5; }
+/* ===== web358：换中心题时的轻淡入 ===== */
+@keyframes mpFadeIn{ from{ opacity:.28 } to{ opacity:1 } }
+#mpNodes .mp-node.fadein{ animation:mpFadeIn .2s ease both; }
+/* ===== web359：光晕芯色 + 缩放/返回小徽标 ===== */
+#mpGlowG path.gh{ filter:blur(5.5px) saturate(1.35); stroke-linecap:round; }
+#mpGlowG path.gh.sim{ stroke:#2ec4b6; }
+#mpGlowG path.gh.tag{ stroke:#7c5cff; }
+#mpGlowG path.gh.variant{ stroke:#f0a24b; }
+#mpGlowG path.gh.file{ stroke:#8b84c8; }
+#mpGlowG path.gh.note,#mpGlowG path.gh.idea{ stroke:#d9b84a; }
+#mpKp .mp-kico#mpKpBack{ margin-right:2px; font-size:16px; line-height:1; }
+/* ===== web360：抽屉改成右侧详情栏（和样板 #side 一致，不再从页面底部弹） ===== */
+#mpWrap #mpSide{
+  position:absolute; left:auto; right:12px; top:52px; bottom:12px;
+  width:min(360px, 92%); max-height:none; transform:none;
+  border-radius:14px; border:1px solid var(--line);
+  box-shadow:0 18px 40px rgba(31,35,51,.14);
+}
+#mpWrap #mpSide.show{ transform:none; }
+#mpWrap #mpSide .mp-sdh{ border-radius:14px 14px 0 0; }
+@media (max-width:640px){
+  #mpWrap #mpSide{ width:min(330px, 94%); top:48px; bottom:8px; right:8px; }
+}
+body.dark #mpWrap #mpSide{ background:#1b2030; border-color:#2a3148; }
+/* ===== web361：右栏头部别挤成竖排（标题和按钮各占一行） ===== */
+#mpWrap #mpSide .mp-sdh{ flex-wrap:wrap; gap:6px 8px; padding:10px 12px 9px; align-items:center; }
+#mpWrap #mpSide .mp-sdh b{ white-space:nowrap; font-size:13px; }
+#mpWrap #mpSide .mp-sdh .mp-grow{ flex:1 1 0; min-width:8px; }
+#mpWrap #mpSide .mp-sdh .mp-sdbtn{
+  flex:0 0 auto; white-space:nowrap; padding:5px 10px; font-size:12px; border-radius:9px; line-height:1.2;
+}
+#mpWrap #mpSide .mp-sdh .mp-sdico{ flex:0 0 auto; }
+#mpWrap #mpSide #mpSdKick{ white-space:nowrap; max-width:96px; overflow:hidden; text-overflow:ellipsis; }
+/* ===== web362：右栏头部两行（标题一行，动作一行，各自不换行） ===== */
+#mpWrap #mpSide .mp-sdh{ flex-wrap:nowrap; gap:8px; padding:10px 12px 9px; align-items:center; }
+#mpWrap #mpSide .mp-sdh b{ white-space:nowrap; }
+#mpWrap #mpSide .mp-sdh .mp-sdrow2{
+  display:flex; flex:1 1 100%; gap:8px; margin-top:2px; width:100%;
+}
+#mpWrap #mpSide .mp-sdh .mp-sdrow2 .mp-sdbtn{
+  flex:1 1 0; white-space:nowrap; padding:6px 10px; font-size:12px; border-radius:9px;
+}
+#mpWrap #mpSide .mp-sdh{ flex-wrap:wrap; }
+/* ===== web364：考点「中心局部全屏」要盖在整个脑图窗口之上 ===== */
+#mpKp.full{ z-index:30090 !important; }
+#mpKpMask{ z-index:30089 !important; background:rgba(20,24,38,.42); backdrop-filter:saturate(.9); }
+/* ===== web365：自定义确认框（组删除等，替代原生 confirm） ===== */
+.mp-ask{position:fixed;inset:0;z-index:30096;display:flex;align-items:center;justify-content:center;
+  background:rgba(20,24,38,.38);animation:mpAskIn .12s ease}
+@keyframes mpAskIn{from{opacity:0}to{opacity:1}}
+.mp-ask .mp-askc{width:min(420px,92vw);background:#fff;border:1px solid var(--line,#e2e0ee);
+  border-radius:16px;box-shadow:0 28px 70px rgba(20,24,38,.28);padding:18px 20px 14px}
+.mp-ask .mp-askc b{display:block;font-size:14.5px;color:#22253a;margin-bottom:6px}
+.mp-ask .mp-askc p{margin:0 0 8px;font-size:12.5px;line-height:1.7;color:#6b7186}
+.mp-ask .mp-askc ul{list-style:none;margin:0 0 10px;padding:8px 10px;max-height:190px;overflow:auto;
+  background:#f7f5ff;border:1px dashed #ddd3fb;border-radius:10px}
+.mp-ask .mp-askc li{font-size:12.5px;color:#4a4470;line-height:1.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-ask .mp-askb{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.mp-ask .mp-askb button{height:32px;padding:0 16px;border-radius:9px;font-size:13px;cursor:pointer;
+  border:1px solid #e2e0ee;background:#fff;color:#3a3d52}
+.mp-ask .mp-askb button:hover{background:#f6f4ff}
+.mp-ask .mp-askb button.prim{background:#7c6cf0;border-color:#7c6cf0;color:#fff}
+.mp-ask .mp-askb button.prim:hover{background:#6b5be0}
+.mp-ask .mp-askb button.bad{background:#e2534e;border-color:#e2534e;color:#fff}
+.mp-ask .mp-askb button.bad:hover{background:#cf4640}
+body.dark .mp-ask .mp-askc{background:#1b2030;border-color:#2a3148}
+body.dark .mp-ask .mp-askc b{color:#e8eaf5}
+body.dark .mp-ask .mp-askc ul{background:#222a3d;border-color:#3a3560}
+body.dark .mp-ask .mp-askc li{color:#c3c8dc}
+@media (max-width:520px){ .mp-ask .mp-askc{padding:16px 16px 12px} .mp-ask .mp-askb button{flex:1} }
+/* ===== web366：模态层要盖过「考点中心全屏」(30090)，否则全屏下点 AI 分析会被挡 ===== */
+#mpAi, #mpPick, #mpAg{ z-index:30095 !important; }
+#mpNoteEd{ z-index:30094 !important; }
+/* ===== web367：返回键挪到标题栏最左（不跟窗口按钮混在一起） ===== */
+#mpBar .mp-grip{ order:-3; }
+#mpBar #mpBack{ order:-2; margin-right:2px; }
+#mpBar #mpTitle{ order:-1; }
+#mpBar #mpBack[hidden]{ display:none; }
+/* ===== web369：题目抽屉贴底（第 18/20 轮） ===== */
+#mpWrap #mpSide{
+  position:absolute; left:50%; right:auto; top:auto; bottom:0;
+  width:min(940px,94%); max-height:min(78%,760px);
+  transform:translateX(-50%) translateY(22px);
+  border-radius:16px 16px 0 0; border-bottom:0; border-color:#e6e2f2;
+  box-shadow:0 -18px 46px rgba(31,35,51,.16);
+  z-index:30030; overflow:hidden;
+}
+#mpWrap #mpSide.show{ transform:translateX(-50%) translateY(0); display:flex; }
+#mpWrap #mpSide .mp-sdh{ border-radius:0; border-bottom:1px solid #f1eef9; padding:10px 14px 8px; }
+#mpWrap #mpSide .mp-sdbody{ flex:1 1 auto; overflow:auto; padding:12px 16px 18px; }
+/* ⤢ 真全屏：只留图标，比 ✕ 大一点，紧挨在它左边 */
+#mpWrap #mpSide .mp-sdico2{
+  width:36px; height:36px; margin-left:4px;
+  font-size:18px; line-height:1; border-radius:10px;
+  border:1px solid #e2dcf7; background:#fff; color:#6b5bd6;
+}
+#mpWrap #mpSide .mp-sdico2:hover{ background:#f4f0ff; border-color:#c9bdf7; color:#5a3fd6; }
+@media (max-width:620px){
+  #mpWrap #mpSide{ width:100%; max-height:82%; border-radius:14px 14px 0 0; }
+  #mpWrap #mpSide .mp-sdico2{ width:34px; height:34px; font-size:17px; }
+}
+body.dark #mpWrap #mpSide .mp-sdico2{ background:#222a3d; border-color:#3a3560; color:#b9aef7; }
+/* ===== web372：二分吸附预览（只左右，滑动过渡）+ 换焦描边统一 ===== */
+#mpSnap{ position:fixed; border-radius:14px; pointer-events:none;
+  background:linear-gradient(180deg, rgba(46,196,182,.16), rgba(46,196,182,.06));
+  border:2px dashed #2ec4b6; box-shadow:inset 0 0 40px rgba(46,196,182,.18), 0 12px 32px rgba(15,60,60,.10);
+  transition:left .16s cubic-bezier(.22,.61,.36,1), width .16s cubic-bezier(.22,.61,.36,1),
+             top .16s cubic-bezier(.22,.61,.36,1), height .16s cubic-bezier(.22,.61,.36,1); }
+#mpSnap::after{ content:attr(data-tip); position:absolute; left:50%; bottom:16px; transform:translateX(-50%);
+  padding:6px 14px; border-radius:999px; background:#12b3a0; color:#fff; font-size:12.5px; white-space:nowrap;
+  box-shadow:0 8px 20px rgba(15,60,60,.22); }
+#mpSnap[hidden]{ display:none; }
+/* ===== web378：最小化胶囊可拖 / 脑图让焦（点侧栏时） ===== */
+#mpChip{ touch-action:none; user-select:none; cursor:grab; }
+#mpChip:active{ cursor:grabbing; }
+#mpWrap.mp-away{ box-shadow:0 8px 26px rgba(31,35,51,.10); filter:saturate(.94); }
+#mpWrap.mp-away #mpBar{ background:linear-gradient(180deg,#eef1f3,#e2e6ea); border-color:#cfd6da; }
+#mpWrap.mp-away #mpBar #mpTitle, #mpWrap.mp-away #mpBar button{ color:#7b8590; }
+
+/* ===== web381：画布平移时禁止选字（划过卡片会把文字选上，像被复制） ===== */
+#mpStage.mp-pan, #mpStage.mp-pan *{ user-select:none !important; -webkit-user-select:none !important; }
+#mpStage.mp-pan{ -webkit-user-drag:none; cursor:grabbing; }
+#mpStage.mp-pan .mp-node{ cursor:grabbing; }
+#mpStage:not(.mp-pan) .mp-node{ user-select:text; }
+/* ===== web382：考点编辑器改成站里解析那套「单窗所见即所得」（不再源码+预览两块） ===== */
+#mpKp #mpKpPrev2{ display:none !important; }
+#mpKp .mp-rtew{ margin:4px 0 10px; }
+#mpKp .mp-rte{ min-height:190px; padding:12px 14px; background:#fff; border:1px solid var(--line,#e2e0ee);
+  border-radius:12px; line-height:1.75; font-size:13.5px; color:#22253a; outline:none;
+  box-shadow:inset 0 1px 2px rgba(31,35,51,.03); }
+#mpKp .mp-rte:focus{ border-color:#bfb2f5; box-shadow:0 0 0 3px rgba(124,108,240,.12); }
+#mpKp .mp-rte:empty:before{ content:attr(data-ph); color:#a9aec0; white-space:pre-wrap; }
+#mpKp .mp-rte h1, #mpKp .mp-rte h2{ font-size:15px; margin:6px 0 4px; }
+#mpKp .mp-rte ul, #mpKp .mp-rte ol{ padding-left:20px; margin:4px 0; }
+#mpKp .mp-rte blockquote{ margin:6px 0; padding:2px 10px; border-left:3px solid #d9d2fb; color:#5d6478; }
+#mpKp .mp-rte code{ background:#f4f2ff; border-radius:5px; padding:1px 5px; }
+#mpKp .mp-rte img{ max-width:100%; border-radius:8px; }
+body.dark #mpKp .mp-rte{ background:#1b2030; border-color:#2a3148; color:#e6e8f4; }
+/* ===== web383：组面板新增「逻辑」下拉 / 导出按钮 / 键盘可操作 ===== */
+#mpGrp .mp-gopts select#mpGLogic{ max-width:64px; }
+#mpGrp #mpGBulk [data-b="exp"]{ color:#5b46d8; border-color:#d9d2fb; }
+#mpGrp #mpGList [data-g].on{ box-shadow:0 0 0 2px rgba(124,108,240,.25) inset; }
+#mpGrp #mpGList [data-g]:focus{ outline:2px solid rgba(124,108,240,.45); outline-offset:-2px; }
+body.dark #mpGrp #mpGBulk [data-b="exp"]{ color:#c9bdff; border-color:#3b3560; }
+/* ===== web386：组面板在窄宽下按钮竖排/换行难看 ===== */
+#mpGrp{ width:min(348px, 94%); }
+#mpGrp .mp-gopts{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 5px; }
+#mpGrp .mp-gopts>span{ flex:0 0 auto; white-space:nowrap; }
+#mpGrp .mp-gopts select{ flex:0 1 auto; min-width:0; }
+#mpGrp .mp-gopts select#mpGScope{ max-width:112px; }
+#mpGrp .mp-gopts select#mpGSort{ max-width:74px; }
+#mpGrp .mp-gopts select#mpGLogic{ max-width:60px; }
+#mpGrp #mpGBulk{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 5px; }
+#mpGrp #mpGBulk>span{ flex:0 0 auto; white-space:nowrap; margin-right:2px; }
+#mpGrp #mpGBulk button{ flex:0 0 auto; white-space:nowrap; padding:2px 7px; font-size:11px; }
+
+/* ===== web387：组面板工具行一行放下 ===== */
+#mpGrp{ width:min(362px, 95%); }
+#mpGrp .mp-gopts{ gap:6px 4px; }
+#mpGrp .mp-gopts select#mpGScope{ max-width:98px; }
+#mpGrp .mp-gopts select#mpGSort{ max-width:62px; }
+#mpGrp .mp-gopts select#mpGLogic{ max-width:54px; }
+#mpGrp .mp-gopts>span{ font-size:11px; }
+/* ===== web391：手机（≤760px）把脑图窗口铺满，面板全部改成整宽 ===== */
+#mpWrap.mp-ph{ border-radius:0; box-shadow:none; }
+#mpWrap.mp-ph #mpBar{ height:40px; padding:0 6px; gap:4px; border-radius:0; }
+#mpWrap.mp-ph #mpBar #mpTitle{ font-size:12px; max-width:42%; }
+#mpWrap.mp-ph .mp-grip{ display:none; }
+#mpWrap.mp-ph #mpBar button{ width:30px; height:30px; font-size:14px; }
+#mpWrap.mp-ph #mpTools{ height:auto; min-height:36px; padding:4px 6px; gap:4px;
+  flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+#mpWrap.mp-ph #mpTools::-webkit-scrollbar{ display:none; }
+#mpWrap.mp-ph #mpTools>*{ flex:0 0 auto; }
+#mpWrap.mp-ph #mpFind input{ width:104px; height:26px; font-size:12px; }
+#mpWrap.mp-ph #mpFindPop{ width:min(320px, calc(100vw - 16px)); }
+#mpWrap.mp-ph #mpZoom{ right:8px; bottom:8px; padding:4px 6px; transform:scale(.94); transform-origin:bottom right; }
+#mpWrap.mp-ph #mpHint{ display:none; }
+/* 面板：一律整宽、贴边，别按桌面的 340/380/520 固定宽 */
+#mpWrap.mp-ph #mpSide{ left:0!important; right:0!important; width:100%!important; bottom:0; max-height:74%; border-radius:14px 14px 0 0; }
+#mpWrap.mp-ph #mpGrp{ left:4px!important; right:4px!important; width:auto!important; top:74px; max-height:calc(100% - 96px); }
+#mpWrap.mp-ph #mpKp{ left:0!important; right:0!important; width:100%!important; top:0!important; bottom:0!important; height:100%!important; border-radius:0; }
+#mpWrap.mp-ph #mpPv{ left:4px!important; right:4px!important; width:auto!important; top:56px!important; bottom:44px!important; height:auto!important; }
+#mpWrap.mp-ph #mpFiles{ left:6px!important; bottom:44px; width:min(214px, 58%); }
+#mpWrap.mp-ph #mpChip{ right:12px; bottom:14px; }
+#mpWrap.mp-ph .mp-node{ font-size:12px; }
+/* 抽屉里的两排按钮在窄屏下等分 */
+#mpWrap.mp-ph #mpSdRow2 button{ flex:1 1 0; }
+/* 手机上不要描边高亮干扰 */
+@media (max-width:760px){
+  #mpWrap{ border-radius:0!important; }
+}
+/* ===== web392：手机下标题栏/工具条/画布改成正常竖排（别互相压住） ===== */
+#mpWrap.mp-ph{ display:flex; flex-direction:column; }
+#mpWrap.mp-ph #mpBar{ position:relative; left:auto!important; top:auto!important; width:auto!important;
+  order:0; flex:0 0 auto; height:40px; margin:0; border-radius:0; }
+#mpWrap.mp-ph #mpTools{ position:relative; order:1; flex:0 0 auto; margin:0; }
+#mpWrap.mp-ph #mpStage{ position:relative; order:2; flex:1 1 auto; inset:auto!important; margin:0; min-height:0; }
+#mpWrap.mp-ph #mpRz{ display:none!important; }
+#mpWrap.mp-ph #mpZoom{ position:absolute; z-index:5; }
+/* ===== web394：手机上的标题与浮块细节 ===== */
+#mpWrap.mp-ph #mpBar #mpTitle{ display:inline-block!important; font-size:11.5px; max-width:44%; }
+#mpWrap.mp-ph #mpBack{ display:none!important; }
+#mpWrap.mp-ph #mpFil{ display:none!important; }
+#mpWrap.mp-ph #mpTools #mpHold{ display:none!important; }
+#mpWrap.mp-ph #mpFiles{ width:min(196px, 52%); max-height:40%; }
+#mpWrap.mp-ph #mpFiles .mf-row{ font-size:11px; }
+#mpWrap.mp-ph #mpSide{ max-height:70%; }
+/* ===== web399：让焦（点侧栏/题库管理器时）更像「退到后面」，而不是只换个颜色 ===== */
+#mpWrap.mp-away{ box-shadow:0 6px 18px rgba(31,35,51,.08); filter:saturate(.88) brightness(.985); }
+#mpWrap.mp-away #mpStage{ opacity:.94; }
+#mpWrap.mp-away #mpBar{ background:linear-gradient(180deg,#eef1f3,#dfe4e9); border-color:#c8d0d5; }
+#mpWrap.mp-away #mpBar #mpTitle{ color:#8a939c; }
+#mpWrap.mp-away #mpZoom, #mpWrap.mp-away #mpFiles, #mpWrap.mp-away #mpHint{ opacity:.9; }
+/* ===== web402：让焦时【不要】给 #mpWrap 加 filter =====
+   filter 会给 fixed 子元素造一个包含块，标题栏（top/left 按视口写）就会被
+   当成相对窗口定位，于是整条标题栏跑到画布中间 —— 这就是「失焦后找不到标题栏」。
+   压低观感改用 stage 的 opacity，不动包含块。 */
+#mpWrap.mp-away{ filter:none !important; }
+#mpWrap.mp-away #mpStage{ opacity:.93; filter:saturate(.9) brightness(.99); }
+#mpWrap.mp-away #mpBar{ background:linear-gradient(180deg,#eef1f3,#e2e6ea); border-color:#cfd6da; }
+#mpWrap.mp-away #mpBar #mpTitle, #mpWrap.mp-away #mpBar button{ color:#7b8590; }
+/* ===== web404：抽屉「下拉手势」设置面板 ===== */
+#mpSdSet{ position:fixed; z-index:30097; width:min(280px, 88vw); padding:12px 13px 11px; border-radius:12px;
+  background:rgba(255,255,255,.98); border:1px solid var(--line); box-shadow:0 18px 40px rgba(31,35,51,.18); display:none; }
+#mpSdSet.show{ display:block; }
+#mpSdSet .mp-sds-h{ font-size:12.5px; font-weight:600; color:var(--ink); margin-bottom:8px; }
+#mpSdSet .mp-sds-r{ display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--sub); margin-bottom:6px; }
+#mpSdSet .mp-sds-r b{ color:#5b46d8; font-size:12px; }
+#mpSdSet input[type=range]{ width:100%; accent-color:#7c6cf0; }
+#mpSdSet .mp-sds-t{ margin-top:7px; font-size:11px; line-height:1.6; color:var(--sub); }
+#mpSdSet .mp-sds-b{ display:flex; gap:8px; margin-top:10px; }
+#mpSdSet .mp-sds-b button{ flex:1; height:28px; border-radius:9px; border:1px solid var(--line); background:#fff; font-size:11.5px; cursor:pointer; }
+#mpSdSet .mp-sds-b button#mpSdSetX{ background:#7c6cf0; border-color:#7c6cf0; color:#fff; }
+body.dark #mpSdSet{ background:rgba(32,34,44,.98); }
+/* ===== web411：小窗压到脑图上时的倒计时提示 ===== */
+#mpPipTip{ position:absolute; right:14px; top:52px; padding:5px 11px; border-radius:999px;
+  background:rgba(18,179,160,.94); color:#fff; font-size:11.5px; font-weight:600; letter-spacing:.2px;
+  box-shadow:0 8px 22px rgba(18,179,160,.35); pointer-events:none; opacity:0; transition:opacity .14s ease; z-index:30080; }
+#mpPipTip.show{ opacity:1; }
+#mpWrap.dzhover::after{ box-shadow:inset 0 0 46px rgba(46,196,182,.22), 0 0 30px rgba(46,196,182,.45) !important; }
+#mpWrap.dzhot::after{ box-shadow:inset 0 0 70px rgba(18,179,160,.34), 0 0 44px rgba(18,179,160,.55) !important; }
+/* ===== web413：拖小窗的光效三段 =====
+   dzarm  = 刚拿起小窗（还没进脑图）：静态一圈青光，告诉人「可以往这儿放」
+   dzpull = 进了脑图（重叠 ≥34%）：动态脉冲 + 流动虚线，像被吸进去
+   dzflash= 松手换中心那一瞬：一下亮闪 + 轻微收缩 */
+#mpWrap.dzarm::after{ content:''; position:absolute; inset:0; border-radius:16px; pointer-events:none; z-index:8;
+  border:2px solid rgba(46,196,182,.55); box-shadow:0 0 0 1px rgba(46,196,182,.25), 0 0 22px rgba(46,196,182,.28); }
+#mpWrap.dzpull::after{ animation:mpAbsorb 1.05s ease-in-out infinite; }
+#mpWrap.dzpull{ transition:transform .18s ease; }
+@keyframes mpAbsorb{
+  0%  { box-shadow:inset 0 0 34px rgba(46,196,182,.16), 0 0 20px rgba(46,196,182,.26); border-color:rgba(46,196,182,.55); }
+  50% { box-shadow:inset 0 0 88px rgba(46,196,182,.42), 0 0 46px rgba(46,196,182,.55); border-color:rgba(18,179,160,.95); }
+  100%{ box-shadow:inset 0 0 34px rgba(46,196,182,.16), 0 0 20px rgba(46,196,182,.26); border-color:rgba(46,196,182,.55); }
+}
+#mpWrap.dzflash{ animation:mpFlash .42s ease-out 1; }
+@keyframes mpFlash{
+  0%  { transform:scale(1); box-shadow:0 0 0 0 rgba(18,179,160,0); }
+  35% { transform:scale(.994); box-shadow:0 0 46px 6px rgba(18,179,160,.55), inset 0 0 60px rgba(18,179,160,.35); }
+  100%{ transform:scale(1); box-shadow:0 0 0 0 rgba(18,179,160,0); }
+}
+@media (prefers-reduced-motion: reduce){
+  #mpWrap.dzpull::after, #mpWrap.dzflash{ animation:none !important; }
+}
+
+/* =====================================================================
+   web418 · 动效层（keyframes 全部取自用户给的 20 个 json 预设）
+   entrance: bounce-in / zoom-in / fade-in-up / fade-in-down / slide-in-right
+   feedback: elastic-scale / progress-fill / stagger-fade-in
+   ===================================================================== */
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  70% {
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes rotate-in {
+  from {
+    opacity: 0;
+    transform: rotate(-180deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes elastic-scale {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+  60% {
+    transform: scale(0.92);
+  }
+  75% {
+    transform: scale(1.05);
+  }
+  90% {
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes counter-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(var(--counter-target, -9) * -1em));
+  }
+}
+
+@keyframes spinner-dot-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes progress-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes stagger-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes morph-transition {
+  0%, 100% {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: #6366f1;
+  }
+  50% {
+    width: 120px;
+    height: 40px;
+    border-radius: 12px;
+    background-color: #ec4899;
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes crossfade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ---- 画布节点：bounce-in + 交错（保住 translate(-50%,-50%) 居中） ---- */
+@keyframes mpNodeIn {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(.3); }
+  50%  { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  70%  { transform: translate(-50%, -50%) scale(.95); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+#mpNodes .mp-node.in { animation: mpNodeIn 600ms cubic-bezier(.34,1.56,.64,1) both; animation-delay: var(--ad, 0ms); }
+
+/* ---- 组列表：stagger-children ---- */
+#mpGrp .mp-grow2.gin { animation: fade-in-up 320ms cubic-bezier(.16,1,.3,1) both; animation-delay: var(--ad, 0ms); }
+
+/* ---- 面板进场 ---- */
+#mpKp.show    { animation: slide-in-right 320ms cubic-bezier(.16,1,.3,1) both; }
+#mpGrp.show   { animation: slide-in-right 280ms cubic-bezier(.16,1,.3,1) both; }
+#mpFindPop.show { animation: fade-in-down 220ms cubic-bezier(.16,1,.3,1) both; transform-origin: top left; }
+#mpCtx.show   { animation: elastic-scale 260ms cubic-bezier(.34,1.56,.64,1) both; transform-origin: top left; }
+#mpPv.show    { animation: zoom-in 300ms cubic-bezier(.16,1,.3,1) both; transform-origin: bottom left; }
+#mpVw.show    { animation: crossfade-in 240ms ease-in-out both; }
+#mpPick.show, #mpAi.show, #mpAg.show, #mpRq.show { animation: crossfade-in 200ms ease-in-out both; }
+#mpSdSet.show { animation: elastic-scale 260ms cubic-bezier(.34,1.56,.64,1) both; transform-origin: top right; }
+#mpChip:not([hidden]) { animation: bounce-in 460ms cubic-bezier(.34,1.56,.64,1) both; }
+
+/* ---- 精搜：progress-bar 预设做顶部进度条 ---- */
+#mpProbeBar { position: absolute; left: 0; right: 0; top: 0; height: 3px; z-index: 30075;
+  pointer-events: none; overflow: hidden; background: rgba(46,196,182,.12); }
+#mpProbeBar::after { content: ''; display: block; height: 100%; width: 40%; border-radius: 3px;
+  background: linear-gradient(90deg, #7c6cf0, #2ec4b6);
+  animation: progress-fill 1.05s cubic-bezier(.4,0,.2,1) infinite; }
+
+/* ---- 当前组名：underline-draw ---- */
+#mpGrp .mp-grow2.on .gmain b { position: relative; }
+#mpGrp .mp-grow2.on .gmain b::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; border-radius: 2px; background: currentColor; opacity: .55;
+  transform-origin: left; animation: mpUnderline 340ms cubic-bezier(.4,0,.2,1) both; }
+@keyframes mpUnderline { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #mpNodes .mp-node.in, #mpGrp .mp-grow2.gin, #mpKp.show, #mpGrp.show, #mpFindPop.show,
+  #mpCtx.show, #mpPv.show, #mpVw.show, #mpPick.show, #mpAi.show, #mpAg.show, #mpRq.show,
+  #mpSdSet.show, #mpChip:not([hidden]), #mpProbeBar::after, #mpGrp .mp-grow2.on .gmain b::after {
+    animation: none !important;
+  }
+}
+
+/* ===== web424：考点总结 = Markdown 源码 + 实时显示（照导入页 #ta + #preview） ===== */
+#mpKp #mpKpMd.mp-mdta{
+  display:block; width:100%; min-height:150px; box-sizing:border-box;
+  font:12.5px/1.68 ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  color:#2b2f3d; background:#fbfaff; border:1px dashed #dcd5f4; border-radius:12px;
+  padding:10px 12px; resize:vertical; outline:none;
+  white-space:pre-wrap; tab-size:2;
+}
+#mpKp #mpKpMd.mp-mdta:focus{ border-color:#b9adf5; background:#fff; box-shadow:0 0 0 3px rgba(124,108,240,.12); }
+#mpKp #mpKpMd.mp-mdta::placeholder{ color:#a9a3c0; }
+#mpKp .mp-kpsub2{ margin:10px 0 6px; font-size:11.5px; color:#6b7186; display:flex; gap:6px; align-items:center; }
+#mpKp .mp-kpsub2 i.mp-kpah{ font-style:normal; color:#a09abc; }
+#mpKp #mpKpPrev2{
+  display:block!important; min-height:74px; padding:12px 14px; margin-top:2px;
+  background:#fff; border:1px solid var(--line); border-radius:12px;
+  font-size:13px; line-height:1.78; color:#2b2f3d; overflow:auto; max-height:320px;
+}
+#mpKp #mpKpPrev2:empty::before{ content:'上面写点东西，这里就会出现渲染结果'; color:#a9a3c0; font-size:12px; }
+#mpKp #mpKpPrev2 h1{ font-size:18px; margin:6px 0 8px; }
+#mpKp #mpKpPrev2 h2{ font-size:15.5px; margin:12px 0 6px; }
+#mpKp #mpKpPrev2 h3{ font-size:14px; margin:10px 0 5px; }
+#mpKp #mpKpPrev2 p{ margin:6px 0; }
+#mpKp #mpKpPrev2 ul,#mpKp #mpKpPrev2 ol{ margin:6px 0 6px 20px; }
+#mpKp #mpKpPrev2 li{ margin:2px 0; }
+#mpKp #mpKpPrev2 blockquote{ margin:8px 0; padding:6px 12px; border-left:3px solid #cfc6f7; background:#f8f6ff; color:#4d4766; border-radius:0 8px 8px 0; }
+#mpKp #mpKpPrev2 code{ background:#f3f1fb; border-radius:5px; padding:1px 5px; font-size:12px; }
+#mpKp #mpKpPrev2 pre{ background:#f7f5fd; border-radius:10px; padding:10px 12px; overflow:auto; }
+body.dark #mpKp #mpKpMd.mp-mdta{ background:#20222e; color:#e7e5f2; border-color:#3a3a52; }
+body.dark #mpKp #mpKpPrev2{ background:#1b1d27; border-color:#33334a; color:#e7e5f2; }
+body.dark #mpKp #mpKpPrev2 blockquote{ background:#242634; color:#cfcbe4; border-left-color:#5b4f9e; }
+/* ===== web425：中心题下方的卡片改用 fade-in-up（不弹跳、保住居中） ===== */
+@keyframes mpInUp{
+  from { opacity:0; transform:translate(-50%, calc(-50% + 26px)) scale(.985); }
+  60%  { opacity:1; }
+  to   { opacity:1; transform:translate(-50%, -50%) scale(1); }
+}
+#mpNodes .mp-node.in.inb{
+  animation: mpInUp .58s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: var(--ad, 0ms);
+}
+@media (prefers-reduced-motion: reduce){
+  #mpNodes .mp-node.in.inb{ animation: none !important; }
+}
+/* ===== web429：题目抽屉出来要有「效果」（之前没有 transition，直接啪一下出现） ===== */
+#mpWrap #mpSide{
+  transition: transform .34s cubic-bezier(.16,1,.3,1), opacity .2s ease, box-shadow .24s ease;
+  opacity:0;
+  will-change:transform;
+}
+#mpWrap #mpSide.show{ opacity:1; }
+/* 内容随抽屉上滑，稍微错开一点，看上去像被“抽”出来 */
+@keyframes mpSheetRow{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
+#mpWrap #mpSide.show .mp-sdh{ animation: mpSheetRow .34s cubic-bezier(.16,1,.3,1) both; }
+#mpWrap #mpSide.show .mp-sdbody > *{ animation: mpSheetRow .36s cubic-bezier(.16,1,.3,1) both; }
+#mpWrap #mpSide.show .mp-sdbody > *:nth-child(1){ animation-delay:.04s; }
+#mpWrap #mpSide.show .mp-sdbody > *:nth-child(2){ animation-delay:.08s; }
+#mpWrap #mpSide.show .mp-sdbody > *:nth-child(3){ animation-delay:.12s; }
+#mpWrap #mpSide.show .mp-sdbody > *:nth-child(4){ animation-delay:.16s; }
+@media (prefers-reduced-motion: reduce){
+  #mpWrap #mpSide, #mpWrap #mpSide.show .mp-sdh, #mpWrap #mpSide.show .mp-sdbody > *{ transition:none!important; animation:none!important; }
+}
+/* ===== web430：抽屉用 keyframes 进场（首次打开也一定播，不依赖 transition 起始值） ===== */
+@keyframes mpSheetIn{
+  from{ opacity:0; transform:translateX(-50%) translateY(26px); }
+  to  { opacity:1; transform:translateX(-50%) translateY(0); }
+}
+#mpWrap #mpSide.show{ animation: mpSheetIn .34s cubic-bezier(.16,1,.3,1) both; }
+@media (prefers-reduced-motion: reduce){ #mpWrap #mpSide.show{ animation:none!important; } }
+/* ===== web431：考点总结 = 站里「解析块」同款 rich-edit（就地编辑，本身即显示） ===== */
+#mpKp #mpKpMd.mp-kprich{
+  min-height:170px; max-height:46vh; overflow:auto;
+  padding:12px 14px; background:#fff; border:1px solid var(--line); border-radius:12px;
+  font-size:13px; line-height:1.8; color:#2b2f3d; outline:none;
+}
+#mpKp #mpKpMd.mp-kprich:focus{ border-color:#b9adf5; box-shadow:0 0 0 3px rgba(124,108,240,.12); }
+#mpKp #mpKpMd.mp-kprich:empty::before{
+  content:'# 一句话\A**考点**是什么、判据、易错点……';
+  white-space:pre-wrap; color:#a9a3c0; font-size:12px;
+}
+#mpKp #mpKpMd.mp-kprich h1{ font-size:19px; margin:8px 0; }
+#mpKp #mpKpMd.mp-kprich h2{ font-size:16px; margin:10px 0 6px; }
+#mpKp #mpKpMd.mp-kprich h3{ font-size:14.5px; margin:8px 0 5px; }
+#mpKp #mpKpMd.mp-kprich ul,#mpKp #mpKpMd.mp-kprich ol{ margin:6px 0 6px 20px; }
+#mpKp #mpKpMd.mp-kprich blockquote{ margin:8px 0; padding:6px 12px; border-left:3px solid #cfc6f7; background:#f8f6ff; border-radius:0 8px 8px 0; }
+#mpKp #mpKpMd.mp-kprich code{ background:#f3f1fb; border-radius:5px; padding:1px 5px; font-size:12px; }
+#mpKp #mpKpMd.mp-kprich pre{ background:#f7f5fd; border-radius:10px; padding:10px 12px; overflow:auto; }
+#mpKp #mpKpPrev2{ display:none !important; }
+body.dark #mpKp #mpKpMd.mp-kprich{ background:#1b1d27; color:#e7e5f2; border-color:#33334a; }
+body.dark #mpKp #mpKpMd.mp-kprich blockquote{ background:#232533; border-left-color:#5b4f9e; color:#cfcbe4; }
+/* ===== web432：考点全屏要真居中（.show 的 slide-in-right 动画把 translate(-50%,-50%) 冲掉了） ===== */
+#mpKp.full{ animation: none !important; transform: translate(-50%,-50%) !important; }
+/* 考点总结编辑器跟着面板底色走，暗色主题里不要单独变深 */
+body.dark #mpKp #mpKpMd.mp-kprich{
+  background:#fff !important; color:#2b2f3d !important; border-color:#e2e0ee !important;
+}
+body.dark #mpKp #mpKpMd.mp-kprich blockquote{ background:#f8f6ff !important; color:#4d4766 !important; }
+/* ===== web433：面板是浅色的，里面的工具条却吃到了暗色变量 → 深色条 + 白字白底 ===== */
+#mpKp #mpRteBar{ background:#f7f6fc; border-color:#e8e5f4; }
+#mpKp #mpRteBar button{ background:#fff; color:#4a4560; border-color:#e4e1f2; }
+#mpKp #mpRteBar button:hover{ background:#f1edff; border-color:#cfc4f5; color:#5a3fd6; }
+#mpKp #mpRteBar .mp-rseg{ background:#e6e2f4; }
+body.dark #mpKp #mpRteBar{ background:#f7f6fc !important; border-color:#e8e5f4 !important; }
+body.dark #mpKp #mpRteBar button{ background:#fff !important; color:#4a4560 !important; border-color:#e4e1f2 !important; }
+/* ===== web434：暗色主题下考点面板整块要变深（否则白底 + 浅色字 = 糊成一片） ===== */
+body.dark #mpKp{
+  background:rgba(24,29,44,.97) !important;
+  border-color:#2a3148 !important;
+  color:#e7e5f2 !important;
+  box-shadow:0 24px 60px rgba(0,0,0,.5) !important;
+}
+body.dark #mpKp .mp-kpsub{ color:#9aa1bb !important; border-color:#2a3148 !important; }
+body.dark #mpKp .mp-kstat{ color:#7d849c !important; }
+body.dark #mpKp #mpKpQ,
+body.dark #mpKp .mp-kpq input{ background:#141926 !important; border-color:#2a3148 !important; color:#dfe4f2 !important; }
+body.dark #mpKp .mp-kq{ color:#dfe4f2 !important; border-color:#252b3f !important; }
+body.dark #mpKp .mp-kq b, body.dark #mpKp .mp-kq p{ color:#dfe4f2 !important; }
+body.dark #mpKp .mp-kq small, body.dark #mpKp .mp-kq i{ color:#8b92a9 !important; }
+body.dark #mpKp .mp-kbtn, body.dark #mpKp .mp-kpp button{ background:#232a3e !important; border-color:#333a52 !important; color:#cfd6ea !important; }
+body.dark #mpKp #mpRteBar{ background:#20263a !important; border-color:#2a3148 !important; }
+body.dark #mpKp #mpRteBar button{ background:#262d44 !important; color:#cfd6ea !important; border-color:#333a52 !important; }
+body.dark #mpKp #mpKpMd.mp-kprich{ background:#151a26 !important; color:#e7e5f2 !important; border-color:#33334a !important; }
+body.dark #mpKp #mpKpMd.mp-kprich blockquote{ background:#232533 !important; color:#cfcbe4 !important; }
+body.dark #mpKp #mpKpMd.mp-kprich code{ background:#232533 !important; color:#dcd8f0 !important; }
+/* ===== web435：站里的富文本右键菜单（.ctx-menu）被脑图面板压在下面 → 看不见 ===== */
+.ctx-menu{ z-index:30099 !important; }
+/* ===== web436：脑图跟着站点主题走（skin / 深色 / win95 都吃同一套变量） =====
+   站点主题在 html[data-style] 与 body.dark 上铺了一套变量：
+   --bg --card --card2 --card3 --line --text --sub --primary --primary-weak --r-l ...
+   这里把脑图的画布 / 标题栏 / 面板 / 节点 / 输入框全部改成读这些变量，
+   原来那批写死的 #efeef7 / #fff / 青绿渐变统一让位。 */
+
+/* --- 窗口本体与画布 --- */
+#mpWrap{ background:var(--bg,#eef1f7) !important; color:var(--text,#0b1220) !important; border-color:var(--line,rgba(13,23,42,.08)) !important; }
+#mpStage{ background:var(--bg,#eef1f7) !important; }
+#mpStage::before{ background-image:radial-gradient(circle, var(--line,rgba(13,23,42,.10)) 1px, transparent 1.2px) !important; }
+
+/* --- 标题栏：底 = 卡片色，文字 = 正文色（win95 另有专属样式，见文件末尾） --- */
+#mpBar{
+  background:var(--card,#fff) !important;
+  border:1px solid var(--line,rgba(13,23,42,.10)) !important;
+  border-bottom:0 !important;
+  border-radius:var(--r-l,14px) var(--r-l,14px) 0 0 !important;
+  box-shadow:0 -6px 20px rgba(0,0,0,.06) !important;
+  color:var(--text,#0b1220) !important;
+}
+#mpBar #mpTitle{ color:var(--text,#0b1220) !important; }
+#mpBar #mpBar .mp-grip{ color:var(--sub,#6b7186) !important; }
+#mpBar button{ color:var(--text,#0b1220) !important; background:transparent !important; }
+#mpBar button:hover{ background:var(--primary-soft,rgba(13,148,136,.10)) !important; }
+
+/* --- 工具条 / 输入框 / 下拉 --- */
+#mpTools{ background:var(--card2,var(--card,#fff)) !important; border-bottom:1px solid var(--line,rgba(13,23,42,.08)) !important; color:var(--text,#0b1220) !important; }
+#mpTools input,#mpTools select,#mpFindQ,#mpFindType,#mpLayout,#mpFil label{
+  background:var(--card,#fff) !important; color:var(--text,#0b1220) !important;
+  border:1px solid var(--line,rgba(13,23,42,.10)) !important;
+  border-radius:var(--r-s,8px) !important;
+}
+#mpTools .mp-tbtn,#mpTools button,#mpFil label{ color:var(--text,#0b1220) !important; }
+#mpTools .mp-tbtn.on,#mpFil input:checked+span{ background:var(--primary-weak,var(--primary-soft,#e6faf7)) !important; color:var(--primary,#0d9488) !important; border-color:var(--primary-line,var(--line)) !important; }
+
+/* --- 节点卡片 --- */
+#mpStage .mp-node{
+  background:var(--card,#fff) !important;
+  color:var(--text,#0b1220) !important;
+  border:1px solid var(--line,rgba(13,23,42,.10)) !important;
+  border-radius:var(--r-m,12px) !important;
+  box-shadow:var(--sh-card,0 1px 2px rgba(13,23,42,.05),0 8px 24px rgba(13,23,42,.06)) !important;
+}
+#mpStage .mp-node .mp-head{ color:var(--sub,#6b7186) !important; }
+#mpStage .mp-node .mp-pill{ background:var(--primary-weak,#efecff) !important; color:var(--primary,#7c6cf0) !important; }
+#mpStage .mp-node.sel{ box-shadow:0 0 0 2px var(--primary,#7c6cf0), 0 14px 34px rgba(0,0,0,.18) !important; }
+#mpStage .mp-node.tag{ background:var(--card,#fff) !important; }
+#mpStage .mp-node.file{ background:var(--card2,#fff) !important; }
+
+/* --- 浮动面板：统一底 / 边 / 字 / 圆角 --- */
+#mpWrap #mpSide,#mpWrap #mpFiles,#mpWrap #mpPv,#mpWrap #mpKp,#mpWrap #mpGrp,#mpWrap #mpPick,
+#mpWrap #mpVw,#mpWrap #mpCtx,#mpWrap #mpSnap,#mpWrap #mpAi,#mpWrap #mpAg,#mpWrap #mpRq,
+#mpWrap #mpNoteEd,#mpWrap #mpFindPop,#mpWrap #mpSdSet,#mpWrap #mpDraft,#mpWrap #mpChip{
+  background:var(--card,#fff) !important;
+  color:var(--text,#0b1220) !important;
+  border:1px solid var(--line,rgba(13,23,42,.10)) !important;
+  border-radius:var(--r-l,14px) !important;
+  box-shadow:var(--sh-2,0 18px 40px rgba(13,23,42,.12)) !important;
+}
+#mpWrap #mpKp{ border-radius:var(--r-l,14px) !important; }
+#mpWrap .mp-sub,#mpWrap .mp-kpsub,#mpWrap .mp-gFoot,#mpWrap .mp-sdhint,#mpWrap small{ color:var(--sub,#6b7186) !important; }
+
+/* --- 考点面板内部（压过 body.dark 那批写死色） --- */
+#mpWrap #mpKp .mp-kq{ color:var(--text,#0b1220) !important; border-color:var(--line,rgba(13,23,42,.08)) !important; }
+#mpWrap #mpKp .mp-kq.b{ color:var(--primary,#7c6cf0) !important; }
+#mpWrap #mpKp .mp-kq small,#mpWrap #mpKp .mp-kq i{ color:var(--sub,#6b7186) !important; }
+#mpWrap #mpKp #mpKpQ,#mpWrap #mpKp .mp-kpq input{ background:var(--card2,#fff) !important; color:var(--text,#0b1220) !important; border:1px solid var(--line,rgba(13,23,42,.10)) !important; }
+#mpWrap #mpKp .mp-kbtn,#mpWrap #mpKp .mp-kpp button{ background:var(--card,#fff) !important; color:var(--text,#0b1220) !important; border:1px solid var(--line,rgba(13,23,42,.10)) !important; border-radius:var(--r-s,8px) !important; }
+#mpWrap #mpKp #mpRteBar{ background:var(--card3,#f7f6fc) !important; border-color:var(--line,rgba(13,23,42,.08)) !important; }
+#mpWrap #mpKp #mpRteBar button{ background:var(--card,#fff) !important; color:var(--text,#0b1220) !important; border:1px solid var(--line,rgba(13,23,42,.10)) !important; }
+#mpWrap #mpKp #mpKpMd.mp-kprich{ background:var(--card2,#fff) !important; color:var(--text,#0b1220) !important; border:1px solid var(--line,rgba(13,23,42,.10)) !important; border-radius:var(--r-s,10px) !important; }
+#mpWrap #mpKp #mpKpMd.mp-kprich blockquote{ background:var(--primary-weak,#f8f6ff) !important; color:var(--sub,#4d4766) !important; border-left-color:var(--primary,#7c6cf0) !important; }
+#mpWrap #mpKp #mpKpMd.mp-kprich code,#mpWrap #mpKp #mpKpMd.mp-kprich pre{ background:var(--card3,#f3f1fb) !important; color:var(--text,#0b1220) !important; }
+
+/* --- 缩放条 / 提示条 / 胶囊 --- */
+#mpZoom{ background:var(--card,#fff) !important; color:var(--text,#0b1220) !important; border:1px solid var(--line,rgba(13,23,42,.10)) !important; border-radius:var(--r-s,11px) !important; }
+#mpZoom button{ color:var(--text,#0b1220) !important; }
+#mpHint{ background:var(--text,rgba(31,35,51,.82)) !important; color:var(--card,#fff) !important; }
+#mpWrap #mpChip{ background:var(--card,#fff) !important; color:var(--text,#0b1220) !important; }
+
+/* --- win95：标题栏走 Windows 蓝渐变，其余面板用凸起边框 --- */
+html[data-style="win95"] #mpBar{
+  background:linear-gradient(90deg,var(--w95-title1,#000080),var(--w95-title2,#1084d0)) !important;
+  border:1px solid #000 !important; border-bottom:0 !important; border-radius:0 !important;
+}
+html[data-style="win95"] #mpBar #mpTitle,html[data-style="win95"] #mpBar button,html[data-style="win95"] #mpBar .mp-grip{ color:#fff !important; }
+html[data-style="win95"] #mpBar button:hover{ background:rgba(255,255,255,.18) !important; }
+html[data-style="win95"] #mpWrap #mpSide,html[data-style="win95"] #mpWrap #mpFiles,html[data-style="win95"] #mpWrap #mpKp,
+html[data-style="win95"] #mpWrap #mpGrp,html[data-style="win95"] #mpWrap #mpPv,html[data-style="win95"] #mpWrap #mpPick,
+html[data-style="win95"] #mpWrap #mpVw,html[data-style="win95"] #mpWrap #mpCtx,html[data-style="win95"] #mpWrap #mpRq,
+html[data-style="win95"] #mpWrap #mpAi,html[data-style="win95"] #mpWrap #mpAg,html[data-style="win95"] #mpWrap #mpNoteEd,
+html[data-style="win95"] #mpWrap #mpFindPop,html[data-style="win95"] #mpWrap #mpSdSet,html[data-style="win95"] #mpWrap #mpChip{
+  border-radius:0 !important; box-shadow:none !important; border:1px solid #000 !important;
+  background:var(--w95-face,#c0c0c0) !important; color:#0a0a0a !important;
+}
+html[data-style="win95"] #mpStage .mp-node{ border-radius:0 !important; box-shadow:var(--w95-out,none) !important; background:var(--w95-face,#c0c0c0) !important; color:#0a0a0a !important; }
+html[data-style="win95"] #mpStage .mp-node .mp-pill{ background:#000080 !important; color:#fff !important; border-radius:0 !important; }
+html[data-style="win95"] #mpStage{ background:#008080 !important; }
+html[data-style="win95"] #mpWrap{ background:#008080 !important; border:1px solid #000 !important; border-radius:0 !important; }
+html[data-style="win95"] #mpTools{ background:var(--w95-face,#c0c0c0) !important; }
+html[data-style="win95"] #mpTools input,html[data-style="win95"] #mpTools select{ border-radius:0 !important; box-shadow:var(--w95-field,none) !important; background:#fff !important; }
+html[data-style="win95"] #mpZoom,html[data-style="win95"] #mpHint{ border-radius:0 !important; }
+
+/* ===== web440：编辑器右键「在题库里找相关题」的弹层要盖在脑图之上 ===== */
+.sim-mask{ z-index:30120 !important; }
+.sim-mask .sim-panel{ z-index:30121 !important; }
+/* ===== web441：路径模式按钮 ===== */
+#mpTools #mpPath{ flex:0 0 auto; height:26px; padding:0 9px; border-radius:8px;
+  border:1px solid var(--line,#e4e0f0); background:var(--card,#fff); color:var(--sub,#6b7186);
+  font-size:12px; line-height:1; cursor:pointer; white-space:nowrap; }
+#mpTools #mpPath:hover{ border-color:#c9bdf7; color:#5a3fd6; }
+#mpTools #mpPath.on{ background:var(--primary-weak,#efecff); border-color:var(--primary,#7c6cf0);
+  color:var(--primary,#5a3fd6); box-shadow:0 0 0 2px rgba(124,92,255,.14); font-weight:600; }
+/* ===== web448：🧹 理顺 按钮（跟 🧭 路径 同一套外观） ===== */
+#mpTools #mpTidy{ flex:0 0 auto; height:26px; padding:0 9px; border-radius:8px;
+  border:1px solid var(--line,#e4e0f0); background:var(--card,#fff); color:var(--sub,#6b7186);
+  font-size:12px; line-height:1; cursor:pointer; white-space:nowrap; }
+#mpTools #mpTidy:hover{ border-color:#c9bdf7; color:#5a3fd6; }
+/* ===== web452：分级显示（LOD）——缩得越小画得越少，图大了也不卡 ===== */
+#mpWrap.lod1 .mp-node .mp-t{ -webkit-line-clamp:2; }
+#mpWrap.lod2 .mp-node .mp-t{ -webkit-line-clamp:1; max-height:1.45em; overflow:hidden; }
+#mpWrap.lod2 .mp-node .mp-pill{ transform:scale(.92); }
+#mpWrap.lod3 .mp-node .mp-t{ display:none; }
+#mpWrap.lod3 .mp-node .mp-h{ font-size:10px; letter-spacing:0; }
+#mpWrap.lod3 .mp-node .mp-pill{ transform:scale(.85); }
+#mpWrap.lod3 .mp-node .mp-k{ font-size:10px; }
+#mpWrap.lod3 .mp-node{ box-shadow:none; }
+/* 大图模式：关掉光晕层与虚线动画，重绘更快 */
+#mpWrap.perf #mpGlowG{ display:none; }
+/* ===== web460：长按进度环（蓝光从左上角绕一圈） ===== */
+#mpRing{ will-change:transform; }
+#mpRing .mpr-arc{ animation:none; }
+#mpWrap.dzarm #mpRing{ display:none; }
+/* ===== web464：长按设置项收窄，别把工具条挤成两行 ===== */
+#mpLongBox{ display:inline-flex; align-items:center; gap:4px; font-size:11px; opacity:.85; }
+#mpLongBox input{ width:44px; padding:1px 4px; font-size:11px; }
+/* ===== web470：分层布局的层参考线（借 GNN k-hop：第 k 层 = 点 k 下） ===== */
+#mpEdgeG line.mp-layline{ stroke: var(--line, #e2e0ee); stroke-width: 1; stroke-dasharray: 2 9; opacity: .75; }
+#mpEdgeG text.mp-laytxt{ fill: var(--sub, #8b8aa0); font-weight: 600; font-size: calc(12px * var(--iz, 1)); font-family: ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+/* ===== web473：分层（同心环）的层圈 ===== */
+#mpEdgeG circle.mp-layring{ fill: none; stroke: var(--line, #e2e0ee); stroke-width: 1; stroke-dasharray: 3 10; opacity: .7; }
+/* ===== web478：组别管理器「类型」筛选 + 路径组标识 ===== */
+#mpGrp #mpGKind{ width: 86px; }
+#mpGrp .gmain .gpath{ font-style: normal; font-size: 12px; margin-left: 4px; padding: 0 4px; border-radius: 6px;
+  background: rgba(46,196,182,.16); color: #12a393; }
+body.dark #mpGrp .gmain .gpath{ background: rgba(46,196,182,.22); color: #6fe3d6; }
+/* ===== web496：树形布局里，越往外层的卡片越窄（层内才放得下、束也更清楚） ===== */
+#mpWrap.lay-tree .mp-node[data-dep="2"]{ width:240px; }
+#mpWrap.lay-tree .mp-node[data-dep="3"]{ width:214px; }
+#mpWrap.lay-tree .mp-node[data-dep="4"],#mpWrap.lay-tree .mp-node[data-dep="5"],
+#mpWrap.lay-tree .mp-node[data-dep="6"],#mpWrap.lay-tree .mp-node[data-dep="7"]{ width:196px; }
+#mpWrap.lay-tree .mp-node[data-dep="4"] .mp-t,#mpWrap.lay-tree .mp-node[data-dep="5"] .mp-t{ font-size:11.5px; }
