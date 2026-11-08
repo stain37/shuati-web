@@ -651,6 +651,7 @@
   /* 换排法时让卡片「滑」到新位置，而不是啪一下跳过去 */
   function animLayout(oldPos) {
     var ns = $('#mpNodes'); if (!ns) return;
+    try { if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (eRM) {}
     ns.querySelectorAll('.mp-node').forEach(function (el) {
       var id = el.dataset.id, o = oldPos[id]; if (!o) return;
       var nx = parseFloat(el.style.left) || 0, ny = parseFloat(el.style.top) || 0;
