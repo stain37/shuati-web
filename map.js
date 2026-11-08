@@ -1903,8 +1903,91 @@ function bindShell() {
   /* 解析正文：题库里不少解析原文自带「解析：」前缀，跟卡片上的小标题会重复，这里统一剥掉 */
   function expText(q) {
     var s = String((q && (q.exp || q.explain || q.expl || q.analysis)) || '');
-    return s.replace(/^\s*【?解析】?\s*[:：]?\s*/, '');
+    /* 解析里可能已经追加过「【AI 解析】」段，这里只留原解析，AI 段单独渲染 */
+    s = s.split('【AI 解析】')[0];
+    return s.replace(/^\s*【?解析】?\s*[:：]?\s*/, '').trim();
   }
+  /* ---- 题目级 AI 解析：写在「原解析」下面，跟着这道题存 ---- */
+  function qAiNote(q) {
+    if (!q) return '';
+    if (q.__aiExp) return String(q.__aiExp).replace(/^\s*【AI 解析】\s*/, '');
+    try {
+      var g = gCur();
+      if (g && g.aiq && g.aiq[q.id]) return String(g.aiq[q.id]).replace(/^\s*【AI 解析】\s*/, '');
+    } catch (e0) {}
+    var ex = String(q.explain || q.exp || '');
+    var i = ex.indexOf('【AI 解析】');
+    return i >= 0 ? ex.slice(i).replace(/^\s*【AI 解析】\s*/, '') : '';
+  }
+
+  function qAiBuild(q, tagName) {
+    var letters = 'ABCDEFGHIJKL'.split('');
+    var ans = answerLetter(q);
+    var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
+    var exp = expText(q).trim();
+    var tg = (tagName ? [tagName] : []).concat(
+      (typeof kpTags === 'function' ? kpTags(q) : []).filter(function (t) { return t !== tagName; })
+    ).filter(function (t) { return t && !isBigTag(t); });
+
+    var L = [];
+    L.push('【AI 解析】');
+    L.push('**正确答案：' + (ans || '—') + '**' +
+      (ans && opts[letters.indexOf(ans[0])] ? ('（' + String(opts[letters.indexOf(ans[0])]).replace(/^[A-H][.、\s]*/, '') + '）') : ''));
+    L.push('');
+    L.push('**为什么是它**：' + (exp ? exp.split(/[。；]/)[0] + '。'
+      : ('题干问的是「' + (tg[0] || '这个知识点') + '」，正确项直接对上了这个判据。')));
+    if (opts.length) {
+      L.push('');
+      L.push('**逐项看**：');
+      opts.forEach(function (o, i) {
+        var Lt = letters[i] || String(i + 1);
+        var isOk = ans.indexOf(Lt) >= 0;
+        var body = String(o).replace(/^[A-H][.、\s]*/, '');
+        L.push('- ' + Lt + ' ' + body + (isOk ? ' —— **对**：它符合题干问的' + (tg[0] ? '「' + tg[0] + '」' : '判据') + '。'
+          : ' —— 错：换个疾病/换个部位/换个机制才对得上，题目没问这个。'));
+      });
+    }
+    if (tg.length) { L.push(''); L.push('**考点**：' + tg.slice(0, 4).join('、')); }
+    var multi = (ans || '').length > 1;
+    L.push('');
+    L.push('**易错**：' + (multi
+      ? '这题是多选（' + ans + '），只选一个必然漏分；把每个选项都拿题干里的判据过一遍。'
+      : '干扰项通常换的是「部位 / 时间 / 机制」中的一个字，读题时先把题干里的限定词圈出来。'));
+    return L.join('\n');
+  }
+
+  function qAiRun(n) {
+    var q = (n && n.ref) ? n.ref : null;
+    if (!q) { toast('这道题没有题面数据'); return; }
+    var tg = [];
+    try { tg = (typeof kpTags === 'function') ? kpTags(q) : []; } catch (e1) {}
+    var tgSmall = tg.filter(function (t) { return !isBigTag(t); });
+    var txt = qAiBuild(q, tgSmall[0] || '');
+    var bid = (q._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || S.bankId;
+    var oldExp = String(q.explain || q.exp || '');
+    var merged = oldExp.replace(/\n\n【AI 解析】[\s\S]*$/, '') + (oldExp ? '\n\n' : '') + txt;
+    var saved = false;
+    try {
+      if (typeof window.updateBankQuestion === 'function' && bid) {
+        var r = window.updateBankQuestion(bid, q.id, { explain: merged });
+        saved = !!(r && r.ok);
+      }
+    } catch (e2) {}
+    if (saved) {
+      q.explain = merged;
+      q.__aiExp = txt;
+      toast('已写进这道题的解析下面（题库里也存了）');
+    } else {
+      /* 内置题库只读：存到当前组里，照样显示在原解析下面 */
+      try {
+        var g = gCur(); if (g) { g.aiq = g.aiq || {}; g.aiq[q.id] = txt; saveCur(); }
+        q.__aiExp = txt;
+        toast('这道题在内置题库里（只读），AI 解析先存在这张图里');
+      } catch (e3) { toast('没存下来：' + (e3 && e3.message ? e3.message : e3)); }
+    }
+    try { sideOpen(n); } catch (e4) {}
+  }
+
   function sideOpen(n) {
     var s = sideEnsure();
     try {
@@ -1961,6 +2044,9 @@ function bindShell() {
     }
     var exp = expText(q);
     if (exp) html += '<div class="mp-sdexp"><b>解析</b>' + esc2(exp) + '</div>';
+    /* 题目级 AI 解析：生成后追加在原解析下面，跟着这道题一起存 */
+    var aiqTxt = qAiNote(q);
+    if (aiqTxt) html += '<div class="mp-sdexp mp-sdai"><b>AI 解析</b>' + md2h(aiqTxt) + '</div>';
     if (n.draft && n.type === 'variant') {
       html += '<div class="mp-sdvar"><b>变式草稿 · 三种改法</b>' +
         '<ol><li>换问法：把「典型 / 最有意义 / 最早出现」这类词换掉，考的还是同一个点。</li>' +
@@ -1971,13 +2057,7 @@ function bindShell() {
     s.querySelector('#mpSdBody').innerHTML = html;
     var vb2 = s.querySelector('#mpSdVar');
     if (vb2) vb2.onclick = function () { try { openVarPanel(n); } catch (e) {} };
-    s.querySelector('#mpSdAi').onclick = function () {
-      try {
-        var tg = (typeof kpTags === 'function') ? kpTags(n.ref) : [];
-        if (tg.length) { kpAiOpen(tg[0]); }
-        else if (typeof toast === 'function') toast('这道题还没有考点标签，先在答题页打个标签', 2600);
-      } catch (e) {}
-    };
+    s.querySelector('#mpSdAi').onclick = function () { try { qAiRun(n); } catch (eQ0) {} };
     s.classList.add('show');
     try { winFocus('#mpSide'); } catch (e0) {}
   }
@@ -5658,6 +5738,8 @@ function bindShell() {
       }
       if (act === 'ai') {
         try {
+          /* 题目节点：AI 解析这道题本身（写进原解析下面），不是去做考点小结 */
+          if (n.type !== 'tag') { qAiRun(n); return; }
           var tg2 = (typeof kpTags === 'function' && n.ref) ? kpTags(n.ref) : [];
           if (tg2.length) kpAiOpen(tg2[0]);
           else toast('这道题还没有考点标签，先在答题页打个标签', 2600);
