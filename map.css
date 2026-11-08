@@ -1907,3 +1907,108 @@ body.dark #mpWrap .mp-pdf, body.dark .mpvwb .mp-pdf { background:#111726; }
   border:1px solid #7f7fa0; border-radius:999px; background:#fff; color:#4a4a6a; font-size:12px; cursor:pointer; }
 #mpWrap .mp-pdf .mp-pdfmore:hover, .mpvwb .mp-pdf .mp-pdfmore:hover { border-color:var(--primary,#6d5efc); color:var(--primary,#6d5efc); }
 body.dark #mpWrap .mp-pdf .mp-pdfmore, body.dark .mpvwb .mp-pdf .mp-pdfmore { background:#1b2231; border-color:#3a4459; color:#cfd6e6; }
+
+/* ===== web562：四类节点各用一种色 + 一种线型，别再一个模子 =====
+   中心题=蓝实线 / 相似题=青实线 / 考点=紫点线 / 变式题=橙长虚线 / 资料=琥珀点划线 */
+#mpNodes .mp-node { box-shadow: inset 4px 0 0 var(--mpc, #c3bfd6); }
+#mpNodes .mp-node.center  { --mpc: #2f6df6; }
+#mpNodes .mp-node.sim     { --mpc: #12a08e; }
+#mpNodes .mp-node.tag     { --mpc: #8b6cf0; }
+#mpNodes .mp-node.variant { --mpc: #ef8a3c; }
+#mpNodes .mp-node.file    { --mpc: #c8942a; }
+#mpNodes .mp-node.idea    { --mpc: #e0578f; }
+
+#mpNodes .mp-node > .mp-k { color: var(--mpc); font-weight: 700; }
+#mpNodes .mp-node.center > .mp-k { letter-spacing: .02em; }
+#mpNodes .mp-node.center { box-shadow: inset 4px 0 0 var(--mpc), 0 2px 10px rgba(47,109,246,.16); }
+#mpNodes .mp-node.variant { border-style: dashed; }
+#mpNodes .mp-node.file  { border-style: dotted; }
+
+/* 徽标跟着类型走 */
+#mpNodes .mp-node.sim .mp-pill { background: rgba(18,160,142,.14); color: #0d8577; border-color: rgba(18,160,142,.35); }
+#mpNodes .mp-node.variant .mp-pill { background: rgba(239,138,60,.16); color: #b45f16; border-color: rgba(239,138,60,.4); }
+#mpNodes .mp-node.file .mp-pill { background: rgba(200,148,42,.16); color: #8a6100; border-color: rgba(200,148,42,.4); }
+
+/* 连线：按类型区分线型 */
+#mpEdgeG path.mp-e.sim { stroke: #12a08e; stroke-dasharray: none; }
+#mpEdgeG path.mp-e.tag { stroke: #8b6cf0; stroke-dasharray: 3 6; }
+#mpEdgeG path.mp-e.variant { stroke: #ef8a3c; stroke-dasharray: 10 6; }
+#mpEdgeG path.mp-e.manual { stroke: #c8942a; stroke-dasharray: 1 5; }
+#mpEdgeG path.mp-e.note { stroke: #e0578f; stroke-dasharray: 2 4; }
+#mpGlowG path.gh.sim { stroke: #12a08e; }
+#mpGlowG path.gh.tag { stroke: #8b6cf0; }
+#mpGlowG path.gh.variant { stroke: #ef8a3c; }
+#mpGlowG path.gh.manual { stroke: #c8942a; }
+
+/* 暗色 */
+body.dark #mpNodes .mp-node.center  { --mpc: #7ea2ff; }
+body.dark #mpNodes .mp-node.sim     { --mpc: #45cbb8; }
+body.dark #mpNodes .mp-node.tag     { --mpc: #b3a0ff; }
+body.dark #mpNodes .mp-node.variant { --mpc: #ffa763; }
+body.dark #mpNodes .mp-node.file    { --mpc: #e0b54e; }
+body.dark #mpNodes .mp-node.sim .mp-pill { background: rgba(69,203,184,.18); color: #7fe3d3; border-color: rgba(69,203,184,.4); }
+body.dark #mpNodes .mp-node.variant .mp-pill { background: rgba(255,167,99,.18); color: #ffc08a; border-color: rgba(255,167,99,.42); }
+body.dark #mpNodes .mp-node.file .mp-pill { background: rgba(224,181,78,.18); color: #f0cf86; border-color: rgba(224,181,78,.42); }
+body.dark #mpEdgeG path.mp-e.sim { stroke: #45cbb8; }
+body.dark #mpEdgeG path.mp-e.tag { stroke: #b3a0ff; }
+body.dark #mpEdgeG path.mp-e.variant { stroke: #ffa763; }
+body.dark #mpEdgeG path.mp-e.manual { stroke: #e0b54e; }
+
+/* web563：色要看得见 —— 整张卡描边 + 头部标签做成彩色胶囊 */
+#mpNodes .mp-node { border: 1.5px solid var(--mpc, #c3bfd6);
+  box-shadow: 0 3px 14px rgba(31,35,51,.10), inset 4px 0 0 var(--mpc, #c3bfd6); }
+#mpNodes .mp-node.center { box-shadow: 0 3px 16px rgba(47,109,246,.18), inset 4px 0 0 var(--mpc); }
+#mpNodes .mp-node > .mp-k { display: inline-block; padding: 1px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--mpc, #8b6cf0) 14%, transparent); color: var(--mpc, #6f6a8a); }
+#mpNodes .mp-node.tag { border-radius: 999px; padding: 6px 14px 6px 16px; }
+#mpNodes .mp-node.tag > .mp-k { display: none; }
+#mpNodes .mp-node.file.imgnode { border-style: solid; }
+#mpNodes .mp-node.variant { border-style: dashed; background-image: linear-gradient(180deg, rgba(239,138,60,.05), transparent 60%); }
+#mpNodes .mp-node.file { border-style: dotted; }
+#mpNodes .mp-node.sel { outline: 2px solid var(--mpc, #7c5cff); outline-offset: 2px; }
+body.dark #mpNodes .mp-node > .mp-k { background: color-mix(in srgb, var(--mpc, #b3a0ff) 22%, transparent); }
+
+/* web564：win95 皮肤也要能一眼分四类（那边把圆角/阴影全 !important 抹平了） */
+html[data-style="win95"] #mpStage .mp-node { box-shadow: inset 5px 0 0 var(--mpc, #808080) !important; }
+html[data-style="win95"] #mpStage .mp-node > .mp-k { color: var(--mpc, #000) !important; background: transparent !important; font-weight: 700 !important; }
+html[data-style="win95"] #mpStage .mp-node.sim .mp-pill { background: #0d7d70 !important; }
+html[data-style="win95"] #mpStage .mp-node.variant .mp-pill { background: #b45f16 !important; }
+html[data-style="win95"] #mpStage .mp-node.file .mp-pill { background: #8a6100 !important; }
+html[data-style="win95"] #mpStage .mp-node.center .mp-pill { background: #1f4fb8 !important; }
+html[data-style="win95"] #mpStage .mp-node.variant { border-style: dashed !important; }
+html[data-style="win95"] #mpStage .mp-node.file { border-style: dotted !important; }
+html[data-style="win95"] #mpStage .mp-node.tag { border-radius: 999px !important; }
+
+/* web565：卡片本身用类型色描边（2px），低缩放下也能分出四类 */
+#mpWrap #mpNodes .mp-node { border-width: 2px !important; border-color: var(--mpc, #c3bfd6) !important; }
+html[data-style="win95"] #mpStage .mp-node { border-width: 2px !important; border-color: var(--mpc, #808080) !important; }
+html[data-style="win95"] #mpStage .mp-node.tag { border-radius: 999px !important; padding: 5px 13px !important; }
+#mpWrap #mpNodes .mp-node.tag { border-radius: 999px !important; padding: 5px 13px !important; }
+#mpWrap #mpNodes .mp-node.variant { border-style: dashed !important; }
+#mpWrap #mpNodes .mp-node.file { border-style: dotted !important; }
+
+/* web566：颜色定稿（要压过 win95 的黑色描边，也要压在 teal 画布上看得见）
+   中心题=深蓝 3px / 相似题=绿 / 考点=紫圆胶囊 / 变式题=橙长虚线 / 资料=棕点线 */
+#mpWrap #mpNodes .mp-node.center  { --mpc: #1d4ed8; border-width: 3px !important; }
+#mpWrap #mpNodes .mp-node.sim     { --mpc: #16a34a; }
+#mpWrap #mpNodes .mp-node.tag     { --mpc: #8b5cf6; }
+#mpWrap #mpNodes .mp-node.variant { --mpc: #f97316; }
+#mpWrap #mpNodes .mp-node.file    { --mpc: #a16207; }
+#mpWrap #mpNodes .mp-node.idea    { --mpc: #db2777; }
+
+#mpEdgeG path.mp-e.sim { stroke: #16a34a; }
+#mpEdgeG path.mp-e.tag { stroke: #8b5cf6; stroke-dasharray: 3 6; }
+#mpEdgeG path.mp-e.variant { stroke: #f97316; stroke-dasharray: 10 6; }
+#mpEdgeG path.mp-e.manual { stroke: #a16207; stroke-dasharray: 1 5; }
+#mpEdgeG path.mp-e.note { stroke: #db2777; stroke-dasharray: 2 4; }
+
+html[data-style="win95"] #mpStage .mp-node.sim     { --mpc: #16a34a; }
+html[data-style="win95"] #mpStage .mp-node.center  { --mpc: #1d4ed8; }
+html[data-style="win95"] #mpStage .mp-node.tag     { --mpc: #8b5cf6; }
+html[data-style="win95"] #mpStage .mp-node.variant { --mpc: #f97316; }
+html[data-style="win95"] #mpStage .mp-node.file    { --mpc: #a16207; }
+
+/* 头部标签胶囊：低缩放下也一眼看出类型 */
+#mpWrap #mpNodes .mp-node > .mp-k { background: var(--mpc, #8b6cf0) !important; color: #fff !important; font-weight: 600; }
+html[data-style="win95"] #mpStage .mp-node > .mp-k { background: var(--mpc, #000080) !important; color: #fff !important; }
+#mpWrap #mpNodes .mp-node.tag > .mp-k { display: none !important; }
