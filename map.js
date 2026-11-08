@@ -1634,7 +1634,7 @@ function bindShell() {
       '<button id="mpSdGear" class="mp-sdico" title="下拉手势：多快算「甩掉」">⚙</button>' +
       '<button id="mpSdFull" class="mp-sdico mp-sdico2" title="跳到题库里的这道题（真全屏）">⤢</button>' +
       '<button id="mpSdX" class="mp-sdico" title="关掉">✕</button>' +
-      '<div class="mp-sdrow2" id="mpSdRow2"><button id="mpSdAi" class="mp-sdbtn">✨ 分析考点</button>' +
+      '<div class="mp-sdrow2" id="mpSdRow2"><button id="mpSdAi" class="mp-sdbtn" title="生成这道题的解析，写进原解析下面">✨ 解析这道题</button>' +
       '<button id="mpSdVar" class="mp-sdbtn">✨ 出变式题</button></div></div>' +
       '<div id="mpSdBody" class="mp-sdbody"></div>';
     (document.getElementById('mpWrap') || document.body).appendChild(s);
@@ -1962,6 +1962,7 @@ function bindShell() {
     var tg = [];
     try { tg = (typeof kpTags === 'function') ? kpTags(q) : []; } catch (e1) {}
     var tgSmall = tg.filter(function (t) { return !isBigTag(t); });
+    toast('正在写解析…', 900);
     var txt = qAiBuild(q, tgSmall[0] || '');
     var bid = (q._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || S.bankId;
     var oldExp = String(q.explain || q.exp || '');
@@ -1986,6 +1987,14 @@ function bindShell() {
       } catch (e3) { toast('没存下来：' + (e3 && e3.message ? e3.message : e3)); }
     }
     try { sideOpen(n); } catch (e4) {}
+    try {
+      var box = document.querySelector('#mpSdBody .mp-sdai');
+      if (box) {
+        box.classList.add('flash');
+        box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        setTimeout(function () { box.classList.remove('flash'); }, 1400);
+      }
+    } catch (e5) {}
   }
 
   function sideOpen(n) {
