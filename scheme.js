@@ -208,6 +208,91 @@
     return true;
   }
 
+  /* ---------- 导出 / 导入（文件夹群组方案） ----------
+     文件格式（.scheme.json）：
+       {
+         "app": "shuati-web", "kind": "scheme", "v": 1,
+         "exportedAt": "2026-11-08T12:00:00.000Z",
+         "name": "方案名",
+         "cats":  [{ "id": "c...", "title": "内科", "parent": null, "order": 1 }],
+         "banks": { "pth2": "c...", "pth": "" },
+         "bankTitles": { "pth2": "阑尾炎长链题" }
+       }
+     banks 里是「题库 id → 文件夹 id（空串＝顶层）」；bankTitles 只是给人看 + 导入时按标题兜底。 */
+  function exportCur() {
+    ensure();
+    var m = MAP[CUR] || {};
+    var banks0 = banks();
+    var mine = {}, titles = {};
+    banks0.forEach(function (b) {
+      if (!b || !b.id) return;
+      var c = m[b.id] || '';
+      if (CUR === DEF && !c && b.cat) c = b.cat;
+      mine[b.id] = c || '';
+      titles[b.id] = String(b.title || b.name || '').slice(0, 60);
+    });
+    return {
+      app: 'shuati-web', kind: 'scheme', v: 1,
+      exportedAt: new Date().toISOString(),
+      name: curName(),
+      cats: JSON.parse(JSON.stringify(cats() || [])),
+      banks: mine,
+      bankTitles: titles
+    };
+  }
+
+  /* 导入：返回 { id, name, cats, banks, matched, dropped } 或 { error } */
+  function importData(obj, asName) {
+    ensure();
+    if (!obj || typeof obj !== 'object') return { error: '文件内容不是方案 JSON' };
+    var catsIn = Array.isArray(obj.cats) ? obj.cats : (Array.isArray((obj.scheme || {}).cats) ? obj.scheme.cats : null);
+    var banksIn = (obj.banks && typeof obj.banks === 'object') ? obj.banks
+      : (obj.scheme && obj.scheme.banks && typeof obj.scheme.banks === 'object') ? obj.scheme.banks : null;
+    if (!catsIn && !banksIn) return { error: '文件里没有 cats / banks 字段，不是方案文件' };
+
+    var nm = trim(asName || obj.name || '导入的方案') || '导入的方案';
+    var names = DB.list.map(function (s) { return s.name; });
+    var nm2 = nm, k = 2;
+    while (names.indexOf(nm2) >= 0) { nm2 = nm + '（导入 ' + k + '）'; k++; }
+
+    var id = uid();
+    /* 文件夹树：保留 id，父节点缺失就改成顶层 */
+    var tree = (catsIn || []).map(function (c, i) {
+      return { id: String(c && c.id || ('c' + i)), title: String((c && (c.title || c.name)) || '未命名'),
+               parent: c && c.parent != null ? String(c.parent) : null,
+               order: c && c.order != null ? (+c.order || 0) : i };
+    }).filter(function (c) { return c.id && c.title; });
+    var has = {};
+    tree.forEach(function (c) { has[c.id] = 1; });
+    tree.forEach(function (c) { if (c.parent && !has[c.parent]) c.parent = null; });
+
+    /* 题库归属：先按 id，再按标题兜底 */
+    var map = {}, matched = 0, dropped = 0;
+    var banks0 = banks();
+    var byId = {}, byTitle = {};
+    banks0.forEach(function (b) {
+      if (!b || !b.id) return;
+      byId[b.id] = b;
+      var t = String(b.title || b.name || '').trim();
+      if (t && !byTitle[t]) byTitle[t] = b;
+    });
+    var titles = obj.bankTitles || {};
+    Object.keys(banksIn || {}).forEach(function (bid) {
+      var cat = String(banksIn[bid] == null ? '' : banksIn[bid]);
+      var b = byId[bid] || (titles[bid] ? byTitle[String(titles[bid])] : null) || byTitle[String(bid)];
+      if (!b) { dropped++; return; }
+      if (cat && !has[cat]) cat = '';
+      if (cat) map[b.id] = cat;
+      matched++;
+    });
+
+    DB.list.push({ id: id, name: nm2 });
+    DB.data[id] = { cats: tree };
+    MAP[id] = map;
+    save();
+    return { id: id, name: nm2, cats: tree.length, banks: matched, dropped: dropped };
+  }
+
   /* 这个题库还出现在哪些方案里（侧栏角标用） */
   function schemesOfBank(bankId) {
     ensure();
@@ -234,7 +319,8 @@
     catOf: catOf, catForStore: catForStore, setCatOf: setCatOf,
     list: list, current: current, curName: curName, has: has,
     create: create, rename: rename, remove: remove, switchTo: switchTo,
-    schemesOfBank: schemesOfBank, raw: raw
+    schemesOfBank: schemesOfBank, raw: raw,
+    exportCur: exportCur, importData: importData
   };
 
   load();

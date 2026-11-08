@@ -602,10 +602,10 @@
   function schemeNew() {
     if (!window.SCM) return;
     var n = (SCM.list() || []).length + 1;
-    askText({ title: '新建方案', label: '方案名称（会复制当前方案的文件夹结构，题库共用）', value: '方案 ' + n,
+    askText({ title: '新建方案', label: '方案名称（新建是空白的：没有文件夹，题库还是那一批，自己往里拖）', value: '方案 ' + n,
       test: function (x) { return x && String(x).trim() ? '' : '名字不能为空'; } }).then(function (v) {
       if (v == null) return;
-      var id = SCM.create(v, SCM.current());
+      var id = SCM.create(v);
       if (!id) return;
       schemeSwitch(id);
     });
@@ -616,8 +616,11 @@
     qsModal({
       title: '方案：' + E(SCM.curName()),
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
+        + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
+        + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
         + (isDef ? '' : '<button type="button" class="qs-tg" data-t="del">删除当前方案（题库不受影响）</button>')
-        + '</div>',
+        + '</div>'
+        + '<div class="small muted" style="margin-top:8px">导出的文件里只有<b>文件夹结构和每个题库放在哪个文件夹</b>；题目本体在题库里，不跟着走。</div>',
       buttons: [{ t: '关闭', val: null }],
       onPick: function (t) { return { ok: true, act: t }; }
     }).then(function (r) {
@@ -628,6 +631,10 @@
           SCM.rename(SCM.current(), v); paintSchemes();
           try { toast('已改名', 1200, 'ok'); } catch (e) {}
         });
+      } else if (r.act === 'exp') {
+        schemeExport();
+      } else if (r.act === 'imp') {
+        schemeImport();
       } else if (r.act === 'del') {
         var cf = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : function (o) { return Promise.resolve(window.confirm(o.title)); };
         cf({ title: '删除方案「' + SCM.curName() + '」？', html: '只删这套文件夹结构，题库和作答记录都不会删。', okText: '删除', danger: true }).then(function (ok) {
@@ -639,6 +646,48 @@
         });
       }
     });
+  }
+  /* ---------- 方案导出 / 导入 ---------- */
+  function schemeExport() {
+    if (!window.SCM || !SCM.exportCur) return;
+    try {
+      var data = SCM.exportCur();
+      var txt = JSON.stringify(data, null, 2);
+      var nm = String(data.name || '方案').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 40);
+      var blob = new Blob([txt], { type: 'application/json;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = nm + '.scheme.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 400);
+      toast('已导出「' + data.name + '」：' + (data.cats || []).length + ' 个文件夹 · ' + Object.keys(data.banks || {}).length + ' 个题库', 2600, 'ok');
+    } catch (e) {
+      toast('导出失败：' + e.message, 2600, 'bad');
+    }
+  }
+  function schemeImport() {
+    if (!window.SCM || !SCM.importData) return;
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json,application/json';
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        var obj = null;
+        try { obj = JSON.parse(String(rd.result || '')); } catch (e) { toast('这个文件不是 JSON：' + e.message, 3000, 'bad'); return; }
+        var res = null;
+        try { res = SCM.importData(obj); } catch (e2) { toast('导入失败：' + e2.message, 3000, 'bad'); return; }
+        if (!res || res.error) { toast('导入失败：' + ((res && res.error) || '文件不认识'), 3200, 'bad'); return; }
+        schemeSwitch(res.id);
+        var extra = res.dropped ? ('，另有 ' + res.dropped + ' 个题库在本机找不到，已跳过') : '';
+        try {
+          toast('已导入「' + res.name + '」：' + res.cats + ' 个文件夹 · ' + res.banks + ' 个题库对上了' + extra, 3600, 'ok');
+        } catch (e3) {}
+      };
+      rd.readAsText(f, 'utf-8');
+    };
+    inp.click();
   }
   function pickScheme(title) {
     var cur = sid();
