@@ -1029,6 +1029,8 @@ function bindShell() {
        全局 Esc（退回上一路由，会把 hash 清掉、整页跳回首页）。 */
     window.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !S.on) return;
+      var _vh = document.getElementById('mpVar');
+      if (_vh && !_vh.hidden) { varClose(); e.preventDefault(); return; }
     /* 焦点在站里别处（侧栏/题库管理器）时，Esc 归站点自己处理 */
     if ($('#mpWrap') && $('#mpWrap').classList.contains('mp-away')) return;
       e.preventDefault(); e.stopPropagation();
@@ -1973,7 +1975,7 @@ function bindShell() {
     }
     s.querySelector('#mpSdBody').innerHTML = html;
     var vb2 = s.querySelector('#mpSdVar');
-    if (vb2) vb2.onclick = function () { try { makeVarDraft(n); } catch (e) {} };
+    if (vb2) vb2.onclick = function () { try { openVarPanel(n); } catch (e) {} };
     s.querySelector('#mpSdAi').onclick = function () {
       try {
         var tg = (typeof kpTags === 'function') ? kpTags(n.ref) : [];
@@ -5371,6 +5373,45 @@ function bindShell() {
   var CTX = null;
   /* 「出变式题」：不编题目内容（题库纪律：不自行改写题干 / 不造解析），
      只挂一张标了「草稿」的变式占位卡，点开就能看到这张卡该怎么改。 */
+  /* ===== 站里那套「AI 变式题」面板（variant.js 的 openVariant）挂进脑图窗口 =====
+     不再自己造草稿节点：出变式题 = 调库里的同一个功能，生成/保存/对比都在这个面板里。 */
+  function varHost() {
+    var wrap = $('#mpWrap'); if (!wrap) return null;
+    var h = document.getElementById('mpVar');
+    if (!h) {
+      h = document.createElement('div');
+      h.id = 'mpVar';
+      wrap.appendChild(h);
+    }
+    return h;
+  }
+  function varClose() {
+    var h = document.getElementById('mpVar');
+    if (h) { h.hidden = true; h.innerHTML = ''; }
+  }
+  function openVarPanel(n) {
+    if (typeof window.openVariant !== 'function') { toast('变式题模块没加载（variant.js）'); return; }
+    var q = (n && n.ref) || (function () {
+      var c = DATA.nodes.filter(function (x) { return x.type === 'center'; })[0];
+      return c && c.ref;
+    })();
+    if (!q) { toast('这道题不在题库里，出不了变式'); return; }
+    var h = varHost(); if (!h) return;
+    /* 抽屉先收起来：变式面板要占右侧一大块，两个叠在一起谁也看不清 */
+    try { sideClose(); } catch (eS) {}
+    h.hidden = false; h.innerHTML = '';
+    try {
+      window.openVariant(h, S.bankId + '#' + q.id, q);
+    } catch (e) {
+      toast('打不开变式题面板：' + (e && e.message));
+      return;
+    }
+    try { winFocus('#mpVar'); } catch (e1) {}
+    /* 面板自己的「收起」只清内容，这里顺手把壳也藏起来 */
+    var cl = h.querySelector('.vclose');
+    if (cl) cl.addEventListener('click', function () { setTimeout(varClose, 0); });
+  }
+
   function makeVarDraft(n) {
     if (!n || (n.type !== 'center' && n.type !== 'sim') || !n.ref) { toast('只有题目节点能出变式'); return; }
     var has = DATA.nodes.filter(function (x) { return x.type === 'variant' && x.ref === n.ref; });
@@ -5456,7 +5497,7 @@ function bindShell() {
         return;
       }
       if (act === 'var') {
-        try { makeVarDraft(n); } catch (e) {}
+        try { openVarPanel(n); } catch (e) {}
         return;
       }
       if (act === 'center') {
