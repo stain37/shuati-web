@@ -3931,7 +3931,7 @@ function bindShell() {
         '<button type="button" class="mp-kico" id="mpKpX" title="关闭">✕</button></div>' +
         '<div class="mp-kpq"><input id="mpKpQ" placeholder="在这几道题里找：题干 / 选项 / 解析">' +
         '<button type="button" class="mp-kbtn" id="mpKpQai" title="AI 模糊：拆字 / 近义 / 错别字">✨</button>' +
-        '<button type="button" class="mp-kbtn" id="mpKpAdd">生成提纲</button></div>' +
+        '</div>' +
         '<div class="mp-kpl" id="mpKpList"></div>' +
         '<div class="mp-kpp"><button type="button" class="mp-kbtn" id="mpKpPrev">‹</button>' +
         '<span id="mpKpPg">第 1 / 1 页</span>' +
@@ -3969,7 +3969,6 @@ function bindShell() {
     };
     $('#mpKpPrev').onclick = function () { if (KP.page > 0) { KP.page--; kpPaint(); } };
     $('#mpKpNext').onclick = function () { if ((KP.page + 1) * KP.n < KP.rows.length) { KP.page++; kpPaint(); } };
-    $('#mpKpAdd').onclick = kpOutline;
     $('#mpKpAi').onclick = kpAiOpen;
     $('#mpKpUp').onclick = kpAttPick;
     /* 左缘拖宽（样板 kpRz），宽度记在 localStorage */
@@ -4457,33 +4456,96 @@ function bindShell() {
   }
 
   function kpAiDo(name) {
-    var rows = (KP.rows && KP.rows.length ? KP.rows : []).slice(0, 8);
+    /* 这块是「考点的小结」，不是「题目清单」：
+       知识点是什么 → 怎么认 → 这批题卡在哪 → 还没考到的延伸 → 口诀 */
+    var bank = null; try { bank = bankById(S.bankId); } catch (e0) {}
+    var all = (bank && bank.questions) ? bank.questions : [];
+    var rows = all.filter(function (q) { return (qTags(q) || []).indexOf(name) >= 0; });
+    if (!rows.length) rows = (KP.rows || []).slice();
     var pick = [].slice.call(document.querySelectorAll('#mpAiFiles input:checked')).map(function (x) { return fById(x.value); }).filter(Boolean);
     var ksel = aiKbSel();
     var kbs = kpKbList().filter(function (k) { return ksel[k.id || k.name]; }).map(function (k) { return String(k.name).slice(0, 20); });
+    var onMap = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center' || n.type === 'variant'; }).length;
+
+    /* 大标签（科目 / 系统）：取出现最多的那个 */
+    var big = '';
+    rows.forEach(function (q) { (qTags(q) || []).forEach(function (t) { if (isBigTag(t) && !big) big = t; }); });
+    /* 邻接小考点 */
+    var neigh = [];
+    rows.forEach(function (q) { (qTags(q) || []).forEach(function (t) { if (t !== name && !isBigTag(t) && neigh.indexOf(t) < 0) neigh.push(t); }); });
+    /* 解析：当作「判据」的原材料 */
+    var exps = rows.map(function (q) { return String(q.exp || q.explain || q.expl || '').replace(/^解析[:：]/, '').trim(); }).filter(Boolean);
+    /* 问法分布：题干尾部的疑问词 */
+    var askMap = {};
+    rows.forEach(function (q) {
+      var s = String(q.stem || '');
+      var m = s.match(/(最典型|最有意义|最可能|最常见|最早|最晚|首先|提示什么|提示|说明|诊断是|治疗是|机制是|为什么|下列哪[一项些]|错误的是|正确的是)/);
+      var k = m ? m[1] : '普通问法';
+      askMap[k] = (askMap[k] || 0) + 1;
+    });
+    /* 干扰项高频词：选项里出现 ≥2 次的词 */
+    var optWord = {};
+    rows.forEach(function (q) {
+      (q.options || []).forEach(function (o) {
+        String(o).replace(/^[A-H][.、\s]*/, '').split(/[，,。；;、\s]/).forEach(function (w) {
+          w = w.trim(); if (w.length >= 2 && w.length <= 6) optWord[w] = (optWord[w] || 0) + 1;
+        });
+      });
+    });
+    var optTop = Object.keys(optWord).filter(function (w) { return optWord[w] >= 2 && w !== name; })
+      .sort(function (a, b) { return optWord[b] - optWord[a]; }).slice(0, 5);
+    /* 还没考到的延伸：同科目下其它小考点里，这批题一个都没碰的 */
+    var ext = [];
+    all.forEach(function (q) {
+      (qTags(q) || []).forEach(function (t) {
+        if (isBigTag(t) || t === name) return;
+        if (big && (qTags(q) || []).indexOf(big) < 0) return;
+        if (rows.some(function (r) { return (qTags(r) || []).indexOf(t) >= 0; })) return;
+        if (ext.indexOf(t) < 0) ext.push(t);
+      });
+    });
+
     var L = [];
     L.push('# ' + name);
-    L.push('> 由本地规则依据 ' + rows.length + ' 道同考点题整理' +
-      (pick.length ? ('，参考资料：' + pick.map(function (f) { return f.name; }).join('、')) : '') +
-      (kbs.length ? ('，参考知识库：' + kbs.slice(0, 3).join('、') + (kbs.length > 3 ? (' 等 ' + kbs.length + ' 个') : '')) : '') +
-      '（接 AI 后换成模型总结）');
+    L.push('> 考点小结 · 本库 ' + rows.length + ' 道题命中它，图上 ' + onMap + ' 道' +
+      (kbs.length ? ('；参考知识库：' + kbs.slice(0, 3).join('、') + (kbs.length > 3 ? (' 等 ' + kbs.length + ' 个') : '')) : '') +
+      (pick.length ? ('；资料：' + pick.map(function (f) { return f.name; }).join('、')) : ''));
     L.push('');
-    L.push('## 一句话');
-    var ans = rows[0] && answerText(rows[0]);
-    L.push('这个考点反复只考一件事：**' + name + '**' + (ans ? ('（答案：' + ans + '）') : '') + '。');
+    L.push('## 知识点是什么');
+    if (big) L.push('- 归属：**' + big + '**');
+    if (neigh.length) L.push('- 常一起出现：' + neigh.slice(0, 4).join('、'));
+    L.push('- 一句话：**' + name + '**' + (exps[0] ? (' —— ' + exps[0].split(/[。；]/)[0].slice(0, 60)) : '（还没写解析，下面可以自己补）'));
     L.push('');
-    L.push('## 题目其实在问什么');
-    rows.forEach(function (q, i) {
-      L.push((i + 1) + '. ' + String(q.stem || '').replace(/\s+/g, ' ').slice(0, 48) + (answerText(q) ? ('  → 答案 ' + answerText(q)) : ''));
-    });
+    L.push('## 怎么认（判据）');
+    if (exps.length) {
+      exps.slice(0, 2).forEach(function (t) { L.push('- ' + t.slice(0, 110)); });
+    } else {
+      L.push('- 题干里出现「' + name + '」时，先定位它属于哪个结构 / 哪一步机制，再排除同类干扰。');
+    }
     L.push('');
-    var neigh = [];
-    rows.forEach(function (q) { (qTags(q) || []).forEach(function (x) { if (x !== name && !isBigTag(x) && neigh.indexOf(x) < 0) neigh.push(x); }); });
-    if (neigh.length) { L.push('## 顺带考到的邻接考点'); L.push('- ' + neigh.slice(0, 5).join('\n- ')); L.push(''); }
-    var exp = rows.map(function (q) { return String(q.exp || q.explain || q.expl || '').replace(/^解析[:：]/, '').trim(); }).filter(Boolean)[0];
-    if (exp) { L.push('## 解析里反复出现的判据'); L.push('- ' + exp.slice(0, 120)); L.push(''); }
+    L.push('## 这批题卡在哪');
+    L.push('- 题量：**' + rows.length + '** 道（单选 ' + rows.filter(function (q) { return (q.answer || []).length <= 1; }).length +
+      ' / 多选 ' + rows.filter(function (q) { return (q.answer || []).length > 1; }).length + '）');
+    var asks = Object.keys(askMap).sort(function (a, b) { return askMap[b] - askMap[a]; });
+    if (asks.length) {
+      L.push('- 问法分布：');
+      asks.forEach(function (k) { L.push('  - 「' + k + '」× ' + askMap[k]); });
+    }
+    if (optTop.length) L.push('- 高频干扰项：' + optTop.join('、'));
+    var miss = rows.filter(function (q) { return !String(q.exp || q.explain || q.expl || '').trim(); });
+    if (miss.length) L.push('- 有 **' + miss.length + '** 道还没有解析，建议先补解析再背。');
+    L.push('');
+    L.push('## 还没考到的延伸');
+    if (ext.length) {
+      L.push('- 同一科目下这些考点这批题一个没碰：' + ext.slice(0, 8).join('、') + (ext.length > 8 ? (' 等 ' + ext.length + ' 个') : ''));
+      L.push('- 复习顺序：先吃透「' + name + '」的判据，再用上面这些做横向对比，避免只认关键词。');
+    } else {
+      L.push('- 这个科目能挖的考点基本都在这一组里了，重点转到「换问法」上。');
+    }
+    L.push('');
     L.push('## 口诀 / 记忆钩子');
     L.push('`' + (neigh.slice(0, 3).concat([name]).join('、')) + '` —— 顺序别记反。');
+
     var txt = L.join('\n');
     var m = kpMd(); m[name] = txt;
     try { saveCur(); } catch (e) {}
@@ -4491,7 +4553,7 @@ function bindShell() {
     var pv = document.getElementById('mpKpPrev2'); if (pv) pv.innerHTML = md2h(txt);
     var aiEl = document.getElementById('mpAi'); if (aiEl) aiEl.classList.remove('show');
     var nd = 0;
-    try { nd = aiDrafts(name, rows); } catch (e) {}
+    try { nd = aiDrafts(name, rows.slice(0, 8)); } catch (e) {}
     toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')
       : '分析完了，已写进右侧编辑器（可以接着改）');
   }
