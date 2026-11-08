@@ -60,8 +60,27 @@
   }
 
   /* ---------- 数据：以某题为圆心算相似 ---------- */
+  /* 全部题库的题摊平（相似题默认跨题库找）：每题带上 _bank / _bname，方便切中心和显示来源 */
+  function allQPool() {
+    var out = [];
+    var banks = [];
+    try { banks = (typeof allBanks === 'function') ? allBanks() : []; } catch (e0) { banks = []; }
+    if (!banks.length) { try { banks = [bankById(S.bankId)]; } catch (e1) {} }
+    banks.forEach(function (b) {
+      if (!b || !b.questions) return;
+      if (b.questions[0] && b.questions[0]._bank) { b.questions.forEach(function (q) { out.push(q); }); return; }
+      b.questions.forEach(function (q) {
+        if (!q || !q.stem) return;
+        if (!q._bank) { try { q._bank = b.id; q._bname = b.title || b.name || ''; } catch (e2) {} }
+        out.push(q);
+      });
+    });
+    return out;
+  }
+
   function build(bank, q) {
-    var pool = (bank.questions || []).filter(function (x) { return x && x.stem; });
+    var pool = allQPool().filter(function (x) { return x && x.stem; });
+    if (!pool.length) pool = (bank.questions || []).filter(function (x) { return x && x.stem; });
     var curG = grams(norm(qText(q))), curTags = tagList(q, bank.id);
     var df = Object.create(null), n = pool.length, vecs = [], i;
     for (i = 0; i < n; i++) {
@@ -89,7 +108,7 @@
     for (i = 0; i < n; i++) {
       if (String(pool[i].id) === String(q.id)) continue;
       var sim = cos(curG, vecs[i]);
-      var tj = jac(curTags, tagList(pool[i], bank.id));
+      var tj = jac(curTags, tagList(pool[i], (pool[i]._bank || bank.id)));
       var sc = sim + 0.35 * tj;
       if (sc > 0.02) cand.push({ q: pool[i], sim: sim, score: sc });
     }
@@ -103,7 +122,7 @@
     cand.forEach(function (it, idx) {
       var rel = mx > 0 ? it.score / mx : 0;
       var id = 's' + idx;
-      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, score: Math.round(36 + rel * 60) });
+      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: Math.round(36 + rel * 60) });
       edges.push({ a: 'c', b: id, kind: 'sim', w: rel });
       simQ.push({ id: id, q: it.q });
     });
@@ -1488,7 +1507,7 @@ function bindShell() {
 
     nodesEl.innerHTML = DATA.nodes.map(function (n) {
       var cls = 'mp-node ' + n.type + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '') + (n.draft ? ' draft' : '');
-      var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.ai ? '相似题 · AI 精搜' : '相似题')) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
+      var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.xbk && String(n.xbk) !== String(S.bankId) ? (n.ai ? '相似题 · 他库 · AI' : '相似题 · 他库') : (n.ai ? '相似题 · AI 精搜' : '相似题'))) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
       var pill = n.type === 'sim' ? (n.score == null
         ? '<span class="mp-pill d">待定</span>'
         : '<span class="mp-pill">相似 ' + n.score + '%</span>')
@@ -2749,7 +2768,10 @@ function bindShell() {
     var t0 = qTags(q0).map(function (s) { return String(s).toLowerCase(); });
     var s0 = bg(q0.stem), o0 = bg((q0.options || []).join(' '));
     var cand = [];
-    (bank.questions || []).forEach(function (q) {
+    /* AI 精搜也跨题库：默认那批相似题是「全库初筛」，这一步相当于再筛一遍 */
+    var probePool = allQPool();
+    if (!probePool.length) probePool = (bank.questions || []);
+    probePool.forEach(function (q) {
       if (q === q0 || have[q.id]) return;
       if (!q.stem) return;
       var t1 = qTags(q).map(function (s) { return String(s).toLowerCase(); });
@@ -2771,7 +2793,7 @@ function bindShell() {
     cand.forEach(function (it, i) {
       var ang = (-Math.PI / 2) + (i - (cand.length - 1) / 2) * 0.5 + Math.PI * 0.12;
       var id = 'ps' + Date.now().toString(36) + i;
-      DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
+      DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, xbk: (it.q._bank || S.bankId), label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
       DATA.edges.push({ a: centerNode.id, b: id, kind: 'sim', w: it.s });
     });
     try { saveCur(); } catch (e) {}
@@ -4941,6 +4963,13 @@ function bindShell() {
 
   function recenter(q, noNav) {
     ANIM_ONCE = true;
+    /* 相似题可能来自别的题库：先跟着换过去，否则这道题在新题库里找不到 */
+    if (q && q._bank && String(q._bank) !== String(S.bankId)) {
+      try {
+        var nb = bankById(q._bank);
+        if (nb) { S.bankId = String(q._bank); if (typeof QZ !== 'undefined') { QZ.bankId = String(q._bank); } }
+      } catch (eB0) {}
+    }
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     if (!bank) return;
     if (!noNav) navPush();
