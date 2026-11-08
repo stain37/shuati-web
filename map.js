@@ -53,10 +53,13 @@
     return [q.stem || '', opts.join(' '), q.exp || q.expl || q.analysis || q.explain || ''].join(' ');
   }
   function tagList(q, bankId) {
-    var all = readLS('qbank.tags.v1', {}) || {};
-    var t = all[bankId + '#' + q.id];
-    if (Array.isArray(t) && t.length) return t;
-    return Array.isArray(q.tags) ? q.tags : [];
+    var key = bankId + '#' + (q && q.id);
+    /* 站里的标签真正存在 qbank.tags.v1，入口是 window.tagsOf(key)；直接读 LS 在不同版本上会读空 */
+    try { if (typeof window.tagsOf === 'function') { var a = window.tagsOf(key); if (a && a.length) return a.slice(); } } catch (e0) {}
+    try { var all = readLS('qbank.tags.v1', {}) || {}; var t = all[key]; if (Array.isArray(t) && t.length) return t; } catch (e1) {}
+    var fallbacks = [q && q.tags, q && q.kp, q && q.tag];
+    for (var i = 0; i < fallbacks.length; i++) if (Array.isArray(fallbacks[i]) && fallbacks[i].length) return fallbacks[i];
+    return [];
   }
 
   /* ---------- 数据：以某题为圆心算相似 ---------- */
@@ -78,13 +81,22 @@
     return out;
   }
 
+  /* 每题的 2-gram 向量缓存：按「题号 + 题干长度」做签名，题目没变就不重算 */
+  var QVCACHE = Object.create(null);
+  function qvec(q) {
+    var sig = String(q.id) + ':' + String(q.stem || '').length;
+    var c = QVCACHE[sig];
+    if (!c) { c = { v: grams(norm(qText(q))) }; QVCACHE[sig] = c; if (Object.keys(QVCACHE).length > 4000) QVCACHE = Object.create(null); }
+    return c.v;
+  }
+
   function build(bank, q) {
     var pool = allQPool().filter(function (x) { return x && x.stem; });
     if (!pool.length) pool = (bank.questions || []).filter(function (x) { return x && x.stem; });
     var curG = grams(norm(qText(q))), curTags = tagList(q, bank.id);
     var df = Object.create(null), n = pool.length, vecs = [], i;
     for (i = 0; i < n; i++) {
-      var v = grams(norm(qText(pool[i])));
+      var v = qvec(pool[i]);
       vecs.push(v);
       for (var k in v) df[k] = (df[k] || 0) + 1;
     }
@@ -3967,12 +3979,12 @@ function bindShell() {
     return ((b && b.questions) || []).filter(function (q) { return q && q.stem; });
   }
   function qTags(q) {
+    var key = S.bankId + '#' + (q && q.id);
+    try { if (typeof window.tagsOf === 'function') { var a = window.tagsOf(key); if (a && a.length) return a.slice(); } } catch (e0) {}
+    try { if (window.TAGS && TAGS.of) { var b = TAGS.of(key); if (b && b.length) return b.slice(); } } catch (e1) {}
     try {
-      if (window.TAGS && TAGS.data) {
-        var d = TAGS.data() || {}, v = d[S.bankId + '#' + q.id];
-        if (v && v.length) return v;
-      }
-    } catch (e) {}
+      if (window.TAGS && TAGS.data) { var d = TAGS.data() || {}, v = d[key]; if (v && v.length) return v; }
+    } catch (e2) {}
     return Array.isArray(q.tags) ? q.tags : [];
   }
 
