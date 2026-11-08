@@ -69,6 +69,99 @@
     var p = d * 0.94 + (tj || 0) * 0.04 + (oj || 0) * 0.02;
     return Math.round(Math.max(0, Math.min(0.99, p)) * 100);
   }
+  /* ---------- 考点共现 + 选项关键词（用户：小标签靠得住，就让标签多说点话） ----------
+     题库级统计：某个小标签被多少道题打过、某个选项词出现在多少道题里。
+     越稀有的标签/词，权重越大（idf）。一次算好，build/rescore 共用。 */
+  var QCTX = { sig: '', ctx: null };
+  function optTerms(q) {
+    var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
+    var out = [], seen = Object.create(null);
+    opts.forEach(function (o) {
+      String(o || '').split(/[\s，,。；;：:、（）()【】\[\]“”"'·…—-]+/).forEach(function (tk) {
+        tk = norm(tk);
+        if (tk.length < 2 || seen[tk]) return;
+        if (/^[0-9a-z]+$/.test(tk) && tk.length < 3) return;
+        seen[tk] = 1; out.push(tk);
+      });
+    });
+    return out;
+  }
+  function simCtx() {
+    var pool = allQPool().filter(function (x) { return x && x.stem; });
+    var sig = QPOOL_CACHE.sig + '|' + pool.length;
+    if (QCTX.ctx && QCTX.sig === sig) return QCTX.ctx;
+    var n = pool.length;
+    var tagDf = Object.create(null), optDf = Object.create(null);
+    var tagSets = [], optSets = [];
+    for (var i = 0; i < n; i++) {
+      var q = pool[i];
+      var ts = tagList(q, q._bank || S.bankId).map(norm);
+      tagSets.push(ts);
+      ts.forEach(function (t) { tagDf[t] = (tagDf[t] || 0) + 1; });
+      var os = optTerms(q);
+      optSets.push(os);
+      os.forEach(function (t) { optDf[t] = (optDf[t] || 0) + 1; });
+    }
+    QCTX = { sig: sig, ctx: { pool: pool, n: n, tagDf: tagDf, optDf: optDf } };
+    return QCTX.ctx;
+  }
+  function idfW(df, n, k) { return Math.log(1 + n / (1 + (df[k] || 0))); }
+  /* 两个标签集合的加权余弦：共享的标签越稀有、越一致，得分越高 */
+  function tagsOfQ(q, ctx) {
+    var k = (q._bank || S.bankId) + '#' + q.id;
+    if (!ctx.TAG) { ctx.TAG = Object.create(null); ctx.OPT = Object.create(null); }
+    if (!ctx.TAG[k]) ctx.TAG[k] = tagList(q, q._bank || S.bankId).map(norm);
+    return ctx.TAG[k];
+  }
+  function optsOfQ(q, ctx) {
+    var k = (q._bank || S.bankId) + '#' + q.id;
+    if (!ctx.OPT) { ctx.TAG = Object.create(null); ctx.OPT = Object.create(null); }
+    if (!ctx.OPT[k]) ctx.OPT[k] = optTerms(q);
+    return ctx.OPT[k];
+  }
+  function tagCosine(qa, qb, ctx) {
+    var A = tagsOfQ(qa, ctx);
+    var B = tagsOfQ(qb, ctx);
+    if (!A.length || !B.length) return -1;   /* -1 = 至少一边没标签，交给文本兜底 */
+    var na = 0, nb = 0, dot = 0, i, j;
+    for (i = 0; i < A.length; i++) { var wa = idfW(ctx.tagDf, ctx.n, A[i]); na += wa * wa; }
+    for (j = 0; j < B.length; j++) { var wb = idfW(ctx.tagDf, ctx.n, B[j]); nb += wb * wb; }
+    for (i = 0; i < A.length; i++) {
+      if (B.indexOf(A[i]) < 0) continue;
+      var w = idfW(ctx.tagDf, ctx.n, A[i]);
+      dot += w * w;
+    }
+    return (na && nb) ? dot / Math.sqrt(na * nb) : 0;
+  }
+  /* 选项关键词重合：同一考点题常把干扰项换个说法，这一路抓的就是「选项里考的是不是同一批词」 */
+  function optCosine(qa, qb, ctx) {
+    var A = optsOfQ(qa, ctx), B = optsOfQ(qb, ctx);
+    if (!A.length || !B.length) return 0;
+    var na = 0, nb = 0, dot = 0, i, j;
+    for (i = 0; i < A.length; i++) { var wa = idfW(ctx.optDf, ctx.n, A[i]); na += wa * wa; }
+    for (j = 0; j < B.length; j++) { var wb = idfW(ctx.optDf, ctx.n, B[j]); nb += wb * wb; }
+    for (i = 0; i < A.length; i++) {
+      if (B.indexOf(A[i]) < 0) continue;
+      var w = idfW(ctx.optDf, ctx.n, A[i]);
+      dot += w * w;
+    }
+    return (na && nb) ? dot / Math.sqrt(na * nb) : 0;
+  }
+  /* 最终百分比：题干像不像（Dice）、考点共现、选项关键词，三路加权。
+     两边都有标签时标签占三成（用户说标签靠得住）；没标签就退回纯文本。
+     题干几乎一模一样（Dice ≥ .90）时不再被标签拖累。 */
+  function pairPct(qa, qb, ctx) {
+    var d = diceGrams(qa && qa.stem, qb && qb.stem);
+    var tc = tagCosine(qa, qb, ctx);
+    var oc = Math.max(0, optCosine(qa, qb, ctx));
+    var p;
+    if (tc < 0) p = d * 0.90 + oc * 0.10;          /* 缺标签：只看文字 */
+    else p = d * 0.55 + tc * 0.33 + oc * 0.12;      /* 有标签：题干 / 考点共现 / 选项词 */
+    /* 题干本身就高度一致（Dice ≥ .60）时，不许被标签把它们压到阈值下 ——
+       标签是「加分/否决」用的，不该盖过眼睛能看出来的同一道题 */
+    if (d >= 0.60) p = Math.max(p, d * 0.93);
+    return Math.round(Math.max(0, Math.min(0.99, p)) * 100);
+  }
   function tagList(q, bankId) {
     var key = (q && q._bank ? q._bank : bankId) + '#' + (q && q.id);
     /* 站里的标签真正存在 qbank.tags.v1，入口是 window.tagsOf(key)；直接读 LS 在不同版本上会读空 */
@@ -117,6 +210,7 @@
     var pool = allQPool().filter(function (x) { return x && x.stem; });
     if (!pool.length) pool = (bank.questions || []).filter(function (x) { return x && x.stem; });
     var curG = grams(norm(qText(q))), curTags = tagList(q, bank.id);
+    var CTX = simCtx();
     var df = Object.create(null), n = pool.length, vecs = [], i;
     for (i = 0; i < n; i++) {
       var v = qvec(pool[i]);
@@ -153,7 +247,7 @@
       var sc = sim + 0.35 * tj + 0.12 * oj;
       /* 显示的百分比 = 真实相似度（题干余弦为主，标签/选项各加一点），不是「跟最像的那道比」
          用户要求：低于 75% 的不上图 */
-      var pct = stemPct(q, pool[i], tj, oj);
+      var pct = pairPct(q, pool[i], CTX);
       /* 用户定的规矩：没有 75% 就是没有，不为了凑数量硬塞 */
       if (pct >= 75) cand.push({ q: pool[i], sim: sim, score: sc, pct: pct });
     }
@@ -4239,7 +4333,7 @@ function bindShell() {
     DATA.nodes.forEach(function (n) {
       if (n.type !== 'sim' || !n.ref) return;
       if (isPathGroup) return;
-      var p = stemPct(c.ref, n.ref, 0, 0);
+      var p = pairPct(c.ref, n.ref, simCtx());
       if (p < 75) { drop[n.id] = 1; changed = true; return; }
       if (n.score !== p) { n.score = p; changed = true; }
     });
@@ -7079,6 +7173,8 @@ function bindShell() {
     nodes: function () { return DATA.nodes.map(function (n) { return { id: n.id, type: n.type, refId: n.refId, xbk: n.xbk || null, label: String(n.label || '').slice(0, 18), opts: (n.ref && n.ref.options || []).length, rid: (n.ref && n.ref.id) || null, rbank: (n.ref && n.ref._bank) || null }; }); },
     groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, n: (g.nodes || []).length }; }) }; },
     newGroup: gNewFromCur,
+    pct: function (a, b) { return pairPct(a, b, simCtx()); },
+    parts: function (a, b) { var c = simCtx(); return { dice: +diceGrams(a && a.stem, b && b.stem).toFixed(3), tag: +tagCosine(a, b, c).toFixed(3), opt: +optCosine(a, b, c).toFixed(3), pct: pairPct(a, b, c) }; },
     state: function () { return { on: S.on, min: S.min, n: DATA.nodes.length, layout: LAY.name, sel: sel, max: isMax() }; }
   };
 })();
