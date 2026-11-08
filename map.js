@@ -64,7 +64,12 @@
 
   /* ---------- 数据：以某题为圆心算相似 ---------- */
   /* 全部题库的题摊平（相似题默认跨题库找）：每题带上 _bank / _bname，方便切中心和显示来源 */
+  var QPOOL_CACHE = { sig: '', list: null };
   function allQPool() {
+    var banks0 = [];
+    try { banks0 = (typeof allBanks === 'function') ? allBanks() : []; } catch (e9) { banks0 = []; }
+    var sig = banks0.map(function (b) { return b.id + ':' + ((b.questions || []).length); }).join(',');
+    if (QPOOL_CACHE.list && QPOOL_CACHE.sig === sig) return QPOOL_CACHE.list;
     var out = [];
     var banks = [];
     try { banks = (typeof allBanks === 'function') ? allBanks() : []; } catch (e0) { banks = []; }
@@ -78,6 +83,7 @@
         out.push(q);
       });
     });
+    QPOOL_CACHE = { sig: sig, list: out };
     return out;
   }
 
@@ -1337,10 +1343,11 @@ function bindShell() {
     DATA.nodes.forEach(function (n) { pos[n.id] = n; });
     /* 连线：量每张卡片的真实宽高，把端点正好落在边框上（不再猜尺寸） */
     var boxOf = {};
+    var HEAVY = (DATA.nodes.length > 28);   /* 大图：动画和光晕都省掉，先保流畅 */
     nodesEl.querySelectorAll('.mp-node').forEach(function (el, _ni) {
       /* 入场动画：bounce-in + 交错（每个节点只播一次，重绘不闪） */
       try {
-        if (ANIM_ONCE && !el.dataset.an) {
+        if (ANIM_ONCE && !HEAVY && !el.dataset.an) {
           el.dataset.an = '1';
           el.style.setProperty('--ad', Math.min(420, _ni * 45) + 'ms');
           el.classList.add('in');
@@ -1425,7 +1432,7 @@ function bindShell() {
     g.innerHTML = paths;
     /* 光晕层：连到焦点的线各描一层粗的，宽度/亮度跟着相似度走，交给 CSS blur 去发光 */
     var glow = $('#mpGlowG');
-    var PERF = (DATA && DATA.nodes && (DATA.nodes.length > 60 || DATA.edges.length > 110));
+    var PERF = (DATA && DATA.nodes && (DATA.nodes.length > 28 || DATA.edges.length > 90));
     if (glow && !PERF) {
       glow.innerHTML = fid ? glowList.map(function (x) {
         var gw = (4.5 + 6.5 * x.wt).toFixed(1);
@@ -4996,7 +5003,7 @@ function bindShell() {
     sel = null;
     applyLayout(LAY.name);
     saveCur(); renderGrp();
-    try { flipFrom(oldPos); } catch (e) {}
+    try { if ((DATA.nodes || []).length <= 40) flipFrom(oldPos); } catch (e) {}
     /* 结构不变时位置本来就一样，加一层很轻的淡入，看起来像「换」而不是「闪」 */
     try {
       var ns = document.querySelectorAll('#mpNodes .mp-node');

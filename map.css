@@ -1877,3 +1877,8 @@ body.dark #mpNodes .mp-node.variant .mp-pill.v{ background:rgba(159,143,255,.22)
   background:rgba(232,168,60,.16); border:1px solid rgba(232,168,60,.55); color:#8a5a00; font-size:12px; cursor:pointer; }
 body.dark #mpFilNote{ background:rgba(232,168,60,.18); color:#ffd28a; border-color:rgba(232,168,60,.5); }
 #mpFilNote:hover{ background:rgba(232,168,60,.28); }
+/* ===== web547 heavy：节点一多就关掉阴影/动效，先保住流畅 ===== */
+#mpWrap.heavy .mp-node{ box-shadow:none !important; transition:none !important; }
+#mpWrap.heavy .mp-node .mp-pill{ box-shadow:none !important; }
+#mpWrap.heavy #mpGlowG{ display:none !important; }
+#mpWrap.heavy .mp-node.in{ animation:none !important; }
