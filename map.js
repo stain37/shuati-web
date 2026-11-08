@@ -3717,13 +3717,35 @@ function bindShell() {
   } catch (eV1) {}
 
   /* 老存档里可能只有题、没有考点节点：按题目现在的小标签把考点补齐（不重复建） */
+  /* 一道题该有哪些考点：先按「题库#题号」读；读不到（老存档只存了题干、跨库、题库改名）就按题干去所有题库里找同一道题 */
+  function nodeTags(n) {
+    var ts = [];
+    try { ts = kpTags(n.ref); } catch (e0) { ts = []; }
+    if (ts.length) return ts;
+    var stem = String((n.ref && n.ref.stem) || n.label || '').trim();
+    if (stem.length < 6) return ts;
+    var banks = [];
+    try { banks = (typeof allBanks === 'function') ? allBanks() : []; } catch (e1) { banks = []; }
+    for (var i = 0; i < banks.length; i++) {
+      var qs = (banks[i] && banks[i].questions) || [];
+      for (var j = 0; j < qs.length; j++) {
+        var q = qs[j];
+        if (!q || !q.stem) continue;
+        if (String(q.stem).trim() !== stem) continue;
+        try { ts = kpTags(q); } catch (e2) { ts = []; }
+        if (ts.length) { try { n.xbk = n.xbk || banks[i].id; } catch (e3) {} return ts; }
+      }
+    }
+    return ts;
+  }
+
   function ensureTagNodes(bank) {
     var added = 0;
     var qs = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center' || n.type === 'variant'; });
     qs.forEach(function (n) {
       if (!n.ref || n.type === 'variant') return;
       var tags = [];
-      try { tags = kpTags(n.ref).slice(0, 4); } catch (e0) { return; }
+      try { tags = nodeTags(n).slice(0, 4); } catch (e0) { return; }
       tags.forEach(function (t) {
         var nrm = norm(t);
         var tn = DATA.nodes.filter(function (m) { return m.type === 'tag' && norm(m.label) === nrm; })[0];
@@ -5342,6 +5364,8 @@ function bindShell() {
       DATA = build(bank, q);
       try { syncVariants(true); } catch (eVS2) {}
     try { syncVariants(true); } catch (eVS) {}
+    /* 相似题自己带的考点也摆上来（build 只摆中心题的） */
+    try { ensureTagNodes(bank); } catch (eTN0) {}
     var g = gCur();
     if (g && g.auto !== false) { g.name = String(q.stem || '').slice(0, 14); }
     sel = null;
@@ -5421,6 +5445,7 @@ function bindShell() {
       loadGroup(g);
     } else {
       DATA = build(bank, q);
+      try { ensureTagNodes(bank); } catch (eTN1) {}
       sel = null;
       applyLayout(LAY.name);
       gAddFrom(String(q.stem || '').slice(0, 14), DATA.nodes.map(serNode),
