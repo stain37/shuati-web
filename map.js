@@ -1516,11 +1516,6 @@ function bindShell() {
         e.stopPropagation();
         var n = DATA.nodes.find(function (x) { return x.id === el.dataset.id; });
         if (!n) return;
-        /* 路径模式：点相似题 / 考点 → 就地延伸，中心题不动 */
-        if (PATHM.on && (n.type === 'sim' || n.type === 'tag')) {
-          sel = n.id; render();
-          try { if (pathExpand(n)) return; } catch (err0) {}
-        }
         if (n.type === 'tag') {
           sel = (sel === n.id) ? null : n.id;
           render();
@@ -5435,6 +5430,81 @@ function bindShell() {
     else render();
     toast('已挂一张「变式草稿」：点开看三种改法（不自动编题目）', 3000);
   }
+  /* ===== 现场加题：从题库里挑一道，摆到这张图上（和中心题连一条线） ===== */
+  function qAddOpen() {
+    var bank = bankById(S.bankId); if (!bank) { toast('题库没打开'); return; }
+    var have = {};
+    DATA.nodes.forEach(function (m) { if (m.ref && m.ref.id) have[String(m.ref.id)] = 1; });
+
+    /* 有中心题就借 pathNeighbors 的打分，列出「最像的」在前 */
+    var scoreMap = {};
+    try {
+      var cq = (DATA.nodes.filter(function (x) { return x.type === 'center'; })[0] || {}).ref;
+      if (cq) pathNeighbors(cq, bank, 9999).forEach(function (it) { scoreMap[String(it.q.id)] = it.score; });
+    } catch (eS) {}
+
+    var pool = (bank.questions || []).filter(function (q) { return !have[String(q.id)]; })
+      .map(function (q) { return { q: q, sc: scoreMap[String(q.id)] || 0 }; })
+      .sort(function (a, b) { return b.sc - a.sc; });
+
+    var ov = document.getElementById('mpQAdd');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'mpQAdd';
+      document.body.appendChild(ov);
+    }
+    function rows(kw) {
+      var k = String(kw || '').trim();
+      var list = k ? pool.filter(function (it) { return String(it.q.stem || '').indexOf(k) >= 0; }) : pool;
+      list = list.slice(0, 80);
+      if (!list.length) return '<div class="qa0">' + (pool.length ? '没有匹配的题' : '这张图已经把题库里的题都摆上了') + '</div>';
+      return list.map(function (it) {
+        return '<div class="qar" data-qid="' + esc(String(it.q.id)) + '">' +
+          '<b>' + esc(String(it.q.stem || '').slice(0, 54)) + '</b>' +
+          '<i>' + (it.sc ? '相似 ' + Math.round(it.sc * 100) + '%' : '还没算相似度') + '</i></div>';
+      }).join('');
+    }
+    ov.innerHTML =
+      '<div class="qac">' +
+        '<div class="qah"><b>添加题目到这张图</b><span class="grow"></span>' +
+          '<button class="qax" type="button">关闭</button></div>' +
+        '<input class="qaq" type="search" placeholder="搜题干里的词…">' +
+        '<div class="qal">' + rows('') + '</div>' +
+      '</div>';
+    ov.classList.add('show');
+    var q = ov.querySelector('.qaq'), box = ov.querySelector('.qal');
+    q.addEventListener('input', function () { box.innerHTML = rows(q.value); });
+    ov.querySelector('.qax').onclick = function () { ov.classList.remove('show'); };
+    ov.addEventListener('pointerdown', function (e) { if (e.target === ov) ov.classList.remove('show'); });
+    box.addEventListener('click', function (e) {
+      var r = e.target.closest('.qar'); if (!r) return;
+      var qid = r.dataset.qid;
+      var it = pool.filter(function (x) { return String(x.q.id) === String(qid); })[0];
+      if (!it) return;
+      ov.classList.remove('show');
+      addQNode(it.q, it.sc);
+    });
+    setTimeout(function () { try { q.focus({ preventScroll: true }); } catch (e) {} }, 30);
+  }
+
+  /* 把一道题摆到图上：围在中心题外面，自动算角度和半径 */
+  function addQNode(q, sc) {
+    var c = DATA.nodes.filter(function (x) { return x.type === 'center'; })[0];
+    var nSim = DATA.nodes.filter(function (x) { return x.type === 'sim'; }).length;
+    var a = -Math.PI / 2 + (Math.PI * 2 / Math.max(4, nSim + 1)) * nSim;
+    var n = {
+      id: 'q' + q.id, type: 'sim', lv: 1, ref: q,
+      score: sc ? Math.round(sc * 100) : null,
+      x: (c ? c.x : 0) + Math.cos(a) * 420,
+      y: (c ? c.y : 0) + Math.sin(a) * 420
+    };
+    DATA.nodes.push(n);
+    if (c) DATA.edges.push({ a: c.id, b: n.id, kind: 'sim', w: Math.min(0.96, (sc || 0.5)) });
+    try { saveCur(); } catch (e1) {}
+    try { render(true); } catch (e2) {}
+    try { toast('已加到图上：' + String(q.stem || '').slice(0, 16) + '…'); } catch (e3) {}
+  }
+
   function ctxShow(x, y, n) {
     if (!CTX) {
       CTX = document.createElement('div');
@@ -5463,8 +5533,10 @@ function bindShell() {
       '<button data-c="pin">' + (n.pinned ? '📌 取消固定' : '📌 固定位置') + '</button>' +
       (isTag ? '<button data-c="kp">📚 打开考点工作台</button>' : '') +
       '<div class="sep"></div>' +
-      '<button data-c="del" class="danger">🗑 ' + (isFile ? '从画布移除' : '删除节点') + '</button>'
-    ) : '<button data-c="fit">⛶ 适应窗口</button><button data-c="undo">↶ 撤销</button>';
+      (isCen ? '<button disabled>🗑 中心题不能删（换个中心题就行）</button>'
+             : '<button data-c="del" class="danger">🗑 ' + (isFile ? '从画布移除' : (isQ ? '从图上移除这道题（题库里还在）' : '删除节点')) + '</button>')
+    ) : '<button data-c="addq">＋ 添加题目到这张图…</button>' +
+        '<button data-c="fit">⛶ 适应窗口</button><button data-c="undo">↶ 撤销</button>';
     CTX.style.left = Math.min(x, innerWidth - 200) + 'px';
     CTX.style.top = Math.min(y, innerHeight - 260) + 'px';
     CTX.classList.add('show');
@@ -5475,6 +5547,7 @@ function bindShell() {
       if (!n) {
         if (act === 'fit') fit();
         else if (act === 'undo') undo();
+        else if (act === 'addq') { try { qAddOpen(); } catch (e5) {} }
         return;
       }
       if (act === 'view' || act === 'tab') {
