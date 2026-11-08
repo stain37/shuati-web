@@ -259,7 +259,10 @@
     cand = cand.slice(0, 6);
     /* 第二通道：考点共现。同考点不一定长得像（用户：按一定比例来），
        单独限 2 个名额，标「同考点」，不占文本相似的 6 个位置 */
-    var sameCand = [], sameMax = 2;
+    /* 名额按比例给：文本通道有几道，同考点通道就只占它的三分之一左右（最多 2、最少 1）——
+       同考点只是「可能相关」，不该跟题干真的很像的题抢同一档位置 */
+    var sameMax = Math.max(1, Math.min(2, Math.round(cand.length / 3)));
+    var sameCand = [];
     if (cand.length < 8) {
       var used = {};
       cand.forEach(function (c) { used[String(c.q._bank || '') + '#' + c.q.id] = 1; });
