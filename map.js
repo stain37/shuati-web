@@ -286,10 +286,15 @@
 
   function layoutPositions(name) {
     var ns = DATA.nodes;
-    /* 自排：谁也不动，就按现在的位置（自己一张张挪）。只有刚加进来、还没坐标的才先随便找个圈放 */
+    /* 自排：用手挪过的那份坐标（fx/fy），跟网格/树形/放射算出来的 x/y 完全分开存。
+       这样切到别的排法再切回来，自排还是你摆的那个样子。 */
     if (name === 'free') {
       var fo = {}, fn = 0, fx = 0;
-      ns.forEach(function (n) { if (isFinite(n.x) && isFinite(n.y)) { fo[n.id] = { x: n.x, y: n.y }; fn++; fx += n.x; } });
+      ns.forEach(function (n) {
+        if (isFinite(n.fx) && isFinite(n.fy)) { fo[n.id] = { x: n.fx, y: n.fy }; }
+        else if (isFinite(n.x) && isFinite(n.y)) { fo[n.id] = { x: n.x, y: n.y }; }
+        if (fo[n.id]) { fn++; fx += fo[n.id].x; }
+      });
       var fmiss = ns.filter(function (n) { return !fo[n.id]; });
       var fcx = fn ? fx / fn : 0, fcy = 0;
       fmiss.forEach(function (n, i) {
@@ -752,7 +757,11 @@
     var hadNodes = !!((DATA.nodes || []).length);
     DATA.nodes.forEach(function (n) { oldPos[n.id] = [n.x, n.y]; });
     var pos = layoutPositions(LAY.name);
-    DATA.nodes.forEach(function (n) { var p = pos[n.id]; if (p) { n.x = p.x; n.y = p.y; } });
+    DATA.nodes.forEach(function (n) {
+      var p = pos[n.id]; if (!p) return;
+      n.x = p.x; n.y = p.y;
+      if (LAY.name === 'free') { n.fx = p.x; n.fy = p.y; }
+    });
     writeLS(LAY_KEY, LAY.name);
     var s = $('#mpLayout');
     if (s) s.value = LAY.name;
@@ -3371,6 +3380,7 @@ function bindShell() {
       refId: (n.type === 'tag' || n.type === 'file') ? null : (n.ref && n.ref.id),
       xb: n.xbk || (n.ref && n.ref._bank) || null,
       fid: n.fid || null, ext: n.ext || null,
+      fx: (isFinite(n.fx) ? n.fx : null), fy: (isFinite(n.fy) ? n.fy : null),
       lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0,
       va: n.variantAi ? 1 : 0, src: n.srcQid || null };
   }
@@ -3418,6 +3428,7 @@ function bindShell() {
   }
   function deNode(n, bank) {
     var out = { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y };
+    if (isFinite(n.fx) && isFinite(n.fy)) { out.fx = n.fx; out.fy = n.fy; }
     if (n.lv != null) out.lv = n.lv;
     if (n.path) out.path = true;
     if (n.va) out.variantAi = true;
@@ -3543,7 +3554,10 @@ function bindShell() {
         if (n.lv != null) { try { delete n.lv; } catch (e3) {} }
       });
       try { paintPath(); } catch (e4) {}
+      /* 关键：组上的 path 标记也要清，不然保存时又被写回 1，组别管理器里还是「路径组」 */
+      try { var g0 = gCur(); if (g0) g0.path = 0; } catch (e4b) {}
       try { saveCur(); } catch (e5) {}
+      try { gSaveNow(); } catch (e5b) {}
       try { render(true); } catch (e6) {}
       try { renderGrp(); } catch (e7) {}
       try { toast('已转成普通组（路径展开的节点都留着）'); } catch (e8) {}
@@ -6581,6 +6595,8 @@ function bindShell() {
         dd.raf = 0;
         var ddx = (dd.cx - dd.sx) / V.k, ddy = (dd.cy - dd.sy) / V.k;
         dd.n.x = Math.round(dd.ox + ddx); dd.n.y = Math.round(dd.oy + ddy);
+        /* 手摆过的位置同时记成「自排坐标」：切到网格/树形再切回自排，还是你摆的样子 */
+        dd.n.fx = dd.n.x; dd.n.fy = dd.n.y;
         dd.el.style.left = dd.n.x + 'px'; dd.el.style.top = dd.n.y + 'px';
         drawEdges();
       });
