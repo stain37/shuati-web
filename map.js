@@ -1488,10 +1488,11 @@ function bindShell() {
 
     nodesEl.innerHTML = DATA.nodes.map(function (n) {
       var cls = 'mp-node ' + n.type + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '') + (n.draft ? ' draft' : '');
-      var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.ai ? '相似题 · AI 精搜' : '相似题')) : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
+      var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.ai ? '相似题 · AI 精搜' : '相似题')) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
       var pill = n.type === 'sim' ? (n.score == null
         ? '<span class="mp-pill d">待定</span>'
         : '<span class="mp-pill">相似 ' + n.score + '%</span>')
+        : n.type === 'variant' ? (n.variantAi ? '<span class="mp-pill v">AI</span>' : '')
         : n.type === 'tag' ? '' : n.type === 'file' ? '<span class="mp-pill f">' + esc(String(n.ext || 'file').toUpperCase()) + '</span>' : '<span class="mp-pill c">当前</span>';
       var text = n.type === 'tag' ? esc(n.label) : n.type === 'file'
         ? '<i class="mp-fico">' + fileIco(n.ext) + '</i>' + esc(String(n.label || '').slice(0, 40))
@@ -1549,7 +1550,8 @@ function bindShell() {
   function fit() {
     if (!S.on || S.min) return;
     var r = stageRect();
-    var xs = DATA.nodes.map(function (n) { return n.x; }), ys = DATA.nodes.map(function (n) { return n.y; });
+    var good = DATA.nodes.filter(function (n) { return isFinite(n.x) && isFinite(n.y); });
+    var xs = good.map(function (n) { return n.x; }), ys = good.map(function (n) { return n.y; });
     if (!xs.length) return;
     /* 手机屏窄，卡片本身还有宽度，边距按屏宽缩放；最小缩放也放宽，否则两侧卡片会被切掉 */
     var ph = innerWidth <= 760;
@@ -2943,12 +2945,15 @@ function bindShell() {
     return { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y,
       refId: (n.type === 'tag' || n.type === 'file') ? null : (n.ref && n.ref.id),
       fid: n.fid || null, ext: n.ext || null,
-      lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0 };
+      lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0,
+      va: n.variantAi ? 1 : 0, src: n.srcQid || null };
   }
   function deNode(n, bank) {
     var out = { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y };
     if (n.lv != null) out.lv = n.lv;
     if (n.path) out.path = true;
+    if (n.va) out.variantAi = true;
+    if (n.src) out.srcQid = n.src;
     if (n.type === 'tag') out.ref = n.label;
     else if (n.type === 'file') { out.fid = n.fid || null; out.ext = n.ext || null; out.ref = null; }
     else {
@@ -3311,6 +3316,68 @@ function bindShell() {
   }
 
   /* 老存档里只有「中心题 → 考点」这一根线；补上「同一考点的相似题 → 考点」 */
+  /* AI 变式题（variant.js → qbank.var.v1，按 bankId#qid 存）在图上表现为「变式题」节点 */
+  /* variant.js 的键是「bankId#qid」，不是裸 qid —— 传错会永远读不到变式题 */
+  function varListOf(qid) {
+    try { return (typeof window.varqList === 'function') ? (window.varqList(String(S.bankId) + '#' + qid) || []) : []; } catch (e0) { return []; }
+  }
+  function qidOfNode(n) {
+    if (!n || !n.ref) return '';
+    if (n.ref.id != null) return String(n.ref.id);
+    if (n.ref.qid != null) return String(n.ref.qid);
+    return '';
+  }
+  /* 把每道题下面的 AI 变式题同步成画布上的变式节点（增删都管） */
+  function syncVariants(noRender) {
+    var changed = false;
+    var parents = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center'; });
+    var want = {};
+    parents.forEach(function (n) {
+      var qid = qidOfNode(n);
+      if (!qid) return;
+      var list = varListOf(qid);
+      list.forEach(function (v, i) {
+        var vid = 'v:' + qid + ':' + i;
+        want[vid] = 1;
+        var exist = DATA.nodes.filter(function (x) { return x.id === vid; })[0];
+        if (exist) {
+          exist.type = 'variant'; exist.variantAi = true; exist.srcQid = qid;
+          exist.label = String(v.t || v.stem || exist.label || '变式题');
+          exist.ref = {
+            id: vid, stem: String(v.t || v.stem || ''), options: v.options || [],
+            answer: v.answer || [], explain: v.explain || v.exp || '',
+            tags: v.tags || [], _bank: S.bankId
+          };
+          return;
+        }
+        DATA.nodes.push({
+          id: vid, type: 'variant', lv: (n.lv || 0), variantAi: true, srcQid: qid,
+          ref: {
+            id: vid, stem: String(v.t || v.stem || ''), options: v.options || [],
+            answer: v.answer || [], explain: v.explain || v.exp || '',
+            tags: v.tags || [], _bank: S.bankId
+          },
+          label: String(v.t || v.stem || '变式题'),
+          score: null,
+          /* 先给个有限坐标：布局还没来得及摆它时，别让 fit() 算出 NaN */
+          x: (typeof n.x === 'number' ? n.x : 0) + 260,
+          y: (typeof n.y === 'number' ? n.y : 0) + 70
+        });
+        DATA.edges.push({ a: n.id, b: vid, kind: 'variant', w: 0.5 });
+        changed = true;
+      });
+    });
+    var drop = DATA.nodes.filter(function (n) { return n.type === 'variant' && n.variantAi && !want[n.id]; });
+    if (drop.length) {
+      var ids = {}; drop.forEach(function (n) { ids[n.id] = 1; });
+      DATA.nodes = DATA.nodes.filter(function (n) { return !ids[n.id]; });
+      DATA.edges = DATA.edges.filter(function (e) { return !(ids[e.a] || ids[e.b]); });
+      changed = true;
+    }
+    if (changed && !noRender) { try { saveCur(); } catch (e1) {} }
+    return changed;
+  }
+
   function relinkTags(bank) {
     if (!bank || !DATA || !DATA.nodes || !DATA.nodes.length) return;
     var tags = DATA.nodes.filter(function (n) { return n.type === 'tag' && n.label; });
@@ -3340,6 +3407,7 @@ function bindShell() {
     LAY.name = layName(g.layout || 'tree');
     S.bankId = g.bank; S.qid = g.qid; sel = null;
     try { relinkTags(bank); } catch (e0) {}
+    try { if (syncVariants(true)) { try { saveCur(); } catch (e0b) {} } } catch (e0c) {}
     var s = $('#mpLayout'); if (s) s.value = LAY.name;
     /* 打开的是路径组：自动把路径模式打开，接着往下一层延伸就行 */
     try {
@@ -4823,7 +4891,9 @@ function bindShell() {
     var oldPos = {};
     (DATA.nodes || []).forEach(function (n) { oldPos[n.id] = { x: n.x, y: n.y }; });
     S.qid = q.id;
-    DATA = build(bank, q);
+      DATA = build(bank, q);
+      try { syncVariants(true); } catch (eVS2) {}
+    try { syncVariants(true); } catch (eVS) {}
     var g = gCur();
     if (g && g.auto !== false) { g.name = String(q.stem || '').slice(0, 14); }
     sel = null;
@@ -5567,6 +5637,8 @@ function bindShell() {
   function varClose() {
     var h = document.getElementById('mpVar');
     if (h) { h.hidden = true; h.innerHTML = ''; }
+    /* 面板里可能刚生成了变式题：收起来时把它们同步到画布上 */
+    try { if (syncVariants(true)) { applyLayout(LAY.name); saveCur(); } } catch (eVC) {}
   }
   function openVarPanel(n) {
     if (typeof window.openVariant !== 'function') { toast('变式题模块没加载（variant.js）'); return; }

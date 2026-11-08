@@ -1869,3 +1869,6 @@ body.dark #mpQAdd .qaq{ background:#10151f; border-color:#2a3148; color:#e7e5f2;
   0%{ background:rgba(124,108,240,.20); }
   100%{ background:transparent; }
 }
+/* ===== web540：变式节点的小徽标 ===== */
+#mpNodes .mp-node.variant .mp-pill.v{ background:rgba(124,108,240,.16); color:#5b46d6; }
+body.dark #mpNodes .mp-node.variant .mp-pill.v{ background:rgba(159,143,255,.22); color:#cfc4ff; }
