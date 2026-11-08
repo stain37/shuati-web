@@ -2790,6 +2790,36 @@ function bindShell() {
     } catch (e1) {}
     setTimeout(function () { probeRun(centerNode); }, 30);
   }
+  /* AI 精排：本地粗筛出来的候选，再让模型判一次「是不是同一个考点」。
+     只发 8 道、题干截 80 字，返回 JSON {keep:[序号]}；任何失败都回退到本地结果。 */
+  function aiRerank(centerQ, cands) {
+    return new Promise(function (resolve) {
+      if (typeof window.aiChat !== 'function' || !cands.length) { resolve(null); return; }
+      var cut = function (s, n) { s = String(s || '').replace(/\s+/g, ' '); return s.length > n ? s.slice(0, n) + '…' : s; };
+      var lines = cands.map(function (c, i) {
+        return (i + 1) + '. ' + cut(c.q.stem, 80) + '\n   选项：' + cut((c.q.options || []).join(' / '), 60);
+      }).join('\n');
+      var prompt = '你是医学考试题库的教研。下面「待判」里有几道题，请判断每一道是否与「目标题」考同一个知识点（同一个考点，会出现在同一节复习里；只是同一章、同一系统的不要）。\n\n'
+        + '目标题：' + cut(centerQ.stem, 120) + '\n    选项：' + cut((centerQ.options || []).join(' / '), 80) + '\n\n待判：\n' + lines
+        + '\n\n只输出 JSON，不要解释：{"keep":[序号,...]}。序号是上面 1..' + cands.length + ' 的数字；都不像就输出 {"keep":[]}。';
+      var t = setTimeout(function () { try { resolve(null); } catch (e0) {} }, 9000);
+      try {
+        window.aiChat([{ role: 'user', content: prompt }], null, null, { temperature: 0, max_tokens: 120 })
+          .then(function (txt) {
+            clearTimeout(t);
+            try {
+              var m = String(txt || '').match(/\{[\s\S]*\}/);
+              var o = m ? JSON.parse(m[0]) : null;
+              var keep = (o && o.keep) || [];
+              var idx = keep.map(function (n) { return parseInt(n, 10) - 1; }).filter(function (n) { return n >= 0 && n < cands.length; });
+              resolve(idx.length || keep.length === 0 ? idx : null);
+            } catch (e1) { resolve(null); }
+          })
+          .catch(function () { clearTimeout(t); resolve(null); });
+      } catch (e2) { clearTimeout(t); resolve(null); }
+    });
+  }
+
   function probeRun(centerNode) {
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     PROBING = false;
@@ -2819,25 +2849,68 @@ function bindShell() {
       if (sc >= 0.42) cand.push({ q: q, s: sc });
     });
     cand.sort(function (a, b) { return b.s - a.s; });
-    cand = cand.slice(0, 5);
+    cand = cand.slice(0, 8);
     if (!cand.length) {
       render(true);
       if (typeof toast === 'function') toast('全库里没有更相似的题了', 1800, 'ok');
       return;
     }
-    var maxR = 320;
-    DATA.nodes.forEach(function (n) { maxR = Math.max(maxR, Math.hypot(n.x, n.y)); });
-    var R = maxR + 90, n0 = DATA.nodes.length;
-    cand.forEach(function (it, i) {
-      var ang = (-Math.PI / 2) + (i - (cand.length - 1) / 2) * 0.5 + Math.PI * 0.12;
-      var id = 'ps' + Date.now().toString(36) + i;
-      DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, xbk: (it.q._bank || S.bankId), label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
-      DATA.edges.push({ a: centerNode.id, b: id, kind: 'sim', w: it.s });
+
+    var place = function (list, byAi) {
+      var maxR = 320;
+      DATA.nodes.forEach(function (n) { maxR = Math.max(maxR, Math.hypot(n.x, n.y)); });
+      var R = maxR + 90;
+      list.forEach(function (it, i) {
+        var ang = (-Math.PI / 2) + (i - (list.length - 1) / 2) * 0.5 + Math.PI * 0.12;
+        var id = 'ps' + Date.now().toString(36) + i;
+        DATA.nodes.push({ id: id, type: 'sim', ref: it.q, refId: it.q.id, xbk: (it.q._bank || S.bankId), label: String(it.q.stem || '').slice(0, 52), score: Math.round(60 + it.s * 40), ai: true, aiPick: !!byAi, x: Math.cos(ang) * R, y: Math.sin(ang) * R });
+        DATA.edges.push({ a: centerNode.id, b: id, kind: 'sim', w: it.s });
+      });
+      try { saveCur(); } catch (e) {}
+      render();
+      setTimeout(fit, 60);
+      if (typeof toast === 'function') {
+        toast(byAi ? ('AI 精搜：模型筛后留下 ' + list.length + ' 道，已并入本组') : ('AI 精搜：新增 ' + list.length + ' 道高相似题，已并入本组'), 2200, 'good');
+      }
+    };
+
+    try { if (typeof toast === 'function') toast('AI 正在判定这 ' + cand.length + ' 道……', 1600, 'ok'); } catch (eS0) {}
+    aiRerank(q0, cand).then(function (idx) {
+      if (idx === null) { place(cand.slice(0, 5), false); return; }
+      var keep = idx.map(function (i) { return cand[i]; }).filter(Boolean);
+      if (!keep.length) {
+        render(true);
+        if (typeof toast === 'function') toast('AI 认为这几道都不算同一个考点，这次没加', 2200, 'ok');
+        return;
+      }
+      place(keep, true);
     });
-    try { saveCur(); } catch (e) {}
-    render();
-    setTimeout(fit, 60);
-    if (typeof toast === 'function') toast('AI 精搜：新增 ' + cand.length + ' 道高相似题，已并入本组', 2200, 'good');
+  }
+
+  /* 新点开的图：本地先上图，AI 在后台复核一遍「是不是同一个考点」，不太像的撤掉。
+     老组不动（用户明确：只对新点开的图生效，不回头补）。 */
+  function aiReviewFresh(gid, bank, q) {
+    try {
+      var g = (G.list || []).filter(function (x) { return x.id === gid; })[0];
+      if (!g || g.aiRev) return;
+      if (typeof window.aiChat !== 'function') return;
+      var sims = DATA.nodes.filter(function (n) { return n.type === 'sim' && n.ref && !n.aiPick; });
+      if (sims.length < 2) return;
+      g.aiRev = 1; gSave();
+      var cands = sims.map(function (n) { return { q: n.ref, s: (n.score || 0) / 100, node: n }; });
+      aiRerank(q, cands).then(function (idx) {
+        if (idx === null) return;
+        var drop = {};
+        cands.forEach(function (c, i) { if (idx.indexOf(i) < 0) drop[c.node.id] = 1; });
+        var nDrop = Object.keys(drop).length;
+        if (!nDrop) return;
+        DATA.nodes = DATA.nodes.filter(function (n) { return !drop[n.id]; });
+        DATA.edges = DATA.edges.filter(function (e) { return !drop[e.a] && !drop[e.b]; });
+        try { applyLayout(LAY.name); } catch (e0) { render(); }
+        try { saveCur(); } catch (e1) {}
+        if (typeof toast === 'function') toast('AI 复核：去掉 ' + nDrop + ' 道不太像的，其余按 AI 选留下', 2400, 'ok');
+      });
+    } catch (eA) {}
   }
 
   /* ---------- 初始化（只跑一次） ---------- */
@@ -5128,6 +5201,7 @@ function bindShell() {
       gAddFrom(String(q.stem || '').slice(0, 14), DATA.nodes.map(serNode),
         DATA.edges.map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; }), bank.id, q.id, LAY.name);
       var g1 = gCur(); if (g1) { g1.auto = true; gSave(); }
+      if (g1) setTimeout(function () { try { aiReviewFresh(g1.id, bank, q); } catch (eAR) {} }, 700);
     }
     apply();
     renderGrp();
