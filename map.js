@@ -4494,15 +4494,32 @@ function bindShell() {
   function kpTagName(n) { return String(n && n.label || '').trim(); }
 
   /* 这个考点下的全部题（先看当前题库的标签表；没有就退回题目自带 tags） */
+  /* 某个考点下有哪些题：**跨题库**找（以前只看当前题库 + TAGS.data() 的 S.bankId 键，
+     他库/内置库的题就全漏了，表现成「输血 11 题，导图里 0 道》） */
   function kpQsOf(name) {
-    var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
-    if (!bank) return [];
-    var td = {};
-    try { td = (window.TAGS && TAGS.data) ? TAGS.data() : {}; } catch (e) { td = {}; }
-    return (bank.questions || []).filter(function (q) {
-      var arr = td[S.bankId + '#' + q.id] || q.tags || [];
-      return Array.isArray(arr) && arr.indexOf(name) >= 0;
+    var nm = norm(name), out = [], seen = Object.create(null);
+    var banks = [];
+    try { banks = (typeof allBanks === 'function') ? allBanks() : []; } catch (e0) { banks = []; }
+    if (!banks.length) { try { var cb = bankById(S.bankId); if (cb) banks = [cb]; } catch (e1) {} }
+    banks.forEach(function (b) {
+      if (!b || !b.questions) return;
+      b.questions.forEach(function (q) {
+        if (!q || !q.stem) return;
+        /* qTags 靠 q._bank 决定标签键，先把归属补上再读 */
+        if (!q._bank) { try { q._bank = b.id; q._bname = b.title || b.name || ''; } catch (e2) {} }
+        var ts = [];
+        try { ts = qTags(q); } catch (e3) { ts = []; }
+        if (!ts.length) return;
+        var hit = false;
+        for (var i = 0; i < ts.length; i++) { if (norm(ts[i]) === nm) { hit = true; break; } }
+        if (!hit) return;
+        var key = (q._bank || b.id) + '#' + q.id;
+        if (seen[key]) return;
+        seen[key] = 1;
+        out.push(q);
+      });
     });
+    return out;
   }
 
   function kpMd() {
