@@ -3263,7 +3263,65 @@ function bindShell() {
     g.nodes = DATA.nodes.filter(function (n) { return !n.draft; }).map(serNode);
     g.edges = DATA.edges.filter(function (e) { return live[e.a] && live[e.b]; })
       .map(function (e) { return { a: e.a, b: e.b, kind: e.kind, w: e.w }; });
+    g.path = g.path ? 1 : 0;
+    dedupeGroups(g);
     gSave();
+  }
+  /* 打开导图前先把历史遗留的重复组收一次：同一道题 + 同一类（路径/普通）只留节点最多的那一组，
+     其余组的节点/连线并过去 */
+  function dedupeAll() {
+    var byKey = Object.create(null), keepList = [], changed = 0;
+    /* 节点多的优先当「主组」，再按顺序 */
+    var arr = G.list.slice().sort(function (a, b) {
+      return ((b && b.nodes ? b.nodes.length : 0) - (a && a.nodes ? a.nodes.length : 0));
+    });
+    arr.forEach(function (g) {
+      if (!g || g.qid == null) { keepList.push(g); return; }
+      var k = String(g.bank) + '#' + String(g.qid) + '#' + (g.path ? 1 : 0);
+      var host = byKey[k];
+      if (!host) { byKey[k] = g; keepList.push(g); return; }
+      var have = Object.create(null);
+      (host.nodes || []).forEach(function (n) { have[n.id] = 1; });
+      (g.nodes || []).forEach(function (n) { if (!have[n.id]) { host.nodes.push(n); have[n.id] = 1; } });
+      var he = Object.create(null);
+      (host.edges || []).forEach(function (e) { he[e.a + '>' + e.b] = 1; });
+      (g.edges || []).forEach(function (e) { var kk = e.a + '>' + e.b; if (!he[kk]) { host.edges.push(e); he[kk] = 1; } });
+      changed++;
+    });
+    if (changed) {
+      /* 保持原顺序 */
+      var order = Object.create(null);
+      keepList.forEach(function (g, i) { order[g.id] = i; });
+      G.list = G.list.filter(function (g) { return order[g.id] != null; });
+      gSave();
+      try { toast('合并了 ' + changed + ' 个重复的组（同一道题的路径组/普通组各留一个）'); } catch (e0) {}
+    }
+    return changed;
+  }
+
+  /* 一道题最多两组：一个普通组 + 一个路径组。同类里出现第二组时，保留当前这组（刚存的那组），
+     把旧的同名同题同类组丢掉——它们的节点都已经被并到当前这组了 */
+  function dedupeGroups(keep) {
+    if (!keep || keep.qid == null) return 0;
+    var dropped = 0;
+    var kind = keep.path ? 1 : 0;
+    G.list = G.list.filter(function (x) {
+      if (!x || x.id === keep.id) return true;
+      if (x.bank !== keep.bank) return true;
+      if (String(x.qid) !== String(keep.qid)) return true;
+      if ((x.path ? 1 : 0) !== kind) return true;
+      /* 旧的同类组：节点并过来（按 id 去重），然后丢掉 */
+      var have = Object.create(null);
+      (keep.nodes || []).forEach(function (n) { have[n.id] = 1; });
+      (x.nodes || []).forEach(function (n) { if (!have[n.id]) { keep.nodes.push(n); have[n.id] = 1; } });
+      var he = Object.create(null);
+      (keep.edges || []).forEach(function (e) { he[e.a + '>' + e.b] = 1; });
+      (x.edges || []).forEach(function (e) { var k = e.a + '>' + e.b; if (!he[k]) { keep.edges.push(e); he[k] = 1; } });
+      dropped++;
+      return false;
+    });
+    if (dropped) { try { toast('同一道题只剩一个' + (kind ? '路径组' : '普通组') + '（合并了 ' + dropped + ' 个旧的）'); } catch (e0) {} }
+    return dropped;
   }
   /* ===== 路径模式：在已有关系网上就地延伸，中心题永远不动 ===== */
   var PATHM = { on: false, max: 10 };
@@ -5467,8 +5525,11 @@ function bindShell() {
     ensure();
     try { initB4(); } catch (e) {}
     gLoad();
+    try { dedupeAll(); } catch (eDA) {}
     /* 先找「这道题」已有的组；没有就现建一组（自动名 = 题干前 14 字） */
-    var g = G.list.filter(function (x) { return x.bank === bank.id && String(x.qid) === String(q.id); })[0];
+    var wantPath = PATHM.on ? 1 : 0;
+    var sameQ = G.list.filter(function (x) { return x.bank === bank.id && String(x.qid) === String(q.id); });
+    var g = sameQ.filter(function (x) { return (x.path ? 1 : 0) === wantPath; })[0] || sameQ[0];
     if (g) {
       G.active = g.id; gSave();
       loadGroup(g);
