@@ -3516,8 +3516,33 @@ function bindShell() {
   /* 老存档里只有「中心题 → 考点」这一根线；补上「同一考点的相似题 → 考点」 */
   /* AI 变式题（variant.js → qbank.var.v1，按 bankId#qid 存）在图上表现为「变式题」节点 */
   /* variant.js 的键是「bankId#qid」，不是裸 qid —— 传错会永远读不到变式题 */
-  function varListOf(qid) {
-    try { return (typeof window.varqList === 'function') ? (window.varqList(String(S.bankId) + '#' + qid) || []) : []; } catch (e0) { return []; }
+  function varListOf(qid, bid) {
+    /* 键是「这道题所属题库的 id」+ # + qid：他库相似题的变式挂在它自己的库下，用当前库 id 会读空 */
+    var b = String(bid || S.bankId), k = b + '#' + qid, out = [];
+    try { if (typeof window.varqList === 'function') out = window.varqList(k) || []; } catch (e0) {}
+    if (out.length) return out;
+    /* 兜底：题库 id 对不上（改过名 / 合集 / 云同步换了 id）时，按「#qid」后缀把所有同题号的变式收进来 */
+    try {
+      var m = readLS('qbank.var.v1', {}) || {};
+      Object.keys(m).forEach(function (kk) {
+        if (kk === k) return;
+        if (kk.slice(-(String(qid).length + 1)) === '#' + qid) out = out.concat(m[kk] || []);
+      });
+    } catch (e1) {}
+    return out;
+  }
+  /* variant.js 存的是 {t, o, a, e}（题干 / 选项 / 答案 / 解析），不是 {stem, options…}，两种都认 */
+  function varRefOf(v, vid, bid) {
+    v = v || {};
+    return {
+      id: vid,
+      stem: String(v.t || v.stem || ''),
+      options: v.o || v.options || [],
+      answer: v.a || v.answer || [],
+      explain: v.e || v.explain || v.exp || '',
+      tags: v.tags || v.tag || [],
+      _bank: bid
+    };
   }
   function qidOfNode(n) {
     if (!n || !n.ref) return '';
@@ -3533,28 +3558,22 @@ function bindShell() {
     parents.forEach(function (n) {
       var qid = qidOfNode(n);
       if (!qid) return;
-      var list = varListOf(qid);
+      var bid = n.xbk || S.bankId;
+      var list = varListOf(qid, bid);
       list.forEach(function (v, i) {
         var vid = 'v:' + qid + ':' + i;
         want[vid] = 1;
         var exist = DATA.nodes.filter(function (x) { return x.id === vid; })[0];
         if (exist) {
           exist.type = 'variant'; exist.variantAi = true; exist.srcQid = qid;
+          exist.srcBank = bid;
           exist.label = String(v.t || v.stem || exist.label || '变式题');
-          exist.ref = {
-            id: vid, stem: String(v.t || v.stem || ''), options: v.options || [],
-            answer: v.answer || [], explain: v.explain || v.exp || '',
-            tags: v.tags || [], _bank: S.bankId
-          };
+          exist.ref = varRefOf(v, vid, bid);
           return;
         }
         DATA.nodes.push({
-          id: vid, type: 'variant', lv: (n.lv || 0), variantAi: true, srcQid: qid,
-          ref: {
-            id: vid, stem: String(v.t || v.stem || ''), options: v.options || [],
-            answer: v.answer || [], explain: v.explain || v.exp || '',
-            tags: v.tags || [], _bank: S.bankId
-          },
+          id: vid, type: 'variant', lv: (n.lv || 0), variantAi: true, srcQid: qid, srcBank: bid,
+          ref: varRefOf(v, vid, bid),
           label: String(v.t || v.stem || '变式题'),
           score: null,
           /* 先给个有限坐标：布局还没来得及摆它时，别让 fit() 算出 NaN */
@@ -3571,6 +3590,12 @@ function bindShell() {
       DATA.nodes = DATA.nodes.filter(function (n) { return !ids[n.id]; });
       DATA.edges = DATA.edges.filter(function (e) { return !(ids[e.a] || ids[e.b]); });
       changed = true;
+    }
+    /* 图上有变式题、但「变式」这个过滤勾选还关着 → 打开，别让人以为没同步 */
+    if (changed && !FIL.var) {
+      FIL.var = 1;
+      try { writeLS('qbank.mapfil.v1', FIL); } catch (eF) {}
+      try { applyFil(); } catch (eF2) {}
     }
     if (changed && !noRender) { try { saveCur(); } catch (e1) {} }
     return changed;
