@@ -2208,9 +2208,11 @@ function bindShell() {
     if (isVariant) {
       var sAi0 = s.querySelector('#mpSdAi'); if (sAi0) sAi0.style.display = 'none';
       var sVar0 = s.querySelector('#mpSdVar'); if (sVar0) sVar0.style.display = 'none';
-      var sSim0 = s.querySelector('#mpSdSim'); if (sSim0) sSim0.style.display = '';
+      var sSim0 = s.querySelector('#mpSdSim'); if (sSim0) sSim0.style.display = 'none';
     }
     s.querySelector('#mpSdAi').style.display = '';
+    /* 变式题不给「找相似题」；普通题/相似题/中心题保持可用 */
+    var sSim1 = s.querySelector('#mpSdSim'); if (sSim1) sSim1.style.display = isVariant ? 'none' : '';
     var sdf2 = s.querySelector('#mpSdFull');
     /* AI 变式题不能当中心题，也就不给「跳到题库这道题」的 ⤢ */
     if (sdf2) { sdf2.style.display = isVariant ? 'none' : ''; if (!isVariant) sdf2.onclick = function () { try { jumpBank(n); } catch (e) {} }; }
@@ -3979,7 +3981,8 @@ function bindShell() {
   /* 把每道题下面的 AI 变式题同步成画布上的变式节点（增删都管） */
   function syncVariants(noRender) {
     var changed = false;
-    var parents = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center'; });
+    /* 只有一级变式：中心题的 AI 变式题。相似题自己带的变式不上图（否则层级会越滚越乱） */
+    var parents = DATA.nodes.filter(function (n) { return n.type === 'center'; });
     var want = {};
     parents.forEach(function (n) {
       var qid = qidOfNode(n);
@@ -4191,6 +4194,7 @@ function bindShell() {
   /* 以「任意一道题」为中心重新建一张图（变式题也行），存成一个新组 */
   function simFromNode(n) {
     if (!n) return;
+    if (n.type === 'variant') { try { toast('变式题不找相似题'); } catch (e0) {} return; }
     var base = (n.ref && typeof n.ref === 'object') ? n.ref : {};
     var isVar = (n.type === 'variant');
     var q0 = isVar ? {
