@@ -20,10 +20,10 @@
   var LAYOUTS = [
     { k: 'grid', n: '网格' },
     { k: 'tree', n: '树形' },
-    { k: 'radial', n: '放射' }
+    { k: 'free', n: '自排' }
   ];
   /* 老存档里的名字映射到新名字（环形→放射、分栏→树形） */
-  var LAY_ALIAS = { grid: 'grid', radial: 'radial', tree: 'tree', ring: 'radial', layer: 'grid', force: 'grid', columns: 'tree', matrix: 'grid', rows: 'grid' };
+  var LAY_ALIAS = { grid: 'grid', tree: 'tree', free: 'free', radial: 'free', ring: 'free', layer: 'grid', force: 'grid', columns: 'tree', matrix: 'grid', rows: 'grid' };
   function layName(k) { return LAY_ALIAS[k] || 'grid'; }
   var S = { on: false, min: false, x: null, y: null, w: null, h: null, bankId: '', qid: '' };
   var V = { tx: 0, ty: 0, k: 1 };
@@ -123,6 +123,9 @@
     }
 
     var curG2 = grams(norm(qText(q)), true), curOpt = grams(norm((q.options || []).join(' ')));
+    /* 页面上显示的那个百分比只按「题干」算：题干几乎一样的两道题，算出来就是 85–95%，
+       不会因为解析长短把百分比稀释掉 */
+    var curStem = grams(norm(String(q.stem || '')));
     var cand = [];
     for (i = 0; i < n; i++) {
       if (String(pool[i].id) === String(q.id)) continue;
@@ -132,14 +135,15 @@
       var oj = 0;
       try { oj = cos(curOpt, grams(norm((pool[i].options || []).join(' ')))); } catch (eO) { oj = 0; }
       var sc = sim + 0.35 * tj + 0.12 * oj;
-      if (sc > 0.10) cand.push({ q: pool[i], sim: sim, score: sc });
+      /* 显示的百分比 = 真实相似度（题干余弦为主，标签/选项各加一点），不是「跟最像的那道比」
+         用户要求：低于 75% 的不上图 */
+      var stC = 0;
+      try { stC = cos(curStem, grams(norm(String(pool[i].stem || '')))); } catch (eS) { stC = sim; }
+      var pct = Math.round(Math.max(0, Math.min(0.99, stC + 0.06 * tj)) * 100);
+      if (pct >= 75) cand.push({ q: pool[i], sim: sim, score: sc, pct: pct });
     }
     cand.sort(function (a, b) { return b.score - a.score; });
-    /* 阈值：绝对线 + 相对线（离最像的那道差太远就别硬凑） */
-    if (cand.length) {
-      var top = cand[0].score, rel = Math.max(0.26, top * 0.55);
-      cand = cand.filter(function (c2, i2) { return i2 < 3 || c2.score >= rel; });
-    }
+    cand.sort(function (a, b) { return b.pct - a.pct; });
     cand = cand.slice(0, 6);
     var mx = cand.length ? cand[0].score : 1;
 
@@ -147,9 +151,9 @@
     var edges = [];
     var simQ = [];   /* 相似题的题目对象：用来判断它和考点是不是同一个标签 */
     cand.forEach(function (it, idx) {
-      var rel = mx > 0 ? it.score / mx : 0;
+      var rel = it.pct / 100;
       var id = 's' + idx;
-      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: Math.round(36 + rel * 60) });
+      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: it.pct });
       edges.push({ a: 'c', b: id, kind: 'sim', w: rel });
       simQ.push({ id: id, q: it.q });
     });
@@ -268,6 +272,18 @@
 
   function layoutPositions(name) {
     var ns = DATA.nodes;
+    /* 自排：谁也不动，就按现在的位置（自己一张张挪）。只有刚加进来、还没坐标的才先随便找个圈放 */
+    if (name === 'free') {
+      var fo = {}, fn = 0, fx = 0;
+      ns.forEach(function (n) { if (isFinite(n.x) && isFinite(n.y)) { fo[n.id] = { x: n.x, y: n.y }; fn++; fx += n.x; } });
+      var fmiss = ns.filter(function (n) { return !fo[n.id]; });
+      var fcx = fn ? fx / fn : 0, fcy = 0;
+      fmiss.forEach(function (n, i) {
+        var a = -Math.PI / 2 + 2 * Math.PI * i / Math.max(1, fmiss.length);
+        fo[n.id] = { x: Math.round(fcx + Math.cos(a) * 420), y: Math.round(fcy + Math.sin(a) * 420) };
+      });
+      return fo;
+    }
     var c = ns.filter(function (n) { return n.type === 'center'; })[0];
     var sims = ns.filter(function (n) { return n.type === 'sim'; });
     var tags = ns.filter(function (n) { return n.type === 'tag'; });
@@ -731,6 +747,7 @@
       wrap.classList.toggle('lay-layer', LAY.name === 'layer');
       wrap.classList.toggle('lay-grid', LAY.name === 'grid');
       wrap.classList.toggle('lay-tree', LAY.name === 'tree');
+      wrap.classList.toggle('lay-free', LAY.name === 'free');
     }
     render();
     if (hadNodes) { try { animLayout(oldPos); } catch (eA) {} }
@@ -3433,11 +3450,12 @@ function bindShell() {
     }
     var idf = Object.create(null);
     for (var kk in df) idf[kk] = Math.log(1 + n / df[kk]);
+    var idf0 = Math.log(1 + n);
     function cos(a, b) {
-      var dot = 0, na = 0, nb = 0, key;
-      for (key in a) { na += Math.pow(a[key] * idf[key], 2); }
-      for (key in b) { nb += Math.pow(b[key] * idf[key], 2); }
-      for (key in a) { if (b[key]) dot += (a[key] * idf[key]) * (b[key] * idf[key]); }
+      var dot = 0, na = 0, nb = 0, key, wa, wb;
+      for (key in a) { wa = a[key] * (idf[key] == null ? idf0 : idf[key]); na += wa * wa; }
+      for (key in b) { wb = b[key] * (idf[key] == null ? idf0 : idf[key]); nb += wb * wb; }
+      for (key in a) { if (b[key]) dot += (a[key] * (idf[key] == null ? idf0 : idf[key])) * (b[key] * (idf[key] == null ? idf0 : idf[key])); }
       return (na && nb) ? dot / Math.sqrt(na * nb) : 0;
     }
     function jac(a, b) {
@@ -6301,6 +6319,11 @@ function bindShell() {
       return;
     }
     if (n.type === 'tag') { try { kpOpen(n); } catch (e) {} return; }
+    /* 非路径模式：长按不展开相似题（免得一级一级长出二级相似题）；要展开先点 🧭 路径 */
+    if (!PATHM.on) {
+      try { toast('长按展开只在路径模式里用：先点工具条的 🧭 路径'); } catch (eN) {}
+      return;
+    }
     try { pathExpand(n); } catch (e) { if (typeof toast === 'function') toast('展开失败：' + (e && e.message)); }
   }
 
