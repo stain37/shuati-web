@@ -783,7 +783,7 @@
             '<span>逻辑</span><select id="mpGLogic" title="并集＝命中任意一个词就算；交集＝每个词都得命中（更准）">' +
               '<option value="or">并集</option><option value="and">交集</option></select>' +
             '<span>类型</span><select id="mpGKind" title="路径组＝在路径模式下沿着相似题一层层展开出来的组（中心不动）">' +
-              '<option value="all">全部</option><option value="path">🧭 路径组</option><option value="tree">普通组</option></select>' +
+              '<option value="all">全部</option><option value="path">🧭 路径组</option><option value="tree">普通组（本题库）</option></select>' +
             '<span class="mp-grow3"></span></div>' +
           '<div id="mpGBulk" hidden><span id="mpGBulkN">已选 0 组</span>' +
             '<button type="button" data-b="all">全选</button>' +
@@ -3153,6 +3153,30 @@ function bindShell() {
         pb2.onclick = function (e) { e.stopPropagation(); pathSet(!PATHM.on); };
         try { paintPath(); } catch (e1) {}
       }
+      /* 保存：路径模式里改完点这里，这一组才进「🧭 路径组」；平时点就是存一下这一组 */
+      if (!$('#mpSave')) {
+        var sb = document.createElement('button');
+        sb.id = 'mpSave';
+        sb.type = 'button';
+        sb.title = '保存这一组（路径模式里点它 = 存成路径组）';
+        sb.textContent = '💾 保存';
+        var an2 = $('#mpPath') || $('#mpFil');
+        if (an2 && an2.parentNode) an2.parentNode.insertBefore(sb, an2.nextSibling);
+        else if (tg && tg.parentNode) tg.parentNode.insertBefore(sb, tg);
+        else tools.appendChild(sb);
+        sb.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        sb.onclick = function (e) {
+          e.stopPropagation();
+          var g = gCur();
+          if (!g) { if (typeof toast === 'function') toast('先打开一张导图再保存', 1600, 'warn'); return; }
+          var asPath = !!PATHM.on;
+          if (asPath) g.path = 1;
+          try { saveCur(); } catch (eS0) {}
+          try { if (typeof gSaveNow === 'function') gSaveNow(); } catch (eS1) {}
+          try { renderGrp(); } catch (eS2) {}
+          if (typeof toast === 'function') toast(asPath ? '已存成路径组（组别里 🧭 那栏能翻到）' : '已保存这一组', 1800, 'good');
+        };
+      }
       nb.onclick = function (e) { e.stopPropagation(); addNote(); };
     }
     if (tools && !$('#mpHoldBox')) {
@@ -3315,7 +3339,9 @@ function bindShell() {
     if (LOADING_G) { NEED_SAVE = true; return; }
     g.bank = S.bankId; g.qid = S.qid; g.layout = LAY.name;
     /* 路径组：开着路径模式、或图里已经有「路径展开」出来的节点（带 lv / path） */
-    g.path = (PATHM.on || DATA.nodes.some(function (n) { return !!(n.path || (n.lv != null && n.lv > 0)); })) ? 1 : 0;
+    /* 路径组只由「💾 保存」决定（路径模式下点保存才置 1），别自己推断，
+       否则临时开一下路径模式、长按几次就被算成路径组了 */
+    g.path = g.path ? 1 : 0;
     /* 草稿节点不进存档：没确认的 AI 结果刷新就没了，别污染这一组 */
     var live = {};
     DATA.nodes.forEach(function (n) { if (!n.draft) live[n.id] = 1; });
@@ -4199,7 +4225,8 @@ function bindShell() {
     var kind = (($('#mpGKind') || {}).value) || 'all';
     var hitList = list.filter(function (g) {
       if (kind === 'path' && !g.path) return false;
-      if (kind === 'tree' && g.path) return false;
+      /* 普通组：同一题库里的所有普通组都能搜到（不是只当前这道题） */
+      if (kind === 'tree' && (g.path || (S.bankId && g.bank && String(g.bank) !== String(S.bankId)))) return false;
       return gMatch(g, qraw || q);
     });
     var rows = hitList.map(function (g) {
