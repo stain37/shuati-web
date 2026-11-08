@@ -2084,11 +2084,40 @@ let _bankCache = null;
 function invalidateBanks() { _bankCache = null; if (typeof bumpHay === 'function') bumpHay(); }
 
 const PIP_BANKS = [];   /* 画中画小窗注入的临时卷：每次重建缓存都要带上 */
+
+/* ---------- 内置题库的「本地补丁」 ----------
+   内置题库是 banks/*.js 里的只读文件（打进去就不能改）。但用户经常需要给它们补解析、
+   改错选项。于是加一层补丁：改的是本机保存的 patch，读的时候盖在只读题上，
+   文件本身不动、同步时跟着走。键是 "bankId#qid"。 */
+const PATCH_KEY = 'qbank.patch.v1';
+function readPatches() { try { return JSON.parse(localStorage.getItem(PATCH_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function writePatches(p) { try { localStorage.setItem(PATCH_KEY, JSON.stringify(p)); } catch (e) {} }
+function applyPatches(banks) {
+  let P = null;
+  try { P = readPatches(); } catch (e) { return; }
+  const keys = Object.keys(P);
+  if (!keys.length) return;
+  banks.forEach(b => {
+    if (b.source === 'local') return;
+    (b.questions || []).forEach(q => {
+      const p = P[b.id + '#' + q.id];
+      if (!p) return;
+      if (p.stem != null) q.stem = p.stem;
+      if (Array.isArray(p.options)) q.options = p.options.slice();
+      if (Array.isArray(p.answer)) q.answer = p.answer.slice();
+      if (p.explain != null) q.explain = p.explain;
+      if (p.group != null) q.group = p.group;
+      if (p.groupTitle != null) q.groupTitle = p.groupTitle;
+      q.__patched = 1;
+    });
+  });
+}
 function allBanks() {
   if (!_bankCache) {
     const base = (window.__BANKS__ || []).map(b => normalizeBank(b, 'builtin'))
       .concat(LOCAL.map(b => normalizeBank(b, 'local')));
     _bankCache = base.concat(paperBanks(base));
+    try { applyPatches(_bankCache); } catch (eP) {}
     if (PIP_BANKS.length) {
       const have = new Set(_bankCache.map(x => x.id));
       PIP_BANKS.forEach(b => { if (!have.has(b.id)) _bankCache.push(b); });
@@ -3925,9 +3954,24 @@ window.delTargetOf = delTargetOf;
 /* 第 8 条：在答题页直接改题目（题干 / 选项 / 答案 / 解析）。只对自建题库生效，
    内置题库是只读文件；套卷里的题改它原题库里的那道。 */
 function updateBankQuestion(bankId, qid, patch) {
-  if (!Array.isArray(LOCAL)) return { ok: false, reason: 'builtin' };
-  const raw = LOCAL.find(x => x && x.id === bankId);
-  if (!raw) return { ok: false, reason: 'builtin' };
+  const raw = Array.isArray(LOCAL) ? LOCAL.find(x => x && x.id === bankId) : null;
+  if (!raw) {
+    /* 内置题库：不写文件，写本地补丁；读的时候 applyPatches 会盖上去 */
+    const b0 = bankById(bankId);
+    if (!b0 || !(b0.questions || []).some(x => String(x.id) === String(qid))) return { ok: false, reason: 'missing' };
+    const all = readPatches();
+    const k = bankId + '#' + qid;
+    const p = Object.assign({}, all[k] || {});
+    ['stem', 'group', 'groupTitle', 'explain'].forEach(f => { if (patch[f] != null) p[f] = patch[f]; });
+    if (Array.isArray(patch.options)) p.options = patch.options.slice();
+    if (Array.isArray(patch.answer)) p.answer = patch.answer.slice();
+    p.at = Date.now();
+    all[k] = p;
+    writePatches(all);
+    invalidateBanks();
+    try { if (window.BF && BF.autoSync) BF.autoSync(); } catch (e) {}
+    return { ok: true, patched: true, q: (bankById(bankId).questions || []).find(x => String(x.id) === String(qid)) };
+  }
   const qs = Array.isArray(raw.questions) ? raw.questions : (raw.questions = []);
   const q = qs.find(x => x && String(x.id) === String(qid));
   if (!q) return { ok: false, reason: 'missing' };
@@ -4281,6 +4325,10 @@ function renderQuiz(bankId) {
   const custom = !!noteOf(fk);
   const fixedAns = hasFix(fk);
   const delT = delTargetOf(bank, q);              /* 这道题能不能删、删的是哪个题库里的哪道（内置题库不能删） */
+  /* 内置题库也要能「改题目」：改的是本地补丁层（bank.source !== 'local'） */
+  const editT = (bank && bank.source === 'local')
+    ? delT
+    : (q ? { bankId: bank.id, qid: q.id, title: bank.title, patch: true } : null);
 
   const opts = q.options.map((t, i) => {
     const K = 'ABCDEFGHIJKL'[i];
@@ -4360,7 +4408,7 @@ function renderQuiz(bankId) {
             <button class="btn" id="doRedo">再答一次</button>
             <button class="btn" id="doNote">${custom ? '改解析（已自定义）' : '改解析'}</button>
             <button class="btn" id="doFix" title="题库答案写错了 / 自己点错了：可以在这里改，只影响本机的判分">${fixedAns ? '改答案（已修正）' : '改答案'}</button>
-            ${delT ? '<button class="btn" id="doEditQ" title="直接改这道题的题干 / 选项 / 答案 / 解析（写回题库，内置题库只读）">✎ 改题目</button>' : ''}
+            ${editT ? '<button class="btn" id="doEditQ" title="直接改这道题的题干 / 选项 / 答案 / 解析（内置题库改的是本机补丁，不动 banks 文件）">✎ 改题目</button>' : ''}
             <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
             <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
             <button class="btn" id="doWrongToggle" title="手动把这道题放进 / 移出错题本（不影响作答记录里的对错次数）">${(ANS[fk] && ANS[fk].wrong) ? '↩ 移出错题本' : '＋ 加入错题本'}</button>
@@ -4469,7 +4517,7 @@ function renderQuiz(bankId) {
     openNoteEditor(fk, $('noteHost'), q, render);
   });
   on('doFix', () => { qSheetToggle(false); openAnsEditor($('fixHost'), fk, q, render); });
-  if (delT) on('doEditQ', () => { qSheetToggle(false); openQEditor($('editQHost'), fk, q, delT, render); });
+  if (editT) on('doEditQ', () => { qSheetToggle(false); openQEditor($('editQHost'), fk, q, editT, render); });
   /* 「删除本题」：只删自建题库里的题（套卷里的题记在它原来的题库上）。删完自动跳到下一题 */
   if (delT) on('doDelQ', () => {
     qSheetToggle(false);   /* 先收抽屉：确认框是 .mask（z 40），抽屉 z 35，不收就会盖在上面 */
