@@ -131,7 +131,11 @@
       var w = idfW(ctx.tagDf, ctx.n, A[i]);
       dot += w * w;
     }
-    return (na && nb) ? dot / Math.sqrt(na * nb) : 0;
+    if (!na || !nb) return 0;
+    var cosv = dot / Math.sqrt(na * nb);
+    /* 包含度：标签少的那一边是否被另一边盖住（A=[输血,血型] B=[输血] → 1） */
+    var contain = dot / Math.min(na, nb);
+    return Math.max(cosv, contain);
   }
   /* 选项关键词重合：同一考点题常把干扰项换个说法，这一路抓的就是「选项里考的是不是同一批词」 */
   function optCosine(qa, qb, ctx) {
@@ -253,16 +257,41 @@
     }
     cand.sort(function (a, b) { return b.pct - a.pct; });
     cand = cand.slice(0, 6);
+    /* 第二通道：考点共现。同考点不一定长得像（用户：按一定比例来），
+       单独限 2 个名额，标「同考点」，不占文本相似的 6 个位置 */
+    var sameCand = [], sameMax = 2;
+    if (cand.length < 8) {
+      var used = {};
+      cand.forEach(function (c) { used[String(c.q._bank || '') + '#' + c.q.id] = 1; });
+      for (i = 0; i < n; i++) {
+        if (String(pool[i].id) === String(q.id)) continue;
+        var key2 = String(pool[i]._bank || '') + '#' + pool[i].id;
+        if (used[key2]) continue;
+        var tc2 = tagCosine(q, pool[i], CTX);
+        if (tc2 < 0.30) continue;
+        var oc2 = Math.max(0, optCosine(q, pool[i], CTX));
+        /* 加权分：标签说得上话为主，选项词是辅证（用户：同考点也要按一定比例，不能只看标签） */
+        var sameScore = tc2 * 0.72 + oc2 * 0.28;
+        if (sameScore < 0.55) continue;
+        var d2 = diceGrams(q && q.stem, pool[i] && pool[i].stem);
+        if (d2 >= 0.75) continue;    /* 文字已经很像的，已经在上面那 6 个里了 */
+        var sp = Math.round(Math.min(0.74, Math.max(0.55, d2 * 0.30 + tc2 * 0.55 + oc2 * 0.15)) * 100);
+        sameCand.push({ q: pool[i], sim: 0, score: sp, pct: sp, sameTag: 1 });
+      }
+      sameCand.sort(function (a, b) { return b.pct - a.pct; });
+      sameCand = sameCand.slice(0, sameMax);
+    }
     var mx = cand.length ? cand[0].score : 1;
 
     var nodes = [{ id: 'c', type: 'center', ref: q, x: 0, y: 0, label: q.stem }];
     var edges = [];
     var simQ = [];   /* 相似题的题目对象：用来判断它和考点是不是同一个标签 */
+    cand = cand.concat(sameCand);
     cand.forEach(function (it, idx) {
       var rel = it.pct / 100;
       var id = 's' + idx;
-      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: it.pct, weak: it.weak ? 1 : 0 });
-      edges.push({ a: 'c', b: id, kind: 'sim', w: rel });
+      nodes.push({ id: id, type: 'sim', ref: it.q, label: it.q.stem, xbk: (it.q._bank || bank.id), score: it.pct, weak: it.weak ? 1 : 0, sameTag: it.sameTag ? 1 : 0 });
+      edges.push({ a: 'c', b: id, kind: 'sim', w: it.sameTag ? 0.4 : rel });
       simQ.push({ id: id, q: it.q });
     });
     curTags.filter(function (x) { return !isBigTag(x); }).slice(0, 4).forEach(function (t, idx) {
@@ -1713,7 +1742,7 @@ function bindShell() {
       var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.xbk && String(n.xbk) !== String(S.bankId) ? (n.ai ? '相似题 · 他库 · AI' : '相似题 · 他库') : (n.ai ? '相似题 · AI 精搜' : '相似题'))) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
       var pill = n.type === 'sim' ? (n.score == null
         ? '<span class="mp-pill d">待定</span>'
-        : (n.weak ? '<span class="mp-pill d">弱相关</span>' : '<span class="mp-pill">相似 ' + n.score + '%</span>'))
+        : (n.sameTag ? '<span class="mp-pill t">同考点</span>' : (n.weak ? '<span class="mp-pill d">弱相关</span>' : '<span class="mp-pill">相似 ' + n.score + '%</span>')))
         : n.type === 'variant' ? (n.variantAi ? '<span class="mp-pill v">AI</span>' : '')
         : n.type === 'tag' ? '' : n.type === 'file' ? '<span class="mp-pill f">' + esc(String(n.ext || 'file').toUpperCase()) + '</span>' : '<span class="mp-pill c">当前</span>';
       var text = n.type === 'tag' ? esc(n.label) : n.type === 'file'
@@ -2107,7 +2136,7 @@ function bindShell() {
     var g = gCur();
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
     m.querySelector('#mpRqBank').textContent = (bank && (bank.title || bank.name)) || (g && g.name) || '题库';
-    m.querySelector('#mpRqHint').textContent = n.type === 'sim' ? ('相似题 · ' + (n.score == null ? '?' : n.score) + '%') :
+    m.querySelector('#mpRqHint').textContent = n.type === 'sim' ? (n.sameTag ? '同考点（文字不像，靠标签+选项对上）' : ('相似题 · ' + (n.score == null ? '?' : n.score) + '%')) :
       n.type === 'center' ? '当前中心题' : (n.type === 'variant' ? 'AI 变式' : '题目');
     var alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     var ans = answerLetter(q);
@@ -2311,7 +2340,7 @@ function bindShell() {
     /* AI 变式题不能当中心题，也就不给「跳到题库这道题」的 ⤢ */
     if (sdf2) { sdf2.style.display = isVariant ? 'none' : ''; if (!isVariant) sdf2.onclick = function () { try { jumpBank(n); } catch (e) {} }; }
     var typeName = n.type === 'center' ? '中心题' : n.type === 'sim' ? '相似题' : '题目';
-    var kick = n.type === 'sim' ? ('相似 ' + (n.score == null ? '?' : n.score) + '%') : (n.type === 'center' ? '当前这题' : '');
+    var kick = n.type === 'sim' ? (n.sameTag ? '同考点 · 文字不像' : ('相似 ' + (n.score == null ? '?' : n.score) + '%')) : (n.type === 'center' ? '当前这题' : '');
     s.querySelector('#mpSdName').textContent = typeName;
     s.querySelector('#mpSdKick').textContent = kick;
     var alpha = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -3483,7 +3512,7 @@ function bindShell() {
       fid: n.fid || null, ext: n.ext || null,
       fx: (isFinite(n.fx) ? n.fx : null), fy: (isFinite(n.fy) ? n.fy : null),
       lv: (n.lv == null ? null : n.lv), path: n.path ? 1 : 0,
-      va: n.variantAi ? 1 : 0, src: n.srcQid || null };
+      va: n.variantAi ? 1 : 0, src: n.srcQid || null, st: n.sameTag ? 1 : 0 };
   }
   /* 跨题库找题：先按存的题库 id 找，再退回「哪个库有这道题就用哪个库」。
      老存档没存题库时，题只会退化成 {id, stem} 的空壳（抽屉里就只剩一行题干）。 */
@@ -3534,6 +3563,7 @@ function bindShell() {
     if (n.path) out.path = true;
     if (n.va) out.variantAi = true;
     if (n.src) out.srcQid = n.src;
+    if (n.st) out.sameTag = 1;
     if (n.type === 'tag') out.ref = n.label;
     else if (n.type === 'file') { out.fid = n.fid || null; out.ext = n.ext || null; out.ref = null; }
     else {
@@ -4333,6 +4363,7 @@ function bindShell() {
     DATA.nodes.forEach(function (n) {
       if (n.type !== 'sim' || !n.ref) return;
       if (isPathGroup) return;
+      if (n.sameTag) return;   /* 同考点节点是标签通道放进来的，不按题干阈值回收 */
       var p = pairPct(c.ref, n.ref, simCtx());
       if (p < 75) { drop[n.id] = 1; changed = true; return; }
       if (n.score !== p) { n.score = p; changed = true; }
