@@ -1345,6 +1345,46 @@ function bindShell() {
     if (n.type === 'variant' && !FIL.var) return false;
     return true;
   }
+  /* 点哪个节点，镜头就往哪边走一段；越「不重要」走得越少：
+     相似题 0.92 / 中心题 0.8 / 变式题 0.6 / 考点 0.26 / 资料 0.18 */
+  var CAM_T = 0;
+  function camWeight(n) {
+    if (!n) return 0.5;
+    if (n.type === 'sim') return 0.92;
+    if (n.type === 'center') return 0.8;
+    if (n.type === 'variant') return 0.6;
+    if (n.type === 'tag') return 0.26;
+    if (n.type === 'file') return 0.18;
+    return 0.4;
+  }
+  function camToNode(n, w) {
+    if (!n || !isFinite(n.x) || !isFinite(n.y)) return;
+    var r; try { r = stageRect(); } catch (e0) { return; }
+    if (!r || !r.width) return;
+    w = (w == null) ? camWeight(n) : w;
+    var k = V.k;
+    var tx0 = V.tx, ty0 = V.ty;
+    var tx1 = tx0 + (r.width / 2 - (tx0 + n.x * k)) * w;
+    var ty1 = ty0 + (r.height / 2 - (ty0 + n.y * k)) * w;
+    if (Math.abs(tx1 - tx0) < 2 && Math.abs(ty1 - ty0) < 2) return;
+    try {
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        V.tx = tx1; V.ty = ty1; paintView(); return;
+      }
+    } catch (e1) {}
+    if (CAM_T) { try { cancelAnimationFrame(CAM_T); } catch (e2) {} CAM_T = 0; }
+    var t0 = performance.now(), dur = 400;
+    function step(t) {
+      var p = Math.min(1, (t - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      V.tx = tx0 + (tx1 - tx0) * e;
+      V.ty = ty0 + (ty1 - ty0) * e;
+      try { paintView(); } catch (e3) {}
+      if (p < 1) CAM_T = requestAnimationFrame(step); else CAM_T = 0;
+    }
+    CAM_T = requestAnimationFrame(step);
+  }
+
   function drawEdges() {
     var g = $('#mpEdgeG'); if (!g) return;
     var nodesEl = $('#mpNodes'); if (!nodesEl) return;
@@ -1588,11 +1628,13 @@ function bindShell() {
         if (n.type === 'tag') {
           sel = (sel === n.id) ? null : n.id;
           render();
-          if (sel) { try { kpOpen(n); } catch (err) {} } else { try { kpClose(); } catch (err) {} }
+          if (sel) { try { kpOpen(n); } catch (err) {} try { camToNode(n); } catch (eC1) {} }
+          else { try { kpClose(); } catch (err) {} }
           return;
         }
         sel = n.id;
         render();
+        try { camToNode(n); } catch (eC2) {}
         try { sideOpen(n); } catch (err) {}
       });
       el.addEventListener('dblclick', function (e) {
@@ -3329,10 +3371,48 @@ function bindShell() {
   function pathSet(on) {
     PATHM.on = !!on;
     try { writeLS('qbank.map.path.v1', PATHM.on); } catch (e1) {}
+    /* 关掉路径模式 = 结束路径：这一组转回普通组（节点都留着），否则下次保存又会算成路径组 */
+    if (!PATHM.on && pathIsOn()) {
+      try { paintPath(); } catch (eP0) {}
+      try { pathToNormal(true); } catch (eP1) {}
+      return;
+    }
     paintPath();
     render(true);
     toast(PATHM.on ? '路径模式已开：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步）' : '路径模式已关');
   }
+  /* 现在这组算不算「路径组」：开关开着，或者图里已经有路径展开出来的节点 */
+  function pathIsOn() {
+    if (PATHM.on) return true;
+    return DATA.nodes.some(function (n) { return !!(n.path || (n.lv != null && n.lv > 0)); });
+  }
+  /* 结束路径 / 转成普通组：节点都留着，只是不再算路径组（会自动并到这道题已有的普通组） */
+  function pathToNormal(noAsk) {
+    if (!pathIsOn()) { try { toast('这组本来就是普通组'); } catch (e0) {} return false; }
+    var go = function () {
+      PATHM.on = false;
+      try { writeLS('qbank.map.path.v1', false); } catch (e1) {}
+      DATA.nodes.forEach(function (n) {
+        if (n.path) { try { delete n.path; } catch (e2) {} }
+        if (n.lv != null) { try { delete n.lv; } catch (e3) {} }
+      });
+      try { paintPath(); } catch (e4) {}
+      try { saveCur(); } catch (e5) {}
+      try { render(true); } catch (e6) {}
+      try { renderGrp(); } catch (e7) {}
+      try { toast('已转成普通组（路径展开的节点都留着）'); } catch (e8) {}
+    };
+    if (noAsk) { go(); return true; }
+    try {
+      mpAsk({
+        title: '转成普通组？',
+        text: '路径展开出来的节点都会留着，只是这组以后按普通组算；同一道题只有普通组/路径组各一个，转过去会自动并到已有的普通组。',
+        ok: '转成普通组'
+      }).then(function (ok) { if (ok) go(); });
+    } catch (eA) { go(); }
+    return true;
+  }
+
   function paintPath() {
     var b = $('#mpPath'); if (!b) return;
     b.classList.toggle('on', PATHM.on);
@@ -3868,6 +3948,7 @@ function bindShell() {
     /* 打开的是路径组：自动把路径模式打开，接着往下一层延伸就行 */
     try {
       if (g.path) { PATHM.on = true; writeLS('qbank.map.path.v1', true); }
+      else { PATHM.on = false; try { writeLS('qbank.map.path.v1', false); } catch (ePG) {} }
       paintPath();
     } catch (eP0) {}
     render(); setTimeout(fit, 50);
@@ -6213,6 +6294,12 @@ function bindShell() {
   /* 长按到底：就地展开这道题的相似题与考点（中心题不动） */
   function longPressNode(n) {
     if (!n) return;
+    /* 长按中心题：路径模式下 = 结束路径、转回普通组（用户要的四种切换方式之一） */
+    if (n.type === 'center') {
+      if (pathIsOn()) { pathToNormal(); return; }
+      try { toast('长按中心题：路径模式下会转成普通组'); } catch (eC) {}
+      return;
+    }
     if (n.type === 'tag') { try { kpOpen(n); } catch (e) {} return; }
     try { pathExpand(n); } catch (e) { if (typeof toast === 'function') toast('展开失败：' + (e && e.message)); }
   }
@@ -6478,6 +6565,7 @@ function bindShell() {
                 (isQ ? '<button data-c="ai">✨ 分析考点（AI）</button>' +
                        '<button data-c="var">✨ 出变式题（AI）</button>' : '')) +
       (isNote ? '<button data-c="focus">🔍 聚焦到这里</button>' : '<button data-c="focus">🔍 聚焦到这里</button>') +
+      (isCen && pathIsOn() ? '<button data-c="tonormal">🧭 结束路径（转普通组）</button>' : '') +
       '<button data-c="link">🔗 从这里连线</button>' +
       '<button data-c="pin">' + (n.pinned ? '📌 取消固定' : '📌 固定位置') + '</button>' +
       (isTag ? '<button data-c="kp">📚 打开考点工作台</button>' : '') +
@@ -6534,6 +6622,8 @@ function bindShell() {
         V.tx = r.width / 2 - n.x * V.k;
         V.ty = r.height / 2 - n.y * V.k;
         paintView(); try { saveCur(); } catch (e) {}
+      } else if (act === 'tonormal') {
+        pathToNormal();
       } else if (act === 'link') {
         linkMode(true, n.id);
       } else if (act === 'pin') {
@@ -6679,6 +6769,13 @@ function bindShell() {
       return true;
     },
     longMs: function () { return LONG_MS; },
+    save: function () { try { saveCur(); } catch (e) { return String(e); } return 'ok'; },
+    pathState: function () {
+      return {
+        on: PATHM.on, isOn: pathIsOn(),
+        lv: DATA.nodes.filter(function (n) { return n.lv != null || n.path; }).length
+      };
+    },
     openFor: openFor,
     nodes: function () { return DATA.nodes.map(function (n) { return { id: n.id, type: n.type, refId: n.refId, xbk: n.xbk || null, label: String(n.label || '').slice(0, 18), opts: (n.ref && n.ref.options || []).length, rid: (n.ref && n.ref.id) || null, rbank: (n.ref && n.ref._bank) || null }; }); },
     groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, n: (g.nodes || []).length }; }) }; },
