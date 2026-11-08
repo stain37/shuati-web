@@ -122,15 +122,24 @@
       return inter / (s1.length + s2.length - inter);
     }
 
+    var curG2 = grams(norm(qText(q)), true), curOpt = grams(norm((q.options || []).join(' ')));
     var cand = [];
     for (i = 0; i < n; i++) {
       if (String(pool[i].id) === String(q.id)) continue;
       var sim = cos(curG, vecs[i]);
       var tj = jac(curTags, tagList(pool[i], (pool[i]._bank || bank.id)));
-      var sc = sim + 0.35 * tj;
-      if (sc > 0.02) cand.push({ q: pool[i], sim: sim, score: sc });
+      /* 选项说法像不像：同考点题常把干扰项换个说法，题干余弦抓不到这层 */
+      var oj = 0;
+      try { oj = cos(curOpt, grams(norm((pool[i].options || []).join(' ')))); } catch (eO) { oj = 0; }
+      var sc = sim + 0.35 * tj + 0.12 * oj;
+      if (sc > 0.10) cand.push({ q: pool[i], sim: sim, score: sc });
     }
     cand.sort(function (a, b) { return b.score - a.score; });
+    /* 阈值：绝对线 + 相对线（离最像的那道差太远就别硬凑） */
+    if (cand.length) {
+      var top = cand[0].score, rel = Math.max(0.26, top * 0.55);
+      cand = cand.filter(function (c2, i2) { return i2 < 3 || c2.score >= rel; });
+    }
     cand = cand.slice(0, 6);
     var mx = cand.length ? cand[0].score : 1;
 
@@ -3795,12 +3804,38 @@ function bindShell() {
     var starTxt = g0.star ? '取消标星' : '☆ 标星置顶';
     m.innerHTML = '<button data-a="open">打开这一组</button>' +
       '<button data-a="rn">✎ 重命名</button><button data-a="dup">⧉ 复制一份</button>' +
+      '<button data-a="redo">↺ 一键重做（回到最初）</button>' +
       '<button data-a="star">' + starTxt + '</button>' +
       '<button data-a="del" class="bad">🗑 删除这一组</button>';
     m.dataset.id = id;
     m.style.left = Math.max(8, Math.min(innerWidth - 150, x)) + 'px';
     m.style.top = Math.max(8, Math.min(innerHeight - 170, y)) + 'px';
     m.classList.add('show');
+  }
+  /* 一键重做：回到这张图刚生成时的样子（丢掉路径展开 / 手动加进来的节点） */
+  function gRedo(id) {
+    var g0 = (G.list || []).filter(function (g) { return g.id === id; })[0];
+    if (!g0) return;
+    if (typeof mpAsk === 'function') {
+      mpAsk({ title: '一键重做这一组？', text: '会回到「以「' + String(g0.name || '').slice(0, 16) + '」为中心」刚生成的样子：路径展开的、手动加进来的节点都会清掉（题目本身不受影响）。', ok: '重做', no: '算了' })
+        .then(function (ok) { if (ok) gRedoDo(g0); });
+      return;
+    }
+    gRedoDo(g0);
+  }
+  function gRedoDo(g0) {
+    try {
+      saveCur();
+      G.active = g0.id;
+      var bid = g0.bank || S.bankId, qid = g0.qid || '';
+      if (qid) openFor(bid, qid);
+      else { loadGroup(g0); }
+      try { saveCur(); } catch (e1) {}
+      renderGrp();
+      if (typeof toast === 'function') toast('已重做：回到最初的中心题', 1800, 'good');
+    } catch (e2) {
+      if (typeof toast === 'function') toast('重做失败：这一组的中心题可能不在了', 2200, 'warn');
+    }
   }
   function gMenuHide() { var m = $('#mpGMenu'); if (m) m.classList.remove('show'); }
 
@@ -3980,6 +4015,7 @@ function bindShell() {
       if (a === 'open') gSwitch(id);
       else if (a === 'rn') gRename(id);
       else if (a === 'dup') gDup(id);
+      else if (a === 'redo') gRedo(id);
       else if (a === 'star') gStar(id);
       else if (a === 'del') gDel(id);
     };
