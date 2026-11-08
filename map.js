@@ -53,7 +53,7 @@
     return [q.stem || '', opts.join(' '), q.exp || q.expl || q.analysis || q.explain || ''].join(' ');
   }
   function tagList(q, bankId) {
-    var key = bankId + '#' + (q && q.id);
+    var key = (q && q._bank ? q._bank : bankId) + '#' + (q && q.id);
     /* 站里的标签真正存在 qbank.tags.v1，入口是 window.tagsOf(key)；直接读 LS 在不同版本上会读空 */
     try { if (typeof window.tagsOf === 'function') { var a = window.tagsOf(key); if (a && a.length) return a.slice(); } } catch (e0) {}
     try { var all = readLS('qbank.tags.v1', {}) || {}; var t = all[key]; if (Array.isArray(t) && t.length) return t; } catch (e1) {}
@@ -1791,6 +1791,7 @@ function bindShell() {
      站里左上角「‹ 返回」把 hash 退回后，自动把组别 / 选中 / 视口还原 */
   var MP_RET = null;
   function jumpBank(n) {
+    try { saveCur(); } catch (eSv) {}   /* 跳走前先存档：不然刚展开的路径会丢 */
     var bid = S.bankId || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || '';
     var qid = (n && n.ref && n.ref.id) || '';
     try {
@@ -1821,10 +1822,19 @@ function bindShell() {
         sessionStorage.removeItem('qbank.map.ret.v1');
       } catch (e) {}
       if (!snap || !snap.bid) return;
-      try { openFor(snap.bid, snap.qid || ''); } catch (e) { return; }
+      /* 有组就先把那一组原样读回来（路径展开的节点都在存档里）；
+         读不到才退回「按中心题重建」，否则一进题库再回来，刚铺的路径就没了 */
+      var restored = false;
+      if (snap.gid) {
+        try {
+          var g0 = (G.list || []).filter(function (x) { return x.id === snap.gid; })[0];
+          if (g0) { G.active = g0.id; if (g0.bank) S.bankId = g0.bank; loadGroup(g0); restored = true; }
+        } catch (eG0) {}
+      }
+      if (!restored) { try { openFor(snap.bid, snap.qid || ''); } catch (e) { return; } }
       setTimeout(function () {
         try {
-          if (snap.gid) {
+          if (!restored && snap.gid) {
             var gg = (G.list || []).filter(function (x) { return x.id === snap.gid; })[0];
             if (gg) { G.active = gg.id; loadGroup(gg); }
           }
@@ -3986,7 +3996,7 @@ function bindShell() {
     return ((b && b.questions) || []).filter(function (q) { return q && q.stem; });
   }
   function qTags(q) {
-    var key = S.bankId + '#' + (q && q.id);
+    var key = (q && q._bank ? q._bank : S.bankId) + '#' + (q && q.id);
     try { if (typeof window.tagsOf === 'function') { var a = window.tagsOf(key); if (a && a.length) return a.slice(); } } catch (e0) {}
     try { if (window.TAGS && TAGS.of) { var b = TAGS.of(key); if (b && b.length) return b.slice(); } } catch (e1) {}
     try {
