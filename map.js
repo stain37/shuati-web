@@ -1534,7 +1534,8 @@ function bindShell() {
     });
 
     nodesEl.innerHTML = DATA.nodes.map(function (n) {
-      var cls = 'mp-node ' + n.type + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '') + (n.draft ? ' draft' : '');
+      var isImgF = n.type === 'file' && /^(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(n.ext || ''));
+      var cls = 'mp-node ' + n.type + (isImgF ? ' imgnode' : '') + (sel === n.id ? ' sel' : '') + (nearIds[n.id] ? ' near' : '') + (n.pinned ? ' pinned' : '') + (n.draft ? ' draft' : '');
       var head = n.type === 'center' ? (PATHM.on ? '中心题 · 路径起点' : '中心题') : n.type === 'sim' ? (n.draft && n.score == null ? '相关题 · 草稿' : (n.xbk && String(n.xbk) !== String(S.bankId) ? (n.ai ? '相似题 · 他库 · AI' : '相似题 · 他库') : (n.ai ? '相似题 · AI 精搜' : '相似题'))) : n.type === 'variant' ? (n.variantAi ? '变式题 · AI' : '变式题 · 草稿') : n.type === 'file' ? '资料' : n.type === 'idea' ? '分析' : (n.draft ? '考点 · 草稿' : '考点');
       var pill = n.type === 'sim' ? (n.score == null
         ? '<span class="mp-pill d">待定</span>'
@@ -1542,7 +1543,9 @@ function bindShell() {
         : n.type === 'variant' ? (n.variantAi ? '<span class="mp-pill v">AI</span>' : '')
         : n.type === 'tag' ? '' : n.type === 'file' ? '<span class="mp-pill f">' + esc(String(n.ext || 'file').toUpperCase()) + '</span>' : '<span class="mp-pill c">当前</span>';
       var text = n.type === 'tag' ? esc(n.label) : n.type === 'file'
-        ? '<i class="mp-fico">' + fileIco(n.ext) + '</i>' + esc(String(n.label || '').slice(0, 40))
+        ? (isImgF
+          ? '<div class="mp-fimg" data-thumb="' + esc(String(n.fid || '')) + '"></div><span class="mp-fnm">' + esc(String(n.label || '').slice(0, 40)) + '</span>'
+          : '<i class="mp-fico">' + fileIco(n.ext) + '</i>' + esc(String(n.label || '').slice(0, 40)))
         : esc(String(n.label || '').slice(0, 52));
       var op = 1;
       if (fid) {
@@ -1555,6 +1558,22 @@ function bindShell() {
         '<i class="mp-k">' + head + '</i><div class="mp-t">' + text + '</div>' + why + pill + '</div>';
     }).join('');
 
+    /* 图片资料：画布上直接出缩略图（本体在 IDB，先取 blob 再换上去） */
+    try {
+      nodesEl.querySelectorAll('.mp-fimg[data-thumb]').forEach(function (ph) {
+        var f0 = fById(ph.getAttribute('data-thumb'));
+        if (!f0) { ph.remove(); return; }
+        var put = function () {
+          if (!f0.url) return;
+          var im = document.createElement('img');
+          im.className = 'mp-fimg';
+          im.alt = '';
+          im.src = f0.url;
+          if (ph.parentNode) ph.parentNode.replaceChild(im, ph);
+        };
+        if (f0.url) put(); else ensureUrl(f0, put);
+      });
+    } catch (eTh) {}
     try { filNote(); } catch (eFN3) {}
     nodesEl.querySelectorAll('.mp-node').forEach(function (el) {
       el.addEventListener('dblclick', function (e) {
@@ -5466,7 +5485,7 @@ function bindShell() {
     if (m.indexOf('html') >= 0 || /\.(html?|htm)$/i.test(f.name)) {
       return '<iframe class="mppe" sandbox="allow-scripts allow-popups allow-forms allow-modals" src="' + f.url + '"></iframe>';
     }
-    if (m.indexOf('pdf') >= 0 || /\.pdf$/i.test(f.name)) return '<iframe class="mppe" data-pdf="1" src="about:blank"></iframe>';
+    if (m.indexOf('pdf') >= 0 || /\.pdf$/i.test(f.name)) return '<div class="mp-pdf" data-pdf="1"><i class="mp-pdfld">PDF 加载中…</i></div>';
     if (/\.mht$/i.test(f.name)) return '<iframe class="mppe" sandbox="allow-scripts allow-popups" src="' + f.url + '"></iframe>';
     if (m.indexOf('text') === 0) return '<pre class="mppt">（点「放大」看全文）</pre>';
     /* Word：浏览器排不了 docx，给一张说明卡，指到标题栏的 ↗ 系统打开 */
@@ -5480,23 +5499,81 @@ function bindShell() {
   /* 图只有 1×1（占位图）或压根加载不出来时，别给用户留一块莫名其妙的白板 */
   /* PDF 走站内 pdf.js 阅读器（手机浏览器不认内嵌 PDF，iframe 直接白板） */
   var PDF_URLS = [];
+  /* 站内 pdf.js 阅读器塞进 iframe 只画出上半页，剩下的地方是白的。
+     这里直接用 pdf.js 把每一页画成 canvas，按顺序叠起来滚着看，页数多也不会缺。 */
   function pvPdf(box, f) {
     if (!box) return;
-    var fr = box.querySelector('iframe.mppe[data-pdf]'); if (!fr) return;
-    var view = function (u) {
-      var v = 'pdfjs/web/viewer.html?file=' + encodeURIComponent(u) + '#disableworker=true';
-      try { fr.src = v; } catch (e) {}
-    };
+    var wrap = box.querySelector('.mp-pdf[data-pdf]'); if (!wrap) return;
+    if (wrap.dataset.on === '1') return;
+    wrap.dataset.on = '1';
     var u = String(f.url || '');
-    if (!u) { fr.outerHTML = '<div class="mpvph"><b>文件本体还没读出来</b><br>稍等一会儿再点开，或者重新上传一次</div>'; return; }
+    if (!u) {
+      wrap.innerHTML = '<div class="mpvph"><b>文件本体还没读出来</b><br>稍等一会儿再点开，或者重新上传一次</div>';
+      return;
+    }
+    var paint = function (url) {
+      import('./pdfjs/build/pdf.mjs').then(function (lib) {
+        try { lib.GlobalWorkerOptions.workerSrc = './pdfjs/build/pdf.worker.mjs'; } catch (e0) {}
+        return lib.getDocument({ url: url, isEvalSupported: false }).promise;
+      }).then(function (doc) {
+        /* 预览窗是刚插进 DOM 的，clientWidth 可能还是 0：按面板宽度兜一个下限，
+           再让页面自己撑满，别画成一张小邮票 */
+        var hostW = Math.max(box.clientWidth || 0, wrap.clientWidth || 0, 420);
+        var vw = Math.max(360, hostW - 26);
+        wrap.innerHTML = '';
+        var i = 1;
+        var shown = 0;
+        var NEXT_BATCH = 12;   /* 页太多就分批画，别一次卡死 */
+        var more = null;
+        var next = function () {
+          if (i > doc.numPages) {
+            if (more) more.remove();
+            return Promise.resolve();
+          }
+          if (shown >= NEXT_BATCH) {
+            if (!more) {
+              more = document.createElement('button');
+              more.type = 'button';
+              more.className = 'mp-pdfmore';
+              more.textContent = '继续往下看（已画 ' + shown + ' / ' + doc.numPages + ' 页）';
+              wrap.appendChild(more);
+              more.onclick = function () { shown = 0; more.remove(); more = null; next(); };
+            }
+            return Promise.resolve();
+          }
+          shown++;
+          var pn = i++;
+          return doc.getPage(pn).then(function (page) {
+            var base = page.getViewport({ scale: 1 });
+            /* 别把 A4 画成 1200×1700 的巨幅 canvas（一页 8MB，十页就上百兆） */
+            var sc = Math.min(2.2, Math.max(0.35, vw / base.width), 1000 / base.width);
+            var vp = page.getViewport({ scale: sc });
+            var cv = document.createElement('canvas');
+            cv.width = Math.max(1, Math.round(vp.width));
+            cv.height = Math.max(1, Math.round(vp.height));
+            cv.className = 'mp-pdfp';
+            wrap.appendChild(cv);
+            return page.render({ canvasContext: cv.getContext('2d'), viewport: vp, canvas: cv }).promise;
+          }).then(next, function () { return next(); });
+        };
+        return next().then(function () {
+          var t = document.createElement('div');
+          t.className = 'mp-pdfn';
+          t.textContent = '共 ' + doc.numPages + ' 页' + (doc.numPages > 1 ? ' · 往下滚看下一页' : '');
+          wrap.appendChild(t);
+        });
+      }).catch(function () {
+        wrap.innerHTML = '<div class="mpvph"><b>PDF 读不出来</b><br>点标题栏的「新标签」用浏览器打开</div>';
+      });
+    };
+    var later = function (fn) { setTimeout(fn, 70); };
     if (/^data:/.test(u)) {
-      /* 还没迁到 IDB 的老数据：先转成 blob，再交给阅读器 */
       try {
         fetch(u).then(function (r) { return r.blob(); }).then(function (b) {
-          var bu = blobUrl(b); PDF_URLS.push(bu); view(bu);
-        }).catch(function () { try { fr.src = u; } catch (e) {} });
-      } catch (e) { try { fr.src = u; } catch (e2) {} }
-    } else { view(u); }
+          var bu = blobUrl(b); PDF_URLS.push(bu); later(function () { paint(bu); });
+        }).catch(function () { later(function () { paint(u); }); });
+      } catch (e) { later(function () { paint(u); }); }
+    } else later(function () { paint(u); });
   }
   function pvGuard(box, f) {
     if (!box) return;
