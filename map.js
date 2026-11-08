@@ -3261,10 +3261,14 @@ function bindShell() {
     try { paintGrpBtn(); } catch (e) {}
   }
   function gSwitch(id) {
-    if (id === G.active) return;
-    saveCur(); G.active = id; gSave();
-    var g = gCur(); if (g) loadGroup(g);
+    var same = (id === G.active);
+    if (!same) { saveCur(); G.active = id; gSave(); }
+    var g = gCur();
+    try { if (g) loadGroup(g); } catch (e0) {}
     renderGrp();
+    /* 切换必须给个回声：之前什么都不提示，看起来就像「点了没反应」 */
+    if (g) toast('已切到「' + String(g.name || '').slice(0, 14) + '」· ' + DATA.nodes.length + ' 个节点');
+    else toast('这一组读不出来（题库可能被删了）');
   }
   function gAddFrom(name, nodes, edges, bank, qid, layout) {
     saveCur();
@@ -3496,8 +3500,17 @@ function bindShell() {
           '<span class="muted2">' + gCount(g) + '</span></div>' +
         '<button class="gmore" data-more="' + g.id + '" title="更多">⋯</button></div>';
     }).join('');
-    $('#mpGList').innerHTML = rows || (q ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组</div>'
+    $('#mpGList').innerHTML = rows || (q || kind !== 'all' ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组<button type="button" class="mp-kbtn" id="mpGClear" style="margin-left:8px">清空筛选</button></div>'
       : '<div class="mp-agrow" style="color:#8a86a0">还没有组，点「＋」用当前题建一组</div>');
+    (function () {
+      var b = document.getElementById('mpGClear'); if (!b) return;
+      b.onclick = function (ev) {
+        if (ev) ev.stopPropagation();
+        var qq = $('#mpGQ'); if (qq) qq.value = '';
+        var kk = $('#mpGKind'); if (kk) { kk.value = 'all'; try { writeLS('qbank.mapgkind.v1', 'all'); } catch (e1) {} }
+        renderGrp();
+      };
+    })();
     var __sig = hitList.map(function (g) { return g.id; }).join('|') + '#' + (GSELMODE ? 1 : 0) + '#' + hitList.length;
     var __anim = (window.__grpSig !== __sig);
     window.__grpSig = __sig;
@@ -4419,11 +4432,31 @@ function bindShell() {
   }
 
   function kpAiRun() {
-    var fb = kpFilesBox(); if (!fb) return;
-    /* 弹窗开着的时候考点面板可能已经被关掉（kpClose 会把 KP.node 置空），
-       所以开弹窗时就把考点名记下来，分析照样能跑 */
+    /* 以前这里第一步就 `if (!fb) return;`——没有当前组时直接静默返回，
+       表现就是「按钮点了没反应」。现在每一步都给人看得见的结果。 */
+    var go = document.getElementById('mpAiGo');
+    var note = document.getElementById('mpAiNote');
+    function say(t) { if (note) note.textContent = t; toast(t); }
+    try { kpFilesBox(); } catch (e0) {}
+    var g0 = null; try { g0 = gCur(); } catch (e1) {}
+    if (!g0) { say('先打开一张导图再分析'); return; }
     var name = KP.node ? kpTagName(KP.node) : (AI_TAG || '');
-    if (!name) { toast('先点一个考点'); return; }
+    if (!name) {
+      /* 兜底：用当前选中节点上的标签，或中心题的第一个小考点 */
+      try {
+        var sn = DATA.nodes.filter(function (x) { return x.id === sel; })[0];
+        var cq = (DATA.nodes.filter(function (x) { return x.type === 'center'; })[0] || {}).ref;
+        var pool = (sn && sn.ref ? tagList(sn.ref, S.bankId) : (cq ? tagList(cq, S.bankId) : [])) || [];
+        for (var i = 0; i < pool.length; i++) { if (!isBigTag(pool[i])) { name = pool[i]; break; } }
+      } catch (e2) {}
+    }
+    if (!name) { say('先点一个考点（标题栏那一排标签）再来分析'); return; }
+    if (go) { go.disabled = true; go.textContent = '分析中…'; }
+    try { kpAiDo(name); } catch (e3) { say('分析没跑完：' + (e3 && e3.message ? e3.message : e3)); }
+    finally { if (go) { go.disabled = false; go.textContent = '开始分析'; } }
+  }
+
+  function kpAiDo(name) {
     var rows = (KP.rows && KP.rows.length ? KP.rows : []).slice(0, 8);
     var pick = [].slice.call(document.querySelectorAll('#mpAiFiles input:checked')).map(function (x) { return fById(x.value); }).filter(Boolean);
     var ksel = aiKbSel();
@@ -4456,7 +4489,7 @@ function bindShell() {
     try { saveCur(); } catch (e) {}
     rteSet(txt);
     var pv = document.getElementById('mpKpPrev2'); if (pv) pv.innerHTML = md2h(txt);
-    document.getElementById('mpAi').classList.remove('show');
+    var aiEl = document.getElementById('mpAi'); if (aiEl) aiEl.classList.remove('show');
     var nd = 0;
     try { nd = aiDrafts(name, rows); } catch (e) {}
     toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')

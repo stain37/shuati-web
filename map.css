@@ -1856,3 +1856,10 @@ body.dark #mpGrp .gmain .gpath{ background: rgba(46,196,182,.22); color: #6fe3d6
 body.dark #mpQAdd .qac{ background:#181d2c; color:#e7e5f2; border-color:#2a3148; }
 body.dark #mpQAdd .qar{ border-color:#252b40; }
 body.dark #mpQAdd .qaq{ background:#10151f; border-color:#2a3148; color:#e7e5f2; }
+
+/* ===== web532：AI 分析弹窗——层级抬到最上、窄屏也能看到按钮 ===== */
+#mpAi{ z-index:30130 !important; padding:10px; }
+#mpAi .mp-ai{ max-height:88vh; }
+#mpAi .mp-aic{ overflow:auto; -webkit-overflow-scrolling:touch; }
+#mpAi .mp-aif2{ position:sticky; bottom:0; padding-top:8px; padding-bottom:2px; background:inherit; }
+#mpAi .mp-kbtn{ min-height:32px; }
