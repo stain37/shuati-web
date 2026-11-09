@@ -19,8 +19,8 @@
   --ok:#0f9d63; --okbg:#eafaf1; --ok-line:#b6e9cd;
   --bad:#df4040; --badbg:#fdeeee; --bad-line:#f7c6c6;
   --warn:#b45309;
-  /* 圆角：卡片 22 / 按钮 12 / 胶囊 999 */
-  --radius:22px; --r-card:22px; --r-s:10px; --r-m:12px; --r-l:18px; --r-pill:999px;
+  /* 圆角：卡片 26 / 按钮 16 / 胶囊 999（web667 整体调圆一档，用户要求「都圆润点」） */
+  --radius:26px; --r-card:26px; --r-s:12px; --r-m:16px; --r-l:22px; --r-pill:999px;
   --fs:15px;
   /* 阴影：一卡一层，卡片只用最轻那层 */
   --sh-1:0 1px 2px rgba(13,23,42,.04),0 2px 8px rgba(13,23,42,.05);
@@ -3848,3 +3848,43 @@ html[data-style][data-style] body.quiz .bnav .bnav-ind { border-radius:18px !imp
 html[data-style][data-style] body.quiz.hand-mode .bnav,
 html[data-style][data-style] body.quiz.hand-mode .nav { border-radius:26px 26px 0 0 !important; }
 body.quiz.hand-mode .nav, body.quiz.hand-mode .bnav { border-radius:26px 26px 0 0; }
+/* ================= web667：全局返回键 + 导航整体更圆 ================= */
+/* ① 返回键：非首页一直在，左上角圆形浮键（原先贴在顶栏里、被居中列推到 250px 处，又小又不显眼） */
+html[data-style][data-style] #backFix{
+  position:fixed!important;left:12px!important;top:10px!important;
+  width:44px!important;height:44px!important;min-height:0!important;padding:0!important;
+  border-radius:50%!important;display:flex;align-items:center;justify-content:center;
+  font-size:20px!important;line-height:1!important;font-weight:600;
+  z-index:30055!important;box-shadow:0 8px 22px rgba(15,23,42,.20)!important;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+html[data-style][data-style] #backFix:active{transform:scale(.93)}
+/* 顶栏内容给返回键让位（只在非首页，首页没有这个键） */
+body.has-back .top .row{padding-left:64px}
+@media (max-width:420px){
+  html[data-style][data-style] #backFix{left:9px!important;top:8px!important;width:40px!important;height:40px!important;font-size:18px!important}
+  body.has-back .top .row{padding-left:56px}
+}
+/* ② 导航条圆角再抬一档：底栏、答题条、里面的按钮与滑动胶囊 */
+html[data-style][data-style] .bnav{border-radius:30px!important}
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{border-radius:30px 30px 0 0!important}
+html[data-style][data-style] body.quiz .bnav,
+html[data-style][data-style] body.quiz .nav{border-radius:30px 30px 0 0!important}
+html[data-style][data-style] .bnav .btn,
+html[data-style][data-style] .nav .btn,
+html[data-style][data-style] .nav .qbtn,
+html[data-style][data-style] .top .btn{border-radius:20px!important}
+html[data-style][data-style] .bnav .bnav-ind{border-radius:24px!important}
+html[data-style][data-style] .top .row .btn{border-radius:16px!important}
+/* ③ 其它常用块跟着圆一档（卡片 / 弹层 / 输入框 / 解析块） */
+html[data-style][data-style] .card,
+html[data-style][data-style] .qcard,
+html[data-style][data-style] .sk-card{border-radius:26px!important}
+html[data-style][data-style] .sheet{border-radius:28px 28px 0 0!important}
+html[data-style][data-style] .fixbox,
+html[data-style][data-style] .ai-bubble,
+html[data-style][data-style] .toast{border-radius:18px!important}
+html[data-style][data-style] input,
+html[data-style][data-style] textarea,
+html[data-style][data-style] select{border-radius:14px}
+html[data-style][data-style] .exp.rich-edit{border-radius:18px!important}

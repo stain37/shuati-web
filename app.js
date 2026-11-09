@@ -3510,11 +3510,14 @@ function renderInner() {
   $('btnGrid').style.display = 'none';
   $('btnQuizSet').style.display = 'none';
   $('btnHome').style.display = r.name === 'home' ? 'none' : '';
-  /* 固定返回键：非首页都显示；挪到 body 下才不会被顶栏的 backdrop-filter 限制成随顶栏滚走 */
+  /* 固定返回键：只要不是首页就一直显示（设置页、搜索结果、收藏、错题、答题页都算）。
+     以前只看 route().name，设置页共用 home 路由就被漏掉了 —— 改成看 hash 更准。 */
+  var _hashNow = String(location.hash || '').replace(/^#\/?/, '').split('?')[0];
+  var _isHome = (_hashNow === '' || _hashNow === 'home');
   var bfEl = $('backFix');
   if (bfEl && bfEl.parentNode !== document.body) document.body.appendChild(bfEl);
-  if (bfEl) bfEl.style.display = r.name === 'home' ? 'none' : '';
-  document.body.classList.toggle('has-back', r.name !== 'home');
+  if (bfEl) bfEl.style.display = _isHome ? 'none' : '';
+  document.body.classList.toggle('has-back', !_isHome);
   /* 底部导航的六个去处：不分页面，一直显示 */
   $('btnGoWrong').style.display = '';
   $('btnGoFav').style.display = '';
@@ -7183,7 +7186,12 @@ on('backFix', () => {
       return;
     }
   } catch (e0) {}
-  try { if (history.length > 1) history.back(); else go('#/'); } catch (e) { go('#/'); }
+  var _h0 = location.hash || '';
+  try { if (history.length > 1) history.back(); else { go('#/'); return; } } catch (e) { go('#/'); return; }
+  /* 兜底：200ms 后 hash 一点没变（比如从新标签页直接打开的子页），就回首页 */
+  setTimeout(function () {
+    if ((location.hash || '') === _h0) { try { go('#/'); } catch (e) {} }
+  }, 220);
 });
 on('bnHome', () => go('#/'));
 on('appTitle', () => go('#/'));
