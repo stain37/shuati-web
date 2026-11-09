@@ -616,6 +616,8 @@
     qsModal({
       title: '方案：' + E(SCM.curName()),
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
+        + '<button type="button" class="qs-tg" data-t="tagnew">＋ 按小标签自动分（读现有考点标签）</button>'
+        + '<button type="button" class="qs-tg" data-t="sync">↻ 同步新标签到当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
         + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
         + (isDef ? '' : '<button type="button" class="qs-tg" data-t="del">删除当前方案（题库不受影响）</button>')
@@ -631,6 +633,20 @@
           SCM.rename(SCM.current(), v); paintSchemes();
           try { toast('已改名', 1200, 'ok'); } catch (e) {}
         });
+      } else if (r.act === 'tagnew') {
+        askText({ title: '按小标签建方案', label: '方案名称（按题目现在的小考点标签自动建文件夹；没有小标签的题不分类）', value: '考点分类 ' + ((SCM.list() || []).length),
+          test: function (x) { return x && String(x).trim() ? '' : '名字不能为空'; } }).then(function (v) {
+          if (v == null) return;
+          var nid = SCM.makeTagScheme(v);
+          if (!nid) return;
+          schemeReload();
+          var tags = (SCM.smallTags ? SCM.smallTags() : []).length;
+          try { toast('已建「' + SCM.curName() + '」：' + tags + ' 个小标签各一个文件夹；没标签的题不分类', 3200, 'ok'); } catch (e) {}
+        });
+      } else if (r.act === 'sync') {
+        var a0 = SCM.syncTagTree ? SCM.syncTagTree() : 0;
+        schemeReload();
+        try { toast(a0 ? ('补了 ' + a0 + ' 个新标签文件夹') : '没有新标签，文件夹已是最新', 2000, 'ok'); } catch (e) {}
       } else if (r.act === 'exp') {
         schemeExport();
       } else if (r.act === 'imp') {

@@ -94,7 +94,17 @@
     while (CAT && CAT.some(function (c) { return c.id === id; })) { id = (prefix || 'cat') + '-' + s + '-' + (++n); }
     return id;
   }
-  function bankList() { return (typeof baseBanks === 'function') ? baseBanks() : []; }
+  function bankList() {
+    var base = (typeof baseBanks === 'function') ? baseBanks() : [];
+    /* 「按小标签分」的方案：每个标签是一个虚拟题集，题目引用原题库（不复制） */
+    try {
+      if (window.SCM && SCM.tagBanks) {
+        var tb = SCM.tagBanks();
+        if (tb && tb.length) base = base.concat(tb);
+      }
+    } catch (e) {}
+    return base;
+  }
   function bankOf(id) { return (typeof bankById === 'function') ? bankById(id) : null; }
   function catsAll() { ensure(); return CAT; }
   function notifyFile() { try { if (window.BF && BF.autoSync) BF.autoSync(); } catch (e) {} }

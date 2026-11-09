@@ -2141,7 +2141,22 @@ window.__PIP_INJECT = function (b) {
     return !!bankById(b.id);
   } catch (e) { return false; }
 };
-function bankById(id) { return allBanks().find(b => b.id === id); }
+const TG_BANK_CACHE = {};
+function bankById(id) {
+  if (id && String(id).indexOf('tg:') === 0 && window.SCM && SCM.tagBankById) {
+    const ck = String(SCM.current ? SCM.current() : '') + '|' + String(id);
+    if (TG_BANK_CACHE[ck]) return TG_BANK_CACHE[ck];
+    let vb = null;
+    try { vb = SCM.tagBankById(id); } catch (e) { vb = null; }
+    if (vb) { TG_BANK_CACHE[ck] = vb; return vb; }
+  }
+  return allBanks().find(b => b.id === id);
+}
+function dropTagBankCache() { Object.keys(TG_BANK_CACHE).forEach(k => { delete TG_BANK_CACHE[k]; }); }
+/* 题目标签一改，「按标签分」的文件夹内容就过期了：标记一下，下次进列表重算 */
+try {
+  window.addEventListener('qbank:tags-changed', function () { try { dropTagBankCache(); } catch (e) {} });
+} catch (e) {}
 
 /* 主页题库排序 UI 在 cat.js（真正渲染首页的是 cat.js 的 catRenderHook）。
    这里只保留建库时间 createdAt，供「最近添加」排序用。 */
@@ -2221,7 +2236,7 @@ function qTypeOf(q) {
 const TYPE_NAMES = { A1: 'A1 型（单选）', A2: 'A2 型（病例）', B1: 'B1 型（配伍）', X: 'X 型（多选）' };
 function qTypeName(t) { return TYPE_NAMES[t] || t || ''; }
 const key = (bankId, qid) => bankId + '#' + qid;
-const kOf = (bank, q) => key(bank.id, q.id);
+const kOf = (bank, q) => key((q && q._bank) || bank.id, q.id);   /* 按标签分出来的虚拟题集：记在原题库那道题上 */
 /* 西综真题分值：165 道，满分 300。按**题号（题目在卷子里的顺序）**算，不是按题型：
    1–40 每题 1.5；41–115 每题 2；116–135 每题 1.5；136–165 每题 2。
    分值对照：A 型 1–40（1.5）生理 1–16、生化 17–28、病理 29–40；
@@ -3985,6 +4000,11 @@ function delTargetOf(bank, q) {
     if (!f || !f.bank || f.bank.source !== 'local') return null;
     return { bankId: f.bank.id, qid: f.q.id, title: f.bank.title };
   }
+  if (bank.virtualTag) {                         /* 按标签分出来的虚拟题集：删的是原题库那道 */
+    const real = bankById(q && q._bank);
+    if (!real || real.source !== 'local') return { bankId: q && q._bank, qid: q && q.id, title: (q && q._bname) || '', tagOnly: bank.virtualTag };
+    return { bankId: real.id, qid: q.id, title: real.title, tagOnly: bank.virtualTag };
+  }
   if (bank.source !== 'local') return null;      /* 内置题库：只读 */
   return { bankId: bank.id, qid: q.id, title: bank.title };
 }
@@ -4500,7 +4520,8 @@ function renderQuiz(bankId) {
             <button class="btn" id="doAI" title="让 AI 写解析（可以带上本地知识库的资料）">AI 解析</button>
             <button class="btn" id="doVariant" title="让 AI 照这道题出几道同考点的新题（变式题），还能跟库里相似的老题并排对比">AI 变式题</button>
             <button class="btn" id="doWrongToggle" title="手动把这道题放进 / 移出错题本（不影响作答记录里的对错次数）">${(ANS[fk] && ANS[fk].wrong) ? '↩ 移出错题本' : '＋ 加入错题本'}</button>
-            ${delT ? '<button class="btn danger" id="doDelQ" title="把这道题从题库里永久删掉（它的作答记录 / 收藏 / 解析会一起清）">🗑 删除本题</button>' : ''}
+            ${bank.virtualTag ? '<button class="btn" id="doTagOff" title="只把「' + esc(bank.virtualTag) + '」这个标签从这道题上摘掉：题目还在原题库里，别的分类不受影响">🏷 只在「' + esc(bank.virtualTag) + '」里移除</button>' : ''}
+            ${delT ? '<button class="btn danger" id="doDelQ" title="' + (bank.virtualTag ? '从原题库里永久删掉这道题（所有分类里都会消失）' : '把这道题从题库里永久删掉（它的作答记录 / 收藏 / 解析会一起清）') + '">' + (bank.virtualTag ? '🗑 删除这道题' : '🗑 删除本题') + '</button>' : ''}
           </div>
           <button class="btn" data-qsheet="0">取消</button>
         </div>
@@ -4624,6 +4645,25 @@ function renderQuiz(bankId) {
       QZ.cur = nxt ? nxt.id : null;
       qSheetToggle(false);
       toast('已删除这道题' + (bank.paper ? '（套卷里也一起去掉了）' : ''), 1600, 'ok');
+      render();
+    });
+  });
+  /* 虚拟题集（按标签分）里的「只移除这个标签」：题目不动，只是不再出现在这个文件夹 */
+  if (bank.virtualTag) on('doTagOff', () => {
+    const tag = bank.virtualTag;
+    const kk = key((q && q._bank) || bank.id, q && q.id);
+    const ask2 = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : (o => Promise.resolve(confirm(o.title)));
+    ask2({
+      title: '只在「' + esc(tag) + '」里移除？',
+      html: '把「' + esc(tag) + '」这个标签从这道题上摘掉。<br>题目本身、作答记录、别的文件夹都不受影响。',
+      okText: '移除这个标签'
+    }).then(ok => {
+      if (!ok) return;
+      try { if (window.TAGS && TAGS.del) TAGS.del(kk, tag); } catch (e) {}
+      try { dropTagBankCache(); } catch (e) {}
+      try { if (window.SCM && SCM.syncTagTree) SCM.syncTagTree(); } catch (e) {}
+      try { if (typeof CAT !== 'undefined' && CAT.render) CAT.render(); } catch (e) {}
+      toast('已从「' + tag + '」里移除（题目还在）', 1600, 'ok');
       render();
     });
   });

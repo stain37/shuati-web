@@ -314,8 +314,12 @@
     return out;
   }
   function save() {
-    if (typeof mergeWrite === 'function') return mergeWrite(T_KEY, TAGD, 'tag');
-    return writeLS(T_KEY, TAGD);
+    var r;
+    if (typeof mergeWrite === 'function') r = mergeWrite(T_KEY, TAGD, 'tag');
+    else r = writeLS(T_KEY, TAGD);
+    /* 标签一变，「按小标签分」方案的文件夹内容就过期了（app.js 监听它清虚拟题集缓存） */
+    try { window.dispatchEvent(new CustomEvent('qbank:tags-changed')); } catch (e) {}
+    return r;
   }
   function saveVocab() {
     TAGV = withBasics(TAGV);

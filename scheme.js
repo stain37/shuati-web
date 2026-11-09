@@ -204,7 +204,9 @@
     snapshot(CUR);                       /* 先把当前视图记进当前方案 */
     CUR = id;
     save();
+    if (tagMode(CUR)) syncTagTree(CUR);  /* 新打的小标签：方案里自动补文件夹 */
     apply();
+    try { if (typeof window.dropTagBankCache === 'function') window.dropTagBankCache(); } catch (e) {}
     return true;
   }
 
@@ -312,6 +314,147 @@
   function raw() { ensure(); return { schemes: DB, map: MAP, cur: CUR }; }
   function adopt() { ensure(); snapshot(CUR); apply(); save(); }
 
+  /* ============================================================
+     按小知识点标签自动建方案（不靠 AI）
+     ------------------------------------------------------------
+     · 方案带 mode:'tag'，它的文件夹＝题目身上现有的**小标签**（不含七大基本标签）
+     · 每个文件夹里放一个「虚拟题集」，id = 'tg:' + 标签；题目引用原题库的原题，
+       作答 / 收藏 / 复习都记在原题上（app.js 的 kOf 用 q._bank 还原键）
+     · 没有小标签的题不进任何文件夹（用户要求：不分类）
+     · 一道题多个标签 → 出现在多个文件夹里（引用，不是复制）
+     · 标签是现读现算的：以后打了新标签，切回方案时会自动补文件夹
+     ============================================================ */
+  function tagMode(sid) {
+    ensure();
+    var id = sid || CUR;
+    var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
+    return !!(s && s.mode === 'tag');
+  }
+  function tgBankId(tag) { return 'tg:' + encodeURIComponent(String(tag)); }
+  function tgCatId(tag) { return 'tgcat:' + encodeURIComponent(String(tag)); }
+  function basicSet() {
+    var out = {};
+    try {
+      var b = (window.TAGS && TAGS.basic) ? TAGS.basic() : [];
+      (b || []).forEach(function (t) { out[String(t)] = 1; });
+    } catch (e) {}
+    return out;
+  }
+  function tagsOfQ(bank, q) {
+    var k = bank.id + '#' + q.id;
+    var ts = [];
+    try { if (window.TAGS && TAGS.of) ts = TAGS.of(k) || []; } catch (e) { ts = []; }
+    if (!ts.length && q && q.tags && q.tags.length) ts = q.tags;
+    return ts.map(function (t) { return String(t || '').trim(); }).filter(Boolean);
+  }
+  function smallTags() {
+    ensure();
+    var basic = basicSet(), seen = {}, out = [];
+    banks().forEach(function (b) {
+      if (!b || !b.id || !Array.isArray(b.questions)) return;
+      b.questions.forEach(function (q) {
+        if (!q) return;
+        tagsOfQ(b, q).forEach(function (t) {
+          if (basic[t] || seen[t]) return;
+          seen[t] = 1; out.push(t);
+        });
+      });
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'zh'); });
+    return out;
+  }
+  function tagBankOf(tag) {
+    ensure();
+    var qs = [];
+    banks().forEach(function (b) {
+      if (!b || !b.id || !Array.isArray(b.questions)) return;
+      b.questions.forEach(function (q) {
+        if (!q) return;
+        var ts = tagsOfQ(b, q);
+        if (ts.indexOf(tag) < 0) return;
+        var o = {};
+        Object.keys(q).forEach(function (kk) { o[kk] = q[kk]; });
+        o._bank = b.id; o._bname = String(b.title || b.name || '');
+        qs.push(o);
+      });
+    });
+    return {
+      id: tgBankId(tag), title: tag, name: tag, virtualTag: tag,
+      questions: qs, source: 'tag', createdAt: 0, cat: null
+    };
+  }
+  function tagBanks() {
+    ensure();
+    if (!tagMode()) return [];
+    var m = MAP[CUR] || {}, out = [], seen = {};
+    Object.keys(m).forEach(function (bid) {
+      if (String(bid).indexOf('tg:') !== 0 || seen[bid]) return;
+      seen[bid] = 1;
+      var tag = '';
+      try { tag = decodeURIComponent(String(bid).slice(3)); } catch (e) { tag = String(bid).slice(3); }
+      if (!tag) return;
+      var b = tagBankOf(tag);
+      b.cat = m[bid] || null;
+      out.push(b);
+    });
+    out.sort(function (a, b) { return String(a.title).localeCompare(String(b.title), 'zh'); });
+    return out;
+  }
+  function tagBankById(id) {
+    ensure();
+    if (String(id || '').indexOf('tg:') !== 0) return null;
+    if (!tagMode()) return null;
+    var tag = '';
+    try { tag = decodeURIComponent(String(id).slice(3)); } catch (e) { tag = String(id).slice(3); }
+    if (!tag) return null;
+    var b = tagBankOf(tag);
+    b.cat = (MAP[CUR] || {})[id] || null;
+    return b;
+  }
+  /* 把现在的小标签同步成这个方案的文件夹（幂等；新标签会补进来） */
+  function syncTagTree(sid) {
+    ensure();
+    var id = sid || CUR;
+    if (!tagMode(id)) return 0;
+    if (!DB.data[id]) DB.data[id] = { cats: [] };
+    var cats = DB.data[id].cats;
+    var have = {};
+    cats.forEach(function (c) { if (c && c.id) have[c.id] = 1; });
+    if (!MAP[id] || typeof MAP[id] !== 'object') MAP[id] = {};
+    var added = 0;
+    smallTags().forEach(function (t, i) {
+      var cid = tgCatId(t);
+      if (!have[cid]) {
+        cats.push({ id: cid, title: t, parent: null, order: i + 1 });
+        have[cid] = 1; added++;
+      }
+      MAP[id][tgBankId(t)] = cid;
+    });
+    if (added) save();
+    return added;
+  }
+  /* 新建「按小标签分」方案 */
+  function makeTagScheme(name) {
+    ensure();
+    var nm = trim(name) || ('知识点分类 ' + (DB.list.length + 1));
+    var id = uid();
+    DB.list.push({ id: id, name: nm, mode: 'tag' });
+    DB.data[id] = { cats: [] };
+    MAP[id] = {};
+    CUR = id;                       /* 先切过去，syncTagTree 按当前方案写 */
+    save();
+    syncTagTree(id);
+    apply();
+    return id;
+  }
+
+  function modeOf(sid) {
+    ensure();
+    var id = sid || CUR;
+    var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
+    return (s && s.mode) || 'cat';
+  }
+
   window.SCM = {
     KEY_SCH: K_SCH, KEY_CUR: K_CUR, KEY_MAP: K_MAP, KEY_CATS: K_CATS, DEF: DEF,
     load: load, reload: function () { LOADED = false; load(); },
@@ -320,7 +463,10 @@
     list: list, current: current, curName: curName, has: has,
     create: create, rename: rename, remove: remove, switchTo: switchTo,
     schemesOfBank: schemesOfBank, raw: raw,
-    exportCur: exportCur, importData: importData
+    exportCur: exportCur, importData: importData,
+    tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
+    makeTagScheme: makeTagScheme, syncTagTree: syncTagTree, smallTags: smallTags,
+    tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId
   };
 
   load();
