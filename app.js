@@ -2552,6 +2552,8 @@ function openAnsEditor(host, k, q, done) {
 
 /* ---------- 运行时状态 ---------- */
 const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false, rw: null };
+/* 长按排除选项：时间戳去重（一次长按只触发一次）+ 抑制紧随其后的 click */
+let LP_LAST = 0, LP_SUPPRESS = 0;
 const SS = {
   get: k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -4489,7 +4491,7 @@ function renderQuiz(bankId) {
       if (ansOf(fk, q).includes(K)) cls += ' right';
       else if (picked.includes(K)) cls += ' wrong';
     } else if (picked.includes(K)) cls += ' sel';
-    if (!recite && !locked && (QZ.excl[q.id] || []).indexOf(K) >= 0) cls += ' excl';   /* 长按排除：变灰、不参与选择与判分 */
+    if (!recite && (QZ.excl[q.id] || []).indexOf(K) >= 0) cls += ' excl';   /* 长按排除：变灰、不参与选择与判分（答完也保留这个标记，否则看起来像没排除） */
     /* 答过 / 背题：用 div 而不是 disabled 的 button —— 按钮被禁用后浏览器不派发右键、也不能选文字 */
     const tag = (locked || recite) ? 'div' : 'button';
     const lockAttr = (locked || recite) ? ' data-lock="1" role="button" aria-disabled="true"' : '';
@@ -4629,26 +4631,40 @@ function renderQuiz(bankId) {
   document.querySelectorAll('#qSheet [data-qsheet]').forEach(el => el.onclick = () => qSheetToggle(false));
   if (recite) $('view').querySelectorAll('.opt').forEach(el => el.onclick = () => toast('背题模式直接看答案，不用作答（不熟就点「★ 收藏」）', 1800));
   else if (locked) $('view').querySelectorAll('.opt').forEach(el => { el.onclick = null; });   /* 已答：只让选文字/右键，不再改答案 */
-  else $('view').querySelectorAll('.opt').forEach(el => {
-    el.onclick = () => {
-      if (el.dataset.lp === '1') { el.dataset.lp = ''; return; }   /* 长按刚排除/恢复，别再顺手选中 */
-      onPick(bank, q, el.dataset.k);
-    };
-    let timer = null, px0 = 0, py0 = 0;
-    const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    const fire = () => { stop(); el.dataset.lp = '1'; toggleExcl(q, el.dataset.k); };
-    el.addEventListener('pointerdown', ev => {
-      stop(); px0 = ev.clientX; py0 = ev.clientY;
-      timer = setTimeout(() => { timer = null; fire(); }, 480);
+  /* 长按排除 / 恢复：不管答没答都绑（以前只在未作答时绑，已答后就「长按没反应」= 锁死）。
+     这里用时间戳去重，不再用 dataset 标记 —— 重画后 dataset 丢失，导致长按一次就没法恢复。 */
+  (function bindLongPressExcl() {
+    if (recite) return;
+    const lockedNow = !!locked;
+    $('view').querySelectorAll('.opt').forEach(el => {
+      if (!lockedNow) {
+        el.onclick = () => {
+          if (Date.now() - LP_SUPPRESS < 900) return;   /* 刚长按完，别顺手选中 */
+          onPick(bank, q, el.dataset.k);
+        };
+      }
+      let timer = null, px0 = 0, py0 = 0;
+      const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
+      const fire = () => {
+        stop();
+        if (Date.now() - LP_LAST < 500) return;        /* 一次长按只算一下（pointerup / contextmenu 会连着来） */
+        LP_LAST = Date.now(); LP_SUPPRESS = Date.now();
+        if (navigator.vibrate) { try { navigator.vibrate(12); } catch (eV) {} }
+        toggleExcl(q, el.dataset.k);
+      };
+      el.addEventListener('pointerdown', ev => {
+        stop(); px0 = ev.clientX; py0 = ev.clientY;
+        timer = setTimeout(() => { timer = null; fire(); }, 480);
+      });
+      /* 手指轻微晃动不算滑走：位移超过 12px 才取消长按 */
+      el.addEventListener('pointermove', ev => {
+        if (!timer) return;
+        if (Math.abs(ev.clientX - px0) > 12 || Math.abs(ev.clientY - py0) > 12) stop();
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, stop));
+      el.addEventListener('contextmenu', ev => { ev.preventDefault(); if (Date.now() - LP_LAST > 900) fire(); });
     });
-    /* 手指轻微晃动不算滑走：位移超过 12px 才取消长按 */
-    el.addEventListener('pointermove', ev => {
-      if (!timer) return;
-      if (Math.abs(ev.clientX - px0) > 12 || Math.abs(ev.clientY - py0) > 12) stop();
-    });
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, stop));
-    el.addEventListener('contextmenu', ev => { ev.preventDefault(); fire(); });
-  });
+  })();
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
