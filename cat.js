@@ -100,6 +100,8 @@
   var _BL = { key: '', list: null };
   function bankList() {
     var base = (typeof baseBanks === 'function') ? baseBanks() : [];
+    /* 「按小标签分」的方案里不列题库：里面装的是题目，题库本身不参与分类 */
+    try { if (window.SCM && SCM.tagMode && SCM.tagMode()) base = []; } catch (eTag) {}
     var tags = [];
     try { if (window.SCM && SCM.tagBanks) tags = SCM.tagBanks() || []; } catch (e) { tags = []; }
     var key = '';
@@ -254,7 +256,14 @@
   }
   /* bank 是否在目录 id 下（id 为 null = 根目录：只算直接放在根目录的） */
   function inDir(b, id) { return (b.cat || null) === (id || null); }
-  function dirBanks(id) { return bankList().filter(function (b) { return inDir(b, id); }); }
+  function isTagDir(id) { return String(id || '').indexOf('tgcat:') === 0; }
+  function dirBanks(id) {
+    /* 「按小标签分」的方案：文件夹里直接是题目（web653），不再是一个个题集 */
+    if (String(id || '').indexOf('tgcat:') === 0 && window.SCM && SCM.tagQList) {
+      try { return SCM.tagQList(id) || []; } catch (e) { return []; }
+    }
+    return bankList().filter(function (b) { return inDir(b, id); });
+  }
 
   /* 搜索：词里含分隔符就按「目录/子目录/题库名」逐段匹配 */
   function matchSegs(str, segs) {
@@ -320,6 +329,7 @@
       var s = bankStat(b);
       acc.banks++; acc.q += s.n; acc.done += s.done; acc.ok += s.ok; acc.wr += s.wr;
     });
+    if (isTagDir(cid)) acc.banks = 0;   /* 标签目录里装的是题目，不是题库 */
     return acc;
   }
 
@@ -1367,7 +1377,9 @@
     return '<div class="nb-lrow nb-ldir' + (((batOn() && batSelC(c.id)) || chatSelC(c.id)) ? ' nb-on' : '') + '" data-trow="' + E(c.id) + '" draggable="true">'
       + '<span class="nb-lic">' + ICON_FOLDER + '</span>'
       + '<div class="nb-linfo"><div class="nb-lname">' + E(TITLE(c)) + '</div>'
-      + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '') + s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done + '</div></div>'
+      + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '')
+      + (isTagDir(c.id) ? (s.q + ' 题 · 已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : ''))
+        : (s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done)) + '</div></div>'
       + '<div class="nb-lacts">'
       + '<button class="btn tiny" data-act="open" data-id="' + E(c.id) + '">打开</button>'
       + '<button class="btn tiny" data-act="menu" data-id="' + E(c.id) + '">⋯</button>'
@@ -1380,13 +1392,18 @@
     return '<div class="nb-lrow nb-lbank' + (on ? ' nb-on' : '') + '" data-bank="' + E(b.id) + '" draggable="true">'
       + '<span class="nb-lic">' + ICON_BANK + '</span>'
       + '<div class="nb-linfo"><div class="nb-lname">' + E(b.title)
-      + (b.source === 'local' ? '<span class="pill local">自建</span>' : '<span class="pill">内置</span>')
+      + (b.source === 'tagq' ? '<span class="pill tagq">题</span>'
+        : (b.source === 'local' ? '<span class="pill local">自建</span>' : '<span class="pill">内置</span>'))
       + '</div>'
       + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '')
-      + b.questions.length + ' 题　已答 ' + s.done
+      + (b.source === 'tagq'
+        ? (E(b.bankName || '题库') + (s.done ? '　·　已答' : '　·　未做')
+          + (s.wr ? '　<span class="warn">错过</span>' : ''))
+        : (b.questions.length + ' 题　已答 ' + s.done
       + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : '')
-      + '　正确率 ' + s.acc + '%'
-      + (dayOf(b) ? '　·　' + dayOf(b) : '') + '</div>'
+          + '　正确率 ' + s.acc + '%'
+          + (dayOf(b) ? '　·　' + dayOf(b) : '')))
+      + '</div>'
       + '<div class="prog"><i style="width:' + s.pct.toFixed(1) + '%"></i></div>'
       + '</div>'
       + '<div class="nb-lacts">'
@@ -1405,7 +1422,7 @@
     return '<div class="nb-icon nb-dir' + (on ? ' nb-on' : '') + '" data-cat="' + E(c.id) + '" draggable="true" title="' + E(TITLE(c)) + (batOn() ? '（单击选中 / 双击进入）' : '（双击或点名字进入）') + '">'
       + '<span class="nb-iic">' + ICON_FOLDER + '</span>'
       + '<span class="nb-iname">' + E(TITLE(c)) + '</span>'
-      + '<span class="nb-imeta">' + s.banks + ' 个库 · ' + s.q + ' 题</span>'
+      + '<span class="nb-imeta">' + (isTagDir(c.id) ? (s.q + ' 题 · 已答 ' + s.done) : (s.banks + ' 个库 · ' + s.q + ' 题')) + '</span>'
       + '<span class="nb-ibar"><i style="width:' + (s.q ? (s.done / s.q * 100).toFixed(1) : 0) + '%"></i></span>'
       + (batOn() ? '' : '<button class="nb-more" data-act="menu" data-id="' + E(c.id) + '" title="更多：打开 / 重命名 / 移动 / AI 分析 / 删除…">⋯</button>')
       + '</div>';
@@ -1794,6 +1811,17 @@
 
   function startBankWrapped(id) {
     QUERY = '';
+    /* 标签方案里的「题目行」：打开整个标签的题集，但直接停在这道题上 */
+    try {
+      if (String(id || '').indexOf('tgq:') === 0 && window.SCM && SCM.tagQById) {
+        var vq = SCM.tagQById(id);
+        if (vq && vq.virtualQ) {
+          QZ.cur = vq.virtualQ.qid;
+          if (QZ.filter && QZ.filter !== 'all') QZ.filter = 'all';
+          id = SCM.tgBankId(vq.virtualTag);
+        }
+      }
+    } catch (eTq) {}
     if (typeof startBank === 'function') startBank(id);
   }
 

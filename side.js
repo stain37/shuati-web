@@ -42,7 +42,21 @@
   })();
 
   /* ---------- 数据 ---------- */
-  function banks() { try { return (typeof baseBanks === 'function') ? baseBanks().slice() : []; } catch (e) { return []; } }
+  function tagScheme() { try { return !!(window.SCM && SCM.tagMode && SCM.tagMode()); } catch (e) { return false; } }
+  /* 「按小标签分」的方案：侧栏列的是题目（来自 CAT.dirBanks 的题目行），不是题库 */
+  function banks() {
+    if (tagScheme()) {
+      var out = [];
+      try {
+        (window.CAT && CAT.all ? CAT.all() : []).forEach(function (c) {
+          if (String(c.id).indexOf('tgcat:') !== 0) return;
+          try { (CAT.dirBanks(c.id) || []).forEach(function (r) { out.push(r); }); } catch (e) {}
+        });
+      } catch (e2) {}
+      return out;
+    }
+    try { return (typeof baseBanks === 'function') ? baseBanks().slice() : []; } catch (e) { return []; }
+  }
   function cats() { try { return (window.CAT && CAT.all) ? (CAT.all() || []) : []; } catch (e) { return []; } }
   function kids(pid) {
     try { if (window.CAT && CAT.kids) return CAT.kids(pid) || []; } catch (e) {}
@@ -613,10 +627,17 @@
   function schemeMore() {
     if (!window.SCM) return;
     var isDef = sid() === SCM.DEF;
+    var isTag = false, curBig = false;
+    try {
+      var sp = SCM.schemeOf ? SCM.schemeOf() : null;
+      isTag = !!(SCM.tagMode && SCM.tagMode());
+      curBig = !!(sp && sp.big);
+    } catch (e0) {}
     qsModal({
       title: '方案：' + E(SCM.curName()),
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="tagnew">＋ 按小标签自动分（读现有考点标签）</button>'
+        + (isTag ? '<button type="button" class="qs-tg" data-t="big">' + (curBig ? '☑ 再按大标签分一层（生理/生化/内外科…）' : '☐ 再按大标签分一层（生理/生化/内外科…）') + '</button>' : '')
         + '<button type="button" class="qs-tg" data-t="sync">↻ 同步新标签到当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
         + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
@@ -637,12 +658,17 @@
         askText({ title: '按小标签建方案', label: '方案名称（按题目现在的小考点标签自动建文件夹；没有小标签的题不分类）', value: '考点分类 ' + ((SCM.list() || []).length),
           test: function (x) { return x && String(x).trim() ? '' : '名字不能为空'; } }).then(function (v) {
           if (v == null) return;
-          var nid = SCM.makeTagScheme(v);
+          var nid = SCM.makeTagScheme(v, false);
           if (!nid) return;
           schemeReload();
           var tags = (SCM.smallTags ? SCM.smallTags() : []).length;
-          try { toast('已建「' + SCM.curName() + '」：' + tags + ' 个小标签各一个文件夹；没标签的题不分类', 3200, 'ok'); } catch (e) {}
+          try { toast('已建「' + SCM.curName() + '」：' + tags + ' 个小标签文件夹，里面直接是题目；想按大标签再分一层，点方案右边的 ⋯', 4200, 'ok'); } catch (e) {}
         });
+      } else if (r.act === 'big') {
+        var on = !curBig;
+        SCM.setBig(SCM.current(), on);
+        schemeReload();
+        try { toast(on ? '已按大标签分两层：大标签 › 小标签 › 题目' : '已改回平铺：小标签 › 题目', 2600, 'ok'); } catch (e) {}
       } else if (r.act === 'sync') {
         var a0 = SCM.syncTagTree ? SCM.syncTagTree() : 0;
         schemeReload();

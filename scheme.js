@@ -347,6 +347,22 @@
     if (!ts.length && q && q.tags && q.tags.length) ts = q.tags;
     return ts.map(function (t) { return String(t || '').trim(); }).filter(Boolean);
   }
+  /* 垃圾标签：日期（2026-11-09 / 2026年11月9日）、纯数字/标点、太长的一段话 */
+  var JUNK_TAG = /^[\d\s\-\/.:：年月日号]+$|^\d{4}\s*[-\/.年]\s*\d{1,2}/;
+  function isJunkTag(t) {
+    var s = String(t || '').trim();
+    if (!s) return true;
+    if (s.length > 14) return true;
+    if (JUNK_TAG.test(s)) return true;
+    return false;
+  }
+  /* 这道题属于哪个大标签（取标签里第一个基本标签） */
+  function bigOfQ(bank, q) {
+    var basic = basicSet();
+    var ts = tagsOfQ(bank, q);
+    for (var i = 0; i < ts.length; i++) if (basic[ts[i]]) return ts[i];
+    return '';
+  }
   /* ---- 标签倒排索引：一次扫描，全部标签共用；标签改了 / 题库变了才重建 ----
      以前 smallTags() 全库扫一遍、tagBankOf() 每个标签再全库扫一遍，
      标签一多就是 O(标签数 x 题数)，第一次进方案会直接卡死。 ---- */
@@ -365,10 +381,12 @@
       if (!b || !b.id || !Array.isArray(b.questions)) return;
       b.questions.forEach(function (qq) {
         if (!qq) return;
+        var bigq = '';
         tagsOfQ(b, qq).forEach(function (t) {
-          if (basic[t]) return;
+          if (basic[t] || isJunkTag(t)) return;
+          if (!bigq) bigq = bigOfQ(b, qq);
           var arr = byTag[t] || (byTag[t] = []);
-          arr.push({ b: b, q: qq });
+          arr.push({ b: b, q: qq, big: bigq });
         });
       });
     });
@@ -443,6 +461,72 @@
     b.cat = (MAP[CUR] || {})[id] || null;
     return b;
   }
+  /* 某个标签文件夹里的「题目行」：一道题一行（虚拟单题集，点开＝打开这个标签的题集并定位到该题） */
+  var TQ_CACHE = { key: '', map: null };
+  function tagQList(catId) {
+    ensure();
+    if (!tagMode()) return [];
+    var tag = '';
+    try { tag = decodeURIComponent(String(catId).slice(6)); } catch (e) { tag = String(catId).slice(6); }
+    if (!tag) return [];
+    var ix = tagIndex();
+    var ck = ix.sig + '|' + CUR + '|' + tag;
+    if (TQ_CACHE.key !== ck) TQ_CACHE = { key: ck, map: Object.create(null) };
+    if (TQ_CACHE.map[tag]) return TQ_CACHE.map[tag];
+    var rows = (ix.byTag[tag] || []).map(function (it) {
+      var q = it.q;
+      var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      var title = stem.slice(0, 34) || ('第 ' + q.id + ' 题');
+      var one = {};
+      Object.keys(q).forEach(function (k) { one[k] = q[k]; });
+      one._bank = it.b.id; one._bname = String(it.b.title || it.b.name || '');
+      return {
+        id: 'tgq:' + encodeURIComponent(tag) + '|' + it.b.id + '#' + q.id,
+        title: title, name: title, virtualTag: tag,
+        virtualQ: { bankId: it.b.id, qid: q.id }, source: 'tagq',
+        cat: catId, bankName: String(it.b.title || it.b.name || ''),
+        questions: [one], createdAt: 0
+      };
+    });
+    TQ_CACHE.map[tag] = rows;
+    return rows;
+  }
+  /* 由 id 还原一条题目行（深链接 / 刷新时用） */
+  function tagQById(id) {
+    ensure();
+    var s = String(id || '');
+    if (s.indexOf('tgq:') !== 0) return null;
+    var rest = s.slice(4);
+    var bar = rest.indexOf('|');
+    if (bar < 0) return null;
+    var tag = '';
+    try { tag = decodeURIComponent(rest.slice(0, bar)); } catch (e) { tag = rest.slice(0, bar); }
+    var inner = rest.slice(bar + 1);
+    var hash = inner.lastIndexOf('#');
+    if (hash < 0) return null;
+    var bid = inner.slice(0, hash), qid = inner.slice(hash + 1);
+    var rb = banks().filter(function (b) { return b && b.id === bid; })[0];
+    if (!rb) return null;
+    var q = (rb.questions || []).filter(function (x) { return x && String(x.id) === qid; })[0];
+    if (!q) return null;
+    var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+    var one = {};
+    Object.keys(q).forEach(function (k) { one[k] = q[k]; });
+    one._bank = rb.id; one._bname = String(rb.title || rb.name || '');
+    return {
+      id: s, title: stem.slice(0, 34), name: stem.slice(0, 34), virtualTag: tag,
+      virtualQ: { bankId: rb.id, qid: q.id }, source: 'tagq', cat: null,
+      bankName: String(rb.title || rb.name || ''), questions: [one], createdAt: 0
+    };
+  }
+  /* 这个标签下的题，多数属于哪个大标签 */
+  function bigTitleOf(tag) {
+    var ix = tagIndex();
+    var c = {}, best = '', n = 0;
+    (ix.byTag[tag] || []).forEach(function (it) { var g = it.big || ''; if (g) c[g] = (c[g] || 0) + 1; });
+    Object.keys(c).forEach(function (k) { if (c[k] > n) { n = c[k]; best = k; } });
+    return best;
+  }
   /* 把现在的小标签同步成这个方案的文件夹（幂等；新标签会补进来） */
   function syncTagTree(sid) {
     ensure();
@@ -450,27 +534,58 @@
     if (!tagMode(id)) return 0;
     if (!DB.data[id]) DB.data[id] = { cats: [] };
     var cats = DB.data[id].cats;
-    var have = {};
-    cats.forEach(function (c) { if (c && c.id) have[c.id] = 1; });
+    var sch = DB.list.filter(function (x) { return x && x.id === id; })[0] || {};
+    var big = !!sch.big;
+    var ix = tagIndex();
     if (!MAP[id] || typeof MAP[id] !== 'object') MAP[id] = {};
-    var added = 0;
-    tagIndex().list.forEach(function (t, i) {
+    var added = 0, have = {};
+    cats.forEach(function (c) { if (c && c.id) have[c.id] = 1; });
+    /* 大标签这一层 */
+    var bigCat = {};
+    if (big) {
+      var used = {};
+      ix.list.forEach(function (t) { var g = bigTitleOf(t); if (g) used[g] = 1; });
+      Object.keys(used).sort(function (a, b) { return a.localeCompare(b, 'zh'); }).forEach(function (g, i) {
+        var cid = 'tgb:' + encodeURIComponent(g);
+        bigCat[g] = cid;
+        if (!have[cid]) { cats.push({ id: cid, title: g, parent: null, order: i + 1, bigDir: 1 }); have[cid] = 1; added++; }
+      });
+    }
+    /* 小标签文件夹（parent ＝ 大标签；没开大标签就平铺） */
+    ix.list.forEach(function (t, i) {
       var cid = tgCatId(t);
-      if (!have[cid]) {
-        cats.push({ id: cid, title: t, parent: null, order: i + 1 });
-        have[cid] = 1; added++;
-      }
+      var g = big ? bigTitleOf(t) : '';
+      var parent = (big && g && bigCat[g]) ? bigCat[g] : null;
+      var c = cats.filter(function (x) { return x && x.id === cid; })[0];
+      if (!c) { cats.push({ id: cid, title: t, parent: parent, order: i + 1 }); added++; }
+      else if ((c.parent || null) !== parent) { c.parent = parent; added++; }
       MAP[id][tgBankId(t)] = cid;
     });
+    /* 清掉已经不存在的标签文件夹（以前标签删了/题删了，文件夹还留着，就成了空文件夹） */
+    var live = {};
+    ix.list.forEach(function (t) { live[tgCatId(t)] = 1; });
+    Object.keys(bigCat).forEach(function (g) { live[bigCat[g]] = 1; });
+    var before = cats.length;
+    DB.data[id].cats = cats = cats.filter(function (c) {
+      if (!c || !c.id) return false;
+      var s = String(c.id);
+      if (s.indexOf('tgcat:') === 0 || s.indexOf('tgb:') === 0) return !!live[s];
+      return true;
+    });
+    /* 顺手把失效的「标签 → 文件夹」映射删掉 */
+    var keepBank = {};
+    ix.list.forEach(function (t) { keepBank[tgBankId(t)] = 1; });
+    Object.keys(MAP[id]).forEach(function (bid) { if (String(bid).indexOf('tg:') === 0 && !keepBank[bid]) delete MAP[id][bid]; });
+    if (cats.length !== before) added++;
     if (added) save();
     return added;
   }
   /* 新建「按小标签分」方案 */
-  function makeTagScheme(name) {
+  function makeTagScheme(name, big) {
     ensure();
     var nm = trim(name) || ('知识点分类 ' + (DB.list.length + 1));
     var id = uid();
-    DB.list.push({ id: id, name: nm, mode: 'tag' });
+    DB.list.push({ id: id, name: nm, mode: 'tag', big: !!big });
     DB.data[id] = { cats: [] };
     MAP[id] = {};
     CUR = id;                       /* 先切过去，syncTagTree 按当前方案写 */
@@ -501,6 +616,17 @@
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
+    tagQList: tagQList, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
+    schemeOf: function (sid) { ensure(); var id = sid || CUR; return DB.list.filter(function (x) { return x && x.id === id; })[0] || null; },
+    setBig: function (sid, v) {
+      ensure();
+      var id = sid || CUR;
+      var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
+      if (!s) return false;
+      s.big = !!v; save();
+      syncTagTree(id); apply();
+      return true;
+    },
     makeTagScheme: makeTagScheme, syncTagTree: syncTagTree, smallTags: smallTags,
     tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId
   };

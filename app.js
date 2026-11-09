@@ -2144,6 +2144,19 @@ window.__PIP_INJECT = function (b) {
 };
 const TG_BANK_CACHE = {};
 function bankById(id) {
+  /* 标签方案里的「题目行」（tgq:标签|题库#题号）：解析成它所属的标签题集，
+     这样深链接 / 刷新也能打开，而且前后翻题还是同一个题集里的题 */
+  if (id && String(id).indexOf('tgq:') === 0 && window.SCM && SCM.tagQById) {
+    const ck0 = 'q|' + String(SCM.current ? SCM.current() : '') + '|' + String(id);
+    if (TG_BANK_CACHE[ck0]) return TG_BANK_CACHE[ck0];
+    let row = null;
+    try { row = SCM.tagQById(id); } catch (e) { row = null; }
+    if (row && row.virtualTag && SCM.tagBankById) {
+      let tb = null;
+      try { tb = SCM.tagBankById(SCM.tgBankId(row.virtualTag)); } catch (e) { tb = null; }
+      if (tb) { TG_BANK_CACHE[ck0] = tb; try { QZ.cur = row.virtualQ.qid; } catch (e) {} return tb; }
+    }
+  }
   if (id && String(id).indexOf('tg:') === 0 && window.SCM && SCM.tagBankById) {
     const ck = String(SCM.current ? SCM.current() : '') + '|' + String(id);
     if (TG_BANK_CACHE[ck]) return TG_BANK_CACHE[ck];
