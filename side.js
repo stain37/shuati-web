@@ -939,6 +939,7 @@
       else if (k.indexOf(PRE) === 0) { var c = CAT.get ? CAT.get(k.slice(PRE.length)) : null; if (c) cc.push(c); }
     });
     if (!cc.length && !bb.length) return '';
+    var closed = !!S.starClosed;
     var rows = cc.map(function (c) {
       return '<div class="qs-starrow"><button type="button" class="qs-ch qs-staritem" data-open="' + E(c.id) + '" style="--qs-ind:6px;--qs-d:0">'
         + '<i class="qs-caret">\u203a</i><i class="qs-folder">📁</i>'
@@ -946,9 +947,11 @@
         + '<span class="qs-star on" data-star="' + E(catKey(c.id)) + '" title="\u53d6\u6d88\u661f\u6807">\u2605</span></button></div>';
     }).join('');
     var brows = bb.map(function (b) { return rowHtml(b, 0); }).join('');
-    return '<div class="qs-cat qs-stars" data-starblock="1">'
-      + '<div class="qs-sh"><span>\u2b50 \u5e38\u9a7b</span><em>' + (cc.length + bb.length) + '</em></div>'
-      + '<div class="qs-cbody">' + rows + brows + '</div></div>';
+    return '<div class="qs-cat qs-stars' + (closed ? ' closed' : '') + '" data-starblock="1">'
+      + '<div class="qs-sh qs-shstar" data-starfold="1" title="点一下折叠 / 展开常驻区">'
+      + '<i class="qs-caret">' + (closed ? '\u203a' : '\u02c5') + '</i>'
+      + '<span>\u2b50 \u5e38\u9a7b</span><em>' + (cc.length + bb.length) + '</em></div>'
+      + '<div class="qs-cbody"' + (closed ? ' style="display:none"' : '') + '>' + rows + brows + '</div></div>';
   }
 
   /* ---------- 点击 ---------- */
@@ -969,6 +972,8 @@
       if (typeof setOpen === 'function') setOpen(false);
       return;
     }
+    var sf = e.target.closest('[data-starfold]');
+    if (sf) { e.stopPropagation(); S.starClosed = !S.starClosed; save(); paint(); return; }
     var cm = e.target.closest('[data-cm]');
     if (cm) { e.stopPropagation(); catMenu(cm.dataset.cm, cm); return; }
     var fold = e.target.closest('[data-fold]');
