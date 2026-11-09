@@ -86,6 +86,12 @@
     });
   }
   function TITLE(c) { return (c && c.title) ? String(c.title) : '未命名分类'; }
+  /* 考点方案（按小考点分）只是「标签视图」，不是题库目录树：
+     · 首页 / 题库管理器 → 永远显示真实题库树（默认方案的目录 + 真题库）
+     · 考点树只有从考点方案里点「考点文件夹视图」才显示（window.__CAT_TAGVIEW）
+     这样考点文件夹既不会被当成题库，也不会污染管理器 / 搜索 / 批量管理。 */
+  function tagModeNow() { try { return !!(window.SCM && SCM.tagMode && SCM.tagMode()); } catch (e) { return false; } }
+  function tagViewOn() { return tagModeNow() && !!window.__CAT_TAGVIEW; }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function uid(prefix) {
     var s = Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -101,7 +107,7 @@
   function bankList() {
     var base = (typeof baseBanks === 'function') ? baseBanks() : [];
     /* 「按小标签分」的方案里不列题库：里面装的是题目，题库本身不参与分类 */
-    try { if (window.SCM && SCM.tagMode && SCM.tagMode()) base = []; } catch (eTag) {}
+    /* 考点方案也不改这里：题库列表永远是真实题库（考点只是分类，不是题库） */
     /* 考点只是分类视图，不是题库：这里绝不把虚拟题集混进题库列表
        （否则会被搜索、批量管理、题库计数当成真题库，还特别慢） */
     var tags = [];
@@ -123,7 +129,10 @@
   /* ---------- 读取 / 整理 / 保存 ---------- */
   function readRaw() {
     var v = null;
-    try { v = (window.SCM && SCM.cats) ? SCM.cats() : JSON.parse(localStorage.getItem(CAT_KEY)); } catch (e) { v = null; }
+    try {
+      if (tagModeNow() && window.SCM && SCM.plainCats) v = SCM.plainCats();
+      else v = (window.SCM && SCM.cats) ? SCM.cats() : JSON.parse(localStorage.getItem(CAT_KEY));
+    } catch (e) { v = null; }
     if (!Array.isArray(v)) return [];
     return v.filter(function (c) { return c && typeof c === 'object'; }).map(function (c, i) {
       return {
@@ -182,6 +191,12 @@
 
   function saveCats(opts) {
     opts = opts || {};
+    /* 考点方案下这里是「真实题库树」的只读投影：改目录要切回普通方案，
+       否则会把默认方案的树写进考点方案（以前就是这么互相污染的） */
+    if (tagModeNow()) {
+      T('当前是考点方案：这里只显示真实题库。要改目录，先在左上角切回普通方案。', 2600);
+      return;
+    }
     if (LOCK && !opts.force) return;
     LOCK = true;
     try {
@@ -1068,6 +1083,10 @@
         + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
         + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
         + '</div>'
+        + (tagModeNow()
+          ? '<div class="nb-tagview-bar"><b>🏷 当前方案是「考点分类」</b>'
+            + '<span>考点不是题库：这里永远只列真实题库；考点文件夹在左边侧栏里点开就能刷题。</span></div>'
+          : '')
         + sechead(E(curTitle), TAGDIR ? false : true)
         + (TAGDIR ? '<div class="small muted" style="margin:-4px 0 10px">按考点分的方案：这个文件夹里就是题目，点一行直接做（不再有题库这一层）。</div>' : '')
         + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · '

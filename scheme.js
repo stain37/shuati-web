@@ -89,6 +89,16 @@
     }
     return (DB.data[CUR] && DB.data[CUR].cats) || [];
   }
+  /* 「真实题库树」= 默认方案（DEF）的目录树。
+     考点方案只是标签视图，不是题库目录树：首页 / 题库管理器永远按这棵树显示，
+     免得考点文件夹被当成题库分类混进管理器。 */
+  function plainCats() {
+    ensure();
+    if (!DB.data[DEF]) DB.data[DEF] = { cats: [] };
+    var v = lsRaw(K_CATS, null);
+    if (Array.isArray(v)) DB.data[DEF].cats = v;
+    return (DB.data[DEF] && DB.data[DEF].cats) || [];
+  }
   /* cat.js 的 saveCats() 会调这里：落树 + 对齐当前方案的归属 */
   function setCats(list) {
     ensure();
@@ -670,7 +680,7 @@
   window.SCM = {
     KEY_SCH: K_SCH, KEY_CUR: K_CUR, KEY_MAP: K_MAP, KEY_CATS: K_CATS, DEF: DEF,
     load: load, reload: function () { LOADED = false; load(); },
-    cats: cats, setCats: setCats, snapshot: snapshot, apply: apply, adopt: adopt,
+    cats: cats, plainCats: plainCats, setCats: setCats, snapshot: snapshot, apply: apply, adopt: adopt,
     catOf: catOf, catForStore: catForStore, setCatOf: setCatOf,
     list: list, current: current, curName: curName, has: has,
     create: create, rename: rename, remove: remove, switchTo: switchTo,
