@@ -2745,6 +2745,7 @@ function uiBottomNavInit() {
        皮肤会给 .btn.on 加边框/投影/内边距，rect 推出来的 left/width 带小数，
        高亮块就会比按钮大一圈或偏一两像素；用 offset* 后两者永远同一盒子。 */
     const cs = getComputedStyle(on);
+    ind.style.display = '';
     ind.style.top = on.offsetTop + 'px';
     ind.style.bottom = 'auto';
     ind.style.height = on.offsetHeight + 'px';

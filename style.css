@@ -3558,3 +3558,17 @@ html[data-style][data-style] body.quiz .nav{
   left:0 !important; right:0 !important; max-width:none !important; margin:0 !important;
   border-radius:18px 18px 0 0 !important; border-bottom:0 !important;
 }
+
+/* ===== web621：底栏去掉按钮下面那圈白 =====
+   用户反馈「按钮下方还有多余的白色空间」——是 .bnav 的 padding-bottom 5px
+   加上皮肤给按钮的投影/描边露出来的底色。这里把底栏底部内边距压到 0，
+   只留安全区（刘海屏 / 手势条），让按钮直接贴住屏幕底边。 */
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{
+  padding-bottom: max(2px, env(safe-area-inset-bottom)) !important;
+}
+html[data-style][data-style] body.quiz .bnav{
+  padding-bottom: max(2px, env(safe-area-inset-bottom)) !important;
+}
+html[data-style][data-style] body.quiz .nav{
+  padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
+}
