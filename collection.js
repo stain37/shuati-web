@@ -2130,7 +2130,7 @@ function collect(mode, kw, scope) {
       if (terms.length) {
         /* AI 命中范围只用来「加宽」：本地全文（含题库名、标签）永远都算命中，
            不然开了 AI 之后反而搜不到题库名（用户反馈的老毛病） */
-        const hay = scope ? (it.hay + ' ' + qaiHay(it, scope)) : it.hay;
+        const hay = (scope && scope !== 'all') ? qaiHay(it, scope) : it.hay;
         let miss = false;
         for (let i = 0; i < terms.length; i++) if (hay.indexOf(terms[i]) < 0) { miss = true; break; }
         if (miss) continue;
@@ -2211,20 +2211,21 @@ function qaiHay(it, scope) {
   return (q.stem + ' ' + (q.group || '') + ' ' + (q.options || []).join(' ') + ' ' + explainOf(k, q)).toLowerCase();
 }
 function qaiScopeHtml() {
-  return '<div class="tools qai-scope-row"' + (QAI.on ? '' : ' style="display:none"') + '>'
-    + '<span class="tl">AI 命中范围</span>'
+  return '<div class="tools qai-scope-row">'
+    + '<span class="tl">命中范围</span>'
     + QAI_SCOPES.map(function (x) {
         return '<button type="button" class="chip' + (QAI.scope === x[0] ? ' on' : '') + '" data-qscope="' + x[0] + '">' + x[1] + '</button>';
       }).join('')
-    + '<span class="small muted">只影响 AI 模糊；开启时本地筛选也按这个范围</span>'
+    + '<span class="small muted">只在这些地方找关键词；「全部」＝题干 + 选项 + 解析 + 题库名 + 标签</span>'
     + '</div>';
 }
 function qaiPaintScope() {
   document.querySelectorAll('[data-qscope]').forEach(function (b) {
     b.classList.toggle('on', b.getAttribute('data-qscope') === QAI.scope);
   });
+  /* web612：范围跟 AI 开关解耦——关着 AI 也要能只在题干 / 选项 / 解析里搜 */
   document.querySelectorAll('.qai-scope-row').forEach(function (r) {
-    r.style.display = QAI.on ? '' : 'none';
+    r.style.display = '';
   });
 }
 function qaiPickTerm(term) {
@@ -2419,7 +2420,8 @@ function renderList(mode) {
   const kwTerms = splitKw(st.kw);
   let localShown = baseShown;
   if (kwTerms.length) localShown = localShown.filter(it => {
-    const h = QAI.on ? qaiHay(it, QAI.scope) : hayOf(it.k, it.q, it.bank);
+    /* web612：范围选「题干 / 选项 / 解析」时，连本地找词也只在这些字段里找（不再只有 AI 生效） */
+    const h = (QAI.scope && QAI.scope !== 'all') ? qaiHay(it, QAI.scope) : hayOf(it.k, it.q, it.bank);
     return kwTerms.every(w => h.indexOf(w) >= 0);
   });
   const kwQ = String(st.kw || '').trim();
@@ -2509,7 +2511,7 @@ function renderList(mode) {
         ${st.kw ? '<button class="btn" id="lkwClear">清掉</button>' : ''}
         ${qaiBtnHtml('lkwAi')}
       </div>
-      ${QAI.on ? qaiScopeHtml() : ''}
+      ${qaiScopeHtml()}
       ${QAI.on && kwQ.length >= 2 ? `<div class="tools" id="lkwAiRow">${qaiNoteHtml(kwQ, aiHits.length)}</div>` : ''}
 
       <div class="tools">
@@ -2591,6 +2593,7 @@ function renderList(mode) {
           : (QAI.on && kwQ.length >= 2 ? qaiEmptyText(kwQ) : '当前筛选条件下没有题目，放宽一下条件试试。'))
       }</div></div>`}
   `;
+  HL_KW = '';                     /* web612：高亮只在本页拼串时用，画完就清，别泄到别的页 */
 
   staggerList($('view'));
 
@@ -2932,8 +2935,8 @@ function itemHtml(it, mode, aiHit) {
   const fav = !!FAV[k];
   const mastered = rec.ok === true && !rec.redo;
   const stem = q.stem.length > 46 ? q.stem.slice(0, 46) + '…' : q.stem;
-  const where = (mode === 'search') ? hitWhere(it) : '';
-  const snippet = (mode === 'search') ? hitSnippet(it) : null;
+  const where = HL_KW ? hitWhere(it) : '';
+  const snippet = HL_KW ? hitSnippet(it) : null;
   return `
   <div class="card wi${aiHit ? ' ai-wi' : ''}" data-k="${esc(k)}">
     <div class="wi-head">
@@ -3369,7 +3372,7 @@ function paintSearch(anim) {
   const typeOK = it => !st.tf || ((typeof qTypeOf === 'function' ? qTypeOf(it.q) : 'A1') === st.tf);
   /* 第 16 条：搜索支持按题库筛选（st.bank 早就存在 mkState 里，但一直没用上） */
   const bankOK = it => !st.bank || st.bank === 'all' || (it.bank && it.bank.id === st.bank);
-  let local = kw ? collect('all', kw, QAI.on ? QAI.scope : '').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK) : [];
+  let local = kw ? collect('all', kw, QAI.scope || 'all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK) : [];
   const aiCache = (QAI.on && kw.length >= 2) ? qaiCached(kw) : null;
   const aiTerms = (aiCache && aiCache.terms) || [];
   const aiHits = aiTerms.length ? qaiMatch(collect('all').filter(scopeOK).filter(bankOK).filter(tagOK).filter(baseOK).filter(typeOK), aiTerms, 120) : [];
