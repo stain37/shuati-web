@@ -2947,7 +2947,8 @@ function itemHtml(it, mode, aiHit) {
         ? `<span class="wmeta ${mastered ? 'good' : 'bad'}">错 ${rec.wrong || 0} 次 · 作答 ${rec.tries || 0} 次 · 正确率 ${rateOf(rec)}%${mastered ? ' · 已做对' : ''}</span>`
         : mode === 'due'
         ? `<span class="wmeta">${dueText(k)} · 错 ${rec.wrong || 0} 次 / 作答 ${rec.tries || 0} 次 · 正确率 ${rateOf(rec)}%</span>`
-        : `<span class="wmeta">${rec.tries ? `作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次 · 正确率 ${rateOf(rec)}%` : '还没做过'}${mode === 'search' ? ' · ' + dueText(k) : ''}</span>`}
+        : `<span class="wmeta">${rec.tries ? `作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次 · 正确率 ${rateOf(rec)}%` : '还没做过'}</span>`}
+      ${typeof revLine === 'function' ? revLine(k, true) : ''}
       <span class="spacer-grow"></span>
       <button class="btn tiny" data-act="open">${open ? '收起' : '展开'}</button>
       <button class="btn tiny" data-act="fav">${fav ? '★' : '☆'}</button>
@@ -3002,6 +3003,13 @@ function bindItem(node, mode, it) {
     e.stopPropagation();
     const act = btn.dataset.act;
     if (act === 'open') { st.open.has(k) ? st.open.delete(k) : st.open.add(k); render(); }
+    else if (act === 'pull') {
+      if (typeof pullOne === 'function' && pullOne(k)) {
+        const card = btn.closest('.wi');
+        if (card) card.classList.add('pulled');
+        render();
+      }
+    }
     else if (act === 'fav') { toggleFav(k, btn); }
     else if (act === 'unfav') { delete FAV[k]; tombAdd('fav', k); saveFav(); st.sel.delete(k); toast('已取消收藏'); render(); }
     else if (act === 'drop') {

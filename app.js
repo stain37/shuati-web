@@ -2304,6 +2304,70 @@ function isDue(k) {
 }
 function rateOf(a) { if (!a || !a.tries) return 0; return Math.round((a.tries - (a.wrong || 0)) / a.tries * 100); }
 function noteOf(k) { return NOTES[k] || null; }
+
+/* ============================================================
+   复习进度：上次复习是什么时候 / 下次复习还有几天
+   ------------------------------------------------------------
+   · 上次复习 = 最近一次给反馈（gts）或最近一次作答（ts）
+   · 下次复习 = 排期 due；被「提前复习」拉到今天的算「已提前到今天」
+   列表（错题 / 收藏 / 搜索）与答题页标题行都调同一份，保证口径一致。
+   ============================================================ */
+function revAgoText(ts) {
+  if (!ts) return '';
+  const n = Math.round((srsDayStart(Date.now()) - srsDayStart(ts)) / DAY);
+  if (n <= 0) return '今天';
+  if (n === 1) return '昨天';
+  if (n < 30) return n + ' 天前';
+  const d = new Date(ts), p = x => String(x).padStart(2, '0');
+  return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+}
+function revInfo(k) {
+  const a = ANS[k];
+  if (!a) return { known: false, last: null, due: null, days: null, pulled: false, has: false };
+  const last = a.gts || a.ts || null;
+  const pulled = !!(typeof srsPulledToday === 'function' && srsPulledToday(k));
+  const due = dueOf(k);
+  let days = null;
+  if (due != null) days = Math.round((srsDayStart(due) - srsDayStart(Date.now())) / DAY);
+  return { known: true, last: last, due: due, days: days, pulled: pulled, has: inSrs(k) };
+}
+function revNextText(info) {
+  info = info || {};
+  if (info.pulled) return '已提前到今天';
+  if (info.days == null) return '';
+  if (info.days < 0) return '逾期 ' + (-info.days) + ' 天';
+  if (info.days === 0) return '今天到期';
+  return '还有 ' + info.days + ' 天';
+}
+/* 一整行：上次复习 3 天前 · 下次还有 2 天 [提前] */
+function revLine(k, withBtn) {
+  const info = revInfo(k);
+  if (!info.known) return '';
+  const last = info.last ? ('上次复习 ' + revAgoText(info.last)) : '还没复习过';
+  const next = revNextText(info);
+  const late = (info.days != null && info.days < 0) || !!(info.pulled);
+  const canPull = withBtn && info.has && !info.pulled && info.days != null && info.days > 0;
+  return '<span class="revline' + (late ? ' late' : '') + '" data-rev="' + String(k).replace(/"/g, '') + '" title="' +
+    (info.due ? ('上次复习：' + (info.last ? fmtTime(info.last) : '—') + '　下次复习：' + fmtTime(info.due)) : '还没排复习') + '">' +
+    '<i>' + last + '</i>' +
+    (next ? ('<span class="revdot">·</span><b>' + next + '</b>') : '') +
+    (canPull ? '<button class="btn tiny rev-pull" data-act="pull" title="不等了，把这道题提前加进今天的复习">提前复习</button>' : '') +
+    '</span>';
+}
+/* 单题提前复习：把它拉到今天的队列里（和「提前复习 X 天」用的是同一个 pulled 标记） */
+function pullOne(k) {
+  const a = ANS[k];
+  if (!a) { toast('这道题还没做过，没有复习排期'); return false; }
+  const today = srsDayKey(Date.now());
+  if (a.pulled === today) { toast('这道题已经在今天的复习里了'); return false; }
+  a.pulled = today;
+  a.upd = Date.now();
+  saveAns();
+  try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  try { if (typeof uiPaintBadge === 'function') uiPaintBadge(); } catch (e) {}
+  toast('已加到今天的复习：错题本 · 待复习里能看到它', 2600);
+  return true;
+}
 function explainOf(k, q) { const n = NOTES[k]; return (n && n.text) ? n.text : (q.explain || ''); }
 
 /* ============================================================
@@ -2664,8 +2728,10 @@ function uiBottomNavInit() {
     MO.run('bnavpill', { cur: cur, trg: [br.left - nr.left - bl, br.width], jump: !!jump, onFrame: apply,
       eps: 0.3, spr: { k: 320, c: 22 } });      /* ζ≈0.61：过去时先冲过头约 6% 再回坐，就是那点「Q」 */
   };
-  const paint = () => paintNow(false);      /* 注意：监听器会把 Event / MutationRecord 当第一个参数传进来，
-                                               那个对象是 truthy，直接传给 paintNow 会每次都被当成 jump */
+  /* webNNN：换页时指示器直接落位，不再从上一个按钮「扫」过去。
+     扫过去的过程中它会压过中间那几个按钮，看起来就是「点了右边、左边多出一条灰杠」，
+     而且每次都要跑一整段弹簧，换页手感也跟着发黏。 */
+  const paint = () => paintNow(true);
   nav.__bnavPaint = paint;
   paintNow(true);
   window.addEventListener('resize', paint);
@@ -3226,6 +3292,12 @@ var TR = (function () {
   }
   function wantExit(sig) {
     if (reduced() || !_lastViewSig || sig === _lastViewSig) return false;
+    /* web606b：底栏那几个页面是平级的，来回切不该先退场再进场——
+       退场那 60ms + 110ms 动画在低配/手机上就是「点了没反应」。平级直接换内容，
+       进场动画也压短（200ms 左右），体感是「立刻到位、只是轻轻滑进来」。 */
+    var to0 = String(sig).split('/')[0];
+    var from0 = String(_lastViewSig).split('/')[0];
+    if (NAV_ORDER[to0] != null && NAV_ORDER[from0] != null) return false;
     var v = document.getElementById('view');
     return !!(v && v.firstElementChild);
   }
@@ -3276,11 +3348,11 @@ var TR = (function () {
       kf = [{ opacity: 0.62, transform: 'translateY(9px) scale(.95)' }, { opacity: 1, transform: 'none' }];
       dur = 300; ease = 'cubic-bezier(.18,.92,.24,1)';
     } else if (kind === 'push') {
-      kf = [{ opacity: 0.62, transform: 'translateX(30px)' }, { opacity: 1, transform: 'none' }];
-      dur = 280; ease = 'cubic-bezier(.2,.92,.26,1)';
+      kf = [{ opacity: 0.66, transform: 'translateX(16px)' }, { opacity: 1, transform: 'none' }];
+      dur = 200; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else if (kind === 'pop') {
-      kf = [{ opacity: 0.62, transform: 'translateX(-26px)' }, { opacity: 1, transform: 'none' }];
-      dur = 260; ease = 'cubic-bezier(.2,.92,.26,1)';
+      kf = [{ opacity: 0.66, transform: 'translateX(-14px)' }, { opacity: 1, transform: 'none' }];
+      dur = 190; ease = 'cubic-bezier(.2,.92,.26,1)';
     } else {
       kf = [{ opacity: 0.62 }, { opacity: 1 }];
       dur = 240; ease = 'ease-out';
@@ -4370,6 +4442,7 @@ function renderQuiz(bankId) {
         ${bank.paper ? `<span class="tag paper-tag">临时套卷</span>` : ''}
         ${fixedAns ? `<span class="tag g" title="答案是你手动改过的，只在本机生效">答案已修正</span>` : ''}
         ${!recite && rec && rec.tries ? `<span class="tag g">本题作答 ${rec.tries} 次 · 错 ${rec.wrong || 0} 次</span>` : ''}
+        ${!recite && rec ? revLine(fk, true) : ''}
         <span class="spacer-grow"></span>
         <button class="btn focus-btn${SET.focus ? ' on' : ''}" id="btnFocus" title="专注模式：把顶栏和底栏收起来，只看题目（Esc 退出）">⛶ 专注</button>
         <button class="btn qn-open${((QTN[fk] || {}).text || '').trim() ? ' has-qn' : ''}" id="btnQn" title="口诀 / 思路便签：独立浮窗，可拖动、右下角可拉大小；只在这个页面出现">✎ 口诀</button>

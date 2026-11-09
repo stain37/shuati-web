@@ -3480,3 +3480,16 @@ html.pip-guest body.pip-guest-body{ background:var(--bg,#f6f6fb) !important; }
 html.pip-guest .qhead{ background:var(--card,#fff) !important; }
 html.pip-guest body.dark .qhead{ background:var(--card,#231038) !important; }
 html.pip-guest .qhead .tag{ background:rgba(127,127,160,.14) !important; }
+/* ===== 复习进度行（上次复习 / 下次复习 / 提前复习） ===== */
+.revline{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11.5px;line-height:1.3;
+  color:var(--sub);background:color-mix(in srgb,var(--card2) 82%,transparent);
+  border:1px solid color-mix(in srgb,var(--line) 70%,transparent);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.revline i{font-style:normal;opacity:.85}
+.revline .revdot{opacity:.45}
+.revline b{color:var(--primary);font-weight:600;font-variant-numeric:tabular-nums}
+.revline.late{border-color:color-mix(in srgb,var(--warn,#e8a83c) 55%,transparent);background:color-mix(in srgb,var(--warn,#e8a83c) 12%,transparent)}
+.revline.late b{color:#b3741a}
+body.dark .revline.late b{color:#f0c070}
+.revline .rev-pull{margin-left:2px;padding:1px 8px;min-height:0;line-height:1.5;font-size:11px;border-radius:999px}
+.qhead .revline{max-width:100%}
+@media(max-width:520px){.qhead .revline{font-size:11px}}
