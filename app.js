@@ -4812,42 +4812,57 @@ function applyHandMode() {
 function uiMakeDraggable(el, key) {
   if (!el || el.__drag) return;
   el.__drag = 1;
-  let id = null, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
+  /* web632：必须「按住不动约 0.35 秒」才进入拖动，普通点按照样是点按钮 ——
+     之前一按下就开始拖，导致速选条和翻页钮都点不动。 */
+  const HOLD_DRAG = 340;
+  let tmr = null, st = null, dragging = false;
   const pin = () => {
     const r = el.getBoundingClientRect();
     el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
     el.style.right = 'auto'; el.style.bottom = 'auto';
   };
+  const clear = () => { try { clearTimeout(tmr); } catch (e) {} tmr = null; st = null; };
   el.addEventListener('pointerdown', ev => {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-    pin();
     const r = el.getBoundingClientRect();
-    id = ev.pointerId; sx = ev.clientX; sy = ev.clientY; ox = r.left; oy = r.top; moved = false;
-    try { el.setPointerCapture(id); } catch (e) {}
-    el.classList.add('dragging');
+    st = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, left: r.left, top: r.top };
+    dragging = false;
+    try { clearTimeout(tmr); } catch (e) {}
+    tmr = setTimeout(() => {
+      if (!st) return;
+      dragging = true;
+      pin();
+      el.classList.add('dragging');
+      try { el.setPointerCapture(st.id); } catch (e) {}
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    }, HOLD_DRAG);
   });
   el.addEventListener('pointermove', ev => {
-    if (id == null || ev.pointerId !== id) return;
-    const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (!moved && (Math.abs(dx) + Math.abs(dy)) < 5) return;
-    moved = true; ev.preventDefault();
+    if (!st || ev.pointerId !== st.id) return;
+    const dx = ev.clientX - st.x, dy = ev.clientY - st.y;
+    if (!dragging) {
+      /* 还没到长按时间就滑走了 → 当成普通点击/滚动，取消拖动 */
+      if (Math.abs(dx) + Math.abs(dy) > 7) clear();
+      return;
+    }
+    ev.preventDefault();
     const r = el.getBoundingClientRect();
-    const nx = Math.max(0, Math.min(ox + dx, innerWidth - r.width));
-    const ny = Math.max(0, Math.min(oy + dy, innerHeight - r.height));
+    const nx = Math.max(0, Math.min(st.left + dx, innerWidth - r.width));
+    const ny = Math.max(0, Math.min(st.top + dy, innerHeight - r.height));
     el.style.left = nx + 'px'; el.style.top = ny + 'px';
   });
   const end = () => {
-    if (id == null) return;
-    id = null; el.classList.remove('dragging');
-    if (moved) {
+    if (dragging) {
       el.__movedAt = Date.now();
       try {
         const r = el.getBoundingClientRect();
         SET[key] = { x: Math.round(r.left), y: Math.round(r.top) };
         writeLS(LS.set, SET);
-        if (key === 'railPos') localStorage.setItem('qbank.rail.v1', '1');
       } catch (e) {}
     }
+    el.classList.remove('dragging');
+    dragging = false;
+    clear();
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
@@ -4859,7 +4874,6 @@ function uiMakeDraggable(el, key) {
   if (pos && isFinite(pos.x) && isFinite(pos.y)) {
     el.style.left = pos.x + 'px'; el.style.top = pos.y + 'px';
     el.style.right = 'auto'; el.style.bottom = 'auto';
-    /* 换屏 / 横竖屏后坐标可能跑到屏幕外，拉回来 */
     requestAnimationFrame(() => {
       try {
         const r = el.getBoundingClientRect();
