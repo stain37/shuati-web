@@ -3816,3 +3816,10 @@ body.voice-mode .qcard .stem { font-size: 1.06em; }
   line-height: 1.5; resize: vertical; min-height: 84px; font-family: ui-monospace, Menlo, Consolas, monospace; }
 #voicePanel .vs-row:has(textarea) { align-items: start; }
 #voicePanel .vs-row:has(textarea) .vs-lab { padding-top: 6px; }
+
+/* web650：语音面板「学习你的说法」 */
+#voicePanel .vs-learnbox { margin: 2px 0 10px; }
+#voicePanel .vs-learn { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+#voicePanel .vs-learn > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+#voicePanel .vs-learn select { flex: 0 0 auto; width: 44%; max-width: 168px; }
+#voicePanel .vs-dim { color: var(--sub); font-size: 12px; line-height: 1.5; }

@@ -14,7 +14,8 @@
     rate: 0.95, vol: 1, voiceURI: '', readNo: true, readStem: true, readOpts: true,
     readTags: false, readExp: true, readRes: false, optStyle: 'both',
     askExp: true, sayVerdict: true,
-    aiIntent: true,          /* 本地认不出的说法，交给站内 AI 猜意图 */
+    aiIntent: true,
+    learn: true,          /* 本地认不出的说法，交给站内 AI 猜意图 */
     pitch: 1,                 /* 音调 0.6–1.6 */
     readHints: true,          /* 念完选项后要不要说「请选择 / 可以多选」这类提示 */
     btnCtl: true,             /* 答题页里的按钮能不能用说的点 */
@@ -820,8 +821,12 @@
   /* 这句话像不像在「选选项」：有选/答案/就/是 这类提示词，或者本来就很短 */
   function looksLikeSelect(t) {
     const n = norm(t);
-    if (n.length <= 8) return true;
-    return /(选|挑|答案|应该|就是|我要|就)/.test(n);
+    if (!n) return false;
+    if (/^[a-h]+$/.test(n)) return true;                       /* 只说了字母 */
+    if (n.length <= 3) return true;                            /* 「B」「乙」这种极短 */
+    if (/(选|挑|答案|应该|就是|我要|就|勾)/.test(n)) return true;
+    if (/第[一二三四五六七八九十\d]+[个道题项条]/.test(n)) return true;
+    return false;
   }
 
   /* 朗读过程中如果听到的是「很明确的命令」，允许打断（其余一律当回声丢掉） */
@@ -837,6 +842,7 @@
   function handleHeard(txt) {
     let t = norm(txt);
     if (!t) return;
+    lastHeard = String(txt || '').trim();
     if (speaking && cfg().halfDuplex) {
       const okIntent = !!intentOf(t) && !echoSoft(t);
       if (!strongCmd(t) && !okIntent) return;   /* 既不像命令、也不像正常说话 → 当自己的回声 */
@@ -930,11 +936,12 @@
     lastHeard = txt;
     if (!letters.length) {
       const iv = intentOf(t);
-      if (iv === 'close') { if (closeTopPanel()) return; }
-      if (iv === 'exit') { off(); flash('语音模式已关'); return; }
+      if (iv === 'close') { if (closeTopPanel()) { learnHit(t, 'close'); return; } }
+      if (iv === 'exit') { learnHit(t, 'exit'); off(); flash('语音模式已关'); return; }
       if (iv) { runAct(iv, []); return; }
       const oi = matchOptionText(t);
-      if (oi >= 0) { clickLetter(LET[oi]); flash('好：' + LET[oi]); return; }
+      if (oi >= 0) { learnHit(t, 'select:' + LET[oi]); clickLetter(LET[oi]); flash('好：' + LET[oi]); return; }
+      learnMiss(t);
       aiFallback(txt); return;
     }
     const multi = isMulti();
@@ -942,6 +949,7 @@
     /* 灵敏度：高 = 必须说满 2 个字符才算，防环境噪音误触 */
     if (c.sens === 'high' && t.length < 2) return;
 
+    try { learnHit(t, 'select:' + letters.join('')); } catch (e) {}
     if (!multi) {
       clearTimeout(pauseT);
       if (c.autoJudgeSingle) { clickLetter(letters[letters.length - 1]); }
@@ -1073,6 +1081,8 @@
   function runAct(a, letters) {
     const c = cfg();
     if (!a) { flash('没听清：' + lastHeard); return; }
+    try { learnHit(lastHeard, a); } catch (e) {}
+    if (a === 'help') { askAI(); return; }
     if (a === 'stop') { off(); flash('语音模式已关'); return; }
     if (a === 'next') { clearTimeout(nextT); goNext(); return; }
     if (a === 'prev') { const pb = document.getElementById('prev'); if (pb && !pb.disabled) pb.click(); return; }
@@ -1177,6 +1187,152 @@
   function chk(key) {
     return '<input type="checkbox" data-vk="' + key + '"' + (cfg()[key] ? ' checked' : '') + '>';
   }
+  /* ---------- 学习：记住你的说法，语料库自己长 ---------- */
+  const LKEY = 'qbank.voice.learn.v1';
+  let LRN = null, missCtx = null, learnTapOn = false;
+  let hitKey = '', hitAt = 0;
+  const MAXP = 14;   /* 太长的句子多半是识别垃圾，不学 */
+  const ACTN = {
+    next: '下一题', prev: '上一题', exp: '念解析', ask: '问 AI', help: '问 AI',
+    fav: '收藏', submit: '提交', close: '关闭浮层', repeat: '重读',
+    answer: '念答案', stop: '关语音', exit: '退出语音'
+  };
+  function actName(a) {
+    if (!a) return '';
+    if (a.indexOf('select:') === 0) return '选 ' + a.slice(7);
+    if (a.indexOf('click:') === 0) return '点「' + a.slice(6) + '」';
+    if (a.indexOf('say:') === 0) return '说「' + a.slice(4) + '」';
+    return ACTN[a] || a;
+  }
+  function linit() {
+    if (LRN) return LRN;
+    LRN = { pending: [], pairs: {}, acts: {} };
+    try {
+      const o = JSON.parse(localStorage.getItem(LKEY) || 'null');
+      if (o && typeof o === 'object') {
+        if (Array.isArray(o.pending)) LRN.pending = o.pending.slice(0, 60);
+        if (o.pairs && typeof o.pairs === 'object') LRN.pairs = o.pairs;
+        if (o.acts && typeof o.acts === 'object') LRN.acts = o.acts;
+      }
+    } catch (e) {}
+    installLearnTap();
+    return LRN;
+  }
+  function lsave() { try { localStorage.setItem(LKEY, JSON.stringify(linit())); } catch (e) {} }
+  function learnOn() { return cfg().learn !== false; }
+  function learnMiss(t) {
+    if (!learnOn()) return;
+    const L = linit();
+    const key = String(t || '').replace(/\s+/g, '');
+    if (key.length < 2 || key.length > MAXP) return;
+    if (echoish(key)) return;
+    let p = L.pending.filter(x => x.t === key)[0];
+    if (p) { p.n = (p.n || 1) + 1; p.at = Date.now(); }
+    else { L.pending.unshift({ t: key, n: 1, at: Date.now() }); L.pending = L.pending.slice(0, 60); }
+    missCtx = { t: key, at: Date.now() };
+    lsave();
+  }
+  function learnHit(t, act) {
+    if (!learnOn() || !act) return;
+    const L = linit();
+    const key = String(t || '').replace(/\s+/g, '');
+    if (key.length < 2 || key.length > MAXP) return;
+    if (key === hitKey && Date.now() - hitAt < 1200) return;   /* 同一次识别别重复计数 */
+    hitKey = key; hitAt = Date.now();
+    const pk = key + '=' + act;
+    L.pairs[pk] = (L.pairs[pk] || 0) + 1;
+    L.acts[act] = (L.acts[act] || 0) + 1;
+    lsave();
+  }
+  function addCmdLearned(phrase, act) {
+    phrase = String(phrase || '').replace(/\s+/g, '');
+    if (!act || phrase.length < 2 || phrase.length > MAXP) return;
+    const c = cfg();
+    const lines = String(c.cmds || '').split('\n').map(s => s.trim()).filter(Boolean);
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('=') < 0) continue;
+      const words = lines[i].split('=')[0].split('|').map(s => s.trim());
+      if (words.indexOf(phrase) >= 0) return;
+    }
+    lines.push(phrase + '=' + act);
+    c.cmds = lines.slice(-200).join('\n');
+    save();
+    flash('记住了：说「' + phrase + '」= ' + actName(act));
+  }
+  function teachPhrase(phrase, act) {
+    if (!phrase || !act) return;
+    addCmdLearned(phrase, act);
+    const L = linit();
+    L.pending = L.pending.filter(x => x.t !== phrase);
+    L.pairs[phrase + '=' + act] = Math.max(2, L.pairs[phrase + '=' + act] || 0);
+    lsave();
+    closePanel(); openPanel();
+  }
+  function actOfEl(el) {
+    if (!el || !el.closest) return '';
+    const opt = el.closest('.opt');
+    if (opt) {
+      const all = [].slice.call(document.querySelectorAll('#view .opts .opt'));
+      const i = all.indexOf(opt);
+      return i >= 0 ? 'select:' + LET[i] : '';
+    }
+    const id = el.id;
+    if (id === 'prev') return 'prev';
+    if (id === 'next') return 'next';
+    if (id === 'doSubmit') return 'submit';
+    if (id === 'btnFav') return 'fav';
+    const b = el.closest('button');
+    if (!b) return '';
+    const txt = (b.innerText || '').replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF]+/gu, '')
+      .replace(/[（(].*?[）)]/g, '').trim();
+    return (txt && txt.length <= 10) ? 'click:' + txt : '';
+  }
+  function installLearnTap() {
+    if (learnTapOn) return;
+    learnTapOn = true;
+    document.addEventListener('click', function (ev) {
+      if (!missCtx || Date.now() - missCtx.at > 6000) return;
+      const act = actOfEl(ev.target);
+      if (!act) return;
+      const phrase = missCtx.t;
+      missCtx = null;
+      addCmdLearned(phrase, act);
+      const L = linit();
+      L.pending = L.pending.filter(x => x.t !== phrase);
+      lsave();
+    }, true);
+  }
+  function learnListHtml() {
+    const L = linit();
+    if (!L.pending.length) {
+      return row('待教的说法', '<span class="vs-dim">暂时没有。没听懂的话会自动攒在这里，你说第二遍它就自己记住</span>');
+    }
+    const acts = ['next', 'prev', 'exp', 'answer', 'repeat', 'stop', 'ask', 'fav', 'submit', 'close', 'exit']
+      .map(a => '<option value="' + a + '">' + actName(a) + '</option>').join('');
+    const rows = L.pending.slice(0, 5).map(p =>
+      '<div class="vs-learn"><span>「' + escHtml(p.t) + '」' + (p.n > 1 ? ' ×' + p.n : '') + '</span>' +
+      '<select data-tk="' + escAttr(p.t) + '"><option value="">选动作…</option>' + acts + '</select></div>').join('');
+    return '<div class="vs-learnbox">' + rows +
+      '<div class="vs-dim">选完就写进「我的命令」，说第二遍也会自动记住</div></div>';
+  }
+  function exportLearn() {
+    const L = linit();
+    const data = {
+      app: 'shuati-voice-learn', v: 1, at: new Date().toISOString(),
+      pending: L.pending, pairs: L.pairs, acts: L.acts,
+      cmds: (cfg().cmds || '').split('\n').map(s => s.trim()).filter(Boolean)
+    };
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'shuati-voice-learn-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      flash('语料库已导出（.json）');
+    } catch (e) { flash('导出失败：' + (e && e.message)); }
+  }
+
   function openPanel() {
     closePanel();
     const c = cfg();
@@ -1241,6 +1397,11 @@
       row('必须说唤醒词', chk('wakeMode'), '勾上后要先说上面的唤醒词，之后 9 秒内的话才理你') +
       row('我的命令', '<textarea data-vk="cmds" rows="4" placeholder="每行一条：说法1|说法2=动作&#10;例如：&#10;下一道|下一题=next&#10;读一下解析=exp&#10;选A|选甲=select:A&#10;打开专注=click:专注&#10;念一句加油=say:加油">' + escHtml(c.cmds || '') + '</textarea>', '动作可用：next 下一题 / prev 上一题 / exp 念解析 / ask 问 AI / fav 收藏 / submit 提交 / close 关浮层 / repeat 重读 / answer 看答案 / stop 关语音 / select:A,B 选选项 / click:按钮名 / say:要说的话') +
 
+      '<div class="vs-sec">学习你的说法</div>' +
+      row('记录我的说法', chk('learn'), '没听懂的话会攒着；你随后点了哪个按钮，它就把这句话和动作配上；同一句说第二遍就自动记住，不用手配') +
+      row('语料库', '<button class="btn tiny" data-vlrn="export">⬇ 导出</button> <button class="btn tiny" data-vlrn="clear">清空</button>', '待教 ' + linit().pending.length + ' 句 · 已记 ' + Object.keys(linit().pairs).length + ' 组说法') +
+      learnListHtml() +
+
       '<div class="vs-sec">语音包（音色 + 语速 + 音调 + 音量 + 语言）</div>' +
       row('试听', '<button class="btn tiny" data-vtest="1">▶ 念一句试试</button>', '用现在的音色念一句示例') +
       row('导出', '<button class="btn tiny" data-vpack="export">⬇ 存成 .json</button>', '把这套音色参数存下来，换设备 / 发给别人都能用') +
@@ -1266,6 +1427,13 @@
         speak('这是现在的音色，第三题，下列关于真核生物转录起始的叙述，错误的是。A，转录因子。B，TATA 盒。');
         return;
       }
+      const lx = ev.target.closest('[data-vlrn]');
+      if (lx) {
+        if (lx.getAttribute('data-vlrn') === 'export') { exportLearn(); return; }
+        linit().pending = []; lsave(); closePanel(); openPanel();
+        flash('待教列表已清空（已经写进命令表的还在）');
+        return;
+      }
       const ex = ev.target.closest('[data-vpack="export"]');
       if (ex) { exportPack(); return; }
       const rs = ev.target.closest('[data-vreset]');
@@ -1277,6 +1445,8 @@
       }
     });
     wrap.addEventListener('change', ev => {
+      const tk = ev.target.closest('select[data-tk]');
+      if (tk) { teachPhrase(tk.getAttribute('data-tk'), tk.value); return; }
       const im = ev.target.closest('[data-vpack="import"]');
       if (!im || !im.files || !im.files[0]) return;
       importPack(im.files[0]);
