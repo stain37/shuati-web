@@ -22,8 +22,10 @@
     readPanel: true,
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
-    endSilence: 1.15,         /* 说完后静音多久算一句说完（秒；0 = 用浏览器自带的断句） */
-    maxUtt: 10,               /* 一句话最长多少秒，超过就强制断 */
+    endSilence: 2.6,         /* 说完后静音多久算一句说完（秒；0 = 用浏览器自带的断句） */
+    fastEnd: 1.0,             /* 句尾已经是「吧/呢/吗/？」这种收尾时，等这么久就断 */
+    grace: 0.6,               /* 断句后如果还没等到浏览器的 final，再多等这么久拿更准的结果 */
+    maxUtt: 12,               /* 一句话最长多少秒，超过就强制断 */
     barge: true,
     halfDuplex: true,         /* 朗读时先不收音（防自问自答） */              /* 朗读时我开口，就停下来听我说 */
     beeps: true,              /* 提示音（唤醒 / 答对 / 答错 / 打断） */
@@ -75,6 +77,7 @@
   let askT = null, askState = '', said = [];
   /* 断句状态机（参考 SpeakControl 的「文本停住 N 秒就断句」） */
   let liveTxt = '', liveEdit = 0, liveStart = 0, liveHandled = '', liveHandledAt = 0;
+  let liveFinal = '', liveCands = [], liveGotFinal = false, liveGrace = 0;
   /* 朗读中的句子（用来分辨「是我在说话的回声」还是「人真的插话了」） */
   let speakChunks = [];
   /* 唤醒窗口 */
@@ -639,27 +642,34 @@
       rec.continuous = true;
       rec.interimResults = true;
       rec.lang = cfg().lang || 'zh-CN';
-      rec.maxAlternatives = 3;
+      rec.maxAlternatives = 5;
       rec.onresult = ev => {
-        if (speaking && cfg().halfDuplex) { liveTxt = ''; liveStart = 0; return; }
+        if (speaking && cfg().halfDuplex) { liveTxt = ''; liveStart = 0; liveFinal = ''; liveCands = []; return; }
         let finalTxt = '', interim = '';
+        const cands = [];
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
           const r = ev.results[i];
+          for (let j = 0; j < r.length && j < 5; j++) {
+            const s = ((r[j] && r[j].transcript) || '').trim();
+            if (s) cands.push(s);
+          }
           if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
         }
+        const fin = finalTxt.trim();
+        if (cands.length) liveCands = cands;
+        if (fin) { liveFinal = (liveFinal ? liveFinal + ' ' : '') + fin; liveGotFinal = true; }
         if (interim) setPill('listening', interim.trim());
         const sil = Math.max(0, +cfg().endSilence || 0);
         if (!sil) {                      /* 关掉自研断句：用浏览器自带的 final */
-          if (finalTxt) handleHeard(finalTxt.trim());
+          if (fin) handleHeard(repair(fin));
           return;
         }
-        const merged = (finalTxt + interim).trim();
-        if (merged) {
-          if (merged !== liveTxt) {
-            liveTxt = merged;
-            liveEdit = Date.now();
-            if (!liveStart) liveStart = Date.now();
-          }
+        const merged = (((liveFinal || '') + ' ' + interim) || '').trim();
+        if (merged && merged !== liveTxt) {
+          liveTxt = merged;
+          liveEdit = Date.now();
+          if (!liveStart) liveStart = Date.now();
+          liveGrace = 0;
         }
       };
       rec.onerror = ev => {
@@ -687,12 +697,25 @@
     const sil = Math.max(0, +c.endSilence || 0) * 1000;
     if (!sil) return;
     const now = Date.now();
-    const maxMs = Math.max(3, +c.maxUtt || 10) * 1000;
-    if ((now - liveEdit >= sil) || (liveStart && now - liveStart >= maxMs)) flushLive();
+    const maxMs = Math.max(3, +c.maxUtt || 12) * 1000;
+    const txt = liveTxt.trim();
+    /* 句尾已经是「吧/呢/吗/？」这种收尾 → 可以早一点断；否则多等一会儿，别把人话切成两半 */
+    const closed = /[。！？!?…]$/.test(txt) || /(吧|呢|吗|啊|呀|嘛|了|呗|哈|哦|哟|啦|的)$/.test(txt);
+    const wait = (closed ? Math.max(0.4, +c.fastEnd || 1) : Math.max(0.6, sil / 1000)) * 1000;
+    if (liveStart && now - liveStart >= maxMs) { liveGrace = 0; return flushLive(); }
+    if (now - liveEdit < wait) return;
+    /* 还没拿到浏览器的 final，就再多等一点点（final 通常比临时结果准很多） */
+    const gmax = Math.max(0, +c.grace || 0.6) * 1000;
+    if (!liveGotFinal && liveGrace < gmax) { liveGrace += 120; return; }
+    flushLive();
   }
   function flushLive() {
-    let t = liveTxt.trim();
-    liveTxt = ''; liveStart = 0;
+    const parts = [];
+    if (liveFinal) parts.push(liveFinal);
+    if (liveTxt) parts.push(liveTxt);
+    (liveCands || []).forEach(function (x) { parts.push(x); });
+    liveTxt = ''; liveStart = 0; liveFinal = ''; liveCands = []; liveGotFinal = false; liveGrace = 0;
+    const t = pickBest(parts);
     if (!t) return;
     const nn = norm(t);
     const now = Date.now();
@@ -728,6 +751,58 @@
     if (!s) return;
     echoRecent.push({ t: s, at: Date.now() });
     if (echoRecent.length > 24) echoRecent = echoRecent.slice(-24);
+  }
+  /* 常见误识别纠正（同音/近音，只改明显的那几个，别乱猜） */
+  const FIXMAP = [
+    [/下一提|下一体|下一台|下提|下体|下议题/g, '下一题'],
+    [/上一提|上一体|上提/g, '上一题'],
+    [/解吸|解折|解稀|解细|解读一下这题/g, '解析'],
+    [/题木|提目|题母/g, '题目'],
+    [/答按|答暗|答安/g, '答案'],
+    [/收仓|收蔵|收臧/g, '收藏'],
+    [/在念一遍|在来一遍|在讲一遍/g, '再念一遍'],
+    [/重新在念/g, '重新再念']
+  ];
+  function repair(t) {
+    let s = String(t || '');
+    FIXMAP.forEach(function (p) { s = s.replace(p[0], p[1]); });
+    return s;
+  }
+  /* 一句话里最像「某个命令」的分数（0~1） */
+  function anyCmdScore(t) {
+    const c = cfg();
+    let best = 0;
+    Object.keys(c).forEach(function (k) {
+      if (k.charAt(0) !== 'c' || k === 'cmds') return;
+      if (typeof c[k] !== 'string' || !c[k]) return;
+      const lst = c[k].split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+      if (!lst.length) return;
+      const sc = bestCmd(t, lst).score;
+      if (sc > best) best = sc;
+    });
+    /* 自定义命令也算 */
+    customCmds().forEach(function (it) {
+      const sc = bestCmd(t, it.words).score;
+      if (sc > best) best = sc;
+    });
+    return best;
+  }
+  /* 多候选里挑最可能是真意图的那一句（浏览器给了 5 个候选，常常其中一个是对的） */
+  function pickBest(list) {
+    let best = '', bs = -1;
+    const seen = {};
+    (list || []).forEach(function (raw) {
+      const t = repair(String(raw || '').trim());
+      if (!t || seen[t]) return;
+      seen[t] = 1;
+      let s = Math.min(1.2, t.length * 0.02);
+      s += anyCmdScore(t) * 2.2;
+      try { if (intentOf(t)) s += 1.1; } catch (e) {}
+      try { if (parseLetters(t).length) s += 0.9; } catch (e) {}
+      try { if (matchOptionText(t) && matchOptionText(t).score >= 0.62) s += 1.0; } catch (e) {}
+      if (s > bs) { bs = s; best = t; }
+    });
+    return best;
   }
   function bigramSim(a, b) {
     if (!a || !b) return 0;
@@ -1389,7 +1464,9 @@
       row('认不出时问 AI', chk('aiIntent'), '本地命令词没对上时，把这句话交给站内 AI 判断你是想选选项、下一题、念解析还是问它（要有配好 AI 才生效；会慢约 1 秒）') +
 
       '<div class="vs-sec">听你说话（进阶）</div>' +
-      row('说完静音多久算一句', '<input type="range" min="0" max="2.5" step="0.05" data-vk="endSilence" value="' + (c.endSilence == null ? 1.15 : c.endSilence) + '"><b class="vs-val" data-vv="endSilence">' + (c.endSilence == null ? '1.15' : (+c.endSilence).toFixed(2)) + 's</b>', '说话时文字停住这么长时间就算说完；调到 0 = 用浏览器自带的断句（更慢但更准）') +
+      row('一句话说完等多久', '<input type="range" min="0" max="4.5" step="0.05" data-vk="endSilence" value="' + (c.endSilence == null ? 2.6 : c.endSilence) + '"><b class="vs-val" data-vv="endSilence">' + (c.endSilence == null ? '2.60' : (+c.endSilence).toFixed(2)) + 's</b>', '你停多久之后才算这句说完。默认 2.6 秒（宁慢勿切）；说话快可调到 1.5，说得慢/爱停顿调到 3.5；0 = 完全交给浏览器（最慢最稳）') +
+      row('句尾是「吧/呢/吗」就早点断', '<input type="range" min="0.4" max="2.4" step="0.05" data-vk="fastEnd" value="' + (c.fastEnd == null ? 1 : c.fastEnd) + '"><b class="vs-val" data-vv="fastEnd">' + (+(c.fastEnd == null ? 1 : c.fastEnd)).toFixed(2) + 's</b>', '句尾已经有收尾词（吧、呢、吗、了…）时，只等这么久就执行，不用等满上面那个时间') +
+      row('等更准的结果再动手', '<input type="range" min="0" max="2" step="0.1" data-vk="grace" value="' + (c.grace == null ? 0.6 : c.grace) + '"><b class="vs-val" data-vv="grace">' + (+(c.grace == null ? 0.6 : c.grace)).toFixed(1) + 's</b>', '到点了但浏览器还没把「最终结果」给你时，再多等这么久——最终结果通常比边听边猜准得多') +
       row('一句最长多久', '<input type="range" min="4" max="20" step="1" data-vk="maxUtt" value="' + (c.maxUtt || 10) + '"><b class="vs-val" data-vv="maxUtt">' + (c.maxUtt || 10) + 's</b>', '说太久会自动断一句，防止一直等不到结果') +
       row('我说话就打断朗读', chk('barge'), '朗读时你一开口，它立刻停下听你说（会自动忽略喇叭里自己的声音）') +
       row('朗读时先别听（最不容易自我打断）', chk('halfDuplex'), '开着：我念题/念解析的时候麦克风不收音，绝不会把自己的声音当成你的命令；想「一开口就打断我」就关掉它') +
@@ -1465,6 +1542,8 @@
       if (vv) vv.textContent = k === 'rate' ? val + '×'
         : k === 'vol' ? Math.round(val * 100) + '%'
           : k === 'endSilence' ? (+val).toFixed(2) + 's'
+            : k === 'fastEnd' ? (+val).toFixed(2) + 's'
+              : k === 'grace' ? (+val).toFixed(1) + 's'
             : k === 'maxUtt' ? val + 's'
               : (val / 1000).toFixed(1) + 's';
       if (k === 'on') { if (val) { on(); beep('wake'); } else off(); }
@@ -1571,6 +1650,7 @@
       return { hits: out, letters: parseLetters(t), tail: trimTail(norm(t)) };
     },
     _intent: intentOf, _optmatch: matchOptionText, _opttexts: optTexts,
+    _pick: pickBest, _repair: repair, _any: anyCmdScore, _fix: FIXMAP,
     _setLive: function (t) { liveTxt = String(t || ''); liveEdit = Date.now(); liveStart = Date.now() - 400; },
     _live: function () { return { txt: liveTxt, edit: liveEdit, start: liveStart, awake: awakeUntil, speaking: speaking, chunks: speakChunks.slice() }; },
     _close: function () { return closeTopPanel(); },
