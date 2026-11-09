@@ -4959,7 +4959,7 @@ function uiOptRail() {
     const avail = Math.max(180, innerHeight - 96 - 74 - 14);
     const cols = n > 12 ? 3 : (n > 6 ? 2 : 1);
     const per = Math.ceil(n / cols);
-    const base = n <= 4 ? 68 : (n <= 6 ? 60 : (n <= 9 ? 52 : (n <= 12 ? 44 : 36)));
+    const base = n <= 4 ? 84 : (n <= 6 ? 72 : (n <= 9 ? 62 : (n <= 12 ? 52 : 42)));
     const sz = Math.max(26, Math.min(base, Math.floor((avail - (per - 1) * 6) / per)));
     rail.style.setProperty('--sz', sz + 'px');
     rail.style.setProperty('--cols', String(cols));
