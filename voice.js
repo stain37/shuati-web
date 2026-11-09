@@ -15,6 +15,9 @@
     readTags: false, readExp: true, readRes: false, optStyle: 'both',
     askExp: true, sayVerdict: true,
     aiIntent: false,          /* 本地认不出的说法，交给站内 AI 猜意图 */
+    pitch: 1,                 /* 音调 0.6–1.6 */
+    readHints: true,          /* 念完选项后要不要说「请选择 / 可以多选」这类提示 */
+    btnCtl: true,             /* 答题页里的按钮能不能用说的点 */
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     autoNext: true, nextDelay: 1400, wake: '', sens: 'mid', mode: 'both',
@@ -95,6 +98,7 @@
     u.lang = cfg().lang || 'zh-CN';
     u.rate = Math.max(.6, Math.min(1.6, +cfg().rate || 1));
     u.volume = Math.max(0, Math.min(1, +cfg().vol == null ? 1 : +cfg().vol));
+    u.pitch = Math.max(.6, Math.min(1.6, +(cfg().pitch == null ? 1 : cfg().pitch)));
     const v = pickVoice(); if (v) u.voice = v;
     speaking = true; setPill('speaking');
     let fin = false;
@@ -143,7 +147,7 @@
         else parts.push(o.letter + '，' + o.text);
       });
     }
-    parts.push(isMulti() ? '可以多选，选完说确认' : '请选择');
+    if (c.readHints) parts.push(isMulti() ? '可以多选，选完说确认' : '请选择');
     return parts.filter(Boolean).join('。');
   }
   function resetForQuestion() {
@@ -159,6 +163,47 @@
       if (!isOn()) return;
       if (cfg().mode !== 'read') startListen();
     });
+  }
+
+  /* ---------- 用说的点答题页上的按钮 ---------- */
+  /* 「除了返回 / 主页 / 退出这种会把你带出答题页的，其它都能说」——
+     做法：扫描页面上可见的按钮，取它的文字当别名，用户话里出现就点它。
+     带删除/清空/重置的也不让说，避免一句话把东西弄没。 */
+  const BTN_NO = /(返回|主页|首页|退出|离开|关闭|清空|删除|重置|卸载|重置全部)/;
+  const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu;
+  function quizButtons() {
+    const out = [];
+    const seen = {};
+    Array.prototype.slice.call(document.querySelectorAll('#view button, #view .btn, #view .chip, #view .qbtn, #view [role="button"]'))
+      .forEach(function (el) {
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 16) return;
+        if (BTN_NO.test(t)) return;                      /* 会离开答题页的不接管 */
+        if (seen[t]) return;
+        seen[t] = 1;
+        out.push({ el: el, name: t });
+      });
+    return out;
+  }
+  function hitButton(t) {
+    if (!cfg().btnCtl) return false;
+    let best = null;
+    quizButtons().forEach(function (c) {
+      /* 一个按钮可能写「🎯 专注」「🖼 小窗」「⋯ 更多」：拆掉装饰再当别名 */
+      const clean = c.name.replace(EMOJI, ' ').replace(/[（(].*?[)）]/g, ' ').replace(/\s+/g, ' ').trim();
+      const keys = [clean].concat(clean.split(/[\/／|｜·、]/)).map(function (s) {
+        return norm(s.replace(EMOJI, '').trim());
+      }).filter(Boolean);
+      keys.forEach(function (k) {
+        if (k.length < 2) return;
+        if (t.indexOf(k) >= 0 && (!best || k.length > best.k.length)) best = { el: c.el, k: k, name: c.name };
+      });
+    });
+    if (!best) return false;
+    best.el.click();
+    flash('好的：' + best.name);
+    return true;
   }
 
   /* ---------- 认得出来什么 ---------- */
@@ -421,6 +466,9 @@
       return;
     }
 
+    /* 按钮：说「专注」「小窗」「脑图」「重做」「看解析」「更多」… */
+    if (hitButton(t)) return;
+
     const letters = parseLetters(t);
     lastHeard = txt;
     if (!letters.length) { aiFallback(txt); return; }
@@ -594,6 +642,8 @@
       row('语速', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="rate" value="' + c.rate + '"><b class="vs-val" data-vv="rate">' + c.rate + '×</b>') +
       row('音量', '<input type="range" min="0" max="1" step="0.05" data-vk="vol" value="' + c.vol + '"><b class="vs-val" data-vv="vol">' + Math.round(c.vol * 100) + '%</b>') +
       row('音色', '<select data-vk="voiceURI">' + voiceOpts + '</select>', '系统的中文语音；没有列出来就先点一下页面再打开面板') +
+      row('音调', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="pitch" value="' + (c.pitch == null ? 1 : c.pitch) + '"><b class="vs-val" data-vv="pitch">' + (+(c.pitch == null ? 1 : c.pitch)).toFixed(2) + '</b>') +
+      row('念提示词', chk('readHints'), '念完选项后要不要说「请选择 / 可以多选，选完说确认」；关掉更安静') +
       row('读题号', chk('readNo')) +
       row('读题干', chk('readStem')) +
       row('读选项', chk('readOpts')) +
@@ -618,8 +668,13 @@
       row('麦克风灵敏度', '<select data-vk="sens">' +
         ['low', 'mid', 'high'].map(s => '<option value="' + s + '"' + (c.sens === s ? ' selected' : '') + '>' + ({ low: '低（小声也说）', mid: '中（默认）', high: '高（要清晰、防噪音）' }[s]) + '</option>').join('') + '</select>') +
       row('唤醒词', '<input type="text" data-vk="wake" value="' + escAttr(c.wake) + '" placeholder="例如：小刷（留空＝一直听）">') +
+      row('用说的点按钮', chk('btnCtl'), '答题页上的按钮基本都能说：专注、小窗、相似题、脑图、批注、白板、重做、导出、口诀、更多、看资料…… 返回 / 主页 / 退出这类会离开答题页的不管') +
       row('认不出时问 AI', chk('aiIntent'), '本地命令词没对上时，把这句话交给站内 AI 判断你是想选选项、下一题、念解析还是问它（要有配好 AI 才生效；会慢约 1 秒）') +
 
+      '<div class="vs-sec">语音包（音色 + 语速 + 音调 + 音量 + 语言）</div>' +
+      row('试听', '<button class="btn tiny" data-vtest="1">▶ 念一句试试</button>', '用现在的音色念一句示例') +
+      row('导出', '<button class="btn tiny" data-vpack="export">⬇ 存成 .json</button>', '把这套音色参数存下来，换设备 / 发给别人都能用') +
+      row('导入', '<input type="file" accept=".json,application/json" data-vpack="import">', '选一个语音包 .json，立刻套用') +
       '<div class="vs-sec">命令词（逗号分隔，可自己改）</div>' +
       row('下一题', '<input type="text" data-vk="cNext" value="' + escAttr(c.cNext) + '">') +
       row('上一题', '<input type="text" data-vk="cPrev" value="' + escAttr(c.cPrev) + '">') +
@@ -637,6 +692,12 @@
     document.body.appendChild(wrap);
     wrap.addEventListener('click', ev => {
       if (ev.target.closest('[data-vclose]')) { closePanel(); return; }
+      if (ev.target.closest('[data-vtest]')) {
+        speak('这是现在的音色，第三题，下列关于真核生物转录起始的叙述，错误的是。A，转录因子。B，TATA 盒。');
+        return;
+      }
+      const ex = ev.target.closest('[data-vpack="export"]');
+      if (ex) { exportPack(); return; }
       const rs = ev.target.closest('[data-vreset]');
       if (rs) {
         const keepOn = cfg().on;
@@ -644,6 +705,11 @@
         save(); closePanel(); openPanel(); paintChip();
         return;
       }
+    });
+    wrap.addEventListener('change', ev => {
+      const im = ev.target.closest('[data-vpack="import"]');
+      if (!im || !im.files || !im.files[0]) return;
+      importPack(im.files[0]);
     });
     wrap.addEventListener('input', ev => {
       const el = ev.target;
@@ -663,6 +729,44 @@
     });
     fillVoicesSoon();
   }
+  /* ---------- 语音包：把「音色 + 语速 + 音调 + 音量 + 语言」存成一个 json ---------- */
+  function exportPack() {
+    const c = cfg();
+    const name = (c.voiceName || '语音包') + ' ' + new Date().toISOString().slice(0, 10);
+    const data = {
+      app: 'shuati-voice-pack', v: 1, name: name,
+      voiceURI: c.voiceURI || '', voiceName: c.voiceName || '', lang: c.lang,
+      rate: c.rate, pitch: c.pitch == null ? 1 : c.pitch, vol: c.vol
+    };
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (name.replace(/[\\/:*?"<>|]/g, '_')) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      flash('语音包已存下来（.json）');
+    } catch (e) { flash('导出失败：' + (e && e.message)); }
+  }
+  function applyPack(o) {
+    if (!o || (o.app && o.app !== 'shuati-voice-pack')) { flash('这不是语音包文件'); return; }
+    const c = cfg();
+    ['voiceURI', 'voiceName', 'lang', 'rate', 'pitch', 'vol'].forEach(k => {
+      if (o[k] !== undefined && o[k] !== '') c[k] = o[k];
+    });
+    save(); paintChip(); closePanel(); openPanel();
+    flash('已套用语音包：' + (o.name || o.voiceName || '未命名'));
+  }
+  function importPack(file) {
+    const fr = new FileReader();
+    fr.onload = function () {
+      try { applyPack(JSON.parse(String(fr.result || ''))); }
+      catch (e) { flash('这个文件读不出来：' + (e && e.message)); }
+    };
+    fr.onerror = function () { flash('文件读取失败'); };
+    fr.readAsText(file);
+  }
+
   function fillVoicesSoon() {
     const s = synth(); if (!s) return;
     const re = () => {
