@@ -4951,6 +4951,11 @@ function uiOptRail() {
     rail.style.setProperty('--sz', sz + 'px');
     rail.style.setProperty('--cols', String(cols));
     rail.setAttribute('data-locked', (opts.querySelector('.opt:not(.lock)') ? '0' : '1'));
+    /* web635：答题卡（选项行）也跟着一起放大/缩小 —— 选项少就一行更高更好点，
+       选项多就自动收小，整页仍然一屏能看个大概。 */
+    const oph = Math.max(42, Math.min(88, Math.round((innerHeight * 0.54 - (n - 1) * 8) / Math.max(1, n))));
+    document.body.style.setProperty('--oph', oph + 'px');
+    document.body.style.setProperty('--railw', (rail.offsetWidth || 38) + 'px');
   } catch (eSz) {}
   try { uiHandHintOnce(rail); } catch (eH) {}
   /* 默认位置：紧挨着「上一题 / 下一题」那组钮的左侧（右手时镜像到右侧）；

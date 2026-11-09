@@ -3732,3 +3732,31 @@ body.quiz.hand-mode .stem { margin-bottom:8px !important; }
 #optRail[data-locked="1"]::after { content:"已作答"; position:absolute; left:0; right:0; top:-18px;
   text-align:center; font-size:10px; color:var(--sub); }
 #optRail { max-height:calc(100vh - 170px); overflow-y:auto; }
+
+/* web635：单手模式下答题选项跟着选项数量一起缩放（--oph 由 uiOptRail 计算） */
+body.quiz.hand-mode .opts { gap:max(6px, calc(var(--oph,56px) * .12)) !important; }
+body.quiz.hand-mode .opts .opt {
+  min-height:var(--oph,56px) !important;
+  padding:calc(var(--oph,56px) * .14) 12px !important;
+  border-radius:calc(var(--oph,56px) * .26) !important;
+  font-size:calc(var(--oph,56px) * .30) !important;
+}
+body.quiz.hand-mode .opts .opt .k {
+  width:calc(var(--oph,56px) * .56) !important;
+  height:calc(var(--oph,56px) * .56) !important;
+  flex:0 0 auto !important;
+  font-size:calc(var(--oph,56px) * .26) !important;
+  border-radius:calc(var(--oph,56px) * .18) !important;
+}
+body.quiz.hand-mode .opts .opt .otx {
+  font-size:calc(var(--oph,56px) * .29) !important;
+  line-height:1.35 !important;
+}
+
+/* web635b：浮动条停在左边时，给答题区让出位置，别压住 A/B/C 字母块 */
+body.quiz.hand-mode[data-hand="left"] #view .opts {
+  margin-left:calc(var(--railw, 38px) + 14px) !important;
+}
+body.quiz.hand-mode[data-hand="right"] #view .opts {
+  margin-right:calc(var(--railw, 38px) + 14px) !important;
+}
