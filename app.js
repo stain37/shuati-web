@@ -2719,14 +2719,19 @@ function uiBottomNavInit() {
     ind.style.width = v[1].toFixed(2) + 'px';
   };
   const paintNow = (jump) => {
+    /* web608：不再用弹簧「扫」过去。之前哪怕 jump 也是排一帧 rAF 才落位，
+       慢一帧就会在旧按钮到新按钮之间留一条灰色胶囊（皮肤是 win95 时尤其明显，
+       用户看到的就是「点到哪儿，左边多一条灰杠」）。现在直接写坐标，零动画。 */
     const on = nav.querySelector('.btn.on');
     if (!on || !on.offsetWidth) { ind.style.opacity = '0'; return; }
     const nr = nav.getBoundingClientRect();
     const br = on.getBoundingClientRect();
     const bl = parseFloat(getComputedStyle(nav).borderLeftWidth) || 0;
+    const v = [br.left - nr.left - bl, br.width];
+    cur[0] = v[0]; cur[1] = v[1];
     ind.style.opacity = '1';
-    MO.run('bnavpill', { cur: cur, trg: [br.left - nr.left - bl, br.width], jump: !!jump, onFrame: apply,
-      eps: 0.3, spr: { k: 320, c: 22 } });      /* ζ≈0.61：过去时先冲过头约 6% 再回坐，就是那点「Q」 */
+    apply(v);
+    try { MO.run('bnavpill', { cur: cur, trg: v, jump: true, onFrame: apply }); } catch (e0) {}
   };
   /* webNNN：换页时指示器直接落位，不再从上一个按钮「扫」过去。
      扫过去的过程中它会压过中间那几个按钮，看起来就是「点了右边、左边多出一条灰杠」，
@@ -2735,6 +2740,14 @@ function uiBottomNavInit() {
   nav.__bnavPaint = paint;
   paintNow(true);
   window.addEventListener('resize', paint);
+  /* web608b：切到某个入口后它的宽度会变（win95 皮肤给 .on 加边框、其它皮肤改内边距），
+     胶囊还按旧宽度画就会在按钮边上多出一截灰边。盯着每个按钮的尺寸，一变就立刻对齐。 */
+  try {
+    if ('ResizeObserver' in window) {
+      const ro = new ResizeObserver(() => { try { paint(); } catch (e0) {} });
+      nav.querySelectorAll('.btn').forEach(b => ro.observe(b));
+    }
+  } catch (eRO) {}
   if ('MutationObserver' in window) {
     new MutationObserver(paint).observe(nav, { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
   }

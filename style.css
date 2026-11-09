@@ -3493,3 +3493,5 @@ body.dark .revline.late b{color:#f0c070}
 .revline .rev-pull{margin-left:2px;padding:1px 8px;min-height:0;line-height:1.5;font-size:11px;border-radius:999px}
 .qhead .revline{max-width:100%}
 @media(max-width:520px){.qhead .revline{font-size:11px}}
+/* web608：底栏胶囊指示器零动画（换成 win95 皮肤时它是一条灰杠，只要有一帧没落位就会「多出一条」） */
+.bnav .bnav-ind{ transition:none !important; }
