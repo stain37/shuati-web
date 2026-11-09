@@ -394,6 +394,40 @@
     TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
     return TG_IDX;
   }
+  /* 某个考点文件夹的题数 / 已答（只查索引，不造题目行 —— 列目录时用这个，快得多） */
+  function tagStatOf(catId) {
+    var tag = String(catId || '').replace(/^tgcat:/, '');
+    try { tag = decodeURIComponent(tag); } catch (e0) {}
+    var ix = tagIndex();
+    var arr = ix.byTag[tag] || [];
+    var done = 0;
+    try {
+      var A = (typeof ANS === 'object' && ANS) ? ANS : {};
+      arr.forEach(function (it) {
+        var a = A[it.b.id + '#' + it.q.id];
+        if (a && !a.redo) done++;
+      });
+    } catch (e1) {}
+    return { n: arr.length, done: done, tag: tag };
+  }
+
+  /* 考点方案的总题数 / 已答（按「题」去重，不是按标签累加） */
+  function tagTotal() {
+    var ix = tagIndex();
+    var seen = Object.create(null), q = 0, done = 0;
+    var A = (typeof ANS === 'object' && ANS) ? ANS : {};
+    ix.list.forEach(function (t) {
+      (ix.byTag[t] || []).forEach(function (it) {
+        var k = it.b.id + '#' + it.q.id;
+        if (seen[k]) return;
+        seen[k] = 1; q++;
+        var a = A[k];
+        if (a && !a.redo) done++;
+      });
+    });
+    return { q: q, done: done, tags: ix.list.length };
+  }
+
   function smallTags() {
     ensure();
     return tagIndex().list.slice(0);
@@ -643,7 +677,7 @@
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
-    tagQList: tagQList, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
+    tagQList: tagQList, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
     schemeOf: function (sid) { ensure(); var id = sid || CUR; return DB.list.filter(function (x) { return x && x.id === id; })[0] || null; },
     setBig: function (sid, v) {
       ensure();

@@ -102,8 +102,9 @@
     var base = (typeof baseBanks === 'function') ? baseBanks() : [];
     /* 「按小标签分」的方案里不列题库：里面装的是题目，题库本身不参与分类 */
     try { if (window.SCM && SCM.tagMode && SCM.tagMode()) base = []; } catch (eTag) {}
+    /* 考点只是分类视图，不是题库：这里绝不把虚拟题集混进题库列表
+       （否则会被搜索、批量管理、题库计数当成真题库，还特别慢） */
     var tags = [];
-    try { if (window.SCM && SCM.tagBanks) tags = SCM.tagBanks() || []; } catch (e) { tags = []; }
     var key = '';
     try {
       key = [base.length, base.reduce(function (a, b) { return a + ((b && b.questions) ? (b.questions.length || 0) : 0); }, 0),
@@ -111,7 +112,7 @@
         (window.SCM && SCM.tagsSig ? SCM.tagsSig() : '')].join('|');
     } catch (e) { key = ''; }
     if (key && _BL.key === key && _BL.list) return _BL.list;
-    var list = tags.length ? base.concat(tags) : base;
+    var list = base;
     _BL = { key: key, list: list };
     return list;
   }
@@ -311,7 +312,39 @@
     });
     return { n: n, done: done, ok: ok, wr: wr, pct: n ? done / n * 100 : 0, acc: done ? Math.round(ok / done * 100) : 0 };
   }
+  /* 考点目录：题数 / 已答走索引，不造题目行（web656 性能） */
+  function tagSubStat(cid) {
+    var acc = { banks: 0, q: 0, done: 0, ok: 0, wr: 0, cats: 0 };
+    function walk(id) {
+      kids(id).forEach(function (k) {
+        acc.cats++;
+        if (isTagDir(k.id)) {
+          var s0 = tagStat(k.id);
+          acc.q += s0.n; acc.done += s0.done;
+        } else {
+          dirBanks(k.id).forEach(function (b) {
+            var s1 = bankStat(b);
+            acc.banks++; acc.q += s1.n; acc.done += s1.done; acc.ok += s1.ok; acc.wr += s1.wr;
+          });
+        }
+        walk(k.id);
+      });
+    }
+    try {
+      var s = tagStat(cid);
+      acc.q += s.n; acc.done += s.done;
+      walk(cid);
+      acc.banks = 0;
+      return acc;
+    } catch (e) { return acc; }
+  }
+  function tagStat(cid) {
+    try { if (window.SCM && SCM.tagStatOf) return SCM.tagStatOf(cid) || { n: 0, done: 0 }; } catch (e) {}
+    return { n: 0, done: 0 };
+  }
+
   function subStat(cid) {
+    if (isTagDir(cid)) { var t0 = tagSubStat(cid); return t0; }
     var acc = { banks: 0, q: 0, done: 0, ok: 0, wr: 0, cats: 0 };
     function walk(id) {
       kids(id).forEach(function (k) {

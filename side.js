@@ -45,16 +45,9 @@
   function tagScheme() { try { return !!(window.SCM && SCM.tagMode && SCM.tagMode()); } catch (e) { return false; } }
   /* 「按小标签分」的方案：侧栏列的是题目（来自 CAT.dirBanks 的题目行），不是题库 */
   function banks() {
-    if (tagScheme()) {
-      var out = [];
-      try {
-        (window.CAT && CAT.all ? CAT.all() : []).forEach(function (c) {
-          if (String(c.id).indexOf('tgcat:') !== 0) return;
-          try { (CAT.dirBanks(c.id) || []).forEach(function (r) { out.push(r); }); } catch (e) {}
-        });
-      } catch (e2) {}
-      return out;
-    }
+    /* 考点方案：这里没有题库 —— 考点只是分类视图。
+       （以前把每个考点的题都铺成行，几百个考点就卡死了，web656 去掉） */
+    if (tagScheme()) return [];
     try { return (typeof baseBanks === 'function') ? baseBanks().slice() : []; } catch (e) { return []; }
   }
   function cats() { try { return (window.CAT && CAT.all) ? (CAT.all() || []) : []; } catch (e) { return []; } }
@@ -467,7 +460,16 @@
       + (S.selmode ? '<i class="qs-ck' + (S.sel['c:' + c.id] === 1 ? ' on' : '') + '" data-ck="c:' + E(c.id) + '"></i>' : '')
       + '<i class="qs-caret">' + (total ? '▾' : '·') + '</i><i class="qs-folder">📁</i>'
       + '<span class="qs-ct" title="' + E(c.title) + '">' + E(c.title) + '</span>'
-      + '<em>' + (shownBanks.length || '') + '</em>'
+      + '<em>' + (function () {
+        if (!tagScheme()) return shownBanks.length || '';
+        try {
+          if (String(c.id).indexOf('tgcat:') === 0) {
+            var ts = (window.SCM && SCM.tagStatOf) ? SCM.tagStatOf(c.id) : null;
+            return ts ? (ts.n || '') : '';
+          }
+          return kidsArr.length || '';
+        } catch (eT) { return ''; }
+      })() + '</em>'
       + '<span class="qs-star' + ((S.star || {})[catKey(c.id)] === 1 ? ' on' : '') + '" data-star="' + E(catKey(c.id)) + '" title="标星（常驻）">'
       + ((S.star || {})[catKey(c.id)] === 1 ? '★' : '☆') + '</span>'
       + '<span class="qs-cmore" data-cm="' + E(c.id) + '" title="文件夹操作">⋯</span>'
@@ -552,13 +554,20 @@
     var nq = allB.reduce(function (a, b) { return a + (b.questions ? b.questions.length : 0); }, 0);
     var nDone = 0;
     allB.forEach(function (b) { nDone += statOf(b).done; });
+    var tagTot = null;
+    if (tagScheme()) {
+      try { tagTot = (window.SCM && SCM.tagTotal) ? SCM.tagTotal() : null; } catch (eT0) { tagTot = null; }
+      if (tagTot) { nq = tagTot.q; nDone = tagTot.done; }
+    }
     var st = $('qsStat');
     if (st) {
       var nCat = hit.c || 0, nBank = hit.n + rootBanks.length;
       var hitTxt = S.scope === 'cat' ? ('命中 ' + nCat + ' 个文件夹')
         : S.scope === 'bank' ? ('命中 ' + nBank + ' 个题库')
           : ('命中 ' + nCat + ' 个文件夹 · ' + nBank + ' 个题库');
-      st.innerHTML = (q ? hitTxt : '共 ' + allB.length + ' 个题库 · ' + nq + ' 题')
+      st.innerHTML = (q ? hitTxt : (tagScheme()
+        ? ('共 ' + ((tagTot && tagTot.tags) || (CAT.all() || []).filter(function (c) { return String(c.id).indexOf('tgcat:') === 0; }).length) + ' 个考点 · ' + nq + ' 题')
+        : ('共 ' + allB.length + ' 个题库 · ' + nq + ' 题')))
         + '<span class="qs-pd">已答 ' + nDone + '</span>';
     }
     var bar = $('qsBulk');
