@@ -2318,7 +2318,16 @@ function recOf(k) {
 const answered = k => { const a = ANS[k]; return !!a && !a.redo; };
 /* 到期时间：答错的题当天回到队列，答对后按间隔排期 */
 /* 复习排期只针对「做错过」的题——每日复习 = 错题集的排期 */
-function inSrs(k) { const a = ANS[k]; return !!a && (a.wrong || 0) > 0; }
+/* 该题算不算「在复习系统里」（决定它会不会进今日复习 / 复习日历）：
+   ①答错过（wrong>0）；
+   ②或者答对了但自己标了「模糊 / 忘记」—— 不熟就该复习，但这类题**不进错题本**（错题本只看 wrong>0）。
+   2026-11-10 用户确认：以前只有 ①，导致一次就答对的题点「忘记」完全没效果。 */
+function inSrs(k) {
+  const a = ANS[k];
+  if (!a) return false;
+  if ((a.wrong || 0) > 0) return true;
+  return a.grade === '模糊' || a.grade === '忘记';
+}
 /* 「这题还算不算错题」：错过（wrong>0）且没被订正过（fixed）。
    fixed 只在「仅重做错题」那一轮里答对时打上；错次数 wrong 本身不清，
    所以「累计错了几次」照样看得到，错题集里才会消失。 */
@@ -5676,7 +5685,7 @@ function srsApplyGrade(rec, grade, now) {
     if (canToday) {
       requeue = true;
       rq.n = 1;
-      rec.due = now + 60 * 1000;          // 排到后面：下次「今日复习」才会再出现，不连排
+      rec.due = now;                      // 今天再来一次：立刻算到期（rq.n 保证当天只重排这一回）
     } else {
       rec.due = dayAdd(now, Math.max(1, ivl));
     }
@@ -6619,6 +6628,10 @@ function isDueToday(k) {
   if (!a) return false;
   if (srsPulledToday(k)) return true;                                // 功能二：手动拉到今天的卡
   if (!inSrs(k)) return false;
+  /* 「忘记」这类今天还要再来的题：rq 里已经记了今天要重排一次，直接算今天到期，
+     不用等 due（原本 due = now+60s，用户点开今日复习时会以为没生效）。
+     只认「忘记」——「模糊」的语义是今天别再出现、明天再来，不能被 rq 拉回来。 */
+  if (a.grade === '忘记' && a.rq && a.rq.d === srsDayKey(Date.now()) && (a.rq.n || 0) > 0 && a.due != null && a.due <= Date.now()) return true;
   const d = dueOf(k);
   if (d == null || d > Date.now()) return false;
   if (d < srsDayStart(Date.now())) return srsPileOn();               // 功能四：逾期堆不堆到当天
