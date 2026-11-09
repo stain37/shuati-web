@@ -919,9 +919,17 @@
     if (!t) return;
     lastHeard = String(txt || '').trim();
     if (speaking && cfg().halfDuplex) {
-      const okIntent = !!intentOf(t) && !echoSoft(t);
-      if (!strongCmd(t) && !okIntent) return;   /* 既不像命令、也不像正常说话 → 当自己的回声 */
-      stopSpeak(); beep('cut');                 /* 是命令 → 打断朗读，继续往下执行 */
+      /* 朗读当中也能被打断：①明确命令 ②像人话的意图 ③直接报了答案/选项内容 */
+      const soft = echoSoft(t);
+      let okIntent = !!intentOf(t) && !soft;
+      let okAns = false;
+      if (!soft) {
+        try { if (parseLetters(t).length) okAns = true; } catch (eL) {}
+        try { const om = matchOptionText(t); if (om && om.score >= 0.62) okAns = true; } catch (eO) {}
+      }
+      if (!strongCmd(t) && !okIntent && !okAns) return;   /* 既不像命令、也不像答案 → 当自己的回声 */
+      stopSpeak(); beep('cut');                          /* 打断朗读，继续往下执行 */
+      if (okAns && !okIntent) flash('好，听到你的答案了');
     } else if (echoish(t)) return;
     const c = cfg();
 

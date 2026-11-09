@@ -561,6 +561,33 @@
       else if ((c.parent || null) !== parent) { c.parent = parent; added++; }
       MAP[id][tgBankId(t)] = cid;
     });
+    /* 大标签层只留「真的有子文件夹」的父级：没人挂进去的（投票没选它）就别建空壳 */
+    if (big) {
+      var need = {};
+      cats.forEach(function (c) {
+        if (c && c.parent) need[String(c.parent)] = 1;
+      });
+      var badd = 0;
+      Object.keys(bigCat).forEach(function (g) {
+        var cid2 = bigCat[g];
+        if (!need[cid2]) { delete bigCat[g]; badd++; }
+      });
+      if (badd) {
+        cats = cats.filter(function (c) { return !(c && /^tgb:/.test(String(c.id)) && !need[String(c.id)]); });
+        DB.data[id].cats = cats;
+      }
+      /* 反过来：某个小标签要挂的父级还没建，就补一个 */
+      var ordMax = 0;
+      cats.forEach(function (c) { if (c && c.order > ordMax) ordMax = c.order; });
+      var seen = {};
+      cats.forEach(function (c) { if (c && c.id) seen[String(c.id)] = 1; });
+      cats.forEach(function (c) {
+        if (!c || !c.parent || seen[String(c.parent)]) return;
+        var g2 = String(c.parent).replace(/^tgb:/, '');
+        cats.push({ id: c.parent, title: decodeURIComponent(g2), parent: null, order: ++ordMax, bigDir: 1 });
+        seen[String(c.parent)] = 1; added++;
+      });
+    }
     /* 清掉已经不存在的标签文件夹（以前标签删了/题删了，文件夹还留着，就成了空文件夹） */
     var live = {};
     ix.list.forEach(function (t) { live[tgCatId(t)] = 1; });
