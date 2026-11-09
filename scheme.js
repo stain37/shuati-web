@@ -347,46 +347,77 @@
     if (!ts.length && q && q.tags && q.tags.length) ts = q.tags;
     return ts.map(function (t) { return String(t || '').trim(); }).filter(Boolean);
   }
-  function smallTags() {
+  /* ---- 标签倒排索引：一次扫描，全部标签共用；标签改了 / 题库变了才重建 ----
+     以前 smallTags() 全库扫一遍、tagBankOf() 每个标签再全库扫一遍，
+     标签一多就是 O(标签数 x 题数)，第一次进方案会直接卡死。 ---- */
+  var TG_IDX = { sig: '', byTag: null, list: null, banks: null };
+  function banksSig() {
+    var n = 0, q = 0;
+    banks().forEach(function (b) { if (b && b.id) { n++; q += (b.questions || []).length; } });
+    return n + ':' + q + ':' + (window.__TAGS_REV || 0);
+  }
+  function tagIndex() {
     ensure();
-    var basic = basicSet(), seen = {}, out = [];
+    var sig = banksSig();
+    if (TG_IDX.byTag && TG_IDX.sig === sig) return TG_IDX;
+    var basic = basicSet(), byTag = Object.create(null);
     banks().forEach(function (b) {
       if (!b || !b.id || !Array.isArray(b.questions)) return;
-      b.questions.forEach(function (q) {
-        if (!q) return;
-        tagsOfQ(b, q).forEach(function (t) {
-          if (basic[t] || seen[t]) return;
-          seen[t] = 1; out.push(t);
+      b.questions.forEach(function (qq) {
+        if (!qq) return;
+        tagsOfQ(b, qq).forEach(function (t) {
+          if (basic[t]) return;
+          var arr = byTag[t] || (byTag[t] = []);
+          arr.push({ b: b, q: qq });
         });
       });
     });
-    out.sort(function (a, b) { return a.localeCompare(b, 'zh'); });
-    return out;
+    var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
+    TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
+    return TG_IDX;
+  }
+  function smallTags() {
+    ensure();
+    return tagIndex().list.slice(0);
   }
   function tagBankOf(tag) {
     ensure();
-    var qs = [];
-    banks().forEach(function (b) {
-      if (!b || !b.id || !Array.isArray(b.questions)) return;
-      b.questions.forEach(function (q) {
-        if (!q) return;
-        var ts = tagsOfQ(b, q);
-        if (ts.indexOf(tag) < 0) return;
-        var o = {};
-        Object.keys(q).forEach(function (kk) { o[kk] = q[kk]; });
-        o._bank = b.id; o._bname = String(b.title || b.name || '');
-        qs.push(o);
-      });
-    });
-    return {
+    var ix = tagIndex();
+    var hit = ix.banks[tag];
+    if (hit) return hit;
+    var b = {
       id: tgBankId(tag), title: tag, name: tag, virtualTag: tag,
-      questions: qs, source: 'tag', createdAt: 0, cat: null
+      questions: [], source: 'tag', createdAt: 0, cat: null
     };
+    /* 惰性：真正要题（打开题集 / 显示题数）时才复制，列目录时不做任何复制 */
+    Object.defineProperty(b, 'questions', {
+      enumerable: true,
+      configurable: true,
+      get: function () {
+        if (b.__qs) return b.__qs;
+        var qs = (ix.byTag[tag] || []).map(function (it) {
+          var o = {};
+          Object.keys(it.q).forEach(function (kk) { o[kk] = it.q[kk]; });
+          o._bank = it.b.id; o._bname = String(it.b.title || it.b.name || '');
+          return o;
+        });
+        b.__qs = qs;
+        return qs;
+      },
+      set: function (v) { b.__qs = v; }
+    });
+    ix.banks[tag] = b;
+    return b;
   }
+  var TB_CACHE = { key: '', list: null };
   function tagBanks() {
     ensure();
     if (!tagMode()) return [];
-    var m = MAP[CUR] || {}, out = [], seen = {};
+    var ix = tagIndex();
+    var m = MAP[CUR] || {};
+    var ck = ix.sig + '|' + CUR + '|' + Object.keys(m).length;
+    if (TB_CACHE.key === ck && TB_CACHE.list) return TB_CACHE.list;
+    var out = [], seen = {};
     Object.keys(m).forEach(function (bid) {
       if (String(bid).indexOf('tg:') !== 0 || seen[bid]) return;
       seen[bid] = 1;
@@ -394,10 +425,11 @@
       try { tag = decodeURIComponent(String(bid).slice(3)); } catch (e) { tag = String(bid).slice(3); }
       if (!tag) return;
       var b = tagBankOf(tag);
-      b.cat = m[bid] || null;
+      if (b.cat !== (m[bid] || null)) { b.cat = m[bid] || null; }
       out.push(b);
     });
     out.sort(function (a, b) { return String(a.title).localeCompare(String(b.title), 'zh'); });
+    TB_CACHE = { key: ck, list: out };
     return out;
   }
   function tagBankById(id) {
@@ -422,7 +454,7 @@
     cats.forEach(function (c) { if (c && c.id) have[c.id] = 1; });
     if (!MAP[id] || typeof MAP[id] !== 'object') MAP[id] = {};
     var added = 0;
-    smallTags().forEach(function (t, i) {
+    tagIndex().list.forEach(function (t, i) {
       var cid = tgCatId(t);
       if (!have[cid]) {
         cats.push({ id: cid, title: t, parent: null, order: i + 1 });
@@ -447,6 +479,10 @@
     apply();
     return id;
   }
+
+  try {
+    window.addEventListener('qbank:tags-changed', function () { window.__TAGS_REV = (window.__TAGS_REV || 0) + 1; });
+  } catch (e0) {}
 
   function modeOf(sid) {
     ensure();

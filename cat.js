@@ -94,16 +94,24 @@
     while (CAT && CAT.some(function (c) { return c.id === id; })) { id = (prefix || 'cat') + '-' + s + '-' + (++n); }
     return id;
   }
+  /* 同一个渲染周期里 dirBanks() 会按文件夹数调用很多次；
+     以前每次都重建「标签虚拟题集」列表（352 个标签 = 352 次全库扫描），直接把页面卡死。
+     这里按「方案 + 目录数 + 标签集签名」缓存一次。 */
+  var _BL = { key: '', list: null };
   function bankList() {
     var base = (typeof baseBanks === 'function') ? baseBanks() : [];
-    /* 「按小标签分」的方案：每个标签是一个虚拟题集，题目引用原题库（不复制） */
+    var tags = [];
+    try { if (window.SCM && SCM.tagBanks) tags = SCM.tagBanks() || []; } catch (e) { tags = []; }
+    var key = '';
     try {
-      if (window.SCM && SCM.tagBanks) {
-        var tb = SCM.tagBanks();
-        if (tb && tb.length) base = base.concat(tb);
-      }
-    } catch (e) {}
-    return base;
+      key = [base.length, base.reduce(function (a, b) { return a + ((b && b.questions) ? (b.questions.length || 0) : 0); }, 0),
+        (window.SCM && SCM.current ? SCM.current() : ''), tags.length,
+        (window.SCM && SCM.tagsSig ? SCM.tagsSig() : '')].join('|');
+    } catch (e) { key = ''; }
+    if (key && _BL.key === key && _BL.list) return _BL.list;
+    var list = tags.length ? base.concat(tags) : base;
+    _BL = { key: key, list: list };
+    return list;
   }
   function bankOf(id) { return (typeof bankById === 'function') ? bankById(id) : null; }
   function catsAll() { ensure(); return CAT; }

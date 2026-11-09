@@ -3519,3 +3519,20 @@ body.dark .revline.late b{color:#f0c070}
 .qside .qs-stars .qs-shstar em{ margin-left:auto; font-style:normal; font-size:11px; color:var(--sub); }
 .qside .qs-stars .qs-shstar .qs-caret{ font-style:normal; font-size:10px; color:var(--sub); width:10px; }
 .qside .qs-stars .qs-cbody{ margin-top:2px; }
+
+/* ===== web617：主页等非答题页，底栏贴到底边（原来浮起 8px，看着悬空） ===== */
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{
+  left:0 !important; right:0 !important; bottom:0 !important;
+  max-width:none !important; margin:0 !important;
+  border-radius:16px 16px 0 0 !important;
+  border-bottom:0 !important;
+  padding-bottom:calc(5px + env(safe-area-inset-bottom)) !important;
+  box-shadow:0 -6px 22px rgba(15,23,42,.14) !important;
+}
+body:not(.quiz):not(.focus) .bnav{
+  left:0; right:0; bottom:0; max-width:none; margin:0;
+  border-radius:16px 16px 0 0; border-bottom:0;
+  padding-bottom:calc(5px + env(safe-area-inset-bottom));
+}
+/* 贴边后正文别被最后一行压住 */
+body:not(.quiz){ padding-bottom:calc(78px + env(safe-area-inset-bottom)) }
