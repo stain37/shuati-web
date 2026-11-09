@@ -6433,15 +6433,20 @@ function renderCal() {
     const isFuture = CAL_DAY > t0;
     const dd = new Date(CAL_DAY);
     const head = (dd.getMonth() + 1) + ' 月 ' + dd.getDate() + ' 日 · ' + (items.length ? items.length + ' 张卡片' : '没有卡片')
-      + (isFuture ? '　<span class="mini-tag">预览，只读</span>' : '');
+      + (isFuture ? '　<span class="mini-tag">点一行直接做 · 也能提前复习</span>' : '');
     const rows = items.slice(0, 60).map(it => {
       const stem = String(it.q.stem || '').replace(/\s+/g, ' ').slice(0, 46);
       const tag = it.doneDay
         ? '<span class="mini-tag ' + (it.a.ok ? 'ok' : 'bad') + '">' + (it.a.ok ? '答对' : '答错') + '</span>'
         : '<span class="mini-tag">到期</span>';
       const gtag = it.a && it.a.grade ? ' <span class="mini-tag">' + it.a.grade + '</span>' : '';
-      return '<div class="cal-row"><span class="cal-b">' + esc(it.b.title || '题库') + '</span>'
-        + '<span class="cal-q">' + esc(stem) + (String(it.q.stem || '').length > 46 ? '…' : '') + '</span>' + tag + gtag + '</div>';
+      var canPull = isFuture && !it.doneDay && !(it.a && it.a.pulled === srsDayKey(Date.now()));
+      var pullBtn = canPull
+        ? '<button class="btn tiny cal-pull1" data-pull1="' + it.k + '" title="不用等到那天，现在就把这张卡加进今天的复习">提前复习</button>'
+        : '';
+      return '<div class="cal-row" data-openq="' + it.k + '" role="button" tabindex="0" title="点一下直接做这道题">'
+        + '<span class="cal-b">' + esc(it.b.title || '题库') + '</span>'
+        + '<span class="cal-q">' + esc(stem) + (String(it.q.stem || '').length > 46 ? '…' : '') + '</span>' + tag + gtag + pullBtn + '</div>';
     }).join('');
     dayHtml = '<div class="card" id="calDayBox"><div class="cal-dayhead">' + head
       + (CAL_DAY === t0 ? '　<button class="btn small primary" id="calStart">开始今日复习（' + dueN + '）</button>' : '')
@@ -6512,6 +6517,29 @@ function renderCal() {
   if (rbtn) rbtn.onclick = () => startReview(0);
   const sbtn = $('calStart');
   if (sbtn) sbtn.onclick = () => startReview(0);
+  /* web611：日历下面那张卡不再是「只读预览」——点一行就打开那道题直接做，
+     未来日期的行还带一个「提前复习」，不用等到那天。 */
+  $('view').querySelectorAll('.cal-row[data-openq]').forEach(row => {
+    row.onclick = (ev) => {
+      if (ev && ev.target && ev.target.closest && ev.target.closest('[data-pull1]')) return;
+      const k = row.dataset.openq || '';
+      const cut = k.indexOf('#');
+      if (cut < 0) return;
+      const bid = k.slice(0, cut), qid = k.slice(cut + 1);
+      const b = bankById(bid);
+      if (!b || !b.questions.some(q => String(q.id) === String(qid))) { toast('这道题所在的题库不在了'); return; }
+      QZ.bankId = bid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null; QZ.cur = qid;
+      go('#/bank/' + bid);
+    };
+    row.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); row.click(); } };
+  });
+  $('view').querySelectorAll('[data-pull1]').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const k = btn.dataset.pull1;
+      if (pullOne(k)) { toast('已加到今天的复习（错题本 · 待复习里能看到它）', 2000, 'ok'); render(); }
+    };
+  });
   const pbtn = $('calPull');
   if (pbtn) pbtn.onclick = () => {
     const inp = $('calPullN');

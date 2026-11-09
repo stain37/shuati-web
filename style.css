@@ -3498,3 +3498,10 @@ body.dark .revline.late b{color:#f0c070}
 @media(max-width:520px){.qhead .revline{font-size:11px}}
 /* web608：底栏胶囊指示器零动画（换成 win95 皮肤时它是一条灰杠，只要有一帧没落位就会「多出一条」） */
 .bnav .bnav-ind{ transition:none !important; }
+
+/* web611：复习日历当天卡片列表——行可点击直接做题，不再是只读预览 */
+#calDayBox .cal-row{cursor:pointer;border-radius:8px;padding-left:8px;padding-right:8px;transition:background .12s ease}
+#calDayBox .cal-row:hover{background:color-mix(in srgb,var(--primary) 9%,transparent)}
+#calDayBox .cal-row:active{transform:translateY(1px)}
+#calDayBox .cal-row .cal-q{flex:1 1 auto;min-width:0}
+#calDayBox .cal-row .cal-pull1{margin-left:6px;flex:0 0 auto;font-size:11px;padding:2px 8px}
