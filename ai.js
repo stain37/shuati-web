@@ -216,6 +216,7 @@ async function aiEmbed(texts, opts) {
   return arr.length === list.length ? arr : null;
 }
 window.aiEmbed = aiEmbed;
+window.aiChat = aiChat;   /* 给 voice.js 等模块用：跑一次普通对话（非流式） */
 function aiCfgFileName() { return 'AI配置.js'; }
 function aiApplyCfgFile(force) {
   const c = window.__AICFG__;

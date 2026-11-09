@@ -12,14 +12,19 @@
     on: false,
     /* 朗读 */
     rate: 0.95, vol: 1, voiceURI: '', readNo: true, readStem: true, readOpts: true,
-    readTags: false, readExp: true, readRes: true, optStyle: 'both',
+    readTags: false, readExp: true, readRes: false, optStyle: 'both',
+    askExp: true, sayVerdict: true,
+    aiIntent: false,          /* 本地认不出的说法，交给站内 AI 猜意图 */
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     autoNext: true, nextDelay: 1400, wake: '', sens: 'mid', mode: 'both',
     /* 行为 */
     handLink: true, stopOnSpeak: true,
     /* 命令词（逗号分隔，面板里能改） */
-    cNext: '下一题,下一个,过,跳过',
+    cNext: '下一题,下一个,往后',
+    cPrev: '上一题,前一题,往回',
+    cExp: '念解析,读解析,讲解析,解析一下,念一遍解析',
+    cHelp: '我不太懂,什么意思,不懂,没看懂,解释一下,为什么',
     cRepeat: '重读,重复,再说一遍,再读一遍,再来一遍',
     cAnswer: '答案,看答案,公布答案',
     cFav: '收藏',
@@ -43,6 +48,7 @@
   let rec = null, recOn = false;
   let speaking = false, pending = new Set(), qk = '', announced = false;
   let pauseT = null, nextT = null, lastHeard = '';
+  let askT = null, askState = '', said = [];
 
   /* ---------- 设置 ---------- */
   function cfg() {
@@ -81,6 +87,7 @@
     setPill('idle');
   }
   function speak(text, done) {
+    if (text) said.push(String(text).slice(0, 80));
     const s = synth();
     if (!s || !text) { done && done(); return; }
     if (cfg().stopOnSpeak) { try { s.cancel(); } catch (e) {} }
@@ -140,6 +147,7 @@
     return parts.filter(Boolean).join('。');
   }
   function resetForQuestion() {
+    askState = ''; clearTimeout(askT);
     pending = new Set();
     announced = false;
     clearTimeout(pauseT); clearTimeout(nextT);
@@ -212,20 +220,108 @@
       speak(right.length ? '答案是 ' + right.join('、') : '还没有答案');
     }
   }
-  function speakResult() {
-    if (!cfg().readRes) return;
+  /* ---------- 判分之后：不念次数/正确率，只问要不要解析 ---------- */
+  function quizMode() {
+    /* 以页面上真实的模式为准：提示条写着「背题 / 速刷」，比 SET 更可靠（SET 可能是上一题的） */
+    const h = document.querySelector('#view .qm-hint');
+    const t = h ? (h.textContent || '') : '';
+    if (/背题/.test(t)) return 'recite';
+    if (/速刷/.test(t)) return 'speed';
+    try { return (window.SET && SET.quizMode) || 'normal'; } catch (e) { return 'normal'; }
+  }
+  function isRecite() { return quizMode() === 'recite'; }
+  function isSpeed() { return quizMode() === 'speed'; }
+  function isOkNow() {
     const fb = document.querySelector('#view .fb');
-    const txt = fb ? (fb.innerText || '').replace(/\s+/g, ' ').trim() : '';
-    const okEl = document.querySelector('#view .fb .res');
-    const ok = okEl ? /正确|对/.test(okEl.className + okEl.innerText) && !/错/.test(okEl.innerText) : null;
-    const line = ok === true ? '回答正确。' : ok === false ? '回答错误。' : '';
-    const body = cfg().readExp || ok !== false ? txt : '';
-    speak((line + body).slice(0, 400), () => {
+    const t = fb ? (fb.innerText || '') : '';
+    if (/回答正确|答对|正确无误/.test(t)) return true;
+    if (/回答错|答错/.test(t)) return false;
+    const r = document.querySelector('#view .fb .res');
+    return r ? /(^|\s)(ok|right|good)(\s|$)/.test(r.className) : false;
+  }
+  function correctLetters() {
+    return visibleOpts().filter(o => /(^|\s)(ok|right|good)(\s|$)/.test(o.className))
+      .map((o, i) => ((o.querySelector('.k') || {}).textContent || LET[i]).trim());
+  }
+  function expText() {
+    const fb = document.querySelector('#view .fb');
+    if (!fb) return '';
+    const wrap = fb.querySelector('.exp-wrap');
+    if (!wrap) return '';
+    /* 只念解析正文：标题行里有「▾ 收起 / ⠿ 块排序」按钮，整块 innerText 会把它们念出来 */
+    const body = wrap.querySelector('.rich-edit') || wrap;
+    let t = (body.innerText || body.textContent || '');
+    t = t.replace(/^\s*(\u89e3\u6790|\u7b54\u6848|\u8003\u70b9)\s*[\uff1a:]\s*/, '');
+    t = t.replace(/\s+/g, ' ')
+      .replace(/[\u25be\u25b8]\s*(\u6536\u8d77|\u5c55\u5f00)/g, ' ')
+      .replace(/\u283f\s*\u5757\u6392\u5e8f/g, ' ')
+      .trim();
+    return t.slice(0, 900);
+  }
+  function answerText() { const L = correctLetters(); return L.length ? '答案是 ' + L.join('、') + '。' : ''; }
+  function speakExp(after) {
+    const t = expText();
+    if (!t) { speak('这道题还没有解析。', after); return; }
+    speak('解析：' + t.slice(0, 520), after);
+  }
+  function askExplain(ok) {
+    const head = cfg().sayVerdict ? (ok ? '答对了。' : '答错了。') : '';
+    askState = 'exp';
+    clearTimeout(askT);
+    stopSpeak();
+    speak(head + '要念一遍解析吗？说「要」或「不用」。', () => {
       if (!isOn()) return;
-      if (cfg().autoNext) {
-        nextT = setTimeout(goNext, Math.max(300, +cfg().nextDelay || 1400));
-      } else startListen();
+      if (cfg().mode !== 'read') startListen();
+      askT = setTimeout(() => { if (askState === 'exp') askState = ''; }, 12000);
     });
+  }
+  function afterJudgeSpeak(ok) {
+    if (isRecite()) return;
+    if (cfg().readRes) {
+      const fb = document.querySelector('#view .fb');
+      speak(((fb ? fb.innerText : '') || '').replace(/\s+/g, ' ').trim().slice(0, 400));
+      return;
+    }
+    if (ok && isSpeed()) { if (cfg().sayVerdict) speak('答对了。'); return; }
+    if (cfg().askExp) { askExplain(ok); return; }
+    if (cfg().readExp) { speak(cfg().sayVerdict ? (ok ? '答对了。' : '答错了。') : '', () => speakExp()); return; }
+    if (cfg().sayVerdict) speak(ok ? '答对了。' : '答错了。');
+    if (cfg().mode !== 'read') startListen();
+  }
+  /* 背题模式：直接念题干 + 选项 + 答案 + 解析 */
+  function reciteSpeech() {
+    const c = cfg(), parts = [];
+    if (c.readNo) { const n = qNoText(); if (n) parts.push(n); }
+    if (c.readStem) parts.push(stemText());
+    if (c.readOpts) optionItems().forEach(o => parts.push(c.optStyle === 'letter' ? o.letter : (c.optStyle === 'text' ? o.text : o.letter + '\uff0c' + o.text)));
+    const a = answerText(); if (a) parts.push(a);
+    const e = expText(); if (e) parts.push('\u89e3\u6790\uff1a' + e.slice(0, 420));
+    /* 每段末尾的句号先去掉，统一由 join 补，否则会念成「答案是 B。。解析：…」 */
+    return parts.filter(Boolean)
+      .map(function (x) { return String(x).replace(/[\u3002\uff0c\u3001\uff1b\s]+$/, ''); })
+      .join('\u3002');
+  }
+  /* 说「我不太懂」→ 把这道题丢进站内 AI，写完念给你听 */
+  function askAI() {
+    const host = document.getElementById('aiHost');
+    if (!host) { flash('这一页没有 AI 面板'); return; }
+    const openBtn = document.getElementById('doAI');
+    if (openBtn && !host.dataset.aiid) openBtn.click();
+    speak('我把这道题发给 AI 了，写完我念给你听。');
+    setTimeout(() => {
+      const ta = host.querySelector('.ai-askq'), go = host.querySelector('.ai-ask');
+      if (!ta || !go) { flash('AI 面板还没准备好，点「AI」试一次'); return; }
+      ta.value = '这道题我没看懂。请用最容易懂的话讲一遍：考点是什么、为什么选它、其他选项错在哪。';
+      go.click();
+      waitAI(host, 0);
+    }, 500);
+  }
+  function waitAI(host, n) {
+    const out = host.querySelector('.aiout');
+    const txt = out ? (out.innerText || '').trim() : '';
+    if (txt && !/还没开始|正在/.test(txt) && n > 4) { speak(txt.slice(0, 620)); return; }
+    if (n > 60 || !isOn()) return;
+    setTimeout(() => waitAI(host, n + 1), 800);
   }
 
   /* ---------- 听 ---------- */
@@ -236,7 +332,10 @@
     if (!p) return;
     p.setAttribute('data-state', state || 'idle');
     const s = p.querySelector('.vp-txt');
-    if (s) s.textContent = state === 'listening' ? '正在听…' : state === 'speaking' ? '正在读…' : (isOn() ? '语音待命' : '语音已关');
+    if (s) s.textContent = state === 'listening' ? '正在听…'
+      : state === 'speaking' ? '正在读…'
+      : state === 'think' ? 'AI 在想…'
+      : (isOn() ? '语音待命' : '语音已关');
     if (heard != null) {
       lastHeard = heard;
       const h = p.querySelector('.vp-heard');
@@ -292,7 +391,24 @@
     if (c.wake && t.indexOf(norm(c.wake)) < 0) return;   /* 设了唤醒词：先说它才理你 */
     if (c.stopOnSpeak && speaking) { stopSpeak(); }
 
+    /* 「要不要念解析」的答复（先于命令词：这类回答通常没有字母） */
+    if (askState === 'exp') {
+      if (/(不用|不要|不必|别|算了|跳过|不了|否)/.test(t)) {
+        askState = ''; clearTimeout(askT); stopSpeak();
+        speak('好。', () => { if (cfg().mode !== 'read') startListen(); });
+        return;
+      }
+      if (/(要|念|读|听|好|可以|行|嗯|需要|对)/.test(t)) {
+        askState = ''; clearTimeout(askT); stopSpeak();
+        speakExp(() => { if (cfg().mode !== 'read') startListen(); });
+        return;
+      }
+    }
+
     if (hitCmd(t, c.cStop)) { off(); flash('语音模式已关'); return; }
+    if (hitCmd(t, c.cExp)) { stopSpeak(); speakExp(() => { if (cfg().mode !== 'read') startListen(); }); return; }
+    if (hitCmd(t, c.cPrev)) { const pb = document.getElementById('prev'); if (pb && !pb.disabled) pb.click(); return; }
+    if (hitCmd(t, c.cHelp)) { askAI(); return; }
     if (hitCmd(t, c.cNext)) { clearTimeout(nextT); goNext(); return; }
     if (hitCmd(t, c.cRepeat)) { readCurrent(); return; }
     if (hitCmd(t, c.cAnswer)) { sayAnswer(); return; }
@@ -306,7 +422,8 @@
     }
 
     const letters = parseLetters(t);
-    if (!letters.length) return;
+    lastHeard = txt;
+    if (!letters.length) { aiFallback(txt); return; }
     const multi = isMulti();
 
     /* 灵敏度：高 = 必须说满 2 个字符才算，防环境噪音误触 */
@@ -331,6 +448,66 @@
     pauseT = setTimeout(() => {
       if (isOn() && pending.size) submitMulti();
     }, Math.max(500, +c.multiPause || 1200));
+  }
+
+  /* ---------- AI 兜底：本地正则没认出来时，问一句站内 AI 该干嘛 ---------- */
+  let aiBusy = false;
+  function aiGuess(txt) {
+    const chat = window.aiChat;
+    if (typeof chat !== 'function') return Promise.resolve(null);
+    const sys = '你是语音指令解析器。用户在做医学单选题/多选题，页面会读题给他听。' +
+      '把用户这句话解析成一条指令，只输出一行 JSON，不要解释、不要 markdown。' +
+      '格式：{"act":"select|next|prev|repeat|explain|ask|fav|submit|stop|none","letters":["A"]}。' +
+      'select 表示他要选选项，letters 放 A-H 的字母（可多个）；next=下一题；prev=上一题；' +
+      'repeat=重读这道题；explain=念解析；ask=他没听懂想让人讲；fav=收藏；submit=提交多选；' +
+      'stop=关掉语音；none=跟做题无关。';
+    const usr = '用户说：' + txt;
+    return chat([{ role: 'system', content: sys }, { role: 'user', content: usr }], null, null,
+      { stream: false, temp: 0, maxTokens: 90 })
+      .then(out => {
+        const m = String(out || '').match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        try { return JSON.parse(m[0]); } catch (e) { return null; }
+      })
+      .catch(() => null);
+  }
+  function runAct(a, letters) {
+    const c = cfg();
+    if (!a) { flash('没听清：' + lastHeard); return; }
+    if (a === 'stop') { off(); flash('语音模式已关'); return; }
+    if (a === 'next') { clearTimeout(nextT); goNext(); return; }
+    if (a === 'prev') { const pb = document.getElementById('prev'); if (pb && !pb.disabled) pb.click(); return; }
+    if (a === 'repeat') { readCurrent(); return; }
+    if (a === 'explain') { stopSpeak(); speakExp(() => { if (c.mode !== 'read') startListen(); }); return; }
+    if (a === 'ask') { askAI(); return; }
+    if (a === 'fav') { const b = document.getElementById('btnFav'); if (b) b.click(); return; }
+    if (a === 'submit') { clearTimeout(pauseT); if (!submitMulti()) flash('先选好选项再说提交'); return; }
+    if (a === 'select' && letters && letters.length) {
+      if (isMulti()) {
+        const have = new Set(visibleOpts().map((o, i) => (
+          /(^|\s)(on|sel|picked)(\s|$)/.test(o.className) ? LET[i] : null)).filter(Boolean));
+        letters.forEach(l => { if (!have.has(l)) clickLetter(l); });
+        pending = new Set(letters);
+        clearTimeout(pauseT);
+        pauseT = setTimeout(() => { if (isOn() && pending.size) submitMulti(); }, Math.max(500, +c.multiPause || 1200));
+      } else {
+        clickLetter(letters[letters.length - 1]);
+      }
+      return;
+    }
+    flash('没听清：' + lastHeard + '（可以点 ⚙ 里换成 AI 识别）');
+  }
+  function aiFallback(txt) {
+    if (!cfg().aiIntent || aiBusy) return;
+    aiBusy = true;
+    setPill('think', 'AI 正在理解「' + txt + '」…');
+    aiGuess(txt).then(r => {
+      aiBusy = false;
+      setPill(recOn ? 'listening' : 'idle');
+      if (!r || r.act === 'none') { flash('没听清：' + txt); return; }
+      const ls = Array.isArray(r.letters) ? r.letters.map(x => String(x).toUpperCase()).filter(x => LET.indexOf(x) >= 0) : [];
+      runAct(r.act, ls);
+    });
   }
 
   /* ---------- 开关 ---------- */
@@ -425,7 +602,9 @@
         '<option value="text"' + (c.optStyle === 'text' ? ' selected' : '') + '>只读内容</option>' +
         '<option value="letter"' + (c.optStyle === 'letter' ? ' selected' : '') + '>只读 A B C</option></select>') +
       row('读考点标签', chk('readTags')) +
-      row('判分后读结果', chk('readRes')) +
+      row('判分后读结果', chk('readRes'), '通常关掉：只念题干和选项，不念次数、正确率') +
+      row('问「要不要念解析」', chk('askExp'), '答错一定会问；答对时普通模式也会问，速刷模式直接下一题') +
+      row('念一句对错', chk('sayVerdict'), '只念「答对了 / 答错了」，不念累计次数') +
       row('答错读解析', chk('readExp')) +
 
       '<div class="vs-sec">听你说</div>' +
@@ -439,9 +618,13 @@
       row('麦克风灵敏度', '<select data-vk="sens">' +
         ['low', 'mid', 'high'].map(s => '<option value="' + s + '"' + (c.sens === s ? ' selected' : '') + '>' + ({ low: '低（小声也说）', mid: '中（默认）', high: '高（要清晰、防噪音）' }[s]) + '</option>').join('') + '</select>') +
       row('唤醒词', '<input type="text" data-vk="wake" value="' + escAttr(c.wake) + '" placeholder="例如：小刷（留空＝一直听）">') +
+      row('认不出时问 AI', chk('aiIntent'), '本地命令词没对上时，把这句话交给站内 AI 判断你是想选选项、下一题、念解析还是问它（要有配好 AI 才生效；会慢约 1 秒）') +
 
       '<div class="vs-sec">命令词（逗号分隔，可自己改）</div>' +
       row('下一题', '<input type="text" data-vk="cNext" value="' + escAttr(c.cNext) + '">') +
+      row('上一题', '<input type="text" data-vk="cPrev" value="' + escAttr(c.cPrev) + '">') +
+      row('念解析', '<input type="text" data-vk="cExp" value="' + escAttr(c.cExp) + '">') +
+      row('我不太懂（问 AI）', '<input type="text" data-vk="cHelp" value="' + escAttr(c.cHelp) + '">', '说这些话就把这道题丢进站内 AI，写完念给你听') +
       row('重读', '<input type="text" data-vk="cRepeat" value="' + escAttr(c.cRepeat) + '">') +
       row('看答案', '<input type="text" data-vk="cAnswer" value="' + escAttr(c.cAnswer) + '">') +
       row('收藏', '<input type="text" data-vk="cFav" value="' + escAttr(c.cFav) + '">') +
@@ -510,14 +693,18 @@
     ensurePill();
     const k = qKeyNow();
     const locked = !document.querySelector('#view .opt:not(.lock) .k') ? false : false;   /* 占位，下面用真实判断 */
-    const answered = !document.querySelector('#view .opt:not(.lock)') && !!document.querySelector('#view .opt.lock');
+    /* 背题模式下选项都被标成 .lock（不用作答），别把它当「已作答」，否则永远不念答案 */
+    const answered = !isRecite() && !document.querySelector('#view .opt:not(.lock)') && !!document.querySelector('#view .opt.lock');
     if (k !== qk) {
       qk = k; resetForQuestion();
-      if (!answered) readCurrent(); else { setPill('idle'); startListen(); }
+      if (!answered) {
+        if (isRecite()) { stopListen(); speak(reciteSpeech()); }
+        else readCurrent();
+      } else { setPill('idle'); startListen(); }
       return;
     }
     if (answered) pending.clear();
-    if (answered && !announced) { announced = true; stopListen(); speakResult(); }
+    if (answered && !announced) { announced = true; stopListen(); afterJudgeSpeak(isOkNow()); }
   }
   function sync() { paintChip(); if (isOn() && inQuiz()) ensurePill(); }
 
@@ -525,7 +712,8 @@
     toggle: toggle, on: on, off: off, openPanel: openPanel, sync: sync,
     onQuizRender: onQuizRender, speak: speak, supported: supported,
     cfg: cfg, _heard: handleHeard, _parse: function (t) { return parseLetters(t); },
-    _dbg: function () { return { pending: [].slice.call(pending), speaking: speaking, recOn: recOn, multi: isMulti(), submit: !!document.getElementById('doSubmit') }; }
+    _recite: reciteSpeech,
+    _dbg: function () { return { pending: [].slice.call(pending), speaking: speaking, recOn: recOn, multi: isMulti(), submit: !!document.getElementById('doSubmit'), ask: askState, said: said.slice(-6) }; }
   };
 
   /* 首屏：把设置并进来，并给 chip 挂事件（renderQuiz 每次重画都会新建这个按钮） */
