@@ -4827,8 +4827,11 @@ function uiMakeDraggable(el, key) {
   let tmr = null, st = null, dragging = false;
   const pin = () => {
     const r = el.getBoundingClientRect();
-    el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
-    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.setProperty('left', r.left + 'px');
+    el.style.setProperty('top', r.top + 'px');
+    /* 样式表里的 bottom 带了 !important，普通写法盖不掉，必须同样 important。 */
+    el.style.setProperty('right', 'auto', 'important');
+    el.style.setProperty('bottom', 'auto', 'important');
   };
   const clear = () => { try { clearTimeout(tmr); } catch (e) {} tmr = null; st = null; };
   el.addEventListener('pointerdown', ev => {
@@ -4956,7 +4959,7 @@ function uiOptRail() {
     const avail = Math.max(180, innerHeight - 96 - 74 - 14);
     const cols = n > 12 ? 3 : (n > 6 ? 2 : 1);
     const per = Math.ceil(n / cols);
-    const base = n <= 4 ? 54 : (n <= 6 ? 48 : (n <= 9 ? 42 : (n <= 12 ? 36 : 30)));
+    const base = n <= 4 ? 68 : (n <= 6 ? 60 : (n <= 9 ? 52 : (n <= 12 ? 44 : 36)));
     const sz = Math.max(26, Math.min(base, Math.floor((avail - (per - 1) * 6) / per)));
     rail.style.setProperty('--sz', sz + 'px');
     rail.style.setProperty('--cols', String(cols));
@@ -4965,6 +4968,7 @@ function uiOptRail() {
        选项多就自动收小，整页仍然一屏能看个大概。 */
     const oph = Math.max(42, Math.min(88, Math.round((innerHeight * 0.54 - (n - 1) * 8) / Math.max(1, n))));
     document.body.style.setProperty('--oph', oph + 'px');
+
     document.body.style.setProperty('--railw', (rail.offsetWidth || 38) + 'px');
   } catch (eSz) {}
   try { uiHandHintOnce(rail); } catch (eH) {}
@@ -4975,10 +4979,15 @@ function uiOptRail() {
       const r2 = rail.getBoundingClientRect();
       const nx = Math.max(4, Math.min(r2.left, innerWidth - r2.width - 4));
       const ny = Math.max(86, Math.min(r2.top, innerHeight - r2.height - 64));
-      if (Math.abs(nx - r2.left) > 1) rail.style.left = nx + 'px';
-      if (Math.abs(ny - r2.top) > 1) rail.style.top = ny + 'px';
+      if (Math.abs(nx - r2.left) > 1) rail.style.setProperty('left', nx + 'px');
+      if (Math.abs(ny - r2.top) > 1) rail.style.setProperty('top', ny + 'px');
+      rail.style.setProperty('bottom', 'auto', 'important');
     }
     if (!SET.railPos) {
+      /* 清掉上一次拖动留下的 top/left（只留 bottom 贴边），否则 top+bottom 同时存在
+         会把整条拉满屏高、按钮被摊开一整列。 */
+      rail.style.removeProperty('top'); rail.style.removeProperty('bottom');
+      rail.style.removeProperty('left'); rail.style.removeProperty('right');
       const pad = document.getElementById('handPad');
       const pw = pad ? pad.offsetWidth : 46;
       const rw = rail.offsetWidth || (rows.length > 6 ? 82 : 38);
