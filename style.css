@@ -3541,3 +3541,20 @@ body:not(.quiz){ padding-bottom:calc(78px + env(safe-area-inset-bottom)) }
 .bnav .bnav-ind{ top:5px !important; bottom:5px !important; border-radius:14px !important; }
 body.quiz .bnav{ bottom:calc(var(--quizbar-h,72px) + env(safe-area-inset-bottom)) !important; }
 html[data-style][data-style] body.quiz .bnav{ bottom:calc(var(--quizbar-h,72px) + env(safe-area-inset-bottom)) !important; }
+
+/* ===== web619：底栏不再用「悬浮胶囊」做选中态 =====
+   之前 .bnav-ind 是按按钮的 left/width 另画一个圆角块；皮肤给 .btn.on 加了边框和投影后，
+   两者的盒子对不上（psych），看起来就是「选定框比按钮大一圈」。
+   现在直接把指示器关掉，选中态完全由 .btn.on 自己渲染，天然和按钮同尺寸。 */
+/* 选中块不隐藏，只保证它和按钮同盒子（几何由 app.js 的 paintNow 用 offset* 写入） */
+.bnav .bnav-ind{ top:auto !important; bottom:auto !important; border-radius:14px; }
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{ border-radius:18px 18px 0 0 !important; }
+/* 答题页：底栏和上方那条操作条都贴边，圆角只留上面两个 */
+html[data-style][data-style] body.quiz .bnav{
+  left:0 !important; right:0 !important; max-width:none !important; margin:0 !important;
+  border-radius:18px 18px 0 0 !important; border-bottom:0 !important;
+}
+html[data-style][data-style] body.quiz .nav{
+  left:0 !important; right:0 !important; max-width:none !important; margin:0 !important;
+  border-radius:18px 18px 0 0 !important; border-bottom:0 !important;
+}

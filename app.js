@@ -2741,10 +2741,15 @@ function uiBottomNavInit() {
        用户看到的就是「点到哪儿，左边多一条灰杠」）。现在直接写坐标，零动画。 */
     const on = nav.querySelector('.btn.on');
     if (!on || !on.offsetWidth) { ind.style.opacity = '0'; return; }
-    const nr = nav.getBoundingClientRect();
-    const br = on.getBoundingClientRect();
-    const bl = parseFloat(getComputedStyle(nav).borderLeftWidth) || 0;
-    const v = [br.left - nr.left - bl, br.width];
+    /* web619：不再用 getBoundingClientRect 反推，直接贴按钮的 offset 盒子。
+       皮肤会给 .btn.on 加边框/投影/内边距，rect 推出来的 left/width 带小数，
+       高亮块就会比按钮大一圈或偏一两像素；用 offset* 后两者永远同一盒子。 */
+    const cs = getComputedStyle(on);
+    ind.style.top = on.offsetTop + 'px';
+    ind.style.bottom = 'auto';
+    ind.style.height = on.offsetHeight + 'px';
+    ind.style.borderRadius = cs.borderRadius;
+    const v = [on.offsetLeft, on.offsetWidth];
     cur[0] = v[0]; cur[1] = v[1];
     ind.style.opacity = '1';
     apply(v);
