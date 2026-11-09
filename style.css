@@ -3723,3 +3723,12 @@ body.quiz.hand-mode .stem { margin-bottom:8px !important; }
   0%,100% { box-shadow:0 6px 20px rgba(15,23,42,.28); }
   50%     { box-shadow:0 0 0 8px color-mix(in srgb, var(--primary) 22%, transparent); }
 }
+
+/* web634：速选条按选项数量伸缩（--cols 列、--sz 每格边长） */
+#optRail { grid-template-columns:repeat(var(--cols,1), var(--sz,38px)) !important; }
+#optRail .orq { width:var(--sz,38px) !important; height:var(--sz,38px) !important;
+  font-size:calc(var(--sz,38px) * .37) !important; }
+#optRail[data-locked="1"] .orq { opacity:.5; }
+#optRail[data-locked="1"]::after { content:"已作答"; position:absolute; left:0; right:0; top:-18px;
+  text-align:center; font-size:10px; color:var(--sub); }
+#optRail { max-height:calc(100vh - 170px); overflow-y:auto; }

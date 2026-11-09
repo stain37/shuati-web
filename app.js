@@ -4919,7 +4919,12 @@ function uiOptRail() {
       ev.stopPropagation(); ev.preventDefault();
       const list = document.querySelectorAll('#view .opts .opt, .opts .opt');
       const target = list[+b.getAttribute('data-oi')];
-      if (target) target.click();
+      if (!target) return;
+      if (!target.onclick) {   /* 已作答的题点不动：给个说法，别像坏了 */
+        toast('这题已经作答了；想改答案就点「↺ 重做」', 2200);
+        return;
+      }
+      target.click();
     });
     document.body.appendChild(rail);
   }
@@ -4935,10 +4940,29 @@ function uiOptRail() {
   });
   rail.innerHTML = html;
   rail.classList.toggle('two', rows.length > 6);
+  /* web634：按钮跟着选项数量「伸缩」——选项多就分列并缩小，选项少就长回来，
+     保证整条永远夹在顶栏与底栏之间，不会顶出屏幕。 */
+  try {
+    const n = rows.length;
+    const avail = Math.max(180, innerHeight - 96 - 74 - 14);
+    const cols = n > 12 ? 3 : (n > 6 ? 2 : 1);
+    const per = Math.ceil(n / cols);
+    const sz = Math.max(26, Math.min(38, Math.floor((avail - (per - 1) * 6) / per)));
+    rail.style.setProperty('--sz', sz + 'px');
+    rail.style.setProperty('--cols', String(cols));
+    rail.setAttribute('data-locked', (opts.querySelector('.opt:not(.lock)') ? '0' : '1'));
+  } catch (eSz) {}
   try { uiHandHintOnce(rail); } catch (eH) {}
   /* 默认位置：紧挨着「上一题 / 下一题」那组钮的左侧（右手时镜像到右侧）；
      只要用户拖过一次（SET.railPos 有值），就一律用他拖到的位置。 */
   try {
+    if (SET.railPos) {
+      const r2 = rail.getBoundingClientRect();
+      const nx = Math.max(4, Math.min(r2.left, innerWidth - r2.width - 4));
+      const ny = Math.max(86, Math.min(r2.top, innerHeight - r2.height - 64));
+      if (Math.abs(nx - r2.left) > 1) rail.style.left = nx + 'px';
+      if (Math.abs(ny - r2.top) > 1) rail.style.top = ny + 'px';
+    }
     if (!SET.railPos) {
       const pad = document.getElementById('handPad');
       const pw = pad ? pad.offsetWidth : 46;
