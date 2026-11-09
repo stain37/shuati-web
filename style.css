@@ -3693,3 +3693,19 @@ body.quiz.hand-mode .stem { margin-bottom:8px !important; }
   scrollbar-width:none;
 }
 #optRail::-webkit-scrollbar { width:0; height:0; }
+
+/* ================= web630：浮动条可拖动 + 选项多时两列 ================= */
+#optRail {
+  display:grid; grid-template-columns:38px; gap:6px;
+  touch-action:none; user-select:none;
+}
+#optRail.two { grid-template-columns:repeat(2, 38px); }
+#handPad { touch-action:none; user-select:none; }
+#optRail.dragging, #handPad.dragging {
+  opacity:.92;
+  box-shadow:0 10px 30px rgba(15,23,42,.4);
+  outline:1.5px dashed color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset:2px;
+  cursor:grabbing;
+}
+#optRail .orq, #handPad button { cursor:grab; }

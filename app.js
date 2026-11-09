@@ -4807,6 +4807,71 @@ function applyHandMode() {
   else document.body.setAttribute('data-hand', h);
   uiHandPad(h);
 }
+/* 单手模式 · 浮动条拖动（web630）：速选条和翻页钮都能按住拖到顺手的位置，
+   位置记在设置里，下次进来还在原地。 */
+function uiMakeDraggable(el, key) {
+  if (!el || el.__drag) return;
+  el.__drag = 1;
+  let id = null, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
+  const pin = () => {
+    const r = el.getBoundingClientRect();
+    el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+  };
+  el.addEventListener('pointerdown', ev => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    pin();
+    const r = el.getBoundingClientRect();
+    id = ev.pointerId; sx = ev.clientX; sy = ev.clientY; ox = r.left; oy = r.top; moved = false;
+    try { el.setPointerCapture(id); } catch (e) {}
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', ev => {
+    if (id == null || ev.pointerId !== id) return;
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (!moved && (Math.abs(dx) + Math.abs(dy)) < 5) return;
+    moved = true; ev.preventDefault();
+    const r = el.getBoundingClientRect();
+    const nx = Math.max(0, Math.min(ox + dx, innerWidth - r.width));
+    const ny = Math.max(0, Math.min(oy + dy, innerHeight - r.height));
+    el.style.left = nx + 'px'; el.style.top = ny + 'px';
+  });
+  const end = () => {
+    if (id == null) return;
+    id = null; el.classList.remove('dragging');
+    if (moved) {
+      el.__movedAt = Date.now();
+      try {
+        const r = el.getBoundingClientRect();
+        SET[key] = { x: Math.round(r.left), y: Math.round(r.top) };
+        writeLS(LS.set, SET);
+        if (key === 'railPos') localStorage.setItem('qbank.rail.v1', '1');
+      } catch (e) {}
+    }
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  el.addEventListener('click', ev => {
+    if (Date.now() - (el.__movedAt || 0) < 400) { ev.stopPropagation(); ev.preventDefault(); }
+  }, true);
+  const pos = SET[key];
+  if (pos && isFinite(pos.x) && isFinite(pos.y)) {
+    el.style.left = pos.x + 'px'; el.style.top = pos.y + 'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    /* 换屏 / 横竖屏后坐标可能跑到屏幕外，拉回来 */
+    requestAnimationFrame(() => {
+      try {
+        const r = el.getBoundingClientRect();
+        const nx = Math.max(0, Math.min(r.left, innerWidth - Math.max(40, r.width)));
+        const ny = Math.max(0, Math.min(r.top, innerHeight - Math.max(40, r.height)));
+        if (nx !== r.left) el.style.left = nx + 'px';
+        if (ny !== r.top) el.style.top = ny + 'px';
+      } catch (e0) {}
+    });
+  }
+}
+
 /* 单手模式 · 选项速选条（web628）：屏幕侧边一列小方块 A B C…，有几个选项就几个，
    点方块＝点那一行，拇指不用横向够到选项文字。 */
 function uiOptRail() {
@@ -4828,6 +4893,7 @@ function uiOptRail() {
     document.body.appendChild(rail);
   }
   rail.setAttribute('data-side', (SET.hand === 'left') ? 'left' : 'right');
+  try { uiMakeDraggable(rail, 'railPos'); } catch (eD1) {}
   const rows = opts.querySelectorAll('.opt');
   let html = '';
   rows.forEach((r, i) => {
@@ -4837,6 +4903,7 @@ function uiOptRail() {
     html += '<button type="button" class="orq' + (picked ? ' on' : '') + '" data-oi="' + i + '" title="选 ' + letter + '">' + letter + '</button>';
   });
   rail.innerHTML = html;
+  rail.classList.toggle('two', rows.length > 6);
 }
 
 /* 单手模式的拇指区小按钮（web626）：原来的「上一题 / 答题卡 / 下一题」那条整条藏起来，
@@ -4861,6 +4928,7 @@ function uiHandPad(h) {
     document.body.appendChild(pad);
   }
   pad.setAttribute('data-side', h === 'left' ? 'left' : 'right');
+  try { uiMakeDraggable(pad, 'padPos'); } catch (eD2) {}
   pad.hidden = (h === 'off');
 }
 function uiHandCycle() {
