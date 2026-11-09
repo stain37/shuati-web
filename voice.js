@@ -23,7 +23,8 @@
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     endSilence: 1.15,         /* 说完后静音多久算一句说完（秒；0 = 用浏览器自带的断句） */
     maxUtt: 10,               /* 一句话最长多少秒，超过就强制断 */
-    barge: true,              /* 朗读时我开口，就停下来听我说 */
+    barge: true,
+    halfDuplex: true,         /* 朗读时先不收音（防自问自答） */              /* 朗读时我开口，就停下来听我说 */
     beeps: true,              /* 提示音（唤醒 / 答对 / 答错 / 打断） */
     wakeMode: false,          /* 必须先说唤醒词才理我 */
     cmds: '',                 /* 自定义命令：每行「说法1|说法2=动作」 */
@@ -151,6 +152,7 @@
     const next = () => {
       if (fin) return;
       if (at >= chunks.length) { finish(); return; }
+      echoRemember(chunks[at]);
       const u = mkUtter(chunks[at++]);
       u.onend = function () { setTimeout(next, 40); };
       u.onerror = function () { setTimeout(next, 40); };
@@ -575,9 +577,23 @@
       if (h) h.textContent = heard ? '「' + heard + '」' : '';
     }
   }
+  /* 先按「带回声消除」的方式开一次麦克风：Chrome 会把同一路输入的
+     echoCancellation/noiseSuppression 约束沿用给后面的语音识别，
+     喇叭里的自己的声音就不容易被当成用户说话。 */
+  let aecTried = false;
+  function primeMic() {
+    if (aecTried) return; aecTried = true;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+        .then(function (st) { try { st.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} })
+        .catch(function () {});
+    } catch (e) {}
+  }
   function startListen() {
     if (!isOn() || !inQuiz() || !supported()) return;
     if (rec && recOn) return;
+    primeMic();
     if (!rec) {
       const Ctor = SR();
       rec = new Ctor();
@@ -586,6 +602,7 @@
       rec.lang = cfg().lang || 'zh-CN';
       rec.maxAlternatives = 3;
       rec.onresult = ev => {
+        if (speaking && cfg().halfDuplex) { liveTxt = ''; liveStart = 0; return; }
         let finalTxt = '', interim = '';
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
           const r = ev.results[i];
@@ -664,6 +681,48 @@
     return false;
   }
   /* 自定义命令：每行「说法1|说法2=动作」，动作见 runActStr */
+  /* 回声守卫：把自己刚念过的文本记下来，7 秒内听到相似的话一律当回声扔掉。
+     用字符二元组相似度（Dice），比单纯「包含」抗识别误差。 */
+  let echoRecent = [];
+  function echoRemember(t) {
+    const s = String(t || '').trim();
+    if (!s) return;
+    echoRecent.push({ t: s, at: Date.now() });
+    if (echoRecent.length > 24) echoRecent = echoRecent.slice(-24);
+  }
+  function bigramSim(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const grams = (s) => {
+      const m = new Map();
+      for (let i = 0; i < s.length - 1; i++) {
+        const g = s.slice(i, i + 2);
+        m.set(g, (m.get(g) || 0) + 1);
+      }
+      return m;
+    };
+    if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+    const A = grams(a), B = grams(b);
+    let inter = 0, total = 0;
+    A.forEach((n, g) => { total += n; const m = B.get(g); if (m) inter += Math.min(n, m); });
+    B.forEach((n) => { total += n; });
+    return total ? (2 * inter) / total : 0;
+  }
+  function echoish(t) {
+    const a = norm(t);
+    if (!a || a.length < 3) return false;
+    if (speaking && cfg().halfDuplex) return true;   /* 半双工：朗读中一律不听 */
+    const now = Date.now();
+    echoRecent = echoRecent.filter(function (x) { return now - x.at < 7000; });
+    for (let i = 0; i < echoRecent.length; i++) {
+      const b = norm(echoRecent[i].t);
+      if (!b) continue;
+      if (b.indexOf(a) >= 0) return true;
+      if (a.length >= 6 && b.indexOf(a.slice(0, 6)) >= 0) return true;
+      if (bigramSim(a, b) >= 0.5) return true;
+    }
+    return false;
+  }
   function customCmds() {
     return String(cfg().cmds || '').split(/\n+/).map(function (l) { return l.trim(); })
       .filter(Boolean).map(function (l) {
@@ -706,6 +765,7 @@
   function handleHeard(txt) {
     let t = norm(txt);
     if (!t) return;
+    if (echoish(t)) return;
     const c = cfg();
 
     /* 唤醒词模式：先说唤醒词，之后 9 秒内都算「在听」 */
@@ -992,6 +1052,7 @@
       row('说完静音多久算一句', '<input type="range" min="0" max="2.5" step="0.05" data-vk="endSilence" value="' + (c.endSilence == null ? 1.15 : c.endSilence) + '"><b class="vs-val" data-vv="endSilence">' + (c.endSilence == null ? '1.15' : (+c.endSilence).toFixed(2)) + 's</b>', '说话时文字停住这么长时间就算说完；调到 0 = 用浏览器自带的断句（更慢但更准）') +
       row('一句最长多久', '<input type="range" min="4" max="20" step="1" data-vk="maxUtt" value="' + (c.maxUtt || 10) + '"><b class="vs-val" data-vv="maxUtt">' + (c.maxUtt || 10) + 's</b>', '说太久会自动断一句，防止一直等不到结果') +
       row('我说话就打断朗读', chk('barge'), '朗读时你一开口，它立刻停下听你说（会自动忽略喇叭里自己的声音）') +
+      row('朗读时先别听（最不容易自我打断）', chk('halfDuplex'), '开着：我念题/念解析的时候麦克风不收音，绝不会把自己的声音当成你的命令；想「一开口就打断我」就关掉它') +
       row('提示音', chk('beeps'), '唤醒、答对、答错、打断时各有一声短提示') +
       row('必须说唤醒词', chk('wakeMode'), '勾上后要先说上面的唤醒词，之后 9 秒内的话才理你') +
       row('我的命令', '<textarea data-vk="cmds" rows="4" placeholder="每行一条：说法1|说法2=动作&#10;例如：&#10;下一道|下一题=next&#10;读一下解析=exp&#10;选A|选甲=select:A&#10;打开专注=click:专注&#10;念一句加油=say:加油">' + escHtml(c.cmds || '') + '</textarea>', '动作可用：next 下一题 / prev 上一题 / exp 念解析 / ask 问 AI / fav 收藏 / submit 提交 / close 关浮层 / repeat 重读 / answer 看答案 / stop 关语音 / select:A,B 选选项 / click:按钮名 / say:要说的话') +
