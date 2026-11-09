@@ -3709,3 +3709,6 @@ body.quiz.hand-mode .stem { margin-bottom:8px !important; }
   cursor:grabbing;
 }
 #optRail .orq, #handPad button { cursor:grab; }
+
+/* web631：速选条默认贴在翻页钮左侧，两者底部对齐 */
+#optRail { bottom:calc(62px + env(safe-area-inset-bottom)) !important; }

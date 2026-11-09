@@ -4904,6 +4904,22 @@ function uiOptRail() {
   });
   rail.innerHTML = html;
   rail.classList.toggle('two', rows.length > 6);
+  /* 默认位置：紧挨着「上一题 / 下一题」那组钮的左侧（右手时镜像到右侧）；
+     只要用户拖过一次（SET.railPos 有值），就一律用他拖到的位置。 */
+  try {
+    if (!SET.railPos) {
+      const pad = document.getElementById('handPad');
+      const pw = pad ? pad.offsetWidth : 46;
+      const rw = rail.offsetWidth || (rows.length > 6 ? 82 : 38);
+      if ((SET.hand === 'left')) {
+        rail.style.left = '8px'; rail.style.right = 'auto';
+        if (pad && !SET.padPos) { pad.style.left = (8 + rw + 8) + 'px'; pad.style.right = 'auto'; pad.style.bottom = ''; }
+      } else {
+        rail.style.right = '8px'; rail.style.left = 'auto';
+        if (pad && !SET.padPos) { pad.style.right = (8 + rw + 8) + 'px'; pad.style.left = 'auto'; pad.style.bottom = ''; }
+      }
+    }
+  } catch (e0) {}
 }
 
 /* 单手模式的拇指区小按钮（web626）：原来的「上一题 / 答题卡 / 下一题」那条整条藏起来，
