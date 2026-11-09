@@ -4761,6 +4761,7 @@ function renderQuiz(bankId) {
   uiBindStemLongPress(bank, q, fk);
   rememberLast(bank, q.id);
   $('jumpInfo').innerHTML = '<b>' + pos + ' / ' + pool.length + '</b><span>答题卡</span>';
+  try { uiOptRail(); } catch (eRail) {}
   /* 首题 / 末题：把翻页按钮的边界状态摆出来，免得以为点了没反应 */
   const prevB = $('prev'), nextB = $('next');
   if (prevB) {
@@ -4806,6 +4807,38 @@ function applyHandMode() {
   else document.body.setAttribute('data-hand', h);
   uiHandPad(h);
 }
+/* 单手模式 · 选项速选条（web628）：屏幕侧边一列小方块 A B C…，有几个选项就几个，
+   点方块＝点那一行，拇指不用横向够到选项文字。 */
+function uiOptRail() {
+  const opts = document.querySelector('#view .opts') || document.querySelector('.opts');
+  let rail = document.getElementById('optRail');
+  const on = (SET.hand || 'off') !== 'off' && !!opts && opts.querySelectorAll('.opt').length > 0;
+  if (!on) { if (rail) rail.remove(); return; }
+  if (!rail) {
+    rail = document.createElement('div');
+    rail.id = 'optRail';
+    rail.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-oi]');
+      if (!b) return;
+      ev.stopPropagation(); ev.preventDefault();
+      const list = document.querySelectorAll('#view .opts .opt, .opts .opt');
+      const target = list[+b.getAttribute('data-oi')];
+      if (target) target.click();
+    });
+    document.body.appendChild(rail);
+  }
+  rail.setAttribute('data-side', (SET.hand === 'left') ? 'left' : 'right');
+  const rows = opts.querySelectorAll('.opt');
+  let html = '';
+  rows.forEach((r, i) => {
+    const kEl = r.querySelector('.k');
+    const letter = (kEl ? kEl.textContent : '').trim() || String.fromCharCode(65 + i);
+    const picked = r.classList.contains('on') || r.classList.contains('sel') || r.classList.contains('checked');
+    html += '<button type="button" class="orq' + (picked ? ' on' : '') + '" data-oi="' + i + '" title="选 ' + letter + '">' + letter + '</button>';
+  });
+  rail.innerHTML = html;
+}
+
 /* 单手模式的拇指区小按钮（web626）：原来的「上一题 / 答题卡 / 下一题」那条整条藏起来，
    改成拇指侧一列小圆钮 —— 手不用跨屏，也能一直翻题。 */
 function uiHandPad(h) {

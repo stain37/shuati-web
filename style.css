@@ -3644,3 +3644,52 @@ body.quiz.hand-mode .opt .k {
   font-size:13px !important; border-radius:8px !important;
 }
 body.quiz.hand-mode .opt .otx { line-height:1.4; }
+
+/* ================= web627：单手模式 · 选项块再收小 =================
+   选项变成「小块」：一行一个但更矮更薄，字母块也跟着小一圈，
+   拇指划动更省力，一屏能看到更多题面。 */
+body.quiz.hand-mode .opts { gap:6px !important; }
+body.quiz.hand-mode .opts .opt {
+  min-height:38px !important; padding:5px 8px !important;
+  font-size:13.5px !important; border-radius:12px !important; gap:7px !important;
+}
+body.quiz.hand-mode .opt .k {
+  width:22px !important; height:22px !important; flex:0 0 22px !important;
+  font-size:12px !important; border-radius:7px !important;
+}
+body.quiz.hand-mode .opt .otx { font-size:13.5px !important; line-height:1.35 !important; }
+/* 题干与选项之间的那点空白也收一收，让「题干 + 4 个块」一屏放得下 */
+body.quiz.hand-mode .stem { margin-bottom:8px !important; }
+
+/* ================= web628：单手模式 · 侧边选项速选条 =================
+   贴在手那一侧的边上一列小方块：A B C …，有几个选项就几个；点方块等于点那一行。 */
+#optRail {
+  position:fixed; z-index:30068; display:flex; flex-direction:column; gap:6px;
+  bottom:calc(74px + env(safe-area-inset-bottom));
+  padding:6px; border-radius:16px;
+  background:color-mix(in srgb, var(--bg, #14101f) 55%, transparent);
+  backdrop-filter:blur(10px);
+  box-shadow:0 6px 20px rgba(15,23,42,.28);
+}
+#optRail[hidden] { display:none !important; }
+#optRail[data-side="left"] { left:8px; }
+#optRail[data-side="right"] { right:8px; }
+#optRail .orq {
+  width:38px; height:38px; padding:0; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; font-weight:700; line-height:1;
+  border:1.5px solid color-mix(in srgb, var(--line, #cfc9e0) 80%, transparent);
+  background:color-mix(in srgb, var(--card, #fff) 86%, transparent);
+  color:var(--text, #2a2540);
+  -webkit-tap-highlight-color:transparent;
+}
+#optRail .orq:active { transform:scale(.94); }
+#optRail .orq.on { background:var(--primary); border-color:transparent; color:#fff; }
+
+/* web629：速选条让开拇指区那三个圆钮，选项多时条内滚动 */
+#optRail {
+  bottom:calc(246px + env(safe-area-inset-bottom));
+  max-height:56vh; overflow-y:auto; overscroll-behavior:contain;
+  scrollbar-width:none;
+}
+#optRail::-webkit-scrollbar { width:0; height:0; }
