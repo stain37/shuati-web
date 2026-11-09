@@ -3210,7 +3210,8 @@ function bindShell() {
     /* AI 精搜往图上加题 = 延伸，同样归路径模式 */
     if (!PATHM.on) {
       try { pathSet(true); } catch (ePA1) {}
-      toast('AI 精搜加的题属于延伸：已切到路径模式，保存后就成为路径组');
+      try { if (!gCur() || !gCur().path) ensurePathGroup(true); } catch (ePA2) {}
+      toast('AI 精搜加的题属于延伸：已切到「🧭 路径组」（普通组不变）');
     }
     try {
       var pb0 = document.getElementById('mpProbeBar');
@@ -3415,7 +3416,9 @@ function bindShell() {
           var g = gCur();
           if (!g) { if (typeof toast === 'function') toast('先打开一张导图再保存', 1600, 'warn'); return; }
           var asPath = !!PATHM.on;
-          if (asPath) g.path = 1;
+          /* web625：保存时不再把当前（普通）组标成路径组 —— 那样普通组就从组别里消失了。
+             改成：保存成路径组 = 复制一份新的路径组在这份副本上继续编辑。 */
+          if (asPath && !g.path) { try { var ng2 = ensurePathGroup(true); if (ng2) g = ng2; } catch (eP0) {} }
           try { saveCur(); } catch (eS0) {}
           try { if (typeof gSaveNow === 'function') gSaveNow(); } catch (eS1) {}
           try { renderGrp(); } catch (eS2) {}
@@ -3507,6 +3510,28 @@ function bindShell() {
   try { window.addEventListener('pagehide', gSaveNow); document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') gSaveNow(); }); } catch (e2) {}
   function gNewId() { return 'g' + Date.now().toString(36) + Math.floor(Math.random() * 900 + 100); }
   function gCur() { var a = G.active; return G.list.filter(function (x) { return x.id === a; })[0] || null; }
+
+  /* web625：普通组永远保留。第一次「路径延伸」时，把当前这组原样复制一份成新的「🧭 路径组」，
+     之后所有延伸都写进这份副本；原来那份普通组一个节点都不动，所以两者并存、互不覆盖。 */
+  function ensurePathGroup(silent) {
+    var g = gCur();
+    if (!g) return null;
+    if (g.path) return g;
+    var ng = null;
+    try { ng = JSON.parse(JSON.stringify(g)); } catch (e0) { ng = null; }
+    if (!ng) return null;
+    ng.id = gNewId();
+    ng.path = 1;
+    ng.star = 0;
+    ng.ord = (g.ord || 0) + 0.001;
+    ng.name = String(g.name || '这一组').replace(/\s*·\s*路径$/, '') + ' · 路径';
+    G.list.push(ng);
+    G.active = ng.id;
+    try { dedupeGroups(ng); } catch (e1) {}
+    gSave();
+    if (!silent) { try { toast('已另存一份「🧭 路径组」，原普通组不动（两组都能在组别里翻到）', 2200, 'good'); } catch (e2) {} }
+    return ng;
+  }
 
   function serNode(n) {
     return { id: n.id, type: n.type, label: n.label, score: n.score, x: n.x, y: n.y,
@@ -3693,7 +3718,10 @@ function bindShell() {
     /* 关掉路径模式 = 结束路径：这一组转回普通组（节点都留着），否则下次保存又会算成路径组 */
     if (!PATHM.on && pathIsOn()) {
       try { paintPath(); } catch (eP0) {}
-      try { pathToNormal(true); } catch (eP1) {}
+      /* web625：关掉路径模式只是「停止延伸」，路径组已经自动存好了，不要把它转回普通组
+         （转回会把普通组覆盖掉）。真想合并回去，右键菜单里还有「转成普通组」。 */
+      try { render(true); } catch (eP1) {}
+      try { toast('路径模式已关：这次的路径组已经存好了（组别里 🧭 那栏），普通组没动'); } catch (eP2) {}
       return;
     }
     paintPath();
@@ -3971,6 +3999,8 @@ function bindShell() {
   }
   function pathExpand(n) {
     if (!n) return false;
+    /* 先分叉：从普通组延伸时自动生成/切到路径组，别把普通组改写掉 */
+    try { if (!gCur() || !gCur().path) ensurePathGroup(); } catch (eFork) {}
     var bank = null; try { bank = bankById(S.bankId); } catch (e0) {}
     if (!bank) { toast('当前没有打开的题库'); return true; }
     var lv = (n.lv || 0) + 1;
@@ -4601,10 +4631,33 @@ function bindShell() {
           '<span class="muted2">' + gCount(g) + '</span></div>' +
         '<button class="gmore" data-more="' + g.id + '" title="更多">⋯</button></div>';
     }).join('');
+    /* web625：普通组是每道题的「默认组」，但只有打开过一次才会落盘。搜组时如果只搜到
+       已有的组，就会显得「这道题没有普通组」——所以把当前题库里匹配到、还没建组的题
+       也列出来（虚行），点一下就生成它的普通组。 */
+    var vrows = '';
+    if (qraw && (kind === 'all' || kind === 'tree') && S.bankId) {
+      var bk0 = null; try { bk0 = bankById(S.bankId); } catch (eV0) {}
+      if (bk0 && bk0.questions && bk0.questions.length) {
+        var hasG = Object.create(null);
+        G.list.forEach(function (g2) { if (g2 && !g2.path && String(g2.bank) === String(S.bankId)) hasG[String(g2.qid)] = 1; });
+        var qn0 = norm(qraw), seen0 = 0, parts0 = [];
+        for (var vi = 0; vi < bk0.questions.length && seen0 < 8; vi++) {
+          var qv = bk0.questions[vi];
+          if (!qv || !qv.stem) continue;
+          if (hasG[String(qv.id)]) continue;
+          if (norm(qv.stem).indexOf(qn0) < 0) continue;
+          parts0.push('<div class="mp-grow2 virt" data-vq="' + esc(String(qv.id)) + '" title="这道题还没生成过组，点一下创建它的普通组">' +
+            '<i class="gst">☆</i><div class="gmain"><b>普通组 · 未生成</b>' +
+            '<span class="muted2">' + esc(String(qv.stem).slice(0, 40)) + '</span></div></div>');
+          seen0++;
+        }
+        vrows = parts0.join('');
+      }
+    }
     /* 重画列表时把滚动位置留住：滚到下面点一条，重画后跳回顶部，
        高亮那条会「跑到上面去」，看起来就像点错了行。 */
     var __sc0 = 0; try { __sc0 = $('#mpGList').scrollTop || 0; } catch (eSc) {}
-    $('#mpGList').innerHTML = rows || (q || kind !== 'all' ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组<button type="button" class="mp-kbtn" id="mpGClear" style="margin-left:8px">清空筛选</button></div>'
+    $('#mpGList').innerHTML = (rows + vrows) || (q || kind !== 'all' ? '<div class="mp-agrow" style="color:#8a86a0">没有匹配的组<button type="button" class="mp-kbtn" id="mpGClear" style="margin-left:8px">清空筛选</button></div>'
       : '<div class="mp-agrow" style="color:#8a86a0">还没有组，点「＋」用当前题建一组</div>');
     (function () {
       var b = document.getElementById('mpGClear'); if (!b) return;
@@ -4811,6 +4864,8 @@ function bindShell() {
       if (st) { e.stopPropagation(); gStar(st.getAttribute('data-star')); return; }
       var mo = e.target.closest('[data-more]');
       if (mo) { e.stopPropagation(); var r = mo.getBoundingClientRect(); gMenu(mo.getAttribute('data-more'), r.left - 120, r.bottom + 4); return; }
+      var vrow = e.target.closest('[data-vq]');
+      if (vrow) { e.stopPropagation(); try { openFor(S.bankId, vrow.getAttribute('data-vq')); } catch (eV1) {} return; }
       var row = e.target.closest('[data-g]');
       if (!row) return;
       if (GSELMODE) {
@@ -6840,7 +6895,7 @@ function bindShell() {
     var h = document.getElementById('mpVar');
     if (h) { h.hidden = true; h.innerHTML = ''; }
     /* 面板里可能刚生成了变式题：收起来时把它们同步到画布上 */
-    try { if (syncVariants(true)) { applyLayout(LAY.name); saveCur(); } } catch (eVC) {}
+    try { if (syncVariants(true)) { try { if (!gCur() || !gCur().path) ensurePathGroup(true); } catch (eVP) {} applyLayout(LAY.name); saveCur(); } } catch (eVC) {}
   }
   function openVarPanel(n) {
     if (typeof window.openVariant !== 'function') { toast('变式题模块没加载（variant.js）'); return; }
@@ -7218,7 +7273,8 @@ function bindShell() {
     },
     openFor: openFor,
     nodes: function () { return DATA.nodes.map(function (n) { return { id: n.id, type: n.type, refId: n.refId, xbk: n.xbk || null, label: String(n.label || '').slice(0, 18), opts: (n.ref && n.ref.options || []).length, rid: (n.ref && n.ref.id) || null, rbank: (n.ref && n.ref._bank) || null }; }); },
-    groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, n: (g.nodes || []).length }; }) }; },
+    groups: function () { return { active: G.active, n: G.list.length, list: G.list.map(function (g) { return { id: g.id, name: g.name, star: !!g.star, path: !!g.path, bank: g.bank, qid: g.qid, n: (g.nodes || []).length }; }) }; },
+    expandAt: function (id) { var n = DATA.nodes.filter(function (x) { return x.id === id; })[0]; if (!n) return false; try { return pathExpand(n); } catch (e) { return String(e); } },
     newGroup: gNewFromCur,
     pct: function (a, b) { return pairPct(a, b, simCtx()); },
     parts: function (a, b) { var c = simCtx(); return { dice: +diceGrams(a && a.stem, b && b.stem).toFixed(3), tag: +tagCosine(a, b, c).toFixed(3), opt: +optCosine(a, b, c).toFixed(3), pct: pairPct(a, b, c) }; },
