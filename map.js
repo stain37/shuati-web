@@ -6985,10 +6985,15 @@ function bindShell() {
     var centerBtn = !n ? '' : isCen ? '<button data-c="pick">🔄 换个中心题（搜索 / AI）…</button>'
       : isVar ? '<button disabled>🎯 AI 变式题不能当中心题</button>'
         : (n.type === 'sim' ? '<button data-c="center">🎯 以这道题为中心</button>' : '');
+    /* 触屏长按 = 右键（浏览器不给触屏发 contextmenu 的实时长按），
+       所以「长按左键就地延伸」这个能力必须也能从右键菜单里点到（web623）。 */
+    var expandBtn = (n && (n.type === 'sim' || n.type === 'tag'))
+      ? '<button data-c="expand">' + (n.type === 'tag' ? '➕ 展开这个考点的题（延长路径）' : '➕ 展开相似题（延长路径）') + '</button>'
+      : '';
     CTX.innerHTML = n ? (
       (isFile ? '<button data-c="view">📂 就地看着</button>' +
                 '<button data-c="tab">↗ 新标签打开</button>'
-              : centerBtn +
+              : centerBtn + expandBtn +
                 (isQ ? '<button data-c="ai">✨ 分析考点（AI）</button>' +
                        '<button data-c="var">✨ 出变式题（AI）</button>' : '')) +
       (isNote ? '<button data-c="focus">🔍 聚焦到这里</button>' : '<button data-c="focus">🔍 聚焦到这里</button>') +
@@ -7043,6 +7048,14 @@ function bindShell() {
         if (n.type === 'sim' && n.ref) { snap(); recenter(n.ref); }
         else if (n.type === 'center') { toast('它已经是中心题了'); }
         else toast('只有相似题能当中心');
+      } else if (act === 'expand') {
+        /* 和「鼠标左键长按」完全同一条路径：没在路径模式就先打开，再就地延伸 */
+        try {
+          if (!PATHM.on) pathSet(true);
+          pathExpand(n);
+          try { paintPath(); } catch (eP2) {}
+          toast('已展开：这一组会算作「🧭 路径组」');
+        } catch (eEx) { try { toast('展开失败：' + (eEx && eEx.message)); } catch (e3) {} }
       } else if (act === 'focus') {
         sel = n.id; render();
         var r = stageRect();
