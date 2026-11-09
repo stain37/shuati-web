@@ -3712,3 +3712,14 @@ body.quiz.hand-mode .stem { margin-bottom:8px !important; }
 
 /* web631：速选条默认贴在翻页钮左侧，两者底部对齐 */
 #optRail { bottom:calc(62px + env(safe-area-inset-bottom)) !important; }
+
+/* web633：首次使用的脉动提示 + 拖动范围提示 */
+#optRail.hint, #handPad.hint {
+  animation:hintPulse 1.2s ease-in-out 3;
+  outline:2px dashed color-mix(in srgb, var(--primary) 65%, transparent);
+  outline-offset:3px;
+}
+@keyframes hintPulse {
+  0%,100% { box-shadow:0 6px 20px rgba(15,23,42,.28); }
+  50%     { box-shadow:0 0 0 8px color-mix(in srgb, var(--primary) 22%, transparent); }
+}

@@ -4847,8 +4847,9 @@ function uiMakeDraggable(el, key) {
     }
     ev.preventDefault();
     const r = el.getBoundingClientRect();
-    const nx = Math.max(0, Math.min(st.left + dx, innerWidth - r.width));
-    const ny = Math.max(0, Math.min(st.top + dy, innerHeight - r.height));
+    const TOP0 = 86, BOT0 = 64;
+    const nx = Math.max(4, Math.min(st.left + dx, innerWidth - r.width - 4));
+    const ny = Math.max(TOP0, Math.min(st.top + dy, innerHeight - r.height - BOT0));
     el.style.left = nx + 'px'; el.style.top = ny + 'px';
   });
   const end = () => {
@@ -4886,6 +4887,22 @@ function uiMakeDraggable(el, key) {
   }
 }
 
+/* 第一次开单手模式：告诉用户「按住不动才能拖」，别让他以为按钮坏了（web633） */
+function uiHandHintOnce(el) {
+  try {
+    if (SET.handHinted) return;
+    SET.handHinted = 1; writeLS(LS.set, SET);
+    setTimeout(() => {
+      try { toast('按住 0.3 秒可以拖动这个浮动条，调到手顺手的位置', 3200, 'good'); } catch (e) {}
+      setTimeout(() => { try { toast('普通点按还是选选项 / 翻页', 2400); } catch (e) {} }, 3400);
+    }, 700);
+    if (el) {
+      el.classList.add('hint');
+      setTimeout(() => { try { el.classList.remove('hint'); } catch (e) {} }, 4200);
+    }
+  } catch (e0) {}
+}
+
 /* 单手模式 · 选项速选条（web628）：屏幕侧边一列小方块 A B C…，有几个选项就几个，
    点方块＝点那一行，拇指不用横向够到选项文字。 */
 function uiOptRail() {
@@ -4918,6 +4935,7 @@ function uiOptRail() {
   });
   rail.innerHTML = html;
   rail.classList.toggle('two', rows.length > 6);
+  try { uiHandHintOnce(rail); } catch (eH) {}
   /* 默认位置：紧挨着「上一题 / 下一题」那组钮的左侧（右手时镜像到右侧）；
      只要用户拖过一次（SET.railPos 有值），就一律用他拖到的位置。 */
   try {
