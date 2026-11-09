@@ -18,6 +18,7 @@
     pitch: 1,                 /* 音调 0.6–1.6 */
     readHints: true,          /* 念完选项后要不要说「请选择 / 可以多选」这类提示 */
     btnCtl: true,             /* 答题页里的按钮能不能用说的点 */
+    readPanel: true,
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     autoNext: true, nextDelay: 1400, wake: '', sens: 'mid', mode: 'both',
@@ -31,7 +32,8 @@
     cRepeat: '重读,重复,再说一遍,再读一遍,再来一遍',
     cAnswer: '答案,看答案,公布答案',
     cFav: '收藏',
-    cSubmit: '确认,确定,提交,就这样'
+    cSubmit: '确认,确定,提交,就这样', 
+    cClose: '关闭,关掉,关,叉掉,叉,收起,关了这个,退出这个',
   };
 
   const LET = 'ABCDEFGH';
@@ -45,6 +47,15 @@
     庚: 'G', 更: 'G', 耕: 'G', 跟: 'G',
     辛: 'H', 心: 'H', 新: 'H', 欣: 'H', 星: 'H'
   };
+  const ORD = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+  function ordNum(u) {
+    u = String(u || '');
+    if (/^\d+$/.test(u)) return +u;
+    if (ORD[u]) return ORD[u];
+    const m = u.match(/^十([一二三四五六七八九])$/);
+    if (m) return 10 + ORD[m[1]];
+    return 0;
+  }
   const NUM = { 一: 'A', 二: 'B', 三: 'C', 四: 'D', 五: 'E', 六: 'F', 七: 'G', 八: 'H' };
 
   let V = null;                 // 合并后的设置
@@ -165,6 +176,104 @@
     });
   }
 
+  /* ---------- 浮层（脑图 / 相似题 / 批注 …）也能读、也能说 ---------- */
+  /* 不在代码里写死面板名字：凡是挂在 body 下、position 为 fixed/absolute、
+     z-index ≥ 3000、面积够大的，就当浮层。以后新加的面板自动可用。 */
+  const SELF_IDS = { voicePill: 1, optRail: 1, handPad: 1, voicePanel: 1 };
+  function overlayRoots() {
+    const out = [];
+    function push(el) {
+      if (!el || el.nodeType !== 1) return;
+      if (el.id && SELF_IDS[el.id]) return;
+      const cs = getComputedStyle(el);
+      if (cs.position !== 'fixed' && cs.position !== 'absolute') return;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < .05) return;
+      const z = parseInt(cs.zIndex || '0', 10);
+      if (!(z >= 1000)) return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 120 || r.height < 70) return;
+      const area = r.width * r.height;
+      if (area < Math.max(60000, innerWidth * innerHeight * 0.10)) return;  /* 侧边小抽屉 / 悬浮球不算 */
+      if (!el.querySelector('button, .btn, .chip, [role="button"]')) return; /* 没按钮的不算面板 */
+      out.push({ el: el, z: z, area: area });
+    }
+    Array.prototype.slice.call(document.body.children).forEach(function (el) {
+      push(el);
+      Array.prototype.slice.call(el.children).forEach(push);
+    });
+    out.sort(function (a, b) { return (a.z - b.z) || (a.area - b.area); });
+    return out.map(function (o) { return o.el; });
+  }
+  function topPanel() { const a = overlayRoots(); return a.length ? a[a.length - 1] : null; }
+  function isShown(el) {
+    if (!el || el.disabled) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity > .05;
+  }
+  function panelButtons(root) {
+    if (!root) return [];
+    return Array.prototype.slice.call(root.querySelectorAll('button, .btn, .chip, .qbtn, [role="button"]'))
+      .filter(isShown)
+      .map(function (el) {
+        return { el: el, name: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() };
+      })
+      .filter(function (o) { return o.name && o.name.length <= 18; });
+  }
+  function panelSpeech(root) {
+    if (!root) return '';
+    const parts = [];
+    const cap = root.querySelector('.vs-cap, .cap, .ttl, h3, h2, [class*="cap"], [class*="title"], .sim-head b, .mp-cap b, header b');
+    let title = cap ? (cap.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+    if (!title) {
+      const dlg = root.querySelector('[role="dialog"]');
+      title = (root.getAttribute('aria-label') || (dlg && dlg.getAttribute('aria-label')) || '').trim().slice(0, 40);
+    }
+    if (title) parts.push(title);
+    const btns = panelButtons(root).map(function (o) {
+      return o.name.replace(EMOJI, '').replace(/\s+/g, ' ').trim();
+    }).filter(function (t) { return t && t.length <= 12; });
+    const uniq = [], count = {};
+    btns.forEach(function (t) {
+      if (t.length < 1) return;
+      count[t] = (count[t] || 0) + 1;
+      if (uniq.indexOf(t) < 0) uniq.push(t);
+    });
+    if (uniq.length) {
+      parts.push('可以点：' + uniq.slice(0, 8).map(function (t) {
+        return count[t] > 1 ? t + '（' + count[t] + ' 个）' : t;
+      }).join('，'));
+    }
+    parts.push('说按钮的名字，或者说「关闭」');
+    return parts.join('。');
+  }
+  function closeTopPanel() {
+    const root = topPanel();
+    if (!root) return false;
+    const btns = panelButtons(root);
+    const x = btns.filter(function (o) { return /^[✕×x✖]$/.test(o.name) || /关闭|收起/.test(o.name); })[0];
+    if (x) { x.el.click(); flash('已关闭'); return true; }
+    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (e) {}
+    flash('已关闭');
+    return true;
+  }
+  let panelSig = '', panelT = 0;
+  function scanPanel() {
+    if (!isOn() || !document.body.classList.contains('quiz')) { panelSig = ''; return; }
+    const root = topPanel();
+    const sig = root ? (root.id || String(root.className) || 'panel') + '|' + (root.innerText || '').length : '';
+    if (sig === panelSig) return;
+    if (speaking) return;                 /* 正在读题/读解析：等它读完再来读面板，别抢话 */
+    if (!root) { panelSig = ''; return; }
+    panelSig = sig;
+    if (!cfg().readPanel) return;
+    const t = panelSpeech(root);
+    if (t) speak(t);
+  }
+
+  setInterval(function () { try { scanPanel(); } catch (e) {} }, 700);
+
   /* ---------- 用说的点答题页上的按钮 ---------- */
   /* 「除了返回 / 主页 / 退出这种会把你带出答题页的，其它都能说」——
      做法：扫描页面上可见的按钮，取它的文字当别名，用户话里出现就点它。
@@ -174,16 +283,22 @@
   function quizButtons() {
     const out = [];
     const seen = {};
-    Array.prototype.slice.call(document.querySelectorAll('#view button, #view .btn, #view .chip, #view .qbtn, #view [role="button"]'))
-      .forEach(function (el) {
-        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
-        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!t || t.length > 16) return;
-        if (BTN_NO.test(t)) return;                      /* 会离开答题页的不接管 */
-        if (seen[t]) return;
-        seen[t] = 1;
-        out.push({ el: el, name: t });
-      });
+    const roots = overlayRoots().reverse();            /* 最上层的浮层先试 */
+    const view = document.getElementById('view');
+    if (view) roots.push(view);
+    roots.forEach(function (root) {
+      Array.prototype.slice.call(root.querySelectorAll('button, .btn, .chip, .qbtn, [role="button"]'))
+        .forEach(function (el) {
+          if (!isShown(el) || el.getAttribute('aria-disabled') === 'true') return;
+          const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!t || t.length > 16) return;
+          const inPanel = root !== view;               /* 浮层里的关闭键要能说 */
+          if (!inPanel && BTN_NO.test(t)) return;      /* 答题页里会离开的不接管 */
+          if (seen[t]) return;
+          seen[t] = 1;
+          out.push({ el: el, name: t });
+        });
+    });
     return out;
   }
   function hitButton(t) {
@@ -466,6 +581,17 @@
       return;
     }
 
+    /* 浮层：说「关闭 / 第 2 个」 */
+    if (topPanel()) {
+      if (hitCmd(t, cfg().cClose)) { if (closeTopPanel()) return; }
+      const mOrd = t.match(/第([一二三四五六七八九十\d]+)个/);
+      if (mOrd) {
+        const n = ordNum(mOrd[1]);
+        const list = panelButtons(topPanel()).filter(function (o) { return !/^[✕×x✖]$/.test(o.name) && !/关闭|收起/.test(o.name); });
+        if (n && list[n - 1]) { list[n - 1].el.click(); flash('好的：第 ' + n + ' 个'); return; }
+      }
+    }
+
     /* 按钮：说「专注」「小窗」「脑图」「重做」「看解析」「更多」… */
     if (hitButton(t)) return;
 
@@ -643,6 +769,7 @@
       row('音量', '<input type="range" min="0" max="1" step="0.05" data-vk="vol" value="' + c.vol + '"><b class="vs-val" data-vv="vol">' + Math.round(c.vol * 100) + '%</b>') +
       row('音色', '<select data-vk="voiceURI">' + voiceOpts + '</select>', '系统的中文语音；没有列出来就先点一下页面再打开面板') +
       row('音调', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="pitch" value="' + (c.pitch == null ? 1 : c.pitch) + '"><b class="vs-val" data-vv="pitch">' + (+(c.pitch == null ? 1 : c.pitch)).toFixed(2) + '</b>') +
+      row('读弹窗内容', chk('readPanel'), '脑图 / 相似题 / 批注这些面板打开时，读它的标题和按钮；里面的按钮也能用说的点，说「关闭」就关掉') +
       row('念提示词', chk('readHints'), '念完选项后要不要说「请选择 / 可以多选，选完说确认」；关掉更安静') +
       row('读题号', chk('readNo')) +
       row('读题干', chk('readStem')) +
@@ -817,6 +944,17 @@
     onQuizRender: onQuizRender, speak: speak, supported: supported,
     cfg: cfg, _heard: handleHeard, _parse: function (t) { return parseLetters(t); },
     _recite: reciteSpeech,
+    _close: function () { return closeTopPanel(); },
+    _btn: function (t) { return hitButton(norm(t)); },
+    _panel: function () {
+      const root = topPanel();
+      return {
+        roots: overlayRoots().map(function (e) { return e.id || String(e.className); }),
+        top: root ? (root.id || String(root.className)) : '',
+        names: panelButtons(root).map(function (o) { return o.name; }),
+        closeWord: cfg().cClose
+      };
+    },
     _dbg: function () { return { pending: [].slice.call(pending), speaking: speaking, recOn: recOn, multi: isMulti(), submit: !!document.getElementById('doSubmit'), ask: askState, said: said.slice(-6) }; }
   };
 
