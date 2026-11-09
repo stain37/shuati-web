@@ -555,6 +555,7 @@ if (PIP_CTX) {
   if (!Object.keys(p.s).length) pipSetSave(SET);
   else PIP_OP.forEach(k => { if (p.s[k] != null) SET[k] = p.s[k]; });
   if (['normal', 'speed', 'recite'].indexOf(SET.quizMode) < 0) SET.quizMode = 'normal';
+  if (['off', 'right', 'left'].indexOf(SET.hand) < 0) SET.hand = 'off';
   SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
 }
 const QUIZ_MODES = [['normal', '普通'], ['speed', '⚡ 速刷'], ['recite', '📖 背题']];
@@ -4450,6 +4451,7 @@ function renderQuiz(bankId) {
   const speed = SET.quizMode === 'speed';
   const recite = SET.quizMode === 'recite';
   uiSpeedStop();                                  // 换题 / 重画：先把上一题的速刷浮层和待跳计时收掉
+  applyHandMode();                                // 单手模式：body 上的 hand-mode / data-hand 跟着设置走
   const locked = !recite && answered(k);
   const rec = recOf(k);
   const picked = locked ? (rec.sel || []) : (recite ? [] : (QZ.pending[q.id] || []));
@@ -4493,6 +4495,8 @@ function renderQuiz(bankId) {
           mk === 'speed' ? '速刷模式：答对约 1.2 秒自动跳下一题，答错停下看解析' :
           '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
+        <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
+          SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
         <span class="spacer-grow"></span>
         <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：答对自动跳，答错停下' : ''}</span>
       </div>
@@ -4570,6 +4574,7 @@ function renderQuiz(bankId) {
     </div>`;
 
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
+  const hb = $('btnHand'); if (hb) hb.onclick = () => uiHandCycle();
   /* 「⋯ 更多」抽屉必须挂在 body 下：面板磨砂（backdrop-filter）会给卡片生成包含块，
      .qsheet 的 position:fixed 会被困在卡片里 → 被底栏盖住 / 答题后整块看不见。
      旧的那份（上一次渲染挂在 body 上的）先删，避免 id 重复。 */
@@ -4789,6 +4794,26 @@ function renderQuiz(bankId) {
       else if (typeof FX.celebrateNormal === 'function') FX.celebrateNormal({ bankId: bank.id, total: bank.questions.length });
     } catch (e) {}
   }
+}
+
+/* 单手刷题（web624）：
+   拇指够得到的只有屏幕下方那一块，所以开的只是「把可点区域放大 + 把翻页挪到拇指侧」，
+   不改变刷题逻辑；左右手只影响翻页条的方向（右手：下一题在右；左手：镜像）。 */
+function applyHandMode() {
+  const h = SET.hand || 'off';
+  document.body.classList.toggle('hand-mode', h !== 'off');
+  if (h === 'off') document.body.removeAttribute('data-hand');
+  else document.body.setAttribute('data-hand', h);
+}
+function uiHandCycle() {
+  const seq = ['off', 'right', 'left'];
+  const i = seq.indexOf(SET.hand || 'off');
+  SET.hand = seq[(i + 1) % 3];
+  writeLS(LS.set, SET);
+  applyHandMode();
+  const name = SET.hand === 'left' ? '左手' : SET.hand === 'right' ? '右手' : '关掉';
+  try { toast(SET.hand === 'off' ? '单手模式已关' : '单手模式：' + name + '（再点一下换另一边 / 关掉）'); } catch (e) {}
+  try { renderQuiz(); } catch (e) {}
 }
 
 function toggleFav(k, btn) {

@@ -3572,3 +3572,26 @@ html[data-style][data-style] body.quiz .bnav{
 html[data-style][data-style] body.quiz .nav{
   padding-bottom: max(4px, env(safe-area-inset-bottom)) !important;
 }
+
+/* ===== web624：导航栏外框圆角 + 单手刷题 ===== */
+/* 1) 底栏那一圈方框改圆角（各皮肤自己画的边框也一起被裁圆） */
+.nav, .bnav{ border-radius:20px; }
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{ border-radius:22px 22px 0 0 !important; }
+html[data-style][data-style] body.quiz .bnav,
+html[data-style][data-style] body.quiz .nav{ border-radius:22px 22px 0 0 !important; }
+.nav .qbtn, .bnav .btn{ border-radius:16px; }
+
+/* 2) 单手模式：只放大可点区域 + 把翻页挪到拇指侧 */
+body.quiz.hand-mode .opts{ gap:10px; }
+body.quiz.hand-mode .opts .opt{
+  min-height:60px; border-radius:18px; font-size:16px; line-height:1.45;
+  padding:12px 14px; align-items:center;
+}
+body.quiz.hand-mode .opts .opt .k{
+  width:32px; height:32px; flex:0 0 32px; line-height:32px; font-size:15px; border-radius:11px;
+}
+body.quiz.hand-mode #nav{ gap:10px; }
+body.quiz.hand-mode #nav .qbtn{ min-height:56px; font-size:15px; border-radius:18px; }
+body.quiz.hand-mode[data-hand="left"] #nav{ flex-direction:row-reverse; }
+body.quiz.hand-mode[data-hand="left"] .qhead .qtools{ justify-content:flex-start; }
+body.quiz.hand-mode[data-hand="right"] .qhead .qtools{ justify-content:flex-end; }
