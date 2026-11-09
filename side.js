@@ -1000,6 +1000,28 @@
       + '<div class="qs-cbody"' + (closed ? ' style="display:none"' : '') + '>' + rows + brows + '</div></div>';
   }
 
+  /* 点考点文件夹（tgcat:）→ 直接跳这个考点的答题界面，从第 1 题开始。
+     返回 true 表示已经跳走了；大标签（tgb:）没有单一题集，返回 false 交给调用方。 */
+  function openTagFolder(cid) {
+    try {
+      var sid = String(cid || '');
+      if (sid.indexOf('tgcat:') !== 0) return false;
+      if (!(window.SCM && SCM.tgBankId)) return false;
+      var tag = decodeURIComponent(sid.slice(6));
+      var bid = SCM.tgBankId(tag);
+      if (!bid) return false;
+      try {
+        if (typeof QZ === 'object' && QZ) {
+          QZ.bankId = bid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null; QZ.cur = null;
+        }
+      } catch (eQZ) {}
+      if (typeof setOpen === 'function') setOpen(false);
+      if (typeof go === 'function') go('#/bank/' + encodeURIComponent(bid));
+      else location.hash = '#/bank/' + encodeURIComponent(bid);
+      return true;
+    } catch (e) { return false; }
+  }
+
   /* ---------- 点击 ---------- */
   function onListClick(e) {
     var cls = e.target.closest('#qsClassify');
@@ -1013,7 +1035,10 @@
     var opn = e.target.closest('[data-open]');
     if (opn) {
       e.stopPropagation();
-      try { if (CAT.openDir) CAT.openDir(opn.getAttribute('data-open')); } catch (er) {}
+      var opnId = opn.getAttribute('data-open');
+      /* 考点文件夹（名字点一下）→ 直接进这个考点的答题界面 */
+      if (/^(tgcat:|tgb:)/.test(String(opnId)) && openTagFolder(opnId)) { return; }
+      try { if (CAT.openDir) CAT.openDir(opnId); } catch (er) {}
       if (typeof go === 'function') go('#/');
       if (typeof setOpen === 'function') setOpen(false);
       return;
@@ -1028,22 +1053,7 @@
       /* 考点文件夹：点整行 → 直接进这个考点的答题界面（不是回首页管理器） */
       if (/^(tgcat:|tgb:)/.test(String(cid)) && !e.target.closest('.qs-caret') && !S.selmode) {
         e.stopPropagation();
-        var tgTag = String(cid).indexOf('tgcat:') === 0 ? decodeURIComponent(String(cid).slice(6)) : '';
-        if (tgTag && window.SCM && SCM.tgBankId) {
-          var tgBid = '';
-          try { tgBid = SCM.tgBankId(tgTag); } catch (eTB) {}
-          if (tgBid) {
-            try {
-              if (typeof QZ === 'object' && QZ) {
-                QZ.bankId = tgBid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null; QZ.cur = null;
-              }
-            } catch (eQZ) {}
-            if (typeof setOpen === 'function') setOpen(false);
-            if (typeof go === 'function') go('#/bank/' + encodeURIComponent(tgBid));
-            else location.hash = '#/bank/' + encodeURIComponent(tgBid);
-            return;
-          }
-        }
+        if (openTagFolder(cid)) return;
         /* 大标签（tgb:）没有单一题集：退回打开文件夹看子考点 */
         try { if (CAT.openDir) CAT.openDir(cid); } catch (er) {}
         if (typeof go === 'function') go('#/');
