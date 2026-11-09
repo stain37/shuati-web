@@ -3760,3 +3760,8 @@ body.quiz.hand-mode[data-hand="left"] #view .opts {
 body.quiz.hand-mode[data-hand="right"] #view .opts {
   margin-right:calc(var(--railw, 38px) + 14px) !important;
 }
+
+/* web639：单手模式是「记忆状态」——只在答题页出现浮动条；到了别的页面全部隐藏，
+   回到答题页又按上次的设置（左手/右手）自动出现，不会自己关掉。 */
+body:not(.quiz) #handPad,
+body:not(.quiz) #optRail { display:none !important; }
