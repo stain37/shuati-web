@@ -3002,7 +3002,10 @@ button,[role="button"],.btn,.chip,.subjchip,.bnav .btn,.bnav a,.qhead .btn,label
   position:absolute;pointer-events:none;border-radius:50%;
   background:currentColor;opacity:.22;transform:scale(0);
   animation:anRipple .42s cubic-bezier(.22,1,.36,1) forwards}
-{to{transform:scale(1);opacity:0}}
+/* web610：这里原来只有一行游离的 {to{…}}，真正的 @keyframes 从来没被定义过——
+   于是 .rp 那颗「点击光晕」一直停在 opacity:.22、scale(1)，被按钮裁掉一半后
+   看起来就是「点哪儿，左边多出一条灰杠 / 粉杠」。补上关键帧，让它从触点扩散后淡掉。 */
+@keyframes anRipple{ from{ transform:scale(0); opacity:.22 } to{ transform:scale(1); opacity:0 } }
 /* ② counter-roll 用的数字字形：等宽，滚动时不抖 */
 .hero .hstat b{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){

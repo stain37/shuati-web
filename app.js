@@ -1514,7 +1514,9 @@ function bindRipple() {
     if (!el || el.disabled) return;
     var r = el.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    var d = Math.max(r.width, r.height) * 2;
+    /* web610：原来是 2 倍按钮长边，皮肤不裁切时整颗光晕会露出按钮外一大块；
+       改成正好盖住按钮（长边），从触点扩散，视觉一样但不会「多出一条」。 */
+    var d = Math.max(r.width, r.height);
     var sp = document.createElement('span');
     sp.className = 'rp';
     sp.style.width = sp.style.height = d + 'px';
