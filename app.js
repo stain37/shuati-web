@@ -4497,6 +4497,7 @@ function renderQuiz(bankId) {
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
         <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
           SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
+        <button class="chip qm voice${SET.voice && SET.voice.on ? ' on' : ''}" id="btnVoice" title="语音刷题：自动读题 + 听你说 A / ABC（多选）；点一下开，再点关，长按调设置">${SET.voice && SET.voice.on ? '🎙 语音中' : '🎙 语音'}</button>
         <span class="spacer-grow"></span>
         <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：答对自动跳，答错停下' : ''}</span>
       </div>

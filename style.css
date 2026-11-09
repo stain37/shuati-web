@@ -3765,3 +3765,47 @@ body.quiz.hand-mode[data-hand="right"] #view .opts {
    回到答题页又按上次的设置（左手/右手）自动出现，不会自己关掉。 */
 body:not(.quiz) #handPad,
 body:not(.quiz) #optRail { display:none !important; }
+
+/* ===== web640：语音刷题 ===== */
+.chip.qm.voice { border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
+.chip.qm.voice.on { background: var(--primary); color: #fff; }
+
+#voicePill { position: fixed; z-index: 30075; left: 50%; transform: translateX(-50%);
+  bottom: calc(84px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px 7px 12px; border-radius: 999px; background: color-mix(in srgb, var(--card, #fff) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+  box-shadow: 0 8px 26px rgba(15,23,42,.22); backdrop-filter: blur(10px); font-size: 12.5px; max-width: 92vw; }
+#voicePill .vp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sub); flex: 0 0 8px; }
+#voicePill[data-state="listening"] .vp-dot { background: #16a34a; animation: vpPulse 1.1s ease-in-out infinite; }
+#voicePill[data-state="speaking"] .vp-dot { background: var(--primary); animation: vpPulse .8s ease-in-out infinite; }
+@keyframes vpPulse { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.5); opacity: .55 } }
+#voicePill .vp-txt { font-weight: 700; white-space: nowrap; }
+#voicePill .vp-heard { color: var(--sub); max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#voicePill .vp-b { width: 28px; height: 28px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  background: transparent; color: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
+#voicePill .vp-b:hover { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+
+/* 面板 */
+#voicePanel { position: fixed; inset: 0; z-index: 30090; display: flex; align-items: center; justify-content: center; }
+#voicePanel .vs-scrim { position: absolute; inset: 0; background: rgba(9,12,24,.5); backdrop-filter: blur(3px); }
+#voicePanel .vs-card { position: relative; width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column;
+  border-radius: 18px; background: var(--card, #fff); color: var(--text); border: 1px solid var(--line, rgba(0,0,0,.12));
+  box-shadow: 0 24px 60px rgba(15,23,42,.4); overflow: hidden; }
+#voicePanel .vs-cap { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+  font-weight: 800; font-size: 15px; border-bottom: 1px solid var(--line, rgba(0,0,0,.08)); }
+#voicePanel .vs-x { border: 0; background: transparent; font-size: 16px; cursor: pointer; color: inherit; }
+#voicePanel .vs-scroll { overflow-y: auto; padding: 6px 14px 10px; }
+#voicePanel .vs-sec { margin: 14px 0 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .08em; color: var(--sub); }
+#voicePanel .vs-row { display: grid; grid-template-columns: 132px 1fr; gap: 8px 10px; align-items: center; padding: 7px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--line, #ccc) 70%, transparent); }
+#voicePanel .vs-lab { font-size: 13px; }
+#voicePanel .vs-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#voicePanel .vs-ctl input[type="range"] { flex: 1 1 auto; min-width: 90px; }
+#voicePanel .vs-ctl input[type="text"], #voicePanel .vs-ctl select { flex: 1 1 auto; min-width: 0; padding: 5px 7px;
+  border-radius: 8px; border: 1px solid var(--line, #ccc); background: var(--bg, #fff); color: inherit; font-size: 12.5px; }
+#voicePanel .vs-val { flex: 0 0 auto; font-size: 12px; color: var(--primary); min-width: 42px; text-align: right; }
+#voicePanel .vs-hint { grid-column: 2; font-size: 11px; color: var(--sub); font-style: normal; }
+#voicePanel .vs-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px 14px;
+  border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+
+body.voice-mode .qcard .stem { font-size: 1.06em; }
