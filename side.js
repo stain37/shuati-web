@@ -1025,9 +1025,26 @@
     var fold = e.target.closest('[data-fold]');
     if (fold) {
       var cid = fold.dataset.fold;
-      /* 考点文件夹：点整行就打开（里面直接是题）；折叠走前面的小箭头 */
+      /* 考点文件夹：点整行 → 直接进这个考点的答题界面（不是回首页管理器） */
       if (/^(tgcat:|tgb:)/.test(String(cid)) && !e.target.closest('.qs-caret') && !S.selmode) {
         e.stopPropagation();
+        var tgTag = String(cid).indexOf('tgcat:') === 0 ? decodeURIComponent(String(cid).slice(6)) : '';
+        if (tgTag && window.SCM && SCM.tgBankId) {
+          var tgBid = '';
+          try { tgBid = SCM.tgBankId(tgTag); } catch (eTB) {}
+          if (tgBid) {
+            try {
+              if (typeof QZ === 'object' && QZ) {
+                QZ.bankId = tgBid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null; QZ.cur = null;
+              }
+            } catch (eQZ) {}
+            if (typeof setOpen === 'function') setOpen(false);
+            if (typeof go === 'function') go('#/bank/' + encodeURIComponent(tgBid));
+            else location.hash = '#/bank/' + encodeURIComponent(tgBid);
+            return;
+          }
+        }
+        /* 大标签（tgb:）没有单一题集：退回打开文件夹看子考点 */
         try { if (CAT.openDir) CAT.openDir(cid); } catch (er) {}
         if (typeof go === 'function') go('#/');
         if (typeof setOpen === 'function') setOpen(false);
