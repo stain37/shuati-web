@@ -4792,6 +4792,7 @@ function renderQuiz(bankId) {
   rememberLast(bank, q.id);
   $('jumpInfo').innerHTML = '<b>' + pos + ' / ' + pool.length + '</b><span>答题卡</span>';
   try { uiOptRail(); } catch (eRail) {}
+  try { uiHandSubmit(); } catch (eHS0) {}
   /* 首题 / 末题：把翻页按钮的边界状态摆出来，免得以为点了没反应 */
   const prevB = $('prev'), nextB = $('next');
   if (prevB) {
@@ -5041,13 +5042,15 @@ function uiHandPad(h) {
     pad.id = 'handPad';
     pad.innerHTML = '<button data-h="card" title="答题卡（K）">☰</button>' +
       '<button data-h="prev" title="上一题（←）">‹</button>' +
-      '<button data-h="next" class="prim" title="下一题（→ / Enter）">›</button>';
+      '<button data-h="next" class="prim" title="下一题（→ / Enter）">›</button>' +
+      /* web663：多选时「提交答案」在页面里要往下找，单手根本够不到 → 拇指区补一个（只在能提交时出现） */
+      '<button data-h="submit" class="sub" title="提交答案（多选）" hidden>✓</button>';
     pad.addEventListener('click', ev => {
       const b = ev.target.closest('[data-h]');
       if (!b) return;
       ev.stopPropagation();
       const act = b.getAttribute('data-h');
-      const id = act === 'next' ? 'next' : act === 'prev' ? 'prev' : 'jumpInfo';
+      const id = act === 'next' ? 'next' : act === 'prev' ? 'prev' : act === 'submit' ? 'doSubmit' : 'jumpInfo';
       const el = document.getElementById(id);
       if (el && !el.disabled) el.click();
     });
@@ -5056,6 +5059,22 @@ function uiHandPad(h) {
   pad.setAttribute('data-side', h === 'left' ? 'left' : 'right');
   try { uiMakeDraggable(pad, 'padPos'); } catch (eD2) {}
   pad.hidden = (h === 'off');
+  try { uiHandSubmit(); } catch (eHS) {}
+}
+
+/* 拇指区「提交答案」：页面里的 #doSubmit 存在且可用（多选选了至少一项）时才露出来。
+   每次 render / renderQuiz 之后调一次，避免出现「按钮在那儿但点了没反应」。 */
+function uiHandSubmit() {
+  const pad = document.getElementById('handPad');
+  if (!pad) return;
+  const b = pad.querySelector('[data-h="submit"]');
+  if (!b) return;
+  const ds = document.getElementById('doSubmit');
+  const live = !!(ds && !ds.disabled && SET.hand && SET.hand !== 'off');
+  if (b.hidden === !live) return;                 /* 状态没变就别碰，省一次布局 */
+  b.hidden = !live;
+  b.disabled = !live;
+  b.classList.toggle('live', live);
 }
 function uiHandCycle() {
   const seq = ['off', 'right', 'left'];

@@ -3823,3 +3823,25 @@ body.voice-mode .qcard .stem { font-size: 1.06em; }
 #voicePanel .vs-learn > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 #voicePanel .vs-learn select { flex: 0 0 auto; width: 44%; max-width: 168px; }
 #voicePanel .vs-dim { color: var(--sub); font-size: 12px; line-height: 1.5; }
+
+/* ================= web663 =================
+   1) 答题界面两条底栏（上一题/答题卡/下一题 那条 + 图标底栏）轮廓再圆一档；
+   2) 单手拇指区补「提交答案」按钮（多选选完直接点，不用去页面里找）。 */
+html[data-style][data-style] body.quiz .nav,
+html[data-style][data-style] body.quiz .bnav { border-radius:26px 26px 0 0 !important; }
+body.quiz .nav, body.quiz .bnav { border-radius:26px 26px 0 0; }
+html[data-style][data-style] body.quiz .nav .qbtn,
+html[data-style][data-style] body.quiz .bnav .btn { border-radius:18px !important; }
+html[data-style][data-style] body.quiz .bnav .bnav-ind { border-radius:18px !important; }
+
+#handPad button[hidden] { display:none !important; }
+#handPad button.sub {
+  background:var(--ok, #0f9d63); border-color:transparent; color:#fff;
+  font-size:21px; font-weight:800;
+}
+#handPad button.sub.live { animation:hpPop .2s ease-out; }
+@keyframes hpPop { from { transform:scale(.62); opacity:0; } to { transform:scale(1); opacity:1; } }
+/* web663 补：单手模式下 .bnav 原有一条 20px 的 !important，这里是同选择器 + 更靠后，盖回 26px */
+html[data-style][data-style] body.quiz.hand-mode .bnav,
+html[data-style][data-style] body.quiz.hand-mode .nav { border-radius:26px 26px 0 0 !important; }
+body.quiz.hand-mode .nav, body.quiz.hand-mode .bnav { border-radius:26px 26px 0 0; }
