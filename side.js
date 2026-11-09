@@ -1025,6 +1025,14 @@
     var fold = e.target.closest('[data-fold]');
     if (fold) {
       var cid = fold.dataset.fold;
+      /* 考点文件夹：点整行就打开（里面直接是题）；折叠走前面的小箭头 */
+      if (/^(tgcat:|tgb:)/.test(String(cid)) && !e.target.closest('.qs-caret') && !S.selmode) {
+        e.stopPropagation();
+        try { if (CAT.openDir) CAT.openDir(cid); } catch (er) {}
+        if (typeof go === 'function') go('#/');
+        if (typeof setOpen === 'function') setOpen(false);
+        return;
+      }
       if (S.selmode) { selToggle('c:' + cid); paint(); return; }
       S.closed[cid] = !S.closed[cid]; save();
       var block = fold.closest('.qs-cat');
