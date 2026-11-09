@@ -4802,6 +4802,15 @@ function renderQuiz(bankId) {
    不改变刷题逻辑；左右手只影响翻页条的方向（右手：下一题在右；左手：镜像）。 */
 function applyHandMode() {
   const h = SET.hand || 'off';
+  /* web636：换左/右手时把「拖过的位置」清零 —— 不然左右手都停在上一次拖到的那一边。 */
+  if (SET.handSide !== h) {
+    SET.handSide = h;
+    try { delete SET.railPos; delete SET.padPos; writeLS(LS.set, SET); } catch (eS1) {}
+    ['optRail', 'handPad'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; }
+    });
+  }
   document.body.classList.toggle('hand-mode', h !== 'off');
   if (h === 'off') document.body.removeAttribute('data-hand');
   else document.body.setAttribute('data-hand', h);
@@ -4947,7 +4956,8 @@ function uiOptRail() {
     const avail = Math.max(180, innerHeight - 96 - 74 - 14);
     const cols = n > 12 ? 3 : (n > 6 ? 2 : 1);
     const per = Math.ceil(n / cols);
-    const sz = Math.max(26, Math.min(38, Math.floor((avail - (per - 1) * 6) / per)));
+    const base = n <= 4 ? 54 : (n <= 6 ? 48 : (n <= 9 ? 42 : (n <= 12 ? 36 : 30)));
+    const sz = Math.max(26, Math.min(base, Math.floor((avail - (per - 1) * 6) / per)));
     rail.style.setProperty('--sz', sz + 'px');
     rail.style.setProperty('--cols', String(cols));
     rail.setAttribute('data-locked', (opts.querySelector('.opt:not(.lock)') ? '0' : '1'));
