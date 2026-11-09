@@ -2753,7 +2753,27 @@ function uiBottomNavInit() {
   /* webNNN：换页时指示器直接落位，不再从上一个按钮「扫」过去。
      扫过去的过程中它会压过中间那几个按钮，看起来就是「点了右边、左边多出一条灰杠」，
      而且每次都要跑一整段弹簧，换页手感也跟着发黏。 */
-  const paint = () => paintNow(true);
+  /* web618：答题页底栏悬在 #nav 之上，靠 CSS 变量 --quizbar-h；
+     变量写死 68px 但 #nav 实际 72px，于是两条压在一起（平板尤其明显：上一题/下一题压住底栏图标）。
+     这里按 #nav 的真实高度同步变量。 */
+  const syncQuizBar = () => {
+    const nb = document.getElementById('nav');
+    if (!nb) return;
+    const h = Math.round(nb.getBoundingClientRect().height);
+    if (h > 0) {
+      document.documentElement.style.setProperty('--quizbar-h', h + 'px');
+      if (document.body) document.body.style.setProperty('--quizbar-h', h + 'px');
+    }
+  };
+  window.__syncQuizBar = syncQuizBar;
+  try { syncQuizBar(); } catch (eQ) {}
+  try {
+    if ('ResizeObserver' in window) {
+      const nb = document.getElementById('nav');
+      if (nb) new ResizeObserver(() => { try { syncQuizBar(); } catch (e0) {} }).observe(nb);
+    }
+  } catch (eN) {}
+  const paint = () => { try { syncQuizBar(); } catch (e0) {} paintNow(true); };
   nav.__bnavPaint = paint;
   paintNow(true);
   window.addEventListener('resize', paint);

@@ -3536,3 +3536,8 @@ body:not(.quiz):not(.focus) .bnav{
 }
 /* 贴边后正文别被最后一行压住 */
 body:not(.quiz){ padding-bottom:calc(78px + env(safe-area-inset-bottom)) }
+
+/* ===== web618：底栏指示器跟按钮盒子严格对齐 + 答题页两条底栏不再压 ===== */
+.bnav .bnav-ind{ top:5px !important; bottom:5px !important; border-radius:14px !important; }
+body.quiz .bnav{ bottom:calc(var(--quizbar-h,72px) + env(safe-area-inset-bottom)) !important; }
+html[data-style][data-style] body.quiz .bnav{ bottom:calc(var(--quizbar-h,72px) + env(safe-area-inset-bottom)) !important; }
