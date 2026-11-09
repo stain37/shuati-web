@@ -991,14 +991,17 @@
         + (hasLocal ? sechead('搜索「' + E(QUERY) + '」的结果') + viewWrap(sic, scr + sbr, sdet)
           : (aiOn ? '' : '<div class="card"><div class="empty">没找到。可以试试目录名、题库名的一部分，或者用「目录名/题库名」的写法。</div></div>'));
     } else {
+      var TAGDIR = isTagDir(CUR);                 /* 考点文件夹：里面直接是题目 */
       var dirs = kids(CUR), bs = dirBanks(CUR);
       var curTitle = CUR ? TITLE(byId(CUR)) : '全部题库';
       var smode = bankSortMode();
       var bsorted = smode.by === 'manual' ? bs.slice().sort(sortBank) : bs;
       var per = homePer();
-      var entries = dirs.map(function (c) { return { cat: c }; }).concat(bsorted.map(function (b) { return { bank: b }; }));
+      var entries = dirs.map(function (c) { return { cat: c }; }).concat(TAGDIR
+        ? bsorted.map(function (r) { return { q: r }; })
+        : bsorted.map(function (b) { return { bank: b }; }));
       /* 最近添加 / 按名称 / 题目数：目录与题库混排（第 12、13 条）；自定义顺序保持「目录在前」的老手感 */
-      entries = sortMixedEntries(entries);
+      if (!TAGDIR) entries = sortMixedEntries(entries);
       var pages = Math.max(1, Math.ceil(entries.length / per));
       var page = Math.min(Math.max(1, HOME_PAGE), pages);
       HOME_PAGE = page;
@@ -1006,7 +1009,7 @@
       var grouped = dateGroupOn();
       var pageEntries = grouped ? entries : entries.slice((page - 1) * per, page * per);
       var pdirs = [], pbanks = [];
-      pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else pbanks.push(e.bank); });
+      pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else if (e.bank) pbanks.push(e.bank); });
       /* 混排时按 pageEntries 的真实顺序出卡片，别再「目录全排前面」（第 13 条）。
          分组时：图标视图的组头用 grid-column:1/-1 跨整行，列表视图是普通块，
          所以还是只调一次 viewWrap（每组分一个 .nb-icons 会让网格各排各的、列数对不齐）。 */
@@ -1015,15 +1018,15 @@
         var gs = groupEntries(entries);
         icons = gs.map(function (g) {
           return grpHeadHtml(g.label, g.list.length)
-            + g.list.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
+            + g.list.map(function (e) { return e.cat ? catIconHtml(e.cat) : (e.q ? qIconHtml(e.q) : bankIconHtml(e.bank)); }).join('');
         }).join('');
         rows = gs.map(function (g) {
           return grpHeadHtml(g.label, g.list.length)
-            + g.list.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
+            + g.list.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : (e.q ? qRowHtml(e.q) : bankRowHtml(e.bank, false)); }).join('');
         }).join('');
       } else {
-        icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : bankIconHtml(e.bank); }).join('');
-        rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : bankRowHtml(e.bank, false); }).join('');
+        icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : (e.q ? qIconHtml(e.q) : bankIconHtml(e.bank)); }).join('');
+        rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : (e.q ? qRowHtml(e.q) : bankRowHtml(e.bank, false)); }).join('');
       }
       var det = detailsHtml(pdirs, pbanks, false, grouped);
       var agg = CUR ? subStat(CUR) : null;
@@ -1032,9 +1035,11 @@
         + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
         + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
         + '</div>'
-        + sechead(E(curTitle), true)
-        + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · ' + agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done + '</div>' : '')
-        + toolsFoldHtml()
+        + sechead(E(curTitle), TAGDIR ? false : true)
+        + (TAGDIR ? '<div class="small muted" style="margin:-4px 0 10px">按考点分的方案：这个文件夹里就是题目，点一行直接做（不再有题库这一层）。</div>' : '')
+        + (agg ? '<div class="small muted" style="margin:-4px 0 10px">本目录共 ' + agg.cats + ' 个子目录 · '
+          + (TAGDIR ? (agg.q + ' 道题 · 已答 ' + agg.done) : (agg.banks + ' 个题库 · ' + agg.q + ' 题 · 已答 ' + agg.done)) + '</div>' : '')
+        + (TAGDIR ? '' : toolsFoldHtml())
         + ((icons || det) ? viewWrap(icons, rows, det)
           + (grouped
             ? '<div class="nb-pager nb-pager-one"><span>共 ' + entries.length + ' 项 · 按添加日期分组（今天 / 昨天 / 本周 / 更早），不分页；关掉「🗓 分组」就回到每页 ' + per + ' 项</span></div>'
@@ -1379,7 +1384,7 @@
       + '<div class="nb-linfo"><div class="nb-lname">' + E(TITLE(c)) + '</div>'
       + '<div class="nb-lmeta">' + (crumb ? '在 ' + E(crumb) + '　·　' : '')
       + (isTagDir(c.id) ? (s.q + ' 题 · 已答 ' + s.done + (s.wr ? '　<span class="warn">错题 ' + s.wr + '</span>' : ''))
-        : (s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done)) + '</div></div>'
+        : ((isTagDir(c.id) ? (s.q + ' 题 · 已答 ' + s.done) : (s.banks + ' 个题库 · ' + s.q + ' 题 · 已答 ' + s.done)))) + '</div></div>'
       + '<div class="nb-lacts">'
       + '<button class="btn tiny" data-act="open" data-id="' + E(c.id) + '">打开</button>'
       + '<button class="btn tiny" data-act="menu" data-id="' + E(c.id) + '">⋯</button>'
@@ -1415,6 +1420,47 @@
           + '<button class="btn tiny" data-act="more" data-id="' + E(b.id) + '">⋯</button>'))
       + '</div></div>';
   }
+  /* 「按考点分」方案里，考点文件夹直接装题目：一行 = 一道题（web655） */
+  function qRowHtml(r) {
+    var k = r.id, a = (typeof ANS === 'object' && ANS && ANS[SQM(tagQKey(r))]) ? ANS[SQM(tagQKey(r))] : null;
+    var done = !!(a && !a.redo);
+    return '<div class="nb-lrow nb-lq' + (done ? ' nb-qdone' : '') + '" data-tgq="' + E(k) + '" data-tag="' + E(r.virtualTag) + '">'
+      + '<span class="nb-lic">' + (done ? (a.ok ? '✔' : '✘') : '·') + '</span>'
+      + '<div class="nb-linfo"><div class="nb-lname">' + E(r.title)
+      + '<span class="pill tagq">题</span></div>'
+      + '<div class="nb-lmeta">' + E(r.bankName || '') + '　·　'
+      + (done ? (a.ok ? '已答对' : '答错过') : '未做') + '</div>'
+      + '</div>'
+      + '<div class="nb-lacts"><button class="btn tiny primary" data-act="doq" data-tgq="' + E(k) + '">'
+      + (done ? '再做' : '做这题') + '</button></div></div>';
+  }
+  function qIconHtml(r) {
+    var k = r.id, a = (typeof ANS === 'object' && ANS && ANS[SQM(tagQKey(r))]) ? ANS[SQM(tagQKey(r))] : null;
+    var done = !!(a && !a.redo);
+    return '<div class="nb-icon nb-q" data-tgq="' + E(k) + '" data-tag="' + E(r.virtualTag) + '" title="' + E(r.title) + '">'
+      + '<span class="nb-iic">' + (done ? (a.ok ? '✔' : '✘') : '📄') + '</span>'
+      + '<span class="nb-iname">' + E(r.title) + '</span>'
+      + '<span class="nb-imeta">' + (done ? (a.ok ? '已答对' : '答错过') : '未做') + '</span>'
+      + '</div>';
+  }
+  function tagQKey(r) { return String(r.virtualQ.bankId) + '#' + r.virtualQ.qid; }
+  function SQM(k) { return k; }
+  /* 打开考点里的某一道题：进这个考点的题集，并把当前题指到它 */
+  function openTagQ(id) {
+    try {
+      var r = SCM.tagQById(id);
+      if (!r) return;
+      var bid = SCM.tgBankId(r.virtualTag);
+      QUERY = '';
+      if (typeof QZ === 'object' && QZ) {
+        QZ.bankId = bid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null;
+        QZ.cur = r.virtualQ.qid;
+      }
+      if (typeof go === 'function') go('#/bank/' + encodeURIComponent(bid));
+      else location.hash = '#/bank/' + encodeURIComponent(bid);
+    } catch (e) {}
+  }
+
   /* 图标视图：图标在上、名字在下（像访达的图标视图）。
      用 .nb-dir / .nb-bank 两个类，bind() 里现成的点击/双击就能用，不用额外绑。 */
   function catIconHtml(c) {
@@ -1803,6 +1849,15 @@
         }
         if (BATCH) { if (ref.kind === 'cat') batToggleC(ref.id); else batToggle(ref.id); repaint(); return; }
         if (ref.kind === 'cat') openDir(ref.id); else startBankWrapped(ref.id);
+      });
+    });
+    /* 考点目录里的题目行 / 题目卡：点一下直接开始做这道题 */
+    host.querySelectorAll('.nb-lq, .nb-q').forEach(function (row) {
+      if (row.__nbQBound) return;
+      row.__nbQBound = true;
+      row.addEventListener('click', function (e) {
+        if (e.target.closest('[data-act="del"], [data-act="menu"]')) return;
+        var id = row.dataset.tgq; if (id) { e.preventDefault(); openTagQ(id); }
       });
     });
     attachDrag(host);
