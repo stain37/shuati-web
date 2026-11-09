@@ -50,9 +50,17 @@
     if (tagScheme()) return [];
     try { return (typeof baseBanks === 'function') ? baseBanks().slice() : []; } catch (e) { return []; }
   }
-  function cats() { try { return (window.CAT && CAT.all) ? (CAT.all() || []) : []; } catch (e) { return []; } }
+  function cats() {
+    try {
+      /* 考点方案：侧栏永远显示考点树（CAT 可能正停在「真实题库树」，那是管理器自己的事） */
+      if (tagScheme() && window.SCM && SCM.cats) return SCM.cats() || [];
+      return (window.CAT && CAT.all) ? (CAT.all() || []) : [];
+    } catch (e) { return []; }
+  }
   function kids(pid) {
-    try { if (window.CAT && CAT.kids) return CAT.kids(pid) || []; } catch (e) {}
+    try {
+      if (!(tagScheme() && window.SCM && SCM.cats)) { if (window.CAT && CAT.kids) return CAT.kids(pid) || []; }
+    } catch (e) {}
     return cats().filter(function (c) { return (c.parent || null) === (pid || null); });
   }
   function catPath(cid) {
@@ -454,12 +462,15 @@
     hit.n += shownBanks.length;
     var folded = !!S.closed[c.id] && !qLow;
     var total = ownBanks.length + kidsArr.length;
+    var isTagC = String(c.id).indexOf('tgcat:') === 0 || String(c.id).indexOf('tgb:') === 0;
     return '<div class="qs-cat' + (folded ? ' folded' : '') + '" data-cat="' + E(c.id) + '">'
       + '<button type="button" class="qs-ch" data-fold="' + E(c.id) + '" data-drop="' + E(c.id) + '" '
       + 'style="--qs-ind:' + (6 + depth * 18) + 'px;--qs-d:' + Math.min(depth, 4) + '" draggable="true">'
       + (S.selmode ? '<i class="qs-ck' + (S.sel['c:' + c.id] === 1 ? ' on' : '') + '" data-ck="c:' + E(c.id) + '"></i>' : '')
       + '<i class="qs-caret">' + (total ? '▾' : '·') + '</i><i class="qs-folder">📁</i>'
-      + '<span class="qs-ct" title="' + E(c.title) + '">' + E(c.title) + '</span>'
+      + '<span class="qs-ct' + (isTagC ? ' qs-ct-open' : '') + '"'
+      + (isTagC ? ' data-open="' + E(c.id) + '" title="点一下打开（里面就是题）"' : ' title="' + E(c.title) + '"')
+      + '>' + E(c.title) + '</span>'
       + '<em>' + (function () {
         if (!tagScheme()) return shownBanks.length || '';
         try {

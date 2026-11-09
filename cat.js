@@ -106,6 +106,8 @@
   var _BL = { key: '', list: null };
   function bankList() {
     var base = (typeof baseBanks === 'function') ? baseBanks() : [];
+    /* 考点树视图里没有题库这一层：文件夹里直接装题目 */
+    if (tagViewOn()) base = [];
     /* 「按小标签分」的方案里不列题库：里面装的是题目，题库本身不参与分类 */
     /* 考点方案也不改这里：题库列表永远是真实题库（考点只是分类，不是题库） */
     /* 考点只是分类视图，不是题库：这里绝不把虚拟题集混进题库列表
@@ -115,7 +117,7 @@
     try {
       key = [base.length, base.reduce(function (a, b) { return a + ((b && b.questions) ? (b.questions.length || 0) : 0); }, 0),
         (window.SCM && SCM.current ? SCM.current() : ''), tags.length,
-        (window.SCM && SCM.tagsSig ? SCM.tagsSig() : '')].join('|');
+        (window.SCM && SCM.tagsSig ? SCM.tagsSig() : ''), tagViewOn() ? 'tv' : ''].join('|');
     } catch (e) { key = ''; }
     if (key && _BL.key === key && _BL.list) return _BL.list;
     var list = base;
@@ -130,7 +132,9 @@
   function readRaw() {
     var v = null;
     try {
-      if (tagModeNow() && window.SCM && SCM.plainCats) v = SCM.plainCats();
+      /* 只有「真的在浏览考点树」（从侧栏点进考点文件夹）才用考点树；
+         首页 / 管理器默认永远读真实题库树 */
+      if (tagModeNow() && !tagViewOn() && window.SCM && SCM.plainCats) v = SCM.plainCats();
       else v = (window.SCM && SCM.cats) ? SCM.cats() : JSON.parse(localStorage.getItem(CAT_KEY));
     } catch (e) { v = null; }
     if (!Array.isArray(v)) return [];
@@ -1054,7 +1058,7 @@
       var page = Math.min(Math.max(1, HOME_PAGE), pages);
       HOME_PAGE = page;
       /* 分组模式：不分页，整份一次画完（组头拼进同一份字符串，不另起容器） */
-      var grouped = dateGroupOn();
+      var grouped = !TAGDIR && dateGroupOn();   /* 考点文件夹里是题目，没有「添加日期」可分组 */
       var pageEntries = grouped ? entries : entries.slice((page - 1) * per, page * per);
       var pdirs = [], pbanks = [];
       pageEntries.forEach(function (e) { if (e.cat) pdirs.push(e.cat); else if (e.bank) pbanks.push(e.bank); });
@@ -1076,7 +1080,7 @@
         icons = pageEntries.map(function (e) { return e.cat ? catIconHtml(e.cat) : (e.q ? qIconHtml(e.q) : bankIconHtml(e.bank)); }).join('');
         rows = pageEntries.map(function (e) { return e.cat ? catRowHtml(e.cat, false) : (e.q ? qRowHtml(e.q) : bankRowHtml(e.bank, false)); }).join('');
       }
-      var det = detailsHtml(pdirs, pbanks, false, grouped);
+      var det = TAGDIR ? qDetailsHtml(bsorted) : detailsHtml(pdirs, pbanks, false, grouped);
       var agg = CUR ? subStat(CUR) : null;
       body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
@@ -1610,6 +1614,42 @@
       + '<th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
+  /* 考点文件夹的「详细信息」视图：这里是题目，不是题库（否则 ▤ 模式下会一片空白） */
+  function qDetailsHtml(rows) {
+    if (!rows || !rows.length) return '';
+    var S = DETAIL_SORT || { key: 'at', dir: -1 };
+    function th(key, label) {
+      var on = S.key === key;
+      return '<th class="' + (on ? 'on' : '') + '" data-act="sort" data-v="' + key + '" title="点一下按「' + label + '」排序（再点一下倒过来）">'
+        + label + (on ? (S.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
+    }
+    var items = rows.map(function (r) {
+      var k = SQM(tagQKey(r));
+      var a = (typeof ANS === 'object' && ANS && ANS[k]) ? ANS[k] : null;
+      var done = !!(a && !a.redo);
+      var q = (r.virtualQ && r.virtualQ.qid) || '';
+      return {
+        id: r.id, key: k, name: (r.title || '').replace(/\s+/g, ' ').trim() || ('题目 ' + q),
+        bank: r.bankName || '', done: done ? 1 : 0,
+        ok: done && a.ok ? 1 : 0, wrong: (a && a.wrong) || 0
+      };
+    });
+    var list = items.map(function (it) {
+      var mark = !it.done ? '·' : (it.ok ? '✔' : '✘');
+      return '<tr class="nb-drow nb-q' + (it.wrong ? ' nb-on' : '') + '" data-tgq="' + E(it.id) + '" draggable="false">'
+        + '<td class="nb-dname"><span class="nb-dic nb-dmark">' + mark + '</span>'
+        + '<span class="nb-dtext">' + E(it.name) + '</span></td>'
+        + '<td class="small muted">' + E(it.bank) + '</td>'
+        + '<td class="small muted">' + (it.done ? (it.ok ? '已答对' : '答错过') : '未做') + '</td>'
+        + '<td class="num">' + (it.wrong || '—') + '</td>'
+        + '<td class="nb-dacts"><button class="btn tiny primary" data-tgq="' + E(it.id) + '">' + (it.done ? '再做' : '做这题') + '</button></td>'
+        + '</tr>';
+    }).join('');
+    return '<table class="nb-table nb-qtable"><thead><tr>'
+      + th('name', '题目') + '<th>来源题库</th><th>状态</th><th class="num">错</th><th>操作</th>'
+      + '</tr></thead><tbody>' + list + '</tbody></table>';
+  }
+
   /* 按当前视图包一层：图标 / 列表 / 详细信息（三套都从同一份数据来） */
   function viewWrap(iconHtml, listHtml, detHtml) {
     var v = viewMode();
@@ -1657,6 +1697,14 @@
         CUR = (stored && typeof stored.id === 'string') ? stored.id : null;
       } catch (e) { CUR = null; }
       CUR_SET = true;
+      /* 刷新后停在考点文件夹里：把树也切成考点树，否则这个目录「不存在」→ 打不开 */
+      try {
+        if (CUR && tagModeNow() && /^(tgcat:|tgb:)/.test(CUR) && !window.__CAT_TAGVIEW) {
+          window.__CAT_TAGVIEW = true; CAT = null; ensure();
+        } else if (CUR && !/^(tgcat:|tgb:)/.test(CUR) && window.__CAT_TAGVIEW) {
+          window.__CAT_TAGVIEW = false; CAT = null; ensure();
+        }
+      } catch (eTV2) {}
     }
     if (CUR && !byId(CUR)) CUR = null;
 
@@ -1946,6 +1994,16 @@
   }
 
   function openDir(id, from) {
+    /* 考点方案里：点进 tgcat:/tgb: 文件夹 → 临时用考点树；回根目录 → 换回真实题库树。
+       否则考点目录不在「真实题库树」里，点开只剩一个空壳（用户报的「只有文件夹和数量，里面打不开」）。 */
+    try {
+      if (tagModeNow()) {
+        var tid0 = String(id == null ? '' : id);
+        var wantTag = /^(tgcat:|tgb:)/.test(tid0);
+        if (wantTag && !window.__CAT_TAGVIEW) { window.__CAT_TAGVIEW = true; CAT = null; }
+        else if (!wantTag && !tid0 && window.__CAT_TAGVIEW) { window.__CAT_TAGVIEW = false; CAT = null; }
+      }
+    } catch (eTV) {}
     ensure();
     if (id && !byId(id)) id = null;
     CUR = id || null;
