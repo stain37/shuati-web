@@ -446,10 +446,11 @@
     const out = [];
     let t = norm(txt).replace(/[啊呀哦呢吧嘛哈啦呗喽哟哎]/g, ' ');
     /* 「一道题 / 下一题 / 两遍」里的数字是量词，不是选项（「第二个」除外，那是序号） */
-    t = t.replace(/[一二三四五六七八九十]+\s*(道|题|项|条|页|遍|次|下|个别的|些)/g, ' ');
-    /* 「第三个 / 第二题 / 一」这种序数先换掉，否则「第」会被当成 D、「三」又被算一次 */
-    t = t.replace(/第([一二三四五六七八])|([一二三四五六七八])(?:个|题|项|条)/g,
-      (m, a, b) => ' ' + (NUM[a || b] || '').toLowerCase() + ' ');
+    /* 「第二个 / 第三题」这种序数先换成字母，否则「第」会被当成 D、「三」又被算一次 */
+    t = t.replace(/第([一二三四五六七八])/g,
+      (m, a) => ' ' + (NUM[a] || '').toLowerCase() + ' ');
+    /* 「一个 / 一道 / 两遍」里的数字是量词，不是选项（「第二个」走下面的序数） */
+    t = t.replace(/[一二三四五六七八九十]+\s*(道|题|项|条|页|遍|次|下|个|些|步)/g, ' ');
     /* 英文/拼音字母 */
     for (let i = 0; i < t.length; i++) {
       const ch = t[i];
@@ -745,6 +746,23 @@
     B.forEach((n) => { total += n; });
     return total ? (2 * inter) / total : 0;
   }
+  /* 只按「内容像不像我刚才念的」判断回声（不看是否正在朗读） */
+  function echoSoft(t) {
+    const a = norm(t);
+    if (!a || a.length < 3) return false;
+    const now = Date.now();
+    for (let i = echoRecent.length - 1; i >= 0; i--) {
+      const r = echoRecent[i];
+      if (now - r.at > 7000) continue;
+      const b = norm(r.t);
+      if (!b) continue;
+      if (b.indexOf(a) >= 0) return true;
+      if (a.length >= 6 && b.indexOf(a.slice(0, 6)) >= 0) return true;
+      if (bigramSim(a, b) >= 0.5) return true;
+    }
+    return false;
+  }
+
   function echoish(t) {
     const a = norm(t);
     if (!a || a.length < 3) return false;
@@ -820,8 +838,9 @@
     let t = norm(txt);
     if (!t) return;
     if (speaking && cfg().halfDuplex) {
-      if (!strongCmd(t)) return;      /* 不是明确命令 → 当自己的回声 */
-      stopSpeak(); beep('cut');       /* 是命令 → 打断朗读，继续往下执行 */
+      const okIntent = !!intentOf(t) && !echoSoft(t);
+      if (!strongCmd(t) && !okIntent) return;   /* 既不像命令、也不像正常说话 → 当自己的回声 */
+      stopSpeak(); beep('cut');                 /* 是命令 → 打断朗读，继续往下执行 */
     } else if (echoish(t)) return;
     const c = cfg();
 
@@ -909,7 +928,15 @@
 
     const letters = looksLikeSelect(t) ? parseLetters(t) : [];
     lastHeard = txt;
-    if (!letters.length) { aiFallback(txt); return; }
+    if (!letters.length) {
+      const iv = intentOf(t);
+      if (iv === 'close') { if (closeTopPanel()) return; }
+      if (iv === 'exit') { off(); flash('语音模式已关'); return; }
+      if (iv) { runAct(iv, []); return; }
+      const oi = matchOptionText(t);
+      if (oi >= 0) { clickLetter(LET[oi]); flash('好：' + LET[oi]); return; }
+      aiFallback(txt); return;
+    }
     const multi = isMulti();
 
     /* 灵敏度：高 = 必须说满 2 个字符才算，防环境噪音误触 */
@@ -937,6 +964,92 @@
   }
 
   /* ---------- AI 兜底：本地正则没认出来时，问一句站内 AI 该干嘛 ---------- */
+  /* ---------- 自由说法：按「意图关键词簇 + 选项内容」理解，不依赖整句词表 ---------- */
+  const INTENT = [
+    ['next', [['下一', 3], ['下个', 3], ['下道', 3], ['换', 2], ['继续', 2], ['往下', 2],
+              ['后面', 2], ['跳过', 2], ['再来', 2], ['接着', 2], ['别的', 1.5], ['另一个', 2], ['翻', 1.5], ['下面', 1.5]]],
+    ['prev', [['上一', 3], ['上个', 3], ['上道', 3], ['往前', 2], ['前面', 2], ['前一个', 3],
+              ['返回', 1.5], ['退回', 2.5], ['往回', 2.5], ['后退', 2.5], ['上面', 1.5]]],
+    ['exp', [['解析', 3], ['为什么', 2.5], ['讲讲', 2], ['解释', 3], ['道理', 2], ['原因', 2], ['怎么', 1]]],
+    ['answer', [['答案', 3], ['正确', 2], ['应该选', 2], ['选哪', 2]]],
+    ['repeat', [['再念', 3], ['重念', 3], ['重复', 3], ['没听清', 3], ['听不清', 3], ['大声', 2], ['再说', 2.5]]],
+    ['stop', [['别念', 3], ['别读', 3], ['安静', 2], ['闭嘴', 3], ['不用念', 3], ['停', 2.5]]],
+    ['help', [['不懂', 3], ['不会', 2.5], ['没明白', 3], ['太难', 2], ['什么意思', 3], ['听不懂', 3], ['搞不清', 2.5]]],
+    ['fav', [['收藏', 3], ['加星', 2], ['标记', 1.5]]],
+    ['submit', [['提交', 3], ['交卷', 3], ['选好了', 3], ['确认', 1.5]]],
+    ['close', [['关闭', 2.5], ['关掉', 2.5], ['收起', 2.5], ['叉掉', 2.5], ['退出去', 1.5]]],
+    ['exit', [['退出语音', 5], ['关语音', 4], ['关闭语音', 4], ['别听了', 3]]],
+  ];
+
+  function intentOf(t) {
+    let best = '', bestScore = 0;
+    for (let i = 0; i < INTENT.length; i++) {
+      const act = INTENT[i][0];
+      let sc = 0;
+      INTENT[i][1].forEach(function (kw) { if (t.indexOf(kw[0]) >= 0) sc += kw[1]; });
+      if (sc > bestScore) { bestScore = sc; best = act; }
+    }
+    return bestScore >= 2.5 ? best : '';
+  }
+
+  /* 直接把选项内容说出来（「就那个麦氏点固定压痛」）也能选中 */
+  function optTexts() {
+    return visibleOpts().map(function (o) {
+      /* 选项行第一行通常是「A / B」标号（.k），去掉它只留正文；兼容把标号画成伪元素的主题 */
+      const raw = o.innerText || o.textContent || '';
+      let lines = raw.split(/\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+      const k = o.querySelector('.k');
+      const lab = k ? String(k.innerText || k.textContent || '').trim().toUpperCase() : '';
+      if (lines.length > 1 && lab && lines[0].toUpperCase() === lab) lines = lines.slice(1);
+      return norm(lines.join(' '));
+    });
+  }
+
+  /* 去掉「就那个 / 应该是 / 吧」这类填充词，只留下指代的核心 */
+  function coreOf(t) {
+    return norm(t).replace(/就要|就那个|那个|这个|这些|那些|肯定是|应该是|我觉得|大概|可能|是|的|吧|啊|呀|呢|了|就/g, '');
+  }
+
+  /* 最长公共子串长度：用户只说选项的一小段（「麦氏点」）也能认 */
+  function lcsLen(a, b) {
+    if (!a || !b) return 0;
+    let best = 0;
+    const dp = new Array(b.length + 1).fill(0);
+    for (let i = 1; i <= a.length; i++) {
+      let prev = 0;
+      for (let j = 1; j <= b.length; j++) {
+        const tmp = dp[j];
+        dp[j] = a[i - 1] === b[j - 1] ? prev + 1 : 0;
+        if (dp[j] > best) best = dp[j];
+        prev = tmp;
+      }
+    }
+    return best;
+  }
+
+  function matchOptionText(t) {
+    const core = coreOf(t);
+    if (!core || core.length < 2) return -1;
+    const texts = optTexts();
+    let best = -1, bestScore = 0;
+    texts.forEach(function (ot, i) {
+      if (!ot) return;
+      const one = ot.length === 1;
+      if (one && (core.length > 2 || ot !== core)) return;
+      let sc = 0;
+      if (ot === core) sc = 0.99;
+      else if (t.indexOf(ot) >= 0) sc = 0.99;                 /* 把整段选项内容说出来了 */
+      else if (core.length >= 2 && ot.indexOf(core) >= 0) sc = 0.9;  /* 说了选项里的一段 */
+      else {
+        const sub = lcsLen(core, ot);
+        if (sub >= 3) sc = 0.62 + 0.3 * Math.min(1, sub / ot.length);
+        else if (sub >= 2 && ot.indexOf(core.slice(0, 2)) === 0) sc = 0.65;
+      }
+      if (sc > bestScore) { bestScore = sc; best = i; }
+    });
+    return bestScore >= 0.62 ? best : -1;
+  }
+
   let aiBusy = false;
   function aiGuess(txt) {
     const chat = window.aiChat;
@@ -965,7 +1078,8 @@
     if (a === 'prev') { const pb = document.getElementById('prev'); if (pb && !pb.disabled) pb.click(); return; }
     if (a === 'repeat') { readCurrent(); return; }
     if (a === 'explain') { stopSpeak(); speakExp(() => { if (c.mode !== 'read') startListen(); }); return; }
-    if (a === 'ask') { askAI(); return; }
+    if (a === 'ask' || a === 'help') { askAI(); return; }
+    if (a === 'close') { if (closeTopPanel()) return; }
     if (a === 'fav') { const b = document.getElementById('btnFav'); if (b) b.click(); return; }
     if (a === 'submit') { clearTimeout(pauseT); if (!submitMulti()) flash('先选好选项再说提交'); return; }
     if (a === 'select' && letters && letters.length) {
@@ -1286,6 +1400,7 @@
       const out = {}; keys.forEach(function (k) { const b = bestCmd(t, c[k]); if (b.ok) out[k] = +b.score.toFixed(2); });
       return { hits: out, letters: parseLetters(t), tail: trimTail(norm(t)) };
     },
+    _intent: intentOf, _optmatch: matchOptionText, _opttexts: optTexts,
     _setLive: function (t) { liveTxt = String(t || ''); liveEdit = Date.now(); liveStart = Date.now() - 400; },
     _live: function () { return { txt: liveTxt, edit: liveEdit, start: liveStart, awake: awakeUntil, speaking: speaking, chunks: speakChunks.slice() }; },
     _close: function () { return closeTopPanel(); },
