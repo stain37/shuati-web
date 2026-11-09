@@ -3595,3 +3595,52 @@ body.quiz.hand-mode #nav .qbtn{ min-height:56px; font-size:15px; border-radius:1
 body.quiz.hand-mode[data-hand="left"] #nav{ flex-direction:row-reverse; }
 body.quiz.hand-mode[data-hand="left"] .qhead .qtools{ justify-content:flex-start; }
 body.quiz.hand-mode[data-hand="right"] .qhead .qtools{ justify-content:flex-end; }
+
+/* ================= web626：单手模式重做 =================
+   用户要的形态：藏掉「上一题 / 答题卡 / 下一题」那条横栏，图标底栏贴到底边，
+   翻页收成拇指侧一列小圆钮，选项压缩成紧凑竖排。 */
+html[data-style][data-style] body.quiz.hand-mode #nav,
+body.quiz.hand-mode #nav { display:none !important; }
+html[data-style][data-style] body.quiz.hand-mode .bnav,
+body.quiz.hand-mode .bnav {
+  bottom:0 !important;
+  padding-bottom:max(4px, env(safe-area-inset-bottom)) !important;
+  border-radius:20px 20px 0 0 !important;
+}
+body.quiz.hand-mode .bnav .btn { border-radius:14px !important; }
+body.quiz.hand-mode .bnav .bnav-ind { border-radius:14px !important; }
+
+#handPad {
+  position:fixed; z-index:30070; display:flex; flex-direction:column; gap:9px;
+  bottom:calc(62px + env(safe-area-inset-bottom));
+  padding:0; margin:0; transition:opacity .16s ease;
+}
+#handPad[hidden] { display:none !important; }
+#handPad[data-side="left"] { left:10px; align-items:flex-start; }
+#handPad[data-side="right"] { right:10px; align-items:flex-end; }
+#handPad button {
+  width:46px; height:46px; padding:0; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:19px; line-height:1; font-weight:600;
+  border:1px solid color-mix(in srgb, var(--line, #d8d3e6) 70%, transparent);
+  background:color-mix(in srgb, var(--card, #fff) 88%, transparent);
+  color:var(--text, #2a2540);
+  box-shadow:0 4px 14px rgba(15,23,42,.18);
+  backdrop-filter:blur(8px);
+  -webkit-tap-highlight-color:transparent;
+}
+#handPad button:active { transform:scale(.94); }
+#handPad button.prim { background:var(--primary); border-color:transparent; color:#fff; }
+#handPad button:disabled { opacity:.35; }
+
+/* 选项：紧凑竖排，一屏能多放几行 */
+body.quiz.hand-mode .opts { gap:8px !important; }
+body.quiz.hand-mode .opts .opt {
+  min-height:44px !important; padding:8px 10px !important;
+  font-size:14.5px !important; border-radius:14px !important; gap:8px !important;
+}
+body.quiz.hand-mode .opt .k {
+  width:26px !important; height:26px !important; flex:0 0 26px !important;
+  font-size:13px !important; border-radius:8px !important;
+}
+body.quiz.hand-mode .opt .otx { line-height:1.4; }

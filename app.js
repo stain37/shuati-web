@@ -4804,6 +4804,31 @@ function applyHandMode() {
   document.body.classList.toggle('hand-mode', h !== 'off');
   if (h === 'off') document.body.removeAttribute('data-hand');
   else document.body.setAttribute('data-hand', h);
+  uiHandPad(h);
+}
+/* 单手模式的拇指区小按钮（web626）：原来的「上一题 / 答题卡 / 下一题」那条整条藏起来，
+   改成拇指侧一列小圆钮 —— 手不用跨屏，也能一直翻题。 */
+function uiHandPad(h) {
+  let pad = document.getElementById('handPad');
+  if (!pad) {
+    pad = document.createElement('div');
+    pad.id = 'handPad';
+    pad.innerHTML = '<button data-h="card" title="答题卡（K）">☰</button>' +
+      '<button data-h="prev" title="上一题（←）">‹</button>' +
+      '<button data-h="next" class="prim" title="下一题（→ / Enter）">›</button>';
+    pad.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-h]');
+      if (!b) return;
+      ev.stopPropagation();
+      const act = b.getAttribute('data-h');
+      const id = act === 'next' ? 'next' : act === 'prev' ? 'prev' : 'jumpInfo';
+      const el = document.getElementById(id);
+      if (el && !el.disabled) el.click();
+    });
+    document.body.appendChild(pad);
+  }
+  pad.setAttribute('data-side', h === 'left' ? 'left' : 'right');
+  pad.hidden = (h === 'off');
 }
 function uiHandCycle() {
   const seq = ['off', 'right', 'left'];
@@ -4813,7 +4838,7 @@ function uiHandCycle() {
   applyHandMode();
   const name = SET.hand === 'left' ? '左手' : SET.hand === 'right' ? '右手' : '关掉';
   try { toast(SET.hand === 'off' ? '单手模式已关' : '单手模式：' + name + '（再点一下换另一边 / 关掉）'); } catch (e) {}
-  try { renderQuiz(); } catch (e) {}
+  try { if (QZ.bankId) renderQuiz(QZ.bankId); } catch (e) {}
 }
 
 function toggleFav(k, btn) {
