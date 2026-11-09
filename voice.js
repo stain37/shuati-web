@@ -14,7 +14,7 @@
     rate: 0.95, vol: 1, voiceURI: '', readNo: true, readStem: true, readOpts: true,
     readTags: false, readExp: true, readRes: false, optStyle: 'both',
     askExp: true, sayVerdict: true,
-    aiIntent: false,          /* 本地认不出的说法，交给站内 AI 猜意图 */
+    aiIntent: true,          /* 本地认不出的说法，交给站内 AI 猜意图 */
     pitch: 1,                 /* 音调 0.6–1.6 */
     readHints: true,          /* 念完选项后要不要说「请选择 / 可以多选」这类提示 */
     btnCtl: true,             /* 答题页里的按钮能不能用说的点 */
@@ -32,15 +32,17 @@
     /* 行为 */
     handLink: true, stopOnSpeak: true,
     /* 命令词（逗号分隔，面板里能改） */
-    cNext: '下一题,下一个,往后',
-    cPrev: '上一题,前一题,往回',
-    cExp: '念解析,读解析,讲解析,解析一下,念一遍解析',
-    cHelp: '我不太懂,什么意思,不懂,没看懂,解释一下,为什么',
-    cRepeat: '重读,重复,再说一遍,再读一遍,再来一遍',
-    cAnswer: '答案,看答案,公布答案',
-    cFav: '收藏',
-    cSubmit: '确认,确定,提交,就这样', 
-    cClose: '关闭,关掉,关,叉掉,叉,收起,关了这个,退出这个',
+    cNext: '下一题,下一个,下一道,换一题,换一道,往后,继续,接着来,跳过,再来一个,下个题,下一题吧',
+    cPrev: '上一题,上一个,上一道,往回,退回去,回到上一题,往前,前一个,上道题',
+    cExp: '念解析,读解析,讲解析,解析一下,念一遍解析,念一下解析,读一下解析,讲一下解析,说说解析,念下解析,讲下解析,解释一下这题',
+    cHelp: '我不太懂,什么意思,不懂,没看懂,没明白,为什么,怎么理解,讲讲这题,这题太难,不会做,看不懂',
+    cRepeat: '重读,重复,再说一遍,再读一遍,再来一遍,再念一遍,再念一次,念一遍,没听清,再说一次,大点声,念一下题',
+    cAnswer: '答案,看答案,公布答案,正确答案,答案是啥,答案是什么,直接说答案',
+    cFav: '收藏,收藏一下,加星,标记一下,标记',
+    cSubmit: '确认,确定,提交,就这样,选完了,我选好了,交卷', 
+    cClose: '关闭,关掉,关,叉掉,叉,收起,关了这个,退出这个,退出去',
+    cStop: '停止,停,别念了,别读了,安静,不用念了,停下',
+    cExit: '关闭语音,退出语音,关掉语音,别听了,关语音',
   };
 
   const LET = 'ABCDEFGH';
@@ -403,13 +405,48 @@
       .replace(/[\s,，。、；;：:！!？?."'“”‘’（）()【】\[\]]/g, '')
       .replace(/[０-９]/g, m => String.fromCharCode(m.charCodeAt(0) - 0xfee0));
   }
+  /* 口语化的语气词尾巴，先切掉再匹配：「下一题吧 / 讲一下呗 / 收藏了啊」 */
+  const TAIL = /[吧呢啊呀哦嘛哈啦咯呗喽哟]+$/;
+  function trimTail(s) {
+    let t = String(s || '');
+    for (let i = 0; i < 3; i++) { const n = t.replace(TAIL, ''); if (n === t) break; t = n; }
+    return t;
+  }
+  /* 模糊命中：整句包含 = 0.95；算法上看成相似也能过（0.62 以上）。
+     这样「能不能帮我换一道题啊」「我有点看不懂这题」这类自然说法也能认。 */
+  function cmdScore(txt, w) {
+    if (!txt || !w) return 0;
+    if (txt === w) return 1;
+    if (w.length >= 2 && txt.indexOf(w) >= 0) return 0.95;
+    if (txt.length >= 2 && w.indexOf(txt) >= 0 && txt.length >= 2) return 0.8;
+    return bigramSim(txt, w);
+  }
   function hitCmd(txt, list) {
+    const t = trimTail(norm(txt));
     const arr = String(list || '').split(/[,，]/).map(s => norm(s)).filter(Boolean);
-    return arr.some(w => txt.indexOf(w) >= 0);
+    let best = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const s = cmdScore(t, arr[i]);
+      if (s > best) best = s;
+      if (best >= 0.95) break;
+    }
+    return best >= 0.62;
+  }
+  function bestCmd(txt, list) {
+    const t = trimTail(norm(txt));
+    const arr = String(list || '').split(/[,，]/).map(s => norm(s)).filter(Boolean);
+    let best = 0, word = '';
+    for (let i = 0; i < arr.length; i++) {
+      const s = cmdScore(t, arr[i]);
+      if (s > best) { best = s; word = arr[i]; }
+    }
+    return { score: best, word: word, ok: best >= 0.62 };
   }
   function parseLetters(txt) {
     const out = [];
-    let t = norm(txt);
+    let t = norm(txt).replace(/[啊呀哦呢吧嘛哈啦呗喽哟哎]/g, ' ');
+    /* 「一道题 / 下一题 / 两遍」里的数字是量词，不是选项（「第二个」除外，那是序号） */
+    t = t.replace(/[一二三四五六七八九十]+\s*(道|题|项|条|页|遍|次|下|个别的|些)/g, ' ');
     /* 「第三个 / 第二题 / 一」这种序数先换掉，否则「第」会被当成 D、「三」又被算一次 */
     t = t.replace(/第([一二三四五六七八])|([一二三四五六七八])(?:个|题|项|条)/g,
       (m, a, b) => ' ' + (NUM[a || b] || '').toLowerCase() + ' ');
@@ -762,10 +799,30 @@
     } catch (e) { return false; }
   }
 
+  /* 这句话像不像在「选选项」：有选/答案/就/是 这类提示词，或者本来就很短 */
+  function looksLikeSelect(t) {
+    const n = norm(t);
+    if (n.length <= 8) return true;
+    return /(选|挑|答案|应该|就是|我要|就)/.test(n);
+  }
+
+  /* 朗读过程中如果听到的是「很明确的命令」，允许打断（其余一律当回声丢掉） */
+  const STRONG = ['cNext', 'cPrev', 'cStop', 'cExp', 'cRepeat', 'cAnswer'];
+  function strongCmd(t) {
+    const c = cfg();
+    for (let i = 0; i < STRONG.length; i++) {
+      if (bestCmd(t, c[STRONG[i]]).score >= 0.9) return true;
+    }
+    return false;
+  }
+
   function handleHeard(txt) {
     let t = norm(txt);
     if (!t) return;
-    if (echoish(t)) return;
+    if (speaking && cfg().halfDuplex) {
+      if (!strongCmd(t)) return;      /* 不是明确命令 → 当自己的回声 */
+      stopSpeak(); beep('cut');       /* 是命令 → 打断朗读，继续往下执行 */
+    } else if (echoish(t)) return;
     const c = cfg();
 
     /* 唤醒词模式：先说唤醒词，之后 9 秒内都算「在听」 */
@@ -813,13 +870,20 @@
       }
     }
 
-    if (hitCmd(t, c.cStop)) { off(); flash('语音模式已关'); return; }
+    if (hitCmd(t, c.cExit || '关闭语音,退出语音,关掉语音,别听了')) { off(); flash('语音模式已关'); return; }
+    /* 「停 / 别念了」= 闭嘴；本来就没在念就什么也不做 */
+    if (hitCmd(t, c.cStop)) {
+      if (speaking) { stopSpeak(); beep('cut'); flash('好，不念了'); }
+      else flash('没在念');
+      return;
+    }
     if (hitCmd(t, c.cExp)) { stopSpeak(); speakExp(() => { if (cfg().mode !== 'read') startListen(); }); return; }
     if (hitCmd(t, c.cPrev)) { const pb = document.getElementById('prev'); if (pb && !pb.disabled) pb.click(); return; }
     if (hitCmd(t, c.cHelp)) { askAI(); return; }
     if (hitCmd(t, c.cNext)) { clearTimeout(nextT); goNext(); return; }
     if (hitCmd(t, c.cRepeat)) { readCurrent(); return; }
-    if (hitCmd(t, c.cAnswer)) { sayAnswer(); return; }
+    /* 「答案是B」既像命令又像作答：只要句子里带了选项字母，就当作作答 */
+    if (hitCmd(t, c.cAnswer) && !(looksLikeSelect(t) && parseLetters(t).length)) { sayAnswer(); return; }
     if (hitCmd(t, c.cFav)) { const b = document.getElementById('btnFav'); if (b) b.click(); return; }
 
     /* 多选的「确认 / 提交」：这时候往往没有字母，必须在解析字母之前拦住 */
@@ -843,7 +907,7 @@
     /* 按钮：说「专注」「小窗」「脑图」「重做」「看解析」「更多」… */
     if (hitButton(t)) return;
 
-    const letters = parseLetters(t);
+    const letters = looksLikeSelect(t) ? parseLetters(t) : [];
     lastHeard = txt;
     if (!letters.length) { aiFallback(txt); return; }
     const multi = isMulti();
@@ -921,6 +985,12 @@
   }
   function aiFallback(txt) {
     if (!cfg().aiIntent || aiBusy) return;
+    if (typeof window.aiChat !== 'function') {
+      /* 没配 AI 时给一次提示，别让用户以为「说什么都没反应」 */
+      if (!cfg().aiHinted) { cfg().aiHinted = true; save(); flash('没听懂「' + txt + '」；在设置里配好站内 AI 后，我就能听懂更自由的说法'); }
+      else flash('没听懂：' + txt);
+      return;
+    }
     aiBusy = true;
     setPill('think', 'AI 正在理解「' + txt + '」…');
     aiGuess(txt).then(r => {
@@ -1209,6 +1279,13 @@
     cfg: cfg, _heard: handleHeard, _parse: function (t) { return parseLetters(t); },
     _recite: reciteSpeech,
     _tick: tickEnd, _flush: flushLive, _beep: beep, _echo: isEcho, _split: splitSent,
+    _ech: function (t) { return echoish(t); },
+    _speaking: function () { return speaking; },
+    _match: function (t) {
+      const c = cfg(); const keys = ['cNext','cPrev','cRepeat','cExp','cAnswer','cFav','cSubmit','cStop','cClose','cHelp'];
+      const out = {}; keys.forEach(function (k) { const b = bestCmd(t, c[k]); if (b.ok) out[k] = +b.score.toFixed(2); });
+      return { hits: out, letters: parseLetters(t), tail: trimTail(norm(t)) };
+    },
     _setLive: function (t) { liveTxt = String(t || ''); liveEdit = Date.now(); liveStart = Date.now() - 400; },
     _live: function () { return { txt: liveTxt, edit: liveEdit, start: liveStart, awake: awakeUntil, speaking: speaking, chunks: speakChunks.slice() }; },
     _close: function () { return closeTopPanel(); },
