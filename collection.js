@@ -1166,6 +1166,43 @@ function richInsertImgAtRange(el, rng, src, alt) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
   return sp;
 }
+/* 选图片文件 → 压缩 → 插到正文里（右键菜单「插入图片」/ 斜杠菜单「图片」都走这里）。
+   rng 传进入点的 Range（可以为 null，null 就追加到末尾）；插完立刻保存一次，
+   免得用户以为插进去了却没落盘。 */
+function richPickImages(el, rng) {
+  if (!el) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  inp.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+  document.body.appendChild(inp);
+  const done = () => { try { inp.remove(); } catch (e) {} };
+  inp.addEventListener('change', async () => {
+    const files = Array.prototype.slice.call(inp.files || []);
+    done();
+    if (!files.length) return;
+    let at = rng ? rng.cloneRange() : null;
+    let n = 0;
+    for (const f of files) {
+      if (!/^image\//.test(f.type || '')) continue;
+      try {
+        const sp = richInsertImgAtRange(el, at, await compressImage(f), f.name || '图片');
+        if (sp) {
+          n++;
+          const r = document.createRange();
+          r.setStartAfter(sp); r.collapse(true);
+          at = r;
+        }
+      } catch (e) { toast('图片插入失败：' + (f.name || '图片')); }
+    }
+    if (!n) return;
+    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+    try { el.focus({ preventScroll: true }); } catch (e) {}
+    try { if (typeof RICH !== 'undefined' && RICH && RICH.el === el && RICH.save) RICH.save(); } catch (e) {}
+    toast(n > 1 ? ('已插入 ' + n + ' 张图片') : '图片已插入', 1400, 'ok');
+  });
+  inp.click();
+}
+window.richPickImages = richPickImages;
 /* ---- 斜杠菜单：行首打 / 选块类型（对照 Notion / AFFiNE 的 slash menu）。
    改的是 DOM 本身（不是插入文本），所以保存时 mdFromHtml 照常还原成 Markdown。 ---- */
 const SLASH_ITEMS = [
@@ -1177,7 +1214,8 @@ const SLASH_ITEMS = [
   { k: 'quote', t: '引用', d: '缩进一条引用' },
   { k: 'callout', t: '提示框', d: '带图标的一句话（要点 / 注意）' },
   { k: 'table', t: '表格', d: '2×2 表格' },
-  { k: 'hr', t: '分隔线', d: '一条横线' }
+  { k: 'hr', t: '分隔线', d: '一条横线' },
+  { k: 'img', t: '图片', d: '从相册 / 文件里选一张，插在这里' }
 ];
 let SLASH = null;
 function slashClose() {
@@ -1224,6 +1262,17 @@ function slashApply(el, kind) {
   if (b.nodeType === 3) {                            // 光秃秃的文字行：先包成 p 再换
     const p = document.createElement('p');
     b.parentNode.insertBefore(p, b); p.appendChild(b); b = p;
+  }
+  /* 「图片」不是换块类型：把这一行换成空段落，光标落在段里，然后弹选文件 */
+  if (kind === 'img') {
+    const p2 = document.createElement('p'); p2.appendChild(document.createElement('br'));
+    b.parentNode.replaceChild(p2, b);
+    const r3 = document.createRange(); r3.selectNodeContents(p2); r3.collapse(false);
+    const s3 = window.getSelection(); if (s3) { s3.removeAllRanges(); s3.addRange(r3); }
+    el.focus();
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    richPickImages(el, r3);
+    return;
   }
   const txt = String(b.textContent || '').replace(/\s+/g, ' ').trim();
   const mk = (tag, cls) => { const d = document.createElement(tag); if (cls) d.className = cls; return d; };
@@ -3578,6 +3627,8 @@ function ctxInsertText(el, text) {
     return true;
   } catch (e) { return false; }
 }
+/* 右键 / 长按那一刻的坐标：菜单项里重新算 Range 用（菜单一弹出，编辑器焦点和选区就没了） */
+var CTX_XY = null;
 function ctxRichItems(el, node) {
   var pick = function (act) {
     return function () {
@@ -3641,6 +3692,32 @@ function ctxRichItems(el, node) {
         if (!txt) return;
         if (!ctxInsertText(el, txt)) fallback();
       }, fallback);
+    }
+  });
+  head.push({
+    t: '插入图片', icon: '🖼', d: '从相册 / 文件里选一张', run: function () {
+      /* 右键/长按的位置 → Range：菜单弹出后焦点已经不在正文里，必须靠坐标重新算 */
+      var rng = null;
+      try {
+        if (CTX_XY && typeof document.caretRangeFromPoint === 'function') rng = document.caretRangeFromPoint(CTX_XY.x, CTX_XY.y);
+        else if (CTX_XY && document.caretPositionFromPoint) {
+          var pos = document.caretPositionFromPoint(CTX_XY.x, CTX_XY.y);
+          if (pos) { rng = document.createRange(); rng.setStart(pos.offsetNode, pos.offset); rng.collapse(true); }
+        }
+      } catch (e) { rng = null; }
+      if (rng && !el.contains(rng.startContainer)) rng = null;
+      if (!rng) { var sn = ctxSelSnap(el); if (sn && sn.range && el.contains(sn.range.startContainer)) rng = sn.range.cloneRange(); }
+      if (!rng) {
+        /* 坐标算不出 Range（滚动/缩放时偶发）：退到「右键点中的那一块」的末尾 */
+        try {
+          var blk = node && el.contains(node) ? node : el;
+          rng = document.createRange();
+          rng.selectNodeContents(blk);
+          rng.collapse(false);
+        } catch (e2) { rng = null; }
+      }
+      if (typeof richPickImages === 'function') richPickImages(el, rng);
+      else if (typeof toast === 'function') toast('图片模块没加载，刷新一下再试', 2000, 'bad');
     }
   });
   if (snap && snap.text.trim().length >= 4) {
@@ -3747,6 +3824,7 @@ function ctxItemItems(k) {
   if (window.__ctxInit) return;
   window.__ctxInit = 1;
   document.addEventListener('contextmenu', function (ev) {
+    CTX_XY = { x: ev.clientX, y: ev.clientY };
     var rich = ev.target.closest ? ev.target.closest('.rich-edit') : null;
     if (rich) {
       ev.preventDefault();
@@ -3768,6 +3846,7 @@ function ctxItemItems(k) {
     CTX_LP.el = t; CTX_LP.x = ev.clientX; CTX_LP.y = ev.clientY;
     clearTimeout(CTX_LP.t);
     CTX_LP.t = setTimeout(function () {
+      CTX_XY = { x: CTX_LP.x, y: CTX_LP.y };
       var rich = CTX_LP.el.closest('.rich-edit');
       if (rich) ctxOpen(ctxRichItems(rich, ctxRichNode(rich, CTX_LP.el)), CTX_LP.x, CTX_LP.y);
       else if (CTX_LP.el.getAttribute('data-k')) ctxOpen(ctxItemItems(CTX_LP.el.getAttribute('data-k')), CTX_LP.x, CTX_LP.y);

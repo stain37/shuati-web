@@ -4247,6 +4247,8 @@ function openQEditor(host, fk, q, target, done) {
     if (!document.body.classList.contains('quiz')) return;
     var t = ev.target;
     if (!t || !t.closest) return;
+    /* 解析 / 笔记编辑器里右键交给 collection.js 的富文本菜单（含「插入图片」） */
+    if (t.closest('.rich-edit')) return;
     /* 只在题目正文里接管：题干、共用题干、答过的选项、解析、作答反馈 */
     if (!t.closest('.stem, .gstem, .opts .opt[data-lock], .exp-wrap, .fb')) return;
     if (t.closest('input, textarea, .ink-wrap, .pip-win')) return;

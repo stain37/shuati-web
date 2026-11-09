@@ -2946,10 +2946,13 @@ body.quiz .opts .opt.lock.wrong:hover{background:var(--badbg)}
 body.quiz .stem,body.quiz .gstem,body.quiz .exp-wrap,body.quiz .fb{-webkit-user-select:text;user-select:text}
 
 /* 答题页右键菜单 */
-.qctx{position:fixed;z-index:96;min-width:158px;padding:5px;border-radius:11px;
+.qctx{position:fixed;z-index:30080;min-width:158px;padding:5px;border-radius:11px;
   background:var(--card);border:1px solid var(--line);box-shadow:0 12px 30px rgba(15,23,42,.18);
   display:flex;flex-direction:column;gap:2px;animation:ctxIn .12s ease both}
-{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes ctxIn{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+/* web665：编辑器右键菜单里的「插入图片」稍微突出一点（其余项保持朴素） */
+.qctx button[data-qctx="img"]{font-weight:700;color:var(--primary)}
+.qctx button[data-qctx="img"]:hover{background:var(--primary-weak)}
 .qctx button{display:flex;align-items:center;gap:8px;width:100%;padding:9px 11px;border:0;border-radius:8px;
   background:transparent;color:var(--text);font:inherit;font-size:13.5px;text-align:left;cursor:pointer}
 .qctx button:hover{background:var(--primary-weak);color:var(--primary)}
