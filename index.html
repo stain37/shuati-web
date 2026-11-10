@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261110s">
+<link rel="stylesheet" href="style.css?v=20261110t">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261110b">
 <link rel="stylesheet" href="map.css?v=20261108do">
@@ -185,6 +185,9 @@ var iv=setInterval(function(){n++;
     <label class="tl" for="setAutoContrast" title="关掉后完全按皮肤原样，看不清也不管"
       style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
       <input type="checkbox" id="setAutoContrast" checked>自动保证文字看得清
+    <label class="chk" title="每套皮肤只有浅色版或只有深色版：勾上后换皮肤会自动切到它自己的明暗，避免白字压白卡"><input type="checkbox" id="setLockMode" checked>皮肤锁明暗</label>
+    <button class="btn small" id="btnModeMap" title="逐套设定：浅色 / 深色 / 两版都行">明暗逐套设定…</button>
+    <span class="small muted" id="modeLockHint"></span>
     </label>
     <label class="tl" for="setOffline" title="打开后除了本站自己的静态文件，任何联网请求（AI、云同步、外部接口）都会被拦下并提示；读 PDF、刷题、本地抽题照常"
       style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
@@ -363,7 +366,7 @@ var iv=setInterval(function(){n++;
 <script src="mastery.js?v=20261108a"></script>
 <script src="offline.js?v=20261110c"></script>
 <script src="theme.js?v=20261111a"></script>
-<script src="app.js?v=20261110ae"></script>
+<script src="app.js?v=20261110af"></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261109b"></script>
 <script src="side.js?v=20261111b"></script>

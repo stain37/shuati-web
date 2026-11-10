@@ -543,7 +543,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220', qtime: true };
+const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220', qtime: true, lockMode: true };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -657,6 +657,9 @@ const UI_STYLES = [
   'glass',
 ];
 
+/* 每套皮肤「天生」的明暗（web716）：light = 只有浅色版、dark = 只有深色版、auto = 两版都行。
+   开了「皮肤锁明暗」时，换皮肤会强制切到它自己的明暗，避免白卡配白字。 */
+const UI_STYLE_MODE = {acid: 'light', artdeco: 'dark', aurora: 'dark', baroque: 'dark', blueprint: 'dark', botanical: 'light', clay: 'light', corpmemphis: 'light', cubism: 'light', default: 'auto', dieselpunk: 'dark', disco: 'dark', expressionism: 'auto', flat: 'auto', glass: 'auto', glitch: 'dark', gothic: 'dark', hologram: 'dark', macaron: 'light', naive: 'light', neo: 'light', neontokyo: 'dark', neopop: 'auto', neu: 'light', newsprint: 'light', opart: 'light', pixel: 'light', pop: 'light', psyche: 'dark', retro: 'light', rinpa: 'light', rococo: 'light', sketch: 'light', steampunk: 'dark', sticker: 'light', synthwave: 'dark', tenebrism: 'dark', terminal: 'dark', vaporwave: 'light', win95: 'auto', y2k: 'light', zen: 'light'};
 const UI_STYLE_NAME = {
   neu: '新拟态',
   default: '清爽（默认）',
@@ -1785,7 +1788,30 @@ function ensureSkinsCss(style) {
   l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261110o';
   (document.head || document.documentElement).appendChild(l);
 }
+/* 用户对某套皮肤的明暗覆盖（qbank.stylemode.v1）：{ id: 'light'|'dark'|'auto' } */
+const K_STYLEMODE = 'qbank.stylemode.v1';
+function styleModeMap() { try { return JSON.parse(localStorage.getItem(K_STYLEMODE) || '{}') || {}; } catch (e) { return {}; } }
+function styleModeSet(id, v) {
+  const m = styleModeMap();
+  if (!v || v === 'auto') delete m[id]; else m[id] = v;
+  try { localStorage.setItem(K_STYLEMODE, JSON.stringify(m)); } catch (e) {}
+}
+function styleModeOf(id) { const m = styleModeMap(); return m[id] || (UI_STYLE_MODE[id] || 'auto'); }
+window.STYLEMODE = { of: styleModeOf, set: styleModeSet, all: styleModeMap, def: UI_STYLE_MODE };
+
 function applyLook() {
+  /* 皮肤锁明暗：这套皮肤只有浅色版/只有深色版时，把 SET.theme 直接钉到它自己的明暗上 */
+  let _lockMode = '';
+  try {
+    const _st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+    if (SET.lockMode !== false) {
+      _lockMode = styleModeOf(_st);
+      if ((_lockMode === 'light' || _lockMode === 'dark') && SET.theme !== _lockMode) {
+        SET.theme = _lockMode;
+        try { writeLS(LS.set, SET); } catch (e) {}
+      }
+    }
+  } catch (e) {}
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
   document.body.classList.toggle('dark', dark);
@@ -1815,7 +1841,7 @@ function applyLook() {
      → 白字压白卡）。与其硬改人家的设计，不如把这套皮肤的明暗锁在它自己的设计上：
      深色模式下量到卡片仍是亮色，就退回浅色并提示一句。 */
   try {
-    if (!window.__modeLocking && dark && LIGHT_ONLY_SKINS.indexOf(style) >= 0) {
+    if (!window.__modeLocking && !_lockMode && dark && LIGHT_ONLY_SKINS.indexOf(style) >= 0) {
       const to = SKIN_FALLBACK[style] || 'default';
       if (to && to !== style && UI_STYLES.indexOf(to) >= 0) {
         window.__modeLocking = true;
@@ -1882,6 +1908,7 @@ function applyLook() {
     window.__cxNowT = setTimeout(function () { de.classList.remove('cx-now'); }, 380);
   } catch (e) {}
   try { window.CX && window.CX.fix(); } catch (e) {}
+  try { if (typeof modeLockHint === 'function') modeLockHint(); } catch (e) {}
 }
 function setLook(k, v) { SET[k] = v; writeLS(LS.set, SET); applyLook(); }
 if (window.matchMedia) {
@@ -7270,6 +7297,61 @@ if ($('setAutoContrast')) $('setAutoContrast').checked = SET.autoContrast !== fa
 on('setUiText', e => setLook('uiText', e.target.value), 'change');
 on('setUiTextPick', e => { SET.uiTextPick = e.target.value; setLook('uiText', 'custom'); }, 'input');
 on('setAutoContrast', e => { SET.autoContrast = !!e.target.checked; setLook('autoContrast', SET.autoContrast); }, 'change');
+
+/* ---------- 皮肤锁明暗（web716） ---------- */
+function modeLockHint() {
+  const el = $('modeLockHint'); if (!el) return;
+  const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+  const md = SET.lockMode === false ? 'auto' : styleModeOf(st);
+  const nm = UI_STYLE_NAME[st] || st;
+  el.textContent = SET.lockMode === false ? '锁明暗已关：深浅照你选的来'
+    : (md === 'light' ? ('「' + nm + '」锁定浅色') : md === 'dark' ? ('「' + nm + '」锁定深色') : ('「' + nm + '」深浅都支持'));
+  const sel = $('setTheme');
+  if (sel) {
+    const locked = SET.lockMode !== false && (md === 'light' || md === 'dark');
+    sel.disabled = locked;
+    sel.title = locked ? ('这套皮肤锁定' + (md === 'light' ? '浅色' : '深色') + '；要改就去「明暗逐套设定…」') : '';
+    if (locked) sel.value = md;
+  }
+}
+if ($('setLockMode')) $('setLockMode').checked = SET.lockMode !== false;
+on('setLockMode', e => {
+  SET.lockMode = !!e.target.checked;
+  try { writeLS(LS.set, SET); } catch (er) {}
+  applyLook(); modeLockHint(); paintThemeBtn && paintThemeBtn();
+  toast(SET.lockMode ? '已开：换皮肤会自动切到它自己的明暗' : '已关：深浅完全听你选的', 2000, 'ok');
+}, 'change');
+
+/* 逐套设定弹窗：每套皮肤一行，浅色 / 深色 / 两版都行 */
+function openModeMap() {
+  const old = document.getElementById('modeMapMask');
+  if (old) old.remove();
+  const rows = UI_STYLES.map(id => {
+    const def = UI_STYLE_MODE[id] || 'auto', cur = styleModeOf(id);
+    const opt = (v, t) => '<label class="mm-o' + (cur === v ? ' on' : '') + '"><input type="radio" name="mm_' + id + '" value="' + v + '"' + (cur === v ? ' checked' : '') + '>' + t + '</label>';
+    return '<div class="mm-row"><b>' + esc(UI_STYLE_NAME[id] || id) + '</b><i>' + id + (def !== 'auto' ? ' · 默认' + (def === 'light' ? '浅色' : '深色') : '') + '</i>' +
+      '<span class="mm-opts">' + opt('light', '浅色') + opt('dark', '深色') + opt('auto', '两版都行') + '</span></div>';
+  }).join('');
+  const mask = document.createElement('div');
+  mask.id = 'modeMapMask'; mask.className = 'mm-mask';
+  mask.innerHTML = '<div class="mm-sheet"><div class="mm-head"><b>每套皮肤的明暗</b><span class="small muted">换到这套皮肤时用哪个明暗；「两版都行」= 跟随你的选择</span><button class="mm-x" id="mmClose">×</button></div><div class="mm-body">' + rows + '</div></div>';
+  document.body.appendChild(mask);
+  mask.addEventListener('click', ev => {
+    if (ev.target === mask || ev.target.id === 'mmClose') return mask.remove();
+    const inp = ev.target.closest('input[type=radio]');
+    if (!inp) return;
+    const id = inp.name.replace(/^mm_/, '');
+    styleModeSet(id, inp.value);
+    const row = inp.closest('.mm-row');
+    row.querySelectorAll('.mm-o').forEach(l => l.classList.toggle('on', l.contains(inp)));
+    const st = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
+    if (id === st) { applyLook(); modeLockHint(); }
+  });
+}
+on('btnModeMap', () => openModeMap());
+modeLockHint();
+try { window.addEventListener('load', modeLockHint); } catch (e) {}
+
   if ($('setOffline') && window.OFFLINE) $('setOffline').checked = OFFLINE.on();
   on('setOffline', e => {
     if (!window.OFFLINE) return;
