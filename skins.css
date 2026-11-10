@@ -7415,3 +7415,20 @@ html[data-style="glass"] body.dark .hero p,html[data-style="glass"] body.dark .h
 html[data-style="glass"] body.dark .hero .hstat b,html[data-style="glass"] body.dark .hero .hstat span,
 html[data-style="glass"] body.dark .hero .hstat>button.hs{color:#eaf1ff!important}
 html[data-style="glass"] body.dark .hero .hstat>button.hs{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22)}
+
+/* ---------- 自定义背景（图片 / 视频）：skins.css 在 style.css 之后加载，
+   皮肤里的 body{background-image/…} 会把 data-bg 的规则顶掉 → 这里用 !important 兜回来 ---------- */
+html[data-bg="custom"] body{
+  background-image:var(--bg-img)!important;
+  background-size:cover!important;
+  background-position:center center!important;
+  background-repeat:no-repeat!important;
+}
+html[data-bg="video"] body{
+  background-color:transparent!important;
+  background-image:none!important;
+}
+html[data-bg="video"] .bg-video{display:block!important}
+html[data-bg="video"]{background:var(--bg)!important}
+/* 视频背景时，皮肤那层不透明「水洗」会盖住视频，压到很淡 */
+html[data-bg="video"] body::before{opacity:.35!important}
