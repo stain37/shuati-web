@@ -4090,3 +4090,7 @@ body.dark .lec-hit .htxt{color:#dbe6f8}
 .lec-fa{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--sub,#64748b);white-space:nowrap;cursor:pointer;user-select:none;padding:0 2px}
 .lec-fa input{width:15px;height:15px;accent-color:var(--primary,#2563eb);cursor:pointer}
 body.dark .lec-fa{color:#a9b7d0}
+
+/* 讲义搜索命中高亮（web711） */
+.lec-hit .htxt b.hl{background:rgba(250,204,21,.55);color:inherit;font-weight:700;border-radius:3px;padding:0 1px}
+body.dark .lec-hit .htxt b.hl{background:rgba(250,204,21,.32);color:#fff}

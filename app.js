@@ -4652,7 +4652,6 @@ function renderQuiz(bankId) {
         ${qType(q, ansOf(fk, q)) === 'X' ? `<button class="btn primary" id="doSubmit" ${locked || !picked.length ? 'disabled' : ''}>提交答案</button>` : ''}
         <button class="btn" id="doMore" title="改解析 / 改答案 / AI 解析 / AI 变式题 —— 这些管理动作收进抽屉里，不摊在题目下面">⋯ 更多</button>
         <button class="btn" id="doLec" title="讲义页：按科目挑讲义、翻到对应页，直接看预渲染好的原页图（秒开，不用下 PDF）">📖 讲义</button>
-        <button class="btn" id="doSrc" title="看看这道题命中的资料原文：只检索知识库、不调用模型（不花 token），点条目展开全文 / PDF 原页">📎 看资料</button>
         <span class="srcjump" id="srcJump" hidden></span>
       </div>
       <div class="qsheet" id="qSheet" hidden>
