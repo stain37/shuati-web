@@ -23,6 +23,9 @@
   var K_MAP = 'qbank.schemes.map.v1';
   var K_CATS = 'qbank.cats.v1';
   var DEF = 'default';
+  var K_PREF = 'qbank.scheme.def.v1';   /* 用户选的「默认方案」id；打开时优先用它 */
+  function prefGet() { try { return localStorage.getItem(K_PREF) || ''; } catch (e) { return ''; } }
+  function prefSet(id) { try { if (id) localStorage.setItem(K_PREF, id); else localStorage.removeItem(K_PREF); } catch (e) {} }
 
   var DB = null, MAP = {}, CUR = DEF, LOADED = false;
 
@@ -68,6 +71,8 @@
     var c = null;
     try { c = localStorage.getItem(K_CUR); } catch (e) {}
     CUR = (c && DB.data[c]) ? c : DEF;
+    var pf = prefGet();
+    if (pf && DB.data[pf]) CUR = pf;     /* 设了默认方案就每次都用它 */
     LOADED = true;
     save();
   }
@@ -201,12 +206,24 @@
   }
   function remove(id) {
     ensure();
-    if (id === DEF) return false;
-    DB.list = DB.list.filter(function (s) { return s.id !== id; });
+    if (!id || id === DEF) return false;
+    DB.list = DB.list.filter(function (s) { return s && s.id !== id; });
     delete DB.data[id]; delete MAP[id];
-    if (CUR === id) { CUR = DEF; apply(); }
+    if (prefGet() === id) prefSet('');
+    if (CUR === id) CUR = DEF;
     save();
-    return true;
+    /* 有的旧版本会把方案列表另存一份，这里顺手也清掉，避免「删了又回来」 */
+    try {
+      ['qbank.scheme.list.v1', 'qbank.schemes.v1'].forEach(function (k) {
+        var v = JSON.parse(localStorage.getItem(k) || 'null');
+        if (v && Array.isArray(v)) localStorage.setItem(k, JSON.stringify(v.filter(function (x) { return (x && x.id) !== id; })));
+      });
+    } catch (e) {}
+    LOADED = false; load();          /* 重新读一遍，确保内存与存储一致 */
+    if (!DB.data[CUR]) CUR = DEF;
+    apply();
+    try { if (typeof window.dropTagBankCache === 'function') window.dropTagBankCache(); } catch (e) {}
+    return !DB.list.some(function (x) { return x && x.id === id; });
   }
   function switchTo(id) {
     ensure();
@@ -684,6 +701,8 @@
     catOf: catOf, catForStore: catForStore, setCatOf: setCatOf,
     list: list, current: current, curName: curName, has: has,
     create: create, rename: rename, remove: remove, switchTo: switchTo,
+    setDefault: function (id) { ensure(); var x = id || CUR; if (!DB.data[x]) return false; prefSet(x === DEF ? '' : x); return true; },
+    defaultId: function () { ensure(); var p = prefGet(); return (p && DB.data[p]) ? p : ''; },
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,

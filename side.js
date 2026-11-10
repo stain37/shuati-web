@@ -102,7 +102,8 @@
       + '<div class="qs-scb"><span class="qs-sl">方案</span>'
       + '<select id="qsScheme" class="qs-selscheme" title="同一批题库，换一套文件夹方案"></select>'
       + '<button type="button" class="qs-ico qs-ico-sm" id="qsSchemeNew" title="新建方案（复制当前方案的文件夹）">＋</button>'
-      + '<button type="button" class="qs-ico qs-ico-sm" id="qsSchemeMore" title="重命名 / 删除方案">⋯</button></div>'
+      + '<button type="button" class="qs-ico qs-ico-sm" id="qsSyncTags" title="把新打的考点标签一键同步进当前方案（考点方案用）">↻</button>'
+      + '<button type="button" class="qs-ico qs-ico-sm" id="qsSchemeMore" title="重命名 / 删除 / 设为默认方案">⋯</button></div>'
       + '<div class="qs-search"><label class="qs-find"><i>⌕</i><input id="qsQ" type="text" placeholder="搜题库 / 文件夹…" autocomplete="off" enterkeyhint="search"></label>'
       + '<button type="button" class="qs-ai" id="qsAi" title="AI 模糊：记不清名字也能找到"><span>✨</span></button></div>'
       + '<div class="qs-opts">'
@@ -658,6 +659,9 @@
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="tagnew">＋ 按小标签自动分（读现有考点标签）</button>'
         + (isTag ? '<button type="button" class="qs-tg" data-t="big">' + (curBig ? '☑ 再按大标签分一层（生理/生化/内外科…）' : '☐ 再按大标签分一层（生理/生化/内外科…）') + '</button>' : '')
+        + (SCM.defaultId && SCM.defaultId() === SCM.current()
+            ? '<button type="button" class="qs-tg" data-t="undefault">☆ 取消默认（下次打开用上次的）</button>'
+            : '<button type="button" class="qs-tg" data-t="default">★ 设为默认方案（每次打开都用它）</button>')
         + '<button type="button" class="qs-tg" data-t="sync">↻ 同步新标签到当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
         + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
@@ -689,6 +693,14 @@
         SCM.setBig(SCM.current(), on);
         schemeReload();
         try { toast(on ? '已按大标签分两层：大标签 › 小标签 › 题目' : '已改回平铺：小标签 › 题目', 2600, 'ok'); } catch (e) {}
+      } else if (r.act === 'default') {
+        SCM.setDefault(SCM.current());
+        schemeReload();
+        try { toast('已设为默认：「' + SCM.curName() + '」，以后打开就用它', 2600, 'ok'); } catch (e) {}
+      } else if (r.act === 'undefault') {
+        SCM.setDefault('');
+        schemeReload();
+        try { toast('已取消默认方案', 1800, 'ok'); } catch (e) {}
       } else if (r.act === 'sync') {
         var a0 = SCM.syncTagTree ? SCM.syncTagTree() : 0;
         schemeReload();
@@ -809,6 +821,16 @@
     if (sel) sel.onchange = function () { schemeSwitch(this.value); };
     var nw = $('qsSchemeNew'); if (nw) nw.onclick = schemeNew;
     var mo = $('qsSchemeMore'); if (mo) mo.onclick = schemeMore;
+    var sy = $('qsSyncTags'); if (sy) sy.onclick = function () {
+      if (!window.SCM) return;
+      var isTag = false;
+      try { isTag = !!(SCM.tagMode && SCM.tagMode()); } catch (e0) {}
+      if (!isTag) { try { toast('当前不是考点方案：先切到「考点分类」再点 ↻', 2400); } catch (e) {} return; }
+      var n = 0;
+      try { n = SCM.syncTagTree ? SCM.syncTagTree() : 0; } catch (e) {}
+      schemeReload();
+      try { toast(n ? ('同步完了：补了 ' + n + ' 个新文件夹') : '同步完了：没有新标签，文件夹已是最新', 2000, 'ok'); } catch (e) {}
+    };
     paintSchemes();
   }
 
