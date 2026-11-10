@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="teal" data-bg="default" data-style="default">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>明暗锁定 · 预览（主页 + 答题页）</title>
+<link rel="stylesheet" href="style.css?v=20261110t">
+<link rel="stylesheet" href="skins.css?v=20261110o">
+<style>
+  body.mm-page{padding:0!important;margin:0;min-height:100vh}
+  .mmbar{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:8px 12px;background:color-mix(in srgb,var(--card,#fff) 88%,transparent);backdrop-filter:blur(12px);
+    border-bottom:1px solid color-mix(in srgb,var(--line,#e2e8f0) 80%,transparent)}
+  .mmbar b{font-size:14px}
+  .mmbar .sp{flex:1}
+  .mmstep{font-size:12px;color:var(--sub,#64748b)}
+  .mmwrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+  @media (max-width:820px){.mmwrap{grid-template-columns:1fr}}
+  .mmpanel{border:1px dashed color-mix(in srgb,var(--line,#cbd5e1) 90%,transparent);border-radius:16px;padding:10px;min-height:240px;overflow:hidden}
+  .mmpanel>h3{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--sub,#64748b);letter-spacing:.04em}
+  .mmnav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 12px 10px}
+  .mmnav button{font-size:12px;padding:4px 9px;border-radius:9px;border:1px solid color-mix(in srgb,var(--line,#cbd5e1) 90%,transparent);
+    background:color-mix(in srgb,var(--card,#fff) 70%,transparent);color:inherit;cursor:pointer}
+  .mmnav button.on{outline:2px solid var(--primary,#2563eb);outline-offset:1px}
+  .mmnav button.pick{border-style:solid}
+  .mmnav button.pick[data-p="light"],.mmnav button.pick[data-p="dark"],.mmnav button.pick[data-p="auto"]{font-weight:600}
+  .mmgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;padding:0 12px 12px}
+  .mmi{display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 8px;border-radius:9px;cursor:pointer;
+    border:1px solid color-mix(in srgb,var(--line,#cbd5e1) 85%,transparent);background:color-mix(in srgb,var(--card,#fff) 62%,transparent)}
+  .mmi.cur{outline:2px solid var(--primary,#2563eb);outline-offset:1px}
+  .mmi i{font-style:normal;font-size:10px;padding:1px 5px;border-radius:6px;background:color-mix(in srgb,var(--primary,#2563eb) 14%,transparent)}
+  .mmi i.l{background:rgba(37,99,235,.16)} .mmi i.d{background:rgba(120,80,220,.22)} .mmi i.a{background:rgba(120,120,120,.16)}
+  .mmnote{padding:0 12px 16px;font-size:11.5px;color:var(--sub,#64748b);line-height:1.6}
+</style>
+</head>
+<body class="mm-page">
+<div class="mmbar">
+  <b id="mmName">—</b><span class="mmstep" id="mmMeta"></span>
+  <span class="sp"></span>
+  <button class="btn small" id="mmPrev">← 上一套</button>
+  <button class="btn small" id="mmNext">下一套 →</button>
+</div>
+<div class="mmnav">
+  <span class="mmstep">预览明暗：</span>
+  <button data-v="light">☀ 浅色</button>
+  <button data-v="dark">☾ 深色</button>
+  <span class="sp" style="flex:1"></span>
+  <span class="mmstep">这套锁：</span>
+  <button class="pick" data-p="light">浅色</button>
+  <button class="pick" data-p="dark">深色</button>
+  <button class="pick" data-p="auto">不锁（两版）</button>
+  <button class="btn small" id="mmExport">⬇ 导出</button>
+</div>
+<div class="mmwrap">
+  <div class="mmpanel">
+    <h3>主页（题库列表 / 统计条）</h3>
+    <div class="top"><b style="font-size:16px">刷题站</b><span class="sp" style="flex:1"></span><span class="tag">◐</span><span class="tag">⚙</span></div>
+    <div class="card" style="margin-top:8px">
+      <div class="stats">
+        <div><b>3</b><span>个题库</span></div>
+        <div><b>59</b><span>道题</span></div>
+        <div><b>16</b><span>已答</span></div>
+        <div><b>50%</b><span>正确率</span></div>
+        <div><b>12</b><span>错题</span></div>
+        <div><b>7</b><span>待复习</span></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary">继续刷题</button><button class="btn">错题本</button><button class="btn">收藏</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="wi-head"><span class="wno">内科 · 呼吸系统</span><span class="pill">题库</span></div>
+      <div style="margin-top:6px;font-size:13px;color:var(--sub,#64748b)">上次做到 第 1 / 12 题 · 正确率 50%</div>
+      <div style="margin-top:8px;height:6px;border-radius:99px;background:color-mix(in srgb,var(--primary,#2563eb) 18%,transparent)">
+        <div style="width:42%;height:100%;border-radius:99px;background:var(--primary,#2563eb)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mmpanel">
+    <h3>答题界面（题干 / 选项 / 解析）</h3>
+    <div class="card qcard">
+      <div class="qmode" style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="chip qm on">普通</span><span class="chip qm">⚡ 速刷</span><span class="chip qm">📖 背题</span>
+        <span class="chip qm">⏱ 计时</span><span class="chip qm">🤚 单手</span>
+      </div>
+      <div class="qhead" style="margin-top:8px">
+        <span class="qno">第 3 题</span><span class="tag">单选</span><span class="tag g">呼吸系统</span>
+        <span class="qelapsed" style="margin-left:auto">⏱ 02:14</span>
+      </div>
+      <div class="stem">男，62 岁，吸烟 40 年，慢性咳嗽咳痰 10 年，气促 3 年。查体：桶状胸，双肺呼吸音减弱。最可能的诊断是？</div>
+      <div class="opts">
+        <div class="opt"><span class="k">A</span><span>支气管哮喘</span></div>
+        <div class="opt right"><span class="k">B</span><span>慢性阻塞性肺疾病</span></div>
+        <div class="opt wrong"><span class="k">C</span><span>支气管扩张</span></div>
+        <div class="opt"><span class="k">D</span><span>肺结核</span></div>
+      </div>
+      <div class="fb" style="margin-top:10px"><b style="color:#16a34a">✓ 正确答案 B</b>
+        <div class="exp" style="margin-top:6px">长期吸烟史 + 慢性咳嗽咳痰 + 进行性气促 + 桶状胸，符合 COPD。肺功能 FEV1/FVC&lt;0.70 可确诊。</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="mmgrid" id="mmGrid"></div>
+<div class="mmnote">
+  点上面的「浅色 / 深色」只是换预览；点右边「这套锁：浅色 / 深色 / 不锁」才是在做决定。决定存在本机（换浏览器就没了），
+  做完点「⬇ 导出」→ 得到 <code>stylemode.json</code>（直接给我，我写进站点）和一份可读清单。<br>
+  快捷键：<b>1</b> 锁浅色 · <b>2</b> 锁深色 · <b>3</b> 不锁 · <b>←/→</b> 上一套/下一套。
+</div>
+<script>
+const DATA = [{"id": "default", "name": "清爽（默认）", "cat": "base", "mode": "auto"}, {"id": "flat", "name": "极简扁平", "cat": "base", "mode": "auto"}, {"id": "baroque", "name": "巴洛克", "cat": "classic", "mode": "dark"}, {"id": "artdeco", "name": "装饰艺术", "cat": "classic", "mode": "dark"}, {"id": "steampunk", "name": "蒸汽朋克", "cat": "classic", "mode": "dark"}, {"id": "gothic", "name": "哥特", "cat": "classic", "mode": "dark"}, {"id": "retro", "name": "复古怀旧", "cat": "classic", "mode": "light"}, {"id": "pop", "name": "波普", "cat": "painting", "mode": "light"}, {"id": "sketch", "name": "概念草图", "cat": "painting", "mode": "light"}, {"id": "tenebrism", "name": "暗色调", "cat": "painting", "mode": "dark"}, {"id": "neo", "name": "新野兽派", "cat": "modern", "mode": "light"}, {"id": "blueprint", "name": "蓝图", "cat": "modern", "mode": "dark"}, {"id": "pixel", "name": "像素 8-bit", "cat": "digital", "mode": "light"}, {"id": "y2k", "name": "Y2K 千禧", "cat": "digital", "mode": "light"}, {"id": "disco", "name": "迪斯科", "cat": "digital", "mode": "dark"}, {"id": "acid", "name": "酸性平面", "cat": "digital", "mode": "light"}, {"id": "win95", "name": "复古窗口", "cat": "digital", "mode": "auto"}, {"id": "terminal", "name": "终端", "cat": "digital", "mode": "dark"}, {"id": "hologram", "name": "全息", "cat": "neon", "mode": "dark"}, {"id": "zen", "name": "日式禅意", "cat": "east", "mode": "light"}, {"id": "botanical", "name": "植物图鉴", "cat": "east", "mode": "light"}, {"id": "macaron", "name": "马卡龙", "cat": "material", "mode": "light"}, {"id": "rococo", "name": "洛可可", "cat": "classic", "mode": "light"}, {"id": "cubism", "name": "立体主义", "cat": "painting", "mode": "light"}, {"id": "opart", "name": "欧普艺术", "cat": "digital", "mode": "light"}, {"id": "psyche", "name": "迷幻艺术", "cat": "painting", "mode": "dark"}, {"id": "glitch", "name": "故障艺术", "cat": "digital", "mode": "dark"}, {"id": "naive", "name": "稚拙绘画", "cat": "painting", "mode": "light"}, {"id": "dieselpunk", "name": "柴油朋克", "cat": "digital", "mode": "dark"}, {"id": "rinpa", "name": "琳派", "cat": "east", "mode": "light"}, {"id": "corpmemphis", "name": "企业孟菲斯", "cat": "modern", "mode": "light"}, {"id": "expressionism", "name": "表现主义", "cat": "painting", "mode": "auto"}, {"id": "neopop", "name": "新波普", "cat": "modern", "mode": "auto"}, {"id": "clay", "name": "粘土拟态", "cat": "material", "mode": "light"}, {"id": "aurora", "name": "极光", "cat": "neon", "mode": "dark"}, {"id": "sticker", "name": "贴纸", "cat": "painting", "mode": "light"}, {"id": "newsprint", "name": "报纸", "cat": "classic", "mode": "light"}, {"id": "synthwave", "name": "合成波", "cat": "neon", "mode": "dark"}, {"id": "vaporwave", "name": "霓虹复古", "cat": "neon", "mode": "light"}, {"id": "neontokyo", "name": "霓虹东京", "cat": "neon", "mode": "dark"}, {"id": "neu", "name": "新拟态", "cat": "", "mode": "light"}, {"id": "glass", "name": "液态玻璃", "cat": "material", "mode": "auto"}];
+const K = 'stylemode.pick.v1';
+const pick = JSON.parse(localStorage.getItem(K) || '{}');
+let idx = parseInt(localStorage.getItem('stylemode.i') || '0', 10) || 0;
+let preview = 'light';
+const $ = s => document.querySelector(s);
+const el = {
+  name: $('#mmName'), meta: $('#mmMeta'), grid: $('#mmGrid')
+};
+function cur(){ return DATA[Math.min(DATA.length - 1, Math.max(0, idx))]; }
+function apply(){
+  const s = cur();
+  document.documentElement.setAttribute('data-style', s.id);
+  document.body.classList.toggle('dark', preview === 'dark');
+  el.name.textContent = s.name;
+  const decided = pick[s.id] || '';
+  el.meta.textContent = ' · ' + s.id + ' · ' + (s.cat || '') + ' · 默认 ' + (s.mode === 'light' ? '浅色' : s.mode === 'dark' ? '深色' : '两版')
+    + (decided ? (' · 你选：' + (decided === 'light' ? '浅色' : decided === 'dark' ? '深色' : '不锁')) : ' · 还没决定')
+    + ' · ' + (idx + 1) + '/' + DATA.length;
+  document.querySelectorAll('.mmnav [data-v]').forEach(b => b.classList.toggle('on', b.dataset.v === preview));
+  document.querySelectorAll('.mmnav [data-p]').forEach(b => b.classList.toggle('on', decided === b.dataset.p));
+  el.grid.innerHTML = DATA.map((x, i) => {
+    const d = pick[x.id] || '';
+    return '<div class="mmi' + (i === idx ? ' cur' : '') + '" data-i="' + i + '"><i class="' + (d === 'light' ? 'l' : d === 'dark' ? 'd' : d ? 'a' : '') + '">'
+      + (d === 'light' ? '浅' : d === 'dark' ? '深' : d ? '不锁' : (x.mode === 'light' ? '浅' : x.mode === 'dark' ? '深' : '·')) + '</i>'
+      + x.name + '</div>';
+  }).join('');
+  localStorage.setItem('stylemode.i', String(idx));
+}
+function go(d){ idx = (idx + d + DATA.length) % DATA.length; apply(); }
+function decide(v){ const s = cur(); if (v === 'auto') delete pick[s.id]; else pick[s.id] = v;
+  localStorage.setItem(K, JSON.stringify(pick)); apply(); if (idx < DATA.length - 1) setTimeout(() => go(1), 220); }
+document.querySelectorAll('.mmnav [data-v]').forEach(b => b.onclick = () => { preview = b.dataset.v; apply(); });
+document.querySelectorAll('.mmnav [data-p]').forEach(b => b.onclick = () => decide(b.dataset.p));
+$('#mmPrev').onclick = () => go(-1);
+$('#mmNext').onclick = () => go(1);
+$('#mmExport').onclick = () => {
+  const all = {};
+  DATA.forEach(x => { all[x.id] = pick[x.id] || x.mode; });
+  const txt = JSON.stringify(all, null, 2);
+  const list = DATA.map(x => x.id + '\t' + x.name + '\t' + (pick[x.id] || x.mode)).join('\n');
+  const dl = (body, name, type) => {
+    const b = new Blob([body], { type: type || 'application/json;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  };
+  dl(txt, 'stylemode.json');
+  setTimeout(() => dl(list, '明暗选择.txt', 'text/plain;charset=utf-8'), 300);
+  navigator.clipboard && navigator.clipboard.writeText(txt).catch(() => {});
+  alert('已导出 stylemode.json + 明暗选择.txt（也尽量复制到剪贴板了）');
+};
+el.grid.addEventListener('click', e => { const it = e.target.closest('.mmi'); if (!it) return; idx = +it.dataset.i; apply(); });
+document.addEventListener('keydown', e => {
+  if (e.key === '1') decide('light'); else if (e.key === '2') decide('dark'); else if (e.key === '3') decide('auto');
+  else if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1);
+});
+apply();
+</script>
+</body>
+</html>
