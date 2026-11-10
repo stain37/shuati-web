@@ -4029,3 +4029,9 @@ html[data-style][data-style] body.quiz .bnav{border-width:inherit!important}
 .lec-toast{position:fixed;left:50%;bottom:110px;transform:translate(-50%,10px);z-index:40040;background:rgba(15,23,42,.9);color:#fff;
   padding:9px 14px;border-radius:12px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
 .lec-toast.on{opacity:1;transform:translate(-50%,0)}
+
+.lec-loc{margin-left:auto;height:32px;padding:0 12px;border-radius:10px;border:1px solid var(--line,#e5e9f2);
+  background:var(--card2,#f1f5f9);color:var(--text);font-size:12.5px;cursor:pointer;white-space:nowrap}
+.lec-loc:active{transform:translateY(1px)}
+.lec-alt{height:30px;padding:0 10px;border-radius:10px;border:1px dashed var(--line,#cbd5e1);
+  background:transparent;color:var(--sub,#64748b);font-size:12px;cursor:pointer;white-space:nowrap}

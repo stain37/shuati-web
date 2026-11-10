@@ -10,15 +10,17 @@
 <canvas id="cv"></canvas>
 <script src="v3/pdf.min.js"></script>
 <script>
-/* 批量把一堆 PDF 的每页渲染成 webp，结果按文件堆在 window.__STATE 里，
+/* 批量把一堆 PDF 的每页渲染成 webp + 抽每页文字，结果按文件堆在 window.__STATE 里，
    外部（ego_script）每隔几秒来取一次已完成的文件、落盘后从内存删掉。
-   用法：renderbed.html?list=/pdfjs/_nk.json&w=1200&q=0.7  */
+   用法：renderbed.html?list=/pdfjs/_nk.json&w=1200&q=0.7&text=1  */
 window.__STATE = { i: 0, total: 0, files: [], err: null, log: '' };
 (function () {
   var q = new URLSearchParams(location.search);
   var LIST = q.get('list') || '';
   var W = parseInt(q.get('w') || '1200', 10);
   var QU = parseFloat(q.get('q') || '0.7');
+  var WANT_TEXT = q.get('text') !== '0';
+  var WANT_IMG = q.get('img') !== '0';
   var st = document.getElementById('st');
   var cv = document.getElementById('cv');
   if (!LIST) { window.__STATE.err = 'no list'; return; }
@@ -33,7 +35,7 @@ window.__STATE = { i: 0, total: 0, files: [], err: null, log: '' };
     for (var j = 0; j < jobs.length; j++) {
       var job = jobs[j];
       window.__STATE.i = j;
-      var item = { key: job.key, f: job.f, rel: job.rel, n: 0, pages: [], saved: false, fail: null, done: false };
+      var item = { key: job.key, f: job.f, rel: job.rel, n: 0, pages: [], texts: [], saved: false, fail: null, done: false };
       window.__STATE.files.push(item);
       try {
         st.textContent = '（' + (j + 1) + '/' + jobs.length + '）' + job.f;
@@ -42,13 +44,22 @@ window.__STATE = { i: 0, total: 0, files: [], err: null, log: '' };
         for (var i = 1; i <= doc.numPages; i++) {
           st.textContent = '（' + (j + 1) + '/' + jobs.length + '）' + job.f + ' 第 ' + i + '/' + doc.numPages + ' 页';
           var p = await doc.getPage(i);
-          var v1 = p.getViewport({ scale: 1 });
-          var vp = p.getViewport({ scale: W / v1.width });
-          cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
-          var cx = cv.getContext('2d');
-          cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-          await p.render({ canvasContext: cx, viewport: vp }).promise;
-          item.pages.push(cv.toDataURL('image/webp', QU));
+          if (WANT_TEXT) {
+            try {
+              var tc = await p.getTextContent();
+              var txt = (tc.items || []).map(function (it) { return it.str || ''; }).join(' ').replace(/\s+/g, ' ').trim();
+              item.texts[i - 1] = txt;
+            } catch (eT) { item.texts[i - 1] = ''; }
+          }
+          if (WANT_IMG) {
+            var v1 = p.getViewport({ scale: 1 });
+            var vp = p.getViewport({ scale: W / v1.width });
+            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+            var cx = cv.getContext('2d');
+            cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+            await p.render({ canvasContext: cx, viewport: vp }).promise;
+            item.pages.push(cv.toDataURL('image/webp', QU));
+          }
           p.cleanup();
         }
         doc.destroy();

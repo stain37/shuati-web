@@ -31,7 +31,8 @@
         Object.keys(j).forEach(function (k) {
           var o = j[k] || {}; if (!o.src) return;
           BYKEY[k] = o;
-          var g = map[o.src] || (map[o.src] = { src: o.src, f: o.f, n: o.n || 0, pages: {} });
+          var g = map[o.src] || (map[o.src] = { src: o.src, f: o.f, n: 0, pages: {} });
+          g.n = Math.max(g.n || 0, o.n || 0, o.p || 0);
           g.pages[o.p] = k;
           if ((o.n || 0) > g.n) g.n = o.n;
         });
@@ -80,6 +81,7 @@
     var sheet = ce('div', 'lec-sheet'); sheet.id = 'lecSheet';
     sheet.innerHTML =
       '<div class="lec-head"><b>讲义页</b><span id="lecMeta" class="lec-meta"></span>' +
+        '<button class="lec-loc" data-lec="loc" title="按当前这道题的题干，自动翻到最像的那一页">🔍 定位到这题</button>' +
         '<button class="lec-x" data-lec="close" title="关闭（Esc）">×</button></div>' +
       '<div class="lec-bar">' +
         '<select id="lecFile" class="lec-sel" title="换一份讲义"></select>' +
@@ -104,6 +106,8 @@
       var b = ev.target.closest('[data-lec]'); if (!b) return;
       var a = b.getAttribute('data-lec');
       if (a === 'close') return close();
+      if (a === 'loc') return locate();
+      if (a === 'alt') return nextCand();
       if (a === 'prev') return go(CUR.p - 1);
       if (a === 'next') return go(CUR.p + 1);
       if (a === 'zoom') return doZoom();
@@ -180,6 +184,105 @@
     window.open(url, '_blank');
   }
 
+
+  /* ---------- ② 按题干自动定位到最可能的讲义页 ---------- */
+  var TXT = null, TXT_JOB = null, CAND = [], CAND_I = 0;
+  function loadText() {
+    if (TXT) return Promise.resolve(TXT);
+    if (TXT_JOB) return TXT_JOB;
+    TXT_JOB = fetch('pdftext/all.json?t=' + new Date().toISOString().slice(0, 10))
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) { TXT = j || []; return TXT; })
+      .catch(function (e) { TXT_JOB = null; throw e; });
+    return TXT_JOB;
+  }
+  function normText(t) {
+    return String(t || '').replace(/[\s\u3000]+/g, '')
+      .replace(/[，。；：、！？（）()《》【】\[\]“”"'’‘·—…\-,.;:!?\/\\|]/g, '');
+  }
+  function grams(s) {
+    var out = {}, i, n = s.length;
+    for (i = 0; i < n - 1; i++) { var g = s.substr(i, 2); out[g] = (out[g] || 0) + 1; }
+    return out;
+  }
+  function questionText() {
+    var parts = [];
+    var stem = document.querySelector('#qBody .stem, #qBody .gstem, .stem');
+    if (stem) parts.push(stem.textContent || '');
+    Array.prototype.forEach.call(document.querySelectorAll('#qBody .opt, .opts .opt'), function (el) {
+      var t = (el.textContent || '').replace(/^[A-H][\s.、]?/, '').trim();
+      if (t) parts.push(t);
+    });
+    return parts.join(' ');
+  }
+  function search(qtext) {
+    if (!TXT || !TXT.length) return [];
+    var q = normText(qtext);
+    if (q.length < 6) return [];
+    var qg = grams(q);
+    var keys = Object.keys(qg).slice(0, 260);
+    if (!keys.length) return [];
+    /* 文档频率 → idf：越少见的字对越有用（题库题干的常用词自动降权） */
+    var df = {}, i, j;
+    for (i = 0; i < TXT.length; i++) {
+      var t = TXT[i]._n || (TXT[i]._n = normText(TXT[i].t));
+      for (j = 0; j < keys.length; j++) if (t.indexOf(keys[j]) >= 0) df[keys[j]] = (df[keys[j]] || 0) + 1;
+    }
+    var N = TXT.length, idf = {};
+    keys.forEach(function (g) { idf[g] = Math.log(1 + N / (1 + (df[g] || 0))); });
+    var scored = [];
+    for (i = 0; i < TXT.length; i++) {
+      var n2 = TXT[i]._n, sc = 0, hit = 0;
+      for (j = 0; j < keys.length; j++) {
+        if (df[keys[j]] && n2.indexOf(keys[j]) >= 0) { sc += idf[keys[j]]; hit++; }
+      }
+      if (sc > 0) scored.push({ i: i, score: sc, hit: hit, len: n2.length });
+    }
+    scored.sort(function (a, b) { return b.score - a.score || b.hit - a.hit; });
+    return scored.slice(0, 8);
+  }
+  function locate() {
+    var q = questionText();
+    if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
+    if (el.meta) el.meta.textContent = '正在翻讲义找这一页…';
+    loadText().then(function () {
+      var hits = search(q);
+      if (!hits.length) { if (el.meta) el.meta.textContent = ''; toast('没在这批讲义里找到相关内容'); return; }
+      CAND = hits; CAND_I = 0;
+      jumpTo(hits[0]);
+    }).catch(function (e) {
+      if (el.meta) el.meta.textContent = '';
+      toast('页文字索引还没生成（' + e.message + '）');
+    });
+  }
+  function jumpTo(hit) {
+    var rec = TXT[hit.i];
+    if (!rec) return;
+    if (fileOf(rec.src)) {
+      CUR.src = rec.src; CUR.p = rec.p; paint();
+      var f = fileOf(CUR.src);
+      if (el.meta) el.meta.textContent = '定位：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + rec.p + ' 页';
+    } else {
+      toast('这页的讲义文件不在目录里：' + rec.f);
+    }
+    if (CAND.length > 1) {
+      var b = $('#lecAlt');
+      if (!b) {
+        b = ce('button', 'lec-alt'); b.id = 'lecAlt'; b.setAttribute('data-lec', 'alt');
+        b.title = '这不是那页？看下一个可能的页'; b.textContent = '换个候选';
+        var bar = $('.lec-bar'); if (bar) bar.appendChild(b);
+      }
+      b.textContent = '换个候选 ' + (CAND_I + 1) + '/' + CAND.length;
+      b.style.display = '';
+    }
+  }
+  function nextCand() {
+    if (!CAND.length) return;
+    CAND_I = (CAND_I + 1) % CAND.length;
+    jumpTo(CAND[CAND_I]);
+    toast('候选 ' + (CAND_I + 1) + '/' + CAND.length + '：' + (CAND[CAND_I].hit || 0) + ' 处命中');
+  }
+
   function open() {
     build();
     if (!el.sheet) return;
@@ -204,6 +307,6 @@
     open();
   }, true);
 
-  window.LECTURE = { open: open, close: close, load: loadIndex, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
+  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: search, text: loadText, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: function (src, p) { var f = fileOf(src); return f && f.pages[p]; } };
 })();
