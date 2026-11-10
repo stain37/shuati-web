@@ -7500,13 +7500,13 @@ html[data-style="glass"] .nb-card{
 /* 顶栏/底栏：边缘更亮，像一块浮起的玻璃 */
 html[data-style="glass"] .top{
   background:rgba(255,255,255,.10)!important;
-  border:0!important;
+  border:1px solid transparent!important;
   border-radius:0!important;
   box-shadow:0 1px 0 rgba(255,255,255,.28)!important;
 }
 html[data-style="glass"] body.dark .top{
   background:rgba(10,16,32,.18)!important;
-  border:0!important;
+  border:1px solid transparent!important;
   box-shadow:0 1px 0 rgba(255,255,255,.12)!important;
 }
 /* 顶栏里那颗「文件」白胶囊也降一档白 */
@@ -7627,4 +7627,80 @@ html[data-style="glass"][data-bg="video"]{
 html[data-style="glass"][data-bg="custom"] body.dark,
 html[data-style="glass"][data-bg="video"] body.dark{
   --glass-fill:linear-gradient(150deg,rgba(26,34,54,.80),rgba(10,14,26,.66) 56%,rgba(22,30,50,.74));
+}
+
+/* ============ glass v5 · 玻璃光泽（顶部漫反射 + 亮边，不用重复的斜条纹） ============ */
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip,
+html[data-style="glass"] .bnav .btn,
+html[data-style="glass"] .nav .btn,
+html[data-style="glass"] .nav .qbtn,
+html[data-style="glass"] #backFix,
+html[data-style="glass"] .top .btn,
+html[data-style="glass"] .top .chip{
+  background-image:
+    radial-gradient(130% 90% at 22% -10%,rgba(255,255,255,.72),rgba(255,255,255,.10) 52%,rgba(255,255,255,0) 72%),
+    linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.03) 56%,rgba(255,255,255,.10))!important;
+  border:1px solid rgba(255,255,255,.66)!important;
+  box-shadow:
+    0 10px 22px -12px rgba(22,44,92,.40),
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -10px 14px -12px rgba(255,255,255,.55)!important;
+  -webkit-backdrop-filter:blur(14px) saturate(180%);
+  backdrop-filter:blur(14px) saturate(180%);
+  transition:box-shadow .18s ease, transform .12s ease, filter .18s ease;
+}
+html[data-style="glass"] .btn:active,
+html[data-style="glass"] .chip:active,
+html[data-style="glass"] .bnav .btn:active,
+html[data-style="glass"] .nav .btn:active{
+  transform:translateY(1px) scale(.985);
+  box-shadow:0 4px 12px -8px rgba(22,44,92,.5), inset 0 1px 0 rgba(255,255,255,.9), inset 0 2px 10px rgba(20,40,80,.10)!important;
+}
+/* 主色按钮：颜色不变，只在上缘加一层柔光 */
+html[data-style="glass"] .btn.prim{
+  background-image:
+    radial-gradient(120% 80% at 30% -20%,rgba(255,255,255,.55),rgba(255,255,255,0) 62%),
+    linear-gradient(180deg,rgba(255,255,255,.16),rgba(0,0,0,.10))!important;
+  border:1px solid rgba(255,255,255,.40)!important;
+  box-shadow:0 10px 22px -12px rgba(37,99,235,.60), inset 0 1px 0 rgba(255,255,255,.50)!important;
+}
+/* 选项：光从左上来，比按钮更弱，避免整屏一条条亮纹 */
+html[data-style="glass"] .opt{
+  background-image:
+    radial-gradient(140% 100% at 16% -16%,rgba(255,255,255,.50),rgba(255,255,255,.06) 54%,rgba(255,255,255,0) 74%),
+    linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.03) 58%,rgba(255,255,255,.10))!important;
+  box-shadow:0 12px 26px -16px rgba(22,44,92,.38), inset 0 1px 0 rgba(255,255,255,.92)!important;
+}
+/* 深色 */
+html[data-style="glass"] body.dark .btn,
+html[data-style="glass"] body.dark .chip,
+html[data-style="glass"] body.dark .bnav .btn,
+html[data-style="glass"] body.dark .nav .btn,
+html[data-style="glass"] body.dark .nav .qbtn,
+html[data-style="glass"] body.dark #backFix,
+html[data-style="glass"] body.dark .top .btn,
+html[data-style="glass"] body.dark .top .chip{
+  background-image:
+    radial-gradient(130% 90% at 22% -10%,rgba(255,255,255,.26),rgba(255,255,255,.04) 54%,rgba(255,255,255,0) 74%),
+    linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.01) 58%,rgba(255,255,255,.06))!important;
+  border:1px solid rgba(255,255,255,.22)!important;
+  box-shadow:0 12px 24px -14px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.30)!important;
+}
+html[data-style="glass"] body.dark .opt{
+  background-image:
+    radial-gradient(140% 100% at 16% -16%,rgba(255,255,255,.18),rgba(255,255,255,.03) 56%,rgba(255,255,255,0) 76%),
+    linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.01) 60%,rgba(255,255,255,.05))!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+}
+
+/* 顶栏按钮不要边框：加了 2px 会把「文件」挤到第二行 */
+html[data-style="glass"] .top .btn,
+html[data-style="glass"] .top .chip{
+  border:0!important;
+  box-shadow:0 6px 16px -12px rgba(22,44,92,.45), inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(255,255,255,.55)!important;
+}
+html[data-style="glass"] body.dark .top .btn,
+html[data-style="glass"] body.dark .top .chip{
+  box-shadow:0 6px 16px -12px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 1px rgba(255,255,255,.16)!important;
 }
