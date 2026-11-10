@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>page renderer</title>
+<style>body{margin:0;font:13px/1.5 system-ui;color:#334}canvas{display:none}</style>
+</head>
+<body>
+<div id="st">准备中…</div>
+<canvas id="cv"></canvas>
+<script src="v3/pdf.min.js"></script>
+<script>
+/* 把一份 PDF 的每一页渲染成 webp（离线生成讲义页图用）。
+   用法：render.html?f=pdf/内科/xxx.pdf&w=1200&q=0.82
+   结果放在 window.__OUT = { n, pages:[dataURL...], file }  */
+window.__OUT = null;
+window.__ERR = null;
+(function () {
+  var q = new URLSearchParams(location.search);
+  var FILE = q.get('f') || '';
+  var W = parseInt(q.get('w') || '1200', 10);
+  var QU = parseFloat(q.get('q') || '0.82');
+  var st = document.getElementById('st');
+  if (!FILE) { window.__ERR = 'no file'; return; }
+  /* 相对路径要以站点根为准（这个页面在 /pdfjs/ 下，直接用会变成 /pdfjs/pdf/...） */
+  if (!/^(?:https?:)?\//i.test(FILE)) FILE = '/' + FILE;
+  try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'v3/pdf.worker.min.js'; } catch (e) {}
+  (async function () {
+    try {
+      st.textContent = '打开 ' + FILE;
+      var doc = await pdfjsLib.getDocument({ url: FILE, isEvalSupported: false, disableFontFace: false }).promise;
+      var pages = [];
+      for (var i = 1; i <= doc.numPages; i++) {
+        st.textContent = '第 ' + i + ' / ' + doc.numPages + ' 页';
+        var p = await doc.getPage(i);
+        var v1 = p.getViewport({ scale: 1 });
+        var scale = W / v1.width;
+        var vp = p.getViewport({ scale: scale });
+        var c = document.getElementById('cv');
+        c.width = Math.round(vp.width);
+        c.height = Math.round(vp.height);
+        var cx = c.getContext('2d');
+        cx.fillStyle = '#fff';
+        cx.fillRect(0, 0, c.width, c.height);
+        await p.render({ canvasContext: cx, viewport: vp }).promise;
+        pages.push(c.toDataURL('image/webp', QU));
+        p.cleanup();
+      }
+      window.__OUT = { n: doc.numPages, pages: pages, file: FILE };
+      st.textContent = '完成 ' + doc.numPages + ' 页';
+    } catch (e) {
+      window.__ERR = String(e && e.message || e);
+      st.textContent = '出错：' + window.__ERR;
+    }
+  })();
+})();
+</script>
+</body>
+</html>

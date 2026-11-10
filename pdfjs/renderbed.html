@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>render bed</title>
+<style>body{margin:0;font:13px/1.5 system-ui;color:#334;padding:10px}canvas{display:none}</style>
+</head>
+<body>
+<div id="st">准备中…</div>
+<canvas id="cv"></canvas>
+<script src="v3/pdf.min.js"></script>
+<script>
+/* 批量把一堆 PDF 的每页渲染成 webp，结果按文件堆在 window.__STATE 里，
+   外部（ego_script）每隔几秒来取一次已完成的文件、落盘后从内存删掉。
+   用法：renderbed.html?list=/pdfjs/_nk.json&w=1200&q=0.7  */
+window.__STATE = { i: 0, total: 0, files: [], err: null, log: '' };
+(function () {
+  var q = new URLSearchParams(location.search);
+  var LIST = q.get('list') || '';
+  var W = parseInt(q.get('w') || '1200', 10);
+  var QU = parseFloat(q.get('q') || '0.7');
+  var st = document.getElementById('st');
+  var cv = document.getElementById('cv');
+  if (!LIST) { window.__STATE.err = 'no list'; return; }
+  try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'v3/pdf.worker.min.js'; } catch (e) {}
+  (async function () {
+    var jobs = [];
+    try {
+      var r = await fetch(LIST, { cache: 'no-store' });
+      jobs = await r.json();
+    } catch (e) { window.__STATE.err = 'list fail: ' + e; return; }
+    window.__STATE.total = jobs.length;
+    for (var j = 0; j < jobs.length; j++) {
+      var job = jobs[j];
+      window.__STATE.i = j;
+      var item = { key: job.key, f: job.f, rel: job.rel, n: 0, pages: [], saved: false, fail: null, done: false };
+      window.__STATE.files.push(item);
+      try {
+        st.textContent = '（' + (j + 1) + '/' + jobs.length + '）' + job.f;
+        var doc = await pdfjsLib.getDocument({ url: '/' + job.rel, isEvalSupported: false }).promise;
+        item.n = doc.numPages;
+        for (var i = 1; i <= doc.numPages; i++) {
+          st.textContent = '（' + (j + 1) + '/' + jobs.length + '）' + job.f + ' 第 ' + i + '/' + doc.numPages + ' 页';
+          var p = await doc.getPage(i);
+          var v1 = p.getViewport({ scale: 1 });
+          var vp = p.getViewport({ scale: W / v1.width });
+          cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+          var cx = cv.getContext('2d');
+          cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+          await p.render({ canvasContext: cx, viewport: vp }).promise;
+          item.pages.push(cv.toDataURL('image/webp', QU));
+          p.cleanup();
+        }
+        doc.destroy();
+      } catch (e) {
+        item.fail = String(e && e.message || e);
+      }
+      item.done = true;
+      window.__STATE.log = job.f + ' → ' + (item.fail || item.n + ' 页');
+    }
+    window.__STATE.i = jobs.length;
+    st.textContent = '全部完成';
+  })();
+})();
+</script>
+</body>
+</html>
