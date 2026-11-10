@@ -57,6 +57,25 @@
     return '';
   }
 
+  /* ---------- 题 → 讲义页 绑定（人工校正） ---------- */
+  var BINDS = 'qbank.lec.bind.v1';   /* { "bankId#qid": { src, p, f, n, ts } } */
+  function qid() {
+    try { if (typeof QZ !== 'undefined' && QZ && QZ.cur != null && QZ.cur !== '') return String(QZ.cur); } catch (e) {}
+    return '';
+  }
+  function qKey() { var b = bankKey(), q = qid(); return (b && q) ? (b + '#' + q) : ''; }
+  function bindAll() { return readLS(BINDS, {}); }
+  function getBind() { var m = bindAll(), k = qKey(); return k ? (m[k] || null) : null; }
+  function putBind(src, p) {
+    var k = qKey(); if (!k) { toast('先在答题页选一道题，再来绑讲义页'); return null; }
+    var f = fileOf(src); if (!f) { toast('这份讲义不在目录里'); return null; }
+    var m = bindAll();
+    m[k] = { src: src, p: (p | 0) || 1, f: f.f, n: f.n, ts: Date.now() };
+    writeLS(BINDS, m);
+    return m[k];
+  }
+  function delBind() { var m = bindAll(), k = qKey(); if (!k || !m[k]) return false; delete m[k]; writeLS(BINDS, m); return true; }
+
   function remember() {
     var m = readLS(LS, {});
     var k = bankKey(); if (!k) return;
@@ -82,6 +101,8 @@
     sheet.innerHTML =
       '<div class="lec-head"><b>讲义页</b><span id="lecMeta" class="lec-meta"></span>' +
         '<button class="lec-loc" data-lec="loc" title="按当前这道题的题干，自动翻到最像的那一页">🔍 定位到这题</button>' +
+        '<button class="lec-pin" data-lec="pin" title="把这一页记成当前这道题的讲义页，以后打开直接到这儿">📌 就用这页</button>' +
+        '<span id="lecPinState" class="lec-pinstate"></span>' +
         '<button class="lec-x" data-lec="close" title="关闭（Esc）">×</button></div>' +
       '<div class="lec-bar">' +
         '<select id="lecFile" class="lec-sel" title="换一份讲义"></select>' +
@@ -107,6 +128,8 @@
       var a = b.getAttribute('data-lec');
       if (a === 'close') return close();
       if (a === 'loc') return locate();
+      if (a === 'pin') return pinNow();
+      if (a === 'unpin') return unpinNow();
       if (a === 'alt') return nextCand();
       if (a === 'prev') return go(CUR.p - 1);
       if (a === 'next') return go(CUR.p + 1);
@@ -163,6 +186,44 @@
       if (el.empty) el.empty.style.display = '';
     }
     remember();
+    paintPin();
+  }
+
+  function paintPin() {
+    var sp = $('#lecPinState'); if (!sp) return;
+    sp.innerHTML = '';
+    if (!qKey()) { sp.className = 'lec-pinstate'; sp.textContent = '（没在答题页）'; return; }
+    var b = getBind();
+    if (b && fileOf(b.src)) {
+      var lab = String(b.f || '').replace(/\.pdf$/i, '');
+      sp.className = 'lec-pinstate on';
+      sp.appendChild(document.createTextNode('📌 已绑定 ' + lab.slice(0, 16) + ' 第 ' + b.p + ' 页 '));
+      var u = document.createElement('button');
+      u.className = 'lec-unpin'; u.setAttribute('data-lec', 'unpin'); u.textContent = '解绑';
+      sp.appendChild(u);
+    } else {
+      sp.className = 'lec-pinstate';
+      sp.textContent = '还没绑定';
+    }
+  }
+
+  function pinNow() {
+    var b = putBind(CUR.src, CUR.p);
+    if (!b) return;
+    CAND = []; var alt = $('#lecAlt'); if (alt) alt.style.display = 'none';
+    toast('已绑定：' + String(b.f).replace(/\.pdf$/i, '').slice(0, 18) + ' 第 ' + b.p + ' 页');
+    paintPin();
+  }
+  function unpinNow() {
+    if (!delBind()) { toast('这题还没绑定'); return; }
+    toast('已解绑，以后这题改按文字自动定位');
+    paintPin();
+  }
+
+  function applyBind() {
+    var b = getBind();
+    if (b && fileOf(b.src)) { CUR.src = b.src; CUR.p = b.p; paint(); return true; }
+    return false;
   }
 
   function go(p) { CUR.p = p; paint(); }
@@ -242,6 +303,15 @@
     return scored.slice(0, 8);
   }
   function locate() {
+    var bd = getBind();
+    if (bd && fileOf(bd.src)) {
+      CUR.src = bd.src; CUR.p = bd.p; CAND = [];
+      var alt0 = $('#lecAlt'); if (alt0) alt0.style.display = 'none';
+      paint();
+      if (el.meta) el.meta.textContent = '📌 已绑定：' + String(bd.f || '').replace(/\.pdf$/i, '').slice(0, 18) + ' 第 ' + bd.p + ' 页';
+      toast('这题已绑过讲义页（想重新自动定位，先点「解绑」）');
+      return;
+    }
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
     if (el.meta) el.meta.textContent = '正在翻讲义找这一页…';
@@ -289,12 +359,12 @@
     el.mask.classList.add('on'); el.sheet.classList.add('on');
     if (!FILES) {
       if (el.meta) el.meta.textContent = '正在读讲义目录…';
-      loadIndex().then(function () { restore(); fillSelect(); paint(); })
+      loadIndex().then(function () { restore(); fillSelect(); paint(); applyBind(); })
         .catch(function (e) { if (el.meta) el.meta.textContent = '讲义目录没读出来：' + e; });
       return;
     }
     if (!CUR.src) restore();
-    fillSelect(); paint();
+    fillSelect(); paint(); applyBind();
   }
 
   function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
@@ -307,6 +377,7 @@
     open();
   }, true);
 
-  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: search, text: loadText, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
+  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: search, text: loadText,
+    bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: function (src, p) { var f = fileOf(src); return f && f.pages[p]; } };
 })();

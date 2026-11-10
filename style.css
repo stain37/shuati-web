@@ -4035,3 +4035,26 @@ html[data-style][data-style] body.quiz .bnav{border-width:inherit!important}
 .lec-loc:active{transform:translateY(1px)}
 .lec-alt{height:30px;padding:0 10px;border-radius:10px;border:1px dashed var(--line,#cbd5e1);
   background:transparent;color:var(--sub,#64748b);font-size:12px;cursor:pointer;white-space:nowrap}
+
+/* ---------- 讲义页：绑定这道题的讲义页（web706） ---------- */
+.lec-pin{border:1px solid rgba(37,99,235,.45);background:rgba(37,99,235,.10);color:var(--text,#111);font-size:13px;padding:6px 10px;border-radius:12px;margin-left:6px;white-space:nowrap}
+.lec-pin:active{transform:translateY(1px)}
+.lec-pinstate{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sub,#64748b);margin-left:8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:36vw}
+.lec-pinstate.on{color:#0f9d63;font-weight:600}
+.lec-unpin{border:1px solid rgba(220,38,38,.4);background:rgba(220,38,38,.08);color:#dc2626;font-size:11.5px;padding:2px 8px;border-radius:9px}
+body.dark .lec-pin{background:rgba(96,165,250,.16);color:#e6edf8;border-color:rgba(147,197,253,.4)}
+body.dark .lec-pinstate.on{color:#34d399}
+
+/* 讲义页头部在手机上别挤成一列字（web706b） */
+.lec-head{flex-wrap:wrap;row-gap:6px}
+.lec-head>b{flex:0 0 auto;white-space:nowrap}
+.lec-loc{margin-left:auto}
+@media (max-width:560px){
+  .lec-head{padding:10px 12px 6px;gap:6px}
+  .lec-head>b{font-size:14px}
+  .lec-meta{display:none}
+  .lec-loc,.lec-pin{height:30px;padding:0 9px;font-size:12px}
+  .lec-pinstate{order:9;width:100%;max-width:none;margin-left:0;font-size:11.5px}
+  .lec-bar{padding:0 12px 8px;gap:8px}
+  .lec-sel{min-width:0;width:100%}
+}
