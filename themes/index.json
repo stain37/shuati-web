@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "updated": "2026-11-11",
+  "themes": [
+    {
+      "id": "glass-night",
+      "name": "液态玻璃 · 夜蓝",
+      "author": "站长",
+      "style": "glass",
+      "theme": "dark",
+      "desc": "深蓝玻璃卡片 + 冷色光晕，适合晚上背题；文字高对比，不刺眼。",
+      "file": "themes/glass-night.theme.json",
+      "swatch": { "bg": "linear-gradient(150deg,#0a1a3e,#33102c 60%,#06282c)", "card": "rgba(56,72,110,.58)", "accent": "#60a5fa", "text": "#eaf1ff" }
+    },
+    {
+      "id": "paper-green",
+      "name": "纸感 · 墨绿",
+      "author": "站长",
+      "style": "default",
+      "theme": "light",
+      "desc": "米纸底 + 墨绿主色，像纸质讲义；看久了眼睛不累，适合白天刷题。",
+      "file": "themes/paper-green.theme.json",
+      "swatch": { "bg": "linear-gradient(150deg,#f7f3e8,#eef5ee)", "card": "rgba(255,255,255,.82)", "accent": "#047857", "text": "#1f2d2a" }
+    }
+  ]
+}

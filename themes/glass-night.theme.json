@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "id": "glass-night",
+  "name": "液态玻璃 · 夜蓝",
+  "author": "站长",
+  "desc": "深蓝玻璃卡片 + 冷色光晕，适合晚上背题；文字高对比，不刺眼。",
+  "tags": ["暗色", "玻璃", "夜间"],
+  "createdAt": 1762790400000,
+  "look": {
+    "style": "glass",
+    "styleAuto": false,
+    "color": "ocean",
+    "theme": "dark",
+    "bg": "default",
+    "fs": "m",
+    "frost": true,
+    "frostPx": 24,
+    "uiAlpha": 0.94,
+    "glowMode": "auto",
+    "glowColor": "",
+    "autoContrast": true,
+    "uiText": "auto",
+    "uiTextPick": "#0b1220",
+    "reduceMotion": false
+  },
+  "css": "html[data-theme-pack=\"glass-night\"]{--radius:24px}\nhtml[data-theme-pack=\"glass-night\"] body ::selection{background:rgba(96,165,250,.35)}",
+  "swatch": { "bg": "linear-gradient(150deg,#0a1a3e,#33102c 60%,#06282c)", "card": "rgba(56,72,110,.58)", "accent": "#60a5fa", "text": "#eaf1ff" }
+}

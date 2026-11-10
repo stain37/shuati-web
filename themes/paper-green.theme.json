@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "id": "paper-green",
+  "name": "纸感 · 墨绿",
+  "author": "站长",
+  "desc": "米纸底 + 墨绿主色，像纸质讲义；看久了眼睛不累，适合白天刷题。",
+  "tags": ["浅色", "纸感", "护眼"],
+  "createdAt": 1762790400000,
+  "look": {
+    "style": "default",
+    "styleAuto": false,
+    "color": "emerald",
+    "theme": "light",
+    "bg": "paper",
+    "fs": "m",
+    "frost": true,
+    "frostPx": 10,
+    "uiAlpha": 1,
+    "glowMode": "off",
+    "glowColor": "",
+    "autoContrast": true,
+    "uiText": "auto",
+    "uiTextPick": "#0b1220",
+    "reduceMotion": false
+  },
+  "css": "html[data-theme-pack=\"paper-green\"] body{background-color:#f7f3e8!important}\nhtml[data-theme-pack=\"paper-green\"] .card,html[data-theme-pack=\"paper-green\"] .qcard{border-color:rgba(4,120,87,.18)!important}",
+  "swatch": { "bg": "linear-gradient(150deg,#f7f3e8,#eef5ee)", "card": "rgba(255,255,255,.82)", "accent": "#047857", "text": "#1f2d2a" }
+}
