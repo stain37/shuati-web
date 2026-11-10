@@ -7368,6 +7368,12 @@ if ($('setAutoContrast')) $('setAutoContrast').checked = SET.autoContrast !== fa
 on('setUiText', e => setLook('uiText', e.target.value), 'change');
 on('setUiTextPick', e => { SET.uiTextPick = e.target.value; setLook('uiText', 'custom'); }, 'input');
 on('setAutoContrast', e => { SET.autoContrast = !!e.target.checked; setLook('autoContrast', SET.autoContrast); }, 'change');
+  if ($('setOffline') && window.OFFLINE) $('setOffline').checked = OFFLINE.on();
+  on('setOffline', e => {
+    if (!window.OFFLINE) return;
+    const onOff = OFFLINE.set(!!e.target.checked);
+    toast(onOff ? '🔌 离线模式已开：AI / 云同步会被拦下，读 PDF 和刷题照常' : '已回到联网模式', onOff ? 4200 : 2200);
+  }, 'change');
 on('setColor', e => { setLook('color', e.target.value); toast('主题色换成「' + (THEME_NAME[e.target.value] || '冷静青') + '」', 1400, 'ok'); }, 'change');
 on('setBg', e => { const v = e.target.value; setLook('bg', v); if (v === 'custom') bgPick(); toast('背景换成「' + (BG_NAME[v] || '默认微光') + '」', 1400, 'ok'); }, 'change');
 on('setStyle', e => {

@@ -186,6 +186,10 @@ var iv=setInterval(function(){n++;
       style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
       <input type="checkbox" id="setAutoContrast" checked>自动保证文字看得清
     </label>
+    <label class="tl" for="setOffline" title="打开后除了本站自己的静态文件，任何联网请求（AI、云同步、外部接口）都会被拦下并提示；读 PDF、刷题、本地抽题照常"
+      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="setOffline">🔌 离线模式（不联网）
+    </label>
     <span class="tl">主题色</span>
     <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
       <option value="teal">冷静青（默认）</option>
@@ -351,7 +355,8 @@ var iv=setInterval(function(){n++;
 <script src="vendor/katex/katex.min.js?v=20261101c"></script>
 <script src="csv.js?v=20261104a"></script>
 <script src="mastery.js?v=20261108a"></script>
-<script src="app.js?v=20261110w"></script>
+<script src="offline.js?v=20261110c"></script>
+<script src="app.js?v=20261110x"></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261109b"></script>
 <script src="side.js?v=20261109i"></script>
