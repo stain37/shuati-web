@@ -7277,3 +7277,9 @@ html[data-style="vaporwave"] .bar:nth-child(n) i{background:linear-gradient(90de
   #optRail{width:50px!important;gap:7px!important}
   #optRail .orq{width:46px!important;height:46px!important;font-size:15px!important;border-radius:12px!important}
 }
+
+
+/* 手机端：#homeNavFab 由脚本按滚动位置绝对定位，容易飘到内容上；底部导航已覆盖全部入口，直接收起 */
+@media (max-width:560px){
+  #homeNavFab{display:none!important}
+}

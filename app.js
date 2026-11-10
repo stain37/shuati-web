@@ -1832,7 +1832,7 @@ function ensureSkinsCss(style) {
   if (style === 'default') return;                 /* 默认皮肤只在 style.css 里 */
   if (document.getElementById('skinsCss')) return;
   var l = document.createElement('link');
-  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261111q';
+  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261111r';
   (document.head || document.documentElement).appendChild(l);
 }
 /* 用户对某套皮肤的明暗覆盖（qbank.stylemode.v1）：{ id: 'light'|'dark'|'auto' } */
