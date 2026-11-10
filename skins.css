@@ -8265,3 +8265,20 @@ html[data-style="glass"] body.dark .hstat>button.hs{
   background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03) 54%,rgba(255,255,255,.06))!important;
   border:1px solid rgba(255,255,255,.18)!important;
 }
+
+/* ===== glass v13 · 自定义图片 / 视频背景必须盖得住（v7 的 background:transparent!important 会把它清掉） ===== */
+html[data-style="glass"][data-bg="custom"] body{
+  background-color:transparent!important;
+  background-image:var(--bg-img)!important;
+  background-size:cover!important;
+  background-position:center center!important;
+  background-repeat:no-repeat!important;
+  background-attachment:fixed!important;
+}
+html[data-style="glass"][data-bg="video"] body{
+  background:transparent!important;
+  background-image:none!important;
+}
+html[data-style="glass"][data-bg="video"] .bg-video{display:block!important}
+html[data-style="glass"][data-bg="custom"] body::before,
+html[data-style="glass"][data-bg="video"] body::before{opacity:.18!important}

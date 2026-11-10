@@ -846,8 +846,98 @@ function syncHelpHtml() {
   L.push('</div>');
   return L.join('');
 }
+/* ---------- 一键识别：粘贴框 / 剪贴板 ----------
+   能认出：① 带 ?cfg= 的一键配置链接；② 裸 base64 / 裸 JSON；③ 仓库网址或 owner/repo + 一行 token；
+   ④ key=value 列表；⑤ provider|owner|repo|branch|path|token 竖线格式。 */
+function syncB64Json(t) {
+  try {
+    let b = String(t || '').trim().replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, '');
+    b += '==='.slice((b.length + 3) % 4);
+    const o = JSON.parse(decodeURIComponent(escape(atob(b))));
+    return (o && typeof o === 'object') ? o : null;
+  } catch (e) { return null; }
+}
+function syncGuess(txt) {
+  const raw = String(txt || '').trim();
+  if (!raw) return null;
+  const m = raw.match(/[?&]cfg=([^&#\s]+)/);
+  if (m) { const o = syncB64Json(decodeURIComponent(m[1])); if (o && (o.owner || o.token)) return o; }
+  if (raw.charAt(0) === '{') { try { const o = JSON.parse(raw); if (o && (o.owner || o.token)) return o; } catch (e) {} }
+  if (!/[\s]/.test(raw) && raw.length >= 32 && raw.indexOf('http') !== 0) {
+    const o = syncB64Json(raw);
+    if (o && (o.owner || o.token)) return o;
+  }
+  const lines = raw.split(/[\r\n]+/).map(x => x.trim()).filter(Boolean);
+  const out = {};
+  const kv = {};
+  lines.forEach(l => { const g = l.match(/^([a-zA-Z_]+)\s*[:=：]\s*(.+)$/); if (g) kv[g[1].toLowerCase()] = g[2].trim(); });
+  if (kv.owner) out.owner = kv.owner;
+  if (kv.repo) out.repo = kv.repo;
+  if (kv.token) out.token = kv.token;
+  if (kv.branch) out.branch = kv.branch;
+  if (kv.path) out.path = kv.path;
+  if (kv.provider) out.provider = /gitee|码云/i.test(kv.provider) ? 'gitee' : 'github';
+  if (!out.token) {
+    const tk = lines.map(x => x.replace(/^(token|令牌)\s*[:=：]\s*/i, '')).find(x => /^[A-Za-z0-9_\-]{20,}$/.test(x) && !/[\/]/.test(x));
+    if (tk) out.token = tk;
+  }
+  const repoLine = lines.find(x => /^(https?:\/\/)?(github\.com|gitee\.com)\//i.test(x)) || lines.find(x => /^[\w.\-]+\/[\w.\-]+$/.test(x));
+  if (repoLine) {
+    if (/github\.com/i.test(repoLine)) out.provider = 'github';
+    if (/gitee\.com/i.test(repoLine)) out.provider = 'gitee';
+    const seg = repoLine.replace(/^https?:\/\//i, '').replace(/^(github\.com|gitee\.com)\//i, '').split(/[?#]/)[0].split('/').filter(Boolean);
+    if (seg.length >= 2) { out.owner = seg[0]; out.repo = seg[1].replace(/\.git$/i, ''); }
+  }
+  if (raw.indexOf('|') > 0 && raw.indexOf('\n') < 0) {
+    const p = raw.split('|').map(x => x.trim());
+    if (p.length >= 4) {
+      out.provider = /^github$/i.test(p[0]) ? 'github' : 'gitee';
+      out.owner = p[1]; out.repo = p[2]; out.branch = p[3] || '';
+      if (p.length >= 6) { out.path = p[4] || ''; out.token = p[5] || ''; }
+      else { out.token = p[4] || ''; }
+    }
+  }
+  return (out.owner || out.token) ? out : null;
+}
+function syncApplyGuess(o) {
+  if (!o) return false;
+  if (o.provider && SYNC_PROVIDERS[o.provider]) SYC.provider = o.provider;
+  if (o.owner) SYC.owner = String(o.owner).trim();
+  if (o.repo) SYC.repo = String(o.repo).trim();
+  if (o.branch) SYC.branch = String(o.branch).trim();
+  if (o.path) SYC.path = String(o.path).trim();
+  if (o.token) SYC.token = String(o.token).trim();
+  if (!SYC.branch) SYC.branch = syncP().branch;
+  if (!SYC.path) SYC.path = 'sync/data.json';
+  SYC.lastErr = ''; SYC.lastSha = ''; SYC.lastAt = 0;
+  syncSave();
+  /* 不能整页重渲染：重渲染后按钮还在，但 on(...) 的事件绑定是对着旧节点做的，再点就没反应了 */
+  syncFillForm();
+  try { syncPaintStatus(); } catch (e) {}
+  return true;
+}
+function syncFillForm() {
+  const setv = (id, v) => { const el = $(id); if (el && v != null) el.value = v; };
+  setv('syncProvider', SYC.provider);
+  setv('syncOwner', SYC.owner);
+  setv('syncRepo', SYC.repo);
+  setv('syncBranch', SYC.branch);
+  setv('syncPath', SYC.path);
+  setv('syncToken', SYC.token);
+}
+function syncQuickCfgHtml() {
+  return '<div class="card kbcard" id="syncQuick">'
+    + '<div class="kbhead">一键识别（粘贴就行，不用手打）</div>'
+    + '<div class="small muted" style="margin-bottom:6px">把「一键配置」链接、别人发你的那段配置、或者 <code>owner/repo</code> + 一行 token 粘进来，自动认服务商 / 属主 / 仓库 / 分支 / token。手机上可以直接读剪贴板。</div>'
+    + '<textarea id="syncPasteBox" rows="3" placeholder="粘贴链接或配置…（也可以只粘仓库地址和 token）" style="width:100%;box-sizing:border-box;height:96px;max-height:240px;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:12.5px"></textarea>'
+    + '<div class="actions" style="margin-top:8px;flex-wrap:wrap">'
+    + '<button class="btn primary" id="syncGuessGo">识别并填入</button>'
+    + '<button class="btn" id="syncClip">从剪贴板读取</button>'
+    + '<button class="btn" id="syncGuessTest">识别 + 测试连接</button>'
+    + '</div><div class="small" id="syncGuessHint" style="margin-top:6px"></div></div>';
+}
 function renderSync() {
-  $('view').innerHTML = '<h2 class="sec">云同步</h2>' + syncCardHtml() + syncHelpHtml();
+  $('view').innerHTML = '<h2 class="sec">云同步</h2>' + syncQuickCfgHtml() + syncCardHtml() + syncHelpHtml();
   syncPaintStatus();
   syncBind();
 }
@@ -892,6 +982,50 @@ function syncBind() {
   }, 'change');
   document.querySelectorAll('.syncScope').forEach(el => el.addEventListener('change', syncReadForm));
   on('syncTokShow', () => { const el = $('syncToken'); if (el) el.type = el.type === 'password' ? 'text' : 'password'; });
+  const guessAndFill = (quiet) => {
+    const box = $('syncPasteBox');
+    const o = syncGuess(box ? box.value : '');
+    if (!o) { toast('没认出来：贴「一键配置」链接、或 owner/repo + token 再试', 5000); return null; }
+    syncApplyGuess(o);
+    if (!quiet) toast('已填好：' + (SYC.owner || '?') + '/' + (SYC.repo || '?') + (SYC.token ? '　（token 也认到了）' : '　（还差 token，补一下）'), 4500);
+    const hint = $('syncGuessHint');
+    if (hint) hint.innerHTML = '已填入 <b>' + esc(syncSlug()) + '</b>' + (SYC.token ? '，token 已识别' : '，<b>token 还没认到</b>');
+    return o;
+  };
+  on('syncGuessGo', () => { guessAndFill(false); });
+  on('syncGuessTest', () => {
+    const o = guessAndFill(true);
+    if (!o) return;
+    syncReadForm();
+    toast('测试连接中…');
+    setTimeout(() => syncTest(), 200);
+  });
+  on('syncClip', async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('这个浏览器不给读剪贴板');
+      const t = await navigator.clipboard.readText();
+      if (!t) { toast('剪贴板是空的'); return; }
+      const box = $('syncPasteBox'); if (box) box.value = t;
+      const o = syncGuess(t);
+      if (!o) { toast('剪贴板里的内容不像是配置，已放在框里，你可以改一下', 4500); return; }
+      syncApplyGuess(o);
+      toast('已从剪贴板填好：' + (SYC.owner || '?') + '/' + (SYC.repo || '?'), 4500);
+    } catch (e) {
+      toast('读不了剪贴板（' + (e.message || '浏览器限制') + '）：长按上面的框，手动粘贴进来', 6000);
+    }
+  });
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(t => {
+        if (!t) return;
+        const o = syncGuess(t);
+        const box = $('syncPasteBox'), hint = $('syncGuessHint');
+        if (!o || !box) return;
+        if (!String(box.value || '').trim()) box.value = t;
+        if (hint) hint.innerHTML = '剪贴板里有一份配置：<b>' + esc((o.owner || '?') + '/' + (o.repo || '?')) + '</b>，点「识别并填入」就行';
+      }).catch(() => {});
+    }
+  } catch (e) {}
   on('syncTest', () => { syncReadForm(); syncTest(); });
   on('syncNow', () => { syncReadForm(); syncNow(false); });
   on('syncPull', () => { syncReadForm(); syncPullOnly(); });
