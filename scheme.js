@@ -669,6 +669,22 @@
     return added;
   }
   /* 新建「按小标签分」方案 */
+  /* 一键恢复默认状态：删掉所有非默认方案，按现有考点标签重建一套「考点分类」并设为默认。
+     题库、题目、作答记录、错题本都不动（那些不在 scheme 里）。 */
+  function resetToTags(name) {
+    ensure();
+    var keepDef = DB.data[DEF] || { cats: [] };
+    DB.list = [{ id: DEF, name: '默认方案' }];
+    DB.data = {}; DB.data[DEF] = keepDef;
+    MAP = {}; MAP[DEF] = MAP[DEF] || {};
+    CUR = DEF; prefSet('');
+    LOADED = true;
+    save();
+    var id = makeTagScheme(name || '考点分类', false);
+    if (id) { prefSet(id); CUR = id; save(); apply(); }
+    try { if (typeof window.dropTagBankCache === 'function') window.dropTagBankCache(); } catch (e) {}
+    return id;
+  }
   function makeTagScheme(name, big) {
     ensure();
     var nm = trim(name) || ('知识点分类 ' + (DB.list.length + 1));
@@ -717,7 +733,7 @@
       syncTagTree(id); apply();
       return true;
     },
-    makeTagScheme: makeTagScheme, syncTagTree: syncTagTree, smallTags: smallTags,
+    makeTagScheme: makeTagScheme, resetToTags: resetToTags, syncTagTree: syncTagTree, smallTags: smallTags,
     tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId
   };
 

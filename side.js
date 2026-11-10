@@ -657,6 +657,7 @@
     qsModal({
       title: '方案：' + E(SCM.curName()),
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
+        + '<button type="button" class="qs-tg" data-t="reset">⟲ 一键恢复默认状态（按考点重建）</button>'
         + '<button type="button" class="qs-tg" data-t="tagnew">＋ 按小标签自动分（读现有考点标签）</button>'
         + (isTag ? '<button type="button" class="qs-tg" data-t="big">' + (curBig ? '☑ 再按大标签分一层（生理/生化/内外科…）' : '☐ 再按大标签分一层（生理/生化/内外科…）') + '</button>' : '')
         + (SCM.defaultId && SCM.defaultId() === SCM.current()
@@ -678,6 +679,19 @@
           SCM.rename(SCM.current(), v); paintSchemes();
           try { toast('已改名', 1200, 'ok'); } catch (e) {}
         });
+      } else if (r.act === 'reset') {
+        var cf2 = (window.BFUI && BFUI.confirm) ? BFUI.confirm.bind(BFUI) : function (o) { return Promise.resolve(window.confirm(o.title)); };
+        cf2({ title: '恢复默认状态（按考点分）？', danger: true, okText: '恢复',
+          html: '会把<b>所有分类方案</b>删掉，然后按你题库里现有的考点标签，重建一套「考点分类」并设为默认。<br>题库、题目、作答记录、错题本、收藏都不受影响。' }).then(function (ok2) {
+            if (!ok2) return;
+            var nid = '';
+            try { nid = SCM.resetToTags ? SCM.resetToTags('考点分类') : ''; } catch (e) {}
+            schemeReload();
+            try {
+              var tags = (SCM.smallTags ? SCM.smallTags() : []).length;
+              toast(nid ? ('已恢复：新建「考点分类」' + tags + ' 个小标签文件夹，并设为默认') : '没恢复成功：题库里可能还没有考点标签', 3200, nid ? 'ok' : '');
+            } catch (e) {}
+          });
       } else if (r.act === 'tagnew') {
         askText({ title: '按小标签建方案', label: '方案名称（按题目现在的小考点标签自动建文件夹；没有小标签的题不分类）', value: '考点分类 ' + ((SCM.list() || []).length),
           test: function (x) { return x && String(x).trim() ? '' : '名字不能为空'; } }).then(function (v) {
