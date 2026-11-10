@@ -38,12 +38,30 @@ function mdColorize(s) {
     mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m);
   return s;
 }
+/* 表格单元格里漏出来的颜色记号：表格先按 | 切列，`|Cgreen|正确|/C|` 这种会被切碎，
+   所以最后在生成的 HTML 上再兜一次（<code>/<pre> 里不动）。 */
+function mdColorFixHtml(html) {
+  var parts = String(html).split(/(<code[\s\S]*?<\/code>|<pre[\s\S]*?<\/pre>)/);
+  for (var i = 0; i < parts.length; i++) {
+    if (/^<(code|pre)/i.test(parts[i])) continue;
+    parts[i] = parts[i]
+      .replace(/\|\s*C([#A-Za-z0-9]{2,24})\s*\|([\s\S]*?)\|\s*\/C\s*\|/gi, function (m, c, inner) {
+        c = mdCleanColor(c);
+        return mdValidColor(c) ? '<span style="color:' + c + '">' + inner + '</span>' : m;
+      })
+      .replace(/\[\s*C([#A-Za-z0-9]{2,24})\s*\]([\s\S]*?)\[\s*\/C\s*\]/gi, function (m, c, inner) {
+        c = mdCleanColor(c);
+        return mdValidColor(c) ? '<span style="color:' + c + '">' + inner + '</span>' : m;
+      });
+  }
+  return parts.join('');
+}
 function mdColorEnd(html) {
-  return String(html)
+  return mdColorFixHtml(String(html)
     .replace(/\u0001C([^\u0001]+)\u0001/g, '<span style="color:$1">')
     .replace(/\u0001\/C\u0001/g, '</span>')
     .replace(/\u0001H\u0001/g, '<mark>')
-    .replace(/\u0001\/H\u0001/g, '</mark>');
+    .replace(/\u0001\/H\u0001/g, '</mark>'));
 }
 /* 反斜杠转义：让用户打的 * _ ` [ ] = < 这些符号不会被当成格式（方案十的就地编辑器要用）。
    先把 \x 换成占位符（渲染全程不参与匹配），最后一步再还原成字面量。 */
