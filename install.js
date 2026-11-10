@@ -12,7 +12,9 @@
   var BIP = null;
   var installed = false;
   try {
-    installed = !!document.documentElement.getAttribute('data-native')   /* APK 壳里不用再装 */
+    /* APK 壳：window.ANative 是原生注入的桥，页面一解析就有，比 data-native 早 */
+  var NATIVE = !!window.ANative || /ShuatiApp/.test(navigator.userAgent || '') || !!document.documentElement.getAttribute('data-native');
+  installed = NATIVE
     || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || window.navigator.standalone === true;
   } catch (e) {}
@@ -160,7 +162,10 @@
     return h === '' || h === 'home';
   }
 
-  function refresh() { chip(isHome()); }
+  function refresh() {
+    if (NATIVE) { var c = document.getElementById('installChip') || document.querySelector('.install-chip'); if (c) c.style.display = 'none'; return; }
+    chip(isHome());
+  }
 
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();

@@ -3894,3 +3894,42 @@ html[data-style][data-style] .exp.rich-edit{border-radius:18px!important}
   background:color-mix(in srgb,var(--primary-soft) 80%,transparent);border:1px solid var(--line);
   font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
 #voicePanel .vs-testout.on{display:block}
+
+
+/* ===== web677：APK 原生壳里的细节（data-native 由 native-voice.js 打上） ===== */
+html[data-native] .install-chip,
+html[data-native] #installChip,
+html[data-native] #installMask,
+html[data-native] #installSheet { display: none !important; }
+
+html[data-native] body {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+html[data-native] .top,
+html[data-native] .bnav,
+html[data-native] .nav,
+html[data-native] .qmode,
+html[data-native] .qs-head,
+html[data-native] .btn,
+html[data-native] .chip {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html[data-native] .stem,
+html[data-native] .opt,
+html[data-native] .exp,
+html[data-native] .rich-edit,
+html[data-native] textarea,
+html[data-native] input { -webkit-user-select: text; user-select: text; }
+
+/* 安卓底栏手势条：给导航条留呼吸，不然按钮贴着边缘 */
+html[data-native] body:not(.quiz):not(.focus) .bnav {
+  padding-bottom: max(6px, env(safe-area-inset-bottom)) !important;
+}
+html[data-native] body.quiz .bnav { bottom: calc(var(--quizbar-h, 72px) + max(2px, env(safe-area-inset-bottom)) + 2px) !important; }
+html[data-native] body:not(.quiz) { padding-bottom: calc(82px + env(safe-area-inset-bottom)) !important; }
+
+/* 启动/切页时别出现「选中蓝」闪一下 */
+html[data-native] ::selection { background: rgba(37,99,235,.22); }
