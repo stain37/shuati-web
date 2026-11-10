@@ -156,21 +156,37 @@
     const chunks = splitSent(text);
     speakChunks = chunks.slice();
     speaking = true; setPill('speaking');
-    let fin = false, at = 0;
+    let fin = false, at = 0, lastTick = Date.now(), wd = null, curLen = 0;
     const finish = () => {
-      if (fin) return; fin = true; speaking = false; speakChunks = []; setPill('idle'); done && done();
+      if (fin) return; fin = true; speaking = false; speakChunks = [];
+      if (wd) { clearInterval(wd); wd = null; }
+      setPill('idle'); done && done();
     };
+    const mark = () => { lastTick = Date.now(); };
     const next = () => {
       if (fin) return;
       if (at >= chunks.length) { finish(); return; }
       echoRemember(chunks[at]);
+      curLen = String(chunks[at]).length;
       const u = mkUtter(chunks[at++]);
-      u.onend = function () { setTimeout(next, 40); };
-      u.onerror = function () { setTimeout(next, 40); };
+      u.onstart = mark; u.onboundary = mark;
+      u.onend = function () { mark(); setTimeout(next, 40); };
+      u.onerror = function () { mark(); setTimeout(next, 40); };
       try { s.speak(u); } catch (e) { next(); }
     };
-    /* 兜底：有些环境（无声卡 / 无头浏览器）永远不触发 onend，按字数估上限 */
-    setTimeout(finish, Math.min(45000, 1500 + String(text).length * 110 / Math.max(.6, +cfg().rate || 1)));
+    /* 兜底看门狗：只有「长时间一点动静都没有」才算卡死。
+       以前用「总字数 × 110ms」一次性估死，中文实际要 200–260ms/字，
+       于是朗读还没念完兜底就先 finish 了 —— 背题连读会「读到一半跳题」，普通朗读也会被截断。
+       现在：① 每个字句的 onstart / onboundary 都会刷新 lastTick；② 只要浏览器还报 speaking / pending 就不动手；
+       ③ 单句预算按 300ms/字 估，兜底只是防死锁，不再当计时器用。 */
+    wd = setInterval(function () {
+      if (fin) { clearInterval(wd); wd = null; return; }
+      let busy = false;
+      try { busy = !!(s.speaking || s.pending); } catch (e) {}
+      if (busy) { lastTick = Date.now(); return; }
+      const budget = Math.min(40000, 3500 + (curLen || 0) * 320 / Math.max(.5, +cfg().rate || 1));
+      if (Date.now() - lastTick > budget) finish();
+    }, 700);
     next();
   }
 
@@ -347,6 +363,7 @@
   let panelSig = '', panelT = 0;
   function scanPanel() {
     if (!isOn() || !document.body.classList.contains('quiz')) { panelSig = ''; return; }
+    if (isRecite()) return;            /* 背题连读时只念题，别拿弹窗内容插话/打断 */
     const root = topPanel();
     const sig = root ? (root.id || String(root.className) || 'panel') + '|' + (root.innerText || '').length : '';
     if (sig === panelSig) return;
@@ -604,14 +621,19 @@
        万一设备没声（没装中文语音 / 静音），也不会一秒钟跳好几道题 */
     const minMs = Math.max(1400, Math.min(20000, (reciteLen || 0) * 95 / Math.max(.6, +c.rate || 1)));
     const waitMs = Math.max(0, minMs - elapsed) + Math.max(0, (+c.reciteGap || 0) * 1000);
-    reciteT = setTimeout(function () {
+    const tick = function () {
       reciteT = null;
-      if (!isOn() || !isRecite() || !inQuiz() || speaking) return;
-      if (document.hidden) return;                       /* 页面切到后台就别自己翻了 */
+      if (!isOn() || !isRecite() || !inQuiz()) return;
+      /* 只要系统还在出声（不管是我们以为的 speaking 还是 speechSynthesis 自己报的），就再等一会 —— 绝不半路翻页 */
+      let busy = speaking;
+      try { const sy = synth(); if (sy) busy = busy || !!(sy.speaking || sy.pending); } catch (e) {}
+      if (busy) { reciteT = setTimeout(tick, 500); return; }
+      if (document.hidden) return;                        /* 页面切到后台就别自己翻了 */
       const b = document.getElementById('next');
       if (!b || b.disabled) return;
       b.click();
-    }, waitMs);
+    };
+    reciteT = setTimeout(tick, waitMs);
   }
   /* 进入背题连读：关麦克风 → 念题干 + 答案 → 完了自动下一题 */
   function recitePlay() {
