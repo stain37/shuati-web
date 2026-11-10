@@ -42,7 +42,10 @@
   }
   function currentCss() {
     var el = document.getElementById(CSS_ID);
-    return el ? (el.textContent || '') : '';
+    var a = el ? (el.textContent || '') : '';
+    var dz = document.getElementById('dzCss');
+    var b = dz ? (dz.textContent || '') : '';
+    return [a, b].filter(Boolean).join('\n\n');
   }
   function swatchOf(look) {
     try {
