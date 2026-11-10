@@ -8202,3 +8202,66 @@ html[data-style="glass"] body.dark{
     radial-gradient(760px 720px at -6% 78%,#3d2a12 0%,rgba(61,42,18,0) 56%),
     linear-gradient(165deg,#080c17,#05070f 55%,#060d10)!important;
 }
+
+/* ===== glass v11 · 再透一档（玻璃更薄，背后色晕更明显） ===== */
+html[data-style="glass"]{
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 60%,rgba(255,255,255,.08));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.06));
+  --lg-line:rgba(255,255,255,.62);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 0 0 1px rgba(255,255,255,.26),0 26px 54px -32px rgba(18,34,72,.36);
+  --card:rgba(255,255,255,.08);--card2:rgba(255,255,255,.05);--card3:rgba(255,255,255,.14);
+}
+html[data-style="glass"] body.dark{
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 60%,rgba(255,255,255,.05));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03));
+  --lg-line:rgba(255,255,255,.16);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.06),0 28px 60px -34px rgba(0,0,0,.85);
+  --card:rgba(255,255,255,.04);--card2:rgba(255,255,255,.02);--card3:rgba(255,255,255,.06);
+}
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .card,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .hero,
+html[data-style="glass"] .nb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .vb-card{
+  background-image:
+    var(--lg-noise),
+    linear-gradient(115deg,rgba(255,255,255,.20) 0%,rgba(255,255,255,.03) 38%,rgba(255,255,255,.01) 64%,rgba(255,255,255,.09) 100%),
+    var(--lg-fill)!important;
+  border:1px solid var(--lg-line)!important;
+}
+html[data-style="glass"] body.dark .qcard,
+html[data-style="glass"] body.dark .card,
+html[data-style="glass"] body.dark .sheet,
+html[data-style="glass"] body.dark .hero,
+html[data-style="glass"] body.dark .nb-card,
+html[data-style="glass"] body.dark .sk-card,
+html[data-style="glass"] body.dark .hcard,
+html[data-style="glass"] body.dark .vb-card{
+  background-image:
+    var(--lg-noise),
+    linear-gradient(115deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,.015) 40%,rgba(255,255,255,0) 66%,rgba(255,255,255,.05) 100%),
+    var(--lg-fill)!important;
+}
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip,
+html[data-style="glass"] .opt,
+html[data-style="glass"] .nav .btn,
+html[data-style="glass"] .nav .qbtn,
+html[data-style="glass"] .bnav .btn,
+html[data-style="glass"] .hstat>button.hs{
+  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.06) 52%,rgba(255,255,255,.10))!important;
+  border:1px solid rgba(255,255,255,.66)!important;
+}
+html[data-style="glass"] body.dark .btn,
+html[data-style="glass"] body.dark .chip,
+html[data-style="glass"] body.dark .opt,
+html[data-style="glass"] body.dark .nav .btn,
+html[data-style="glass"] body.dark .nav .qbtn,
+html[data-style="glass"] body.dark .bnav .btn,
+html[data-style="glass"] body.dark .hstat>button.hs{
+  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03) 54%,rgba(255,255,255,.06))!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+}
