@@ -21,6 +21,16 @@ function mdValidColor(c) {
   return /^#[0-9a-f]{3,8}$/i.test(c) || /^[a-zA-Z]{2,20}$/.test(c);
 }
 function mdColorize(s) {
+  /* 兼容别的软件 / 旧数据漏出来的颜色记号，免得把记号原样显示出来：
+     |Cgreen|正确|/C|  、 [Cgreen]正确[/C]  、 以及被啃坏的哨兵 \u0001Cgreen\u0001…\u0001/C\u0001
+     （C 后面紧跟颜色名，不认「| C |」这种表格单元格写法） */
+  s = String(s)
+    .replace(/\u0001C([^\u0001]{1,24})\u0001([\s\S]*?)\u0001\/C\u0001/g,
+      (m, c, inner) => MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE)
+    .replace(/\|\s*C([#A-Za-z0-9]{2,24})\s*\|([\s\S]*?)\|\s*\/C\s*\|/gi,
+      (m, c, inner) => mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m)
+    .replace(/\[\s*C([#A-Za-z0-9]{2,24})\s*\]([\s\S]*?)\[\s*\/C\s*\]/gi,
+      (m, c, inner) => mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m);
   s = s.replace(/==([^=\n](?:[^\n]*?[^=\n])?)==/g, (m, t) => MD_H_OPEN + t + MD_H_CLOSE);
   s = s.replace(/<font\s+color\s*=\s*["'\u201c\u201d\u2018\u2019\u300c\u300d]?\s*([^\s"'>\u201d\u300d]+)\s*["'\u201c\u201d\u2018\u2019\u300c\u300d]?\s*>\s*([\s\S]*?)\s*<\/font\s*>/gi, (m, c, inner) =>
     mdValidColor(mdCleanColor(c)) ? (MD_C_OPEN + mdCleanColor(c) + MD_C_END + inner + MD_C_CLOSE) : m);
