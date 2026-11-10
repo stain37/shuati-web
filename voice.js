@@ -11,7 +11,7 @@
   const DEF = {
     on: false,
     /* 朗读 */
-    rate: 0.95, vol: 1, voiceURI: '', readNo: true, readStem: true, readOpts: true,
+    rate: 0.95, vol: 1, voiceURI: '', engine: '', readNo: true, readStem: true, readOpts: true,
     readTags: false, readExp: true, readRes: false, optStyle: 'both',
     askExp: true, sayVerdict: true,
     aiIntent: true,
@@ -103,6 +103,20 @@
     } catch (e) {}
   }
   function isOn() { return !!cfg().on; }
+  /* APK 壳里 window.ANative 是原生桥：语音面板要少讲「换浏览器 / 点锁图标」那套 */
+  function isNative() { return !!(window.ANative && window.ANative.platform); }
+  let asrDead = false;
+  function nativeNoAsr() {
+    if (asrDead) return;
+    asrDead = true;
+    flash('这台手机没有可用的「语音识别服务」：朗读、背题连读照常，选答案请点选项；装好识别服务后重开语音即可', 9000);
+    setPill('idle');
+  }
+  function natCall(name, arg) {
+    try { const f = window.ANative && window.ANative[name]; if (f) return f.call(window.ANative, arg); } catch (e) {}
+    return null;
+  }
+  function natJson(name) { try { const s = natCall(name); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 
   /* ---------- 朗读 ---------- */
   function synth() { return window.speechSynthesis || null; }
@@ -743,12 +757,22 @@
       asr: !!SRc,
       voices: 0,
       voicesReady: false,
+      native: false,
+      micNative: null,
+      asrNative: null,
       perm: 'unknown',
       ua: navigator.userAgent || ''
     };
     try { out.voices = (s ? s.getVoices() : []).length; } catch (e) {}
     if (!out.voices) { try { warmVoices(); } catch (e) {} }
     out.voicesReady = !!voicesReady;
+    try {
+      if (isNative()) {
+        out.native = true;
+        out.micNative = natCall('hasMic');
+        out.asrNative = natCall('asrAvailable');
+      }
+    } catch (e) {}
     return out;
   }
   function uaKind() {
@@ -762,6 +786,9 @@
     return 'other';
   }
   function guideText() {
+    if (isNative()) {
+      return 'App 没拿到麦克风：手机「设置 → 应用和服务 → 应用管理 → 刷题站 → 权限 → 麦克风」选「允许」，回到 App 再开一次语音。';
+    }
     const k = uaKind();
     if (k === 'wechat') return '微信内置浏览器不能录音：点右上角「…」→「在浏览器打开」，再用 Chrome 或系统浏览器。';
     if (k === 'huawei') return '华为浏览器经常根本不给网页录音权限（有的版本没有语音识别接口）：① 手机「设置 → 应用 → 浏览器 → 权限 → 麦克风」允许；② 浏览器「设置 → 网站设置 → 麦克风」允许本站；③ 还不行就换 Chrome / Edge（华为的语音服务不含网页识别，换浏览器通常就好）。';
@@ -778,11 +805,30 @@
     if (!d.asr) bits.push('没有语音识别接口');
     if (d.asr && d.perm === 'denied') bits.push('麦克风被拒绝');
     if (d.tts && !d.voices) bits.push('能朗读但系统还没有音色（0 个）');
+    if (d.native) {
+      if (d.micNative === false) bits.push('App 没有麦克风权限');
+      if (d.asrNative === false) bits.push('这台手机没有语音识别服务（只能朗读）');
+      if (!bits.length) bits.push('App 内语音正常（朗读 + 识别）');
+      return bits.join(' · ');
+    }
     if (!bits.length) bits.push(d.perm === 'granted' ? '看起来都正常' : '可以试听一下');
     return bits.join(' · ');
   }
   async function testMic() {
     const d = diag();
+    if (d.native) {
+      const r = ['🔊 朗读引擎：' + (d.tts ? '有' : '没有')];
+      try {
+        const e = natJson('ttsEngineJson') || {};
+        const cur = (e.engines || []).find(function (x) { return x.pkg === e.current; });
+        r.push('🎛 当前引擎：' + (cur ? cur.label : (e.current || '系统默认')));
+        r.push('🎵 可选引擎：' + ((e.engines || []).length) + ' 个');
+      } catch (x) {}
+      r.push('🔐 App 麦克风权限：' + (d.micNative === true ? '已允许' : d.micNative === false ? '没允许（设置 → 应用 → 刷题站 → 权限）' : '未知'));
+      r.push('🎙 语音识别服务：' + (d.asrNative === true ? '可用' : '不可用（这台手机没装识别服务，只能朗读）'));
+      r.push('🌐 环境：App 内置壳');
+      return r;
+    }
     const res = ['🔊 朗读：' + (d.tts ? '可以（' + d.voices + ' 个音色）' : '这个浏览器不支持')];
     res.push('🎙 语音识别接口：' + (d.asr ? '有' : '没有'));
     try {
@@ -897,7 +943,14 @@
       rec.onerror = ev => {
         recOn = false;
         if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-          flash('麦克风没开：' + guideText(), 7000);
+          if (isNative() && ev.error === 'not-allowed') {
+            flash('App 没拿到麦克风权限：设置 → 应用 → 刷题站 → 权限 → 麦克风 → 允许', 9000);
+          } else if (isNative()) {
+            flash('这台手机没有可用的「语音识别服务」（鸿蒙/华为常见）：朗读、背题连读照常，选项请点按；要语音选答案得装识别服务或换机型', 9000);
+          } else {
+            flash('麦克风没开：' + guideText(), 7000);
+          }
+          if (isNative()) asrDead = true;
           cfg().on = false; save(); paintChip(); setPill('idle');
         }
       };
@@ -908,6 +961,7 @@
         if (isOn() && inQuiz() && !speaking) setTimeout(() => { if (isOn() && inQuiz() && !recOn) startListen(); }, 260);
       };
     }
+    if (isNative() && natCall('asrAvailable') === false) { nativeNoAsr(); return; }
     rec.lang = cfg().lang || 'zh-CN';
     try { rec.start(); recOn = true; setPill('listening'); } catch (e) { recOn = false; }
   }
@@ -1640,6 +1694,28 @@
     } catch (e) { flash('导出失败：' + (e && e.message)); }
   }
 
+  /* ---------- 原生壳：系统朗读引擎 / 音色（鸿蒙自带语音包就在这里） ---------- */
+  function nativeRowsHtml() {
+    if (!isNative()) return '';
+    const e = natJson('ttsEngineJson') || {};
+    const cur = cfg().engine || e.current || '';
+    const engines = e.engines || [];
+    let sel = '<select data-vengine="1">' + engines.map(function (x) {
+      return '<option value="' + x.pkg + '"' + (x.pkg === cur ? ' selected' : '') + '>' + x.label + '</option>';
+    }).join('') + '</select>';
+    if (!engines.length) sel = '<span class="vs-dim">没查到系统朗读引擎</span>';
+    const voices = natJson('ttsVoiceJson') || [];
+    const vsel = voices.length
+      ? '<select data-vvoice="1"><option value="">默认音色</option>' + voices.map(function (v) {
+        return '<option value="' + v.name + '"' + ((cfg().voiceName === v.name) ? ' selected' : '') + '>' + (v.lang || '') + ' · ' + v.name + '</option>';
+      }).join('') + '</select>'
+      : '<span class="vs-dim">这个引擎没有列出可选音色（用系统默认）</span>';
+    return row('App 朗读引擎', sel, '鸿蒙自带的「小艺」、或你装的 MultiTTS / 讯飞等都会列在这里，换完等一下会重新加载') +
+      row('引擎音色', vsel, '同一个引擎里还能再挑音色；没有可选项就沿用系统默认') +
+      row('系统的语音设置', '<button class="btn tiny" data-vttsset="1">打开系统语音设置</button>', '装语音包、改默认引擎、试听都在系统那一页') +
+      row('识别服务', (function () { const ok = natCall('asrAvailable'); return ok ? '可用' : '<b style="color:var(--err,#e5484d)">不可用</b>'; })(), '不可用时语音命令无法使用；朗读、背题连读不受影响');
+  }
+
   function openPanel() {
     closePanel();
     const c = cfg();
@@ -1669,7 +1745,7 @@
     '<div class="vs-sec">朗读</div>' +
       row('语速', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="rate" value="' + c.rate + '"><b class="vs-val" data-vv="rate">' + c.rate + '×</b>') +
       row('音量', '<input type="range" min="0" max="1" step="0.05" data-vk="vol" value="' + c.vol + '"><b class="vs-val" data-vv="vol">' + Math.round(c.vol * 100) + '%</b>') +
-      row('音色', '<select data-vk="voiceURI">' + voiceOpts + '</select>', '系统的中文语音；没有列出来就先点一下页面再打开面板') +
+      (isNative() ? nativeRowsHtml() : row('音色', '<select data-vk="voiceURI">' + voiceOpts + '</select>', '系统的中文语音；没有列出来就先点一下页面再打开面板')) +
       row('音调', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="pitch" value="' + (c.pitch == null ? 1 : c.pitch) + '"><b class="vs-val" data-vv="pitch">' + (+(c.pitch == null ? 1 : c.pitch)).toFixed(2) + '</b>') +
       row('读弹窗内容', chk('readPanel'), '脑图 / 相似题 / 批注这些面板打开时，读它的标题和按钮；里面的按钮也能用说的点，说「关闭」就关掉') +
       row('念提示词', chk('readHints'), '念完选项后要不要说「请选择 / 可以多选，选完说确认」；关掉更安静') +
@@ -1755,6 +1831,11 @@
         }).catch(function (e) { if (out) out.textContent = '测试失败：' + (e && e.message || e); });
         return;
       }
+      if (ev.target.closest('[data-vttsset]')) {
+        if (isNative()) natCall('openTtsSettings');
+        else flash('网页版没法打开系统设置：手机「设置 → 无障碍 → 文字转语音」里改', 5000);
+        return;
+      }
       if (ev.target.closest('[data-vplay]')) {
         warmVoices();
         speak('这是现在的音色，第三题，下列关于真核生物转录起始的叙述，错误的是。A，转录因子。B，TATA 盒。');
@@ -1790,6 +1871,22 @@
     wrap.addEventListener('change', ev => {
       const tk = ev.target.closest('select[data-tk]');
       if (tk) { teachPhrase(tk.getAttribute('data-tk'), tk.value); return; }
+      const en = ev.target.closest('select[data-vengine]');
+      if (en) {
+        cfg().engine = en.value; save();
+        natCall('setEngine', en.value);
+        flash('正在切换朗读引擎…', 1500);
+        setTimeout(function () { if (isOn()) speak('引擎已经换好了，这是现在的朗读声音。'); }, 1500);
+        setTimeout(function () { closePanel(); openPanel(); }, 2200);
+        return;
+      }
+      const vc = ev.target.closest('select[data-vvoice]');
+      if (vc) {
+        cfg().voiceName = vc.value; save();
+        natCall('setVoice', vc.value);
+        flash(vc.value ? '已换音色：' + vc.value : '已用默认音色', 2200);
+        return;
+      }
       const im = ev.target.closest('[data-vpack="import"]');
       if (!im || !im.files || !im.files[0]) return;
       importPack(im.files[0]);
@@ -1827,6 +1924,7 @@
     const data = {
       app: 'shuati-voice-pack', v: 1, name: name,
       voiceURI: c.voiceURI || '', voiceName: c.voiceName || '', lang: c.lang,
+      engine: c.engine || '',
       rate: c.rate, pitch: c.pitch == null ? 1 : c.pitch, vol: c.vol
     };
     try {
@@ -1842,9 +1940,11 @@
   function applyPack(o) {
     if (!o || (o.app && o.app !== 'shuati-voice-pack')) { flash('这不是语音包文件'); return; }
     const c = cfg();
-    ['voiceURI', 'voiceName', 'lang', 'rate', 'pitch', 'vol'].forEach(k => {
+    ['voiceURI', 'voiceName', 'lang', 'engine', 'rate', 'pitch', 'vol'].forEach(k => {
       if (o[k] !== undefined && o[k] !== '') c[k] = o[k];
     });
+    /* 原生壳：语音包里记着引擎就直接切过去 */
+    if (isNative() && o.engine) { natCall('setEngine', o.engine); setTimeout(function () { natCall('setVoice', c.voiceName || ''); }, 900); }
     save(); paintChip(); closePanel(); openPanel();
     flash('已套用语音包：' + (o.name || o.voiceName || '未命名'));
   }
