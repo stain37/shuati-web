@@ -817,9 +817,9 @@
     const cnt = voiceCount();
     res.push('🔈 试读：' + (ttsTry === 'start' ? '引擎出声了（正常）'
       : ttsTry === 'timeout' ? '没有回应（系统 TTS 没装 / 被系统省电拦了）'
-      : ttsTry === 'no' ? '这个浏览器没有 speechSynthesis'
+      : ttsTry === 'no' ? '这个浏览器没有 speechSynthesis（换 Chrome / Edge）'
       : ('失败 ' + ttsTry)));
-    res.push('🎵 音色：' + cnt + ' 个' + (cnt ? '' : '（安卓常见：先去 设置 → 无障碍 → 文字转语音 装中文语音包 / 选一个语音引擎，再回来点「重新加载音色」）'));
+    res.push('🎵 音色：' + cnt + ' 个' + (cnt ? '' : '（安卓/鸿蒙常见：系统没装 TTS 引擎。装一个就行：MultiTTS、TTS Server、eSpeak NG，或华为应用市场搜「语音合成引擎」；装完去 设置 → 无障碍 → 文字转语音 选它，再回来点「重新加载音色」）'));
     res.push('🌐 环境：' + location.protocol + ' / ' + (d.secure ? '安全上下文' : '非安全上下文'));
     return res;
   }
