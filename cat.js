@@ -1990,7 +1990,12 @@
       var j = Math.floor(Math.random() * (i + 1));
       var t = keys[i]; keys[i] = keys[j]; keys[j] = t;
     }
-    if (typeof makePaper === 'function') makePaper(b.title + ' · 模拟考试', keys, { exam: true, duration: keys.length * 60 });
+    /* 自己填时长：默认按「1 题 1 分钟」，填 0 就是不限时 */
+    var def = keys.length;
+    var v = window.prompt('这场模拟考试限时多少分钟？（默认 ' + def + ' 分钟，填 0 = 不限时）', String(def));
+    if (v == null) return;
+    var mins = Math.max(0, Math.min(600, Math.round(+v || 0)));
+    if (typeof makePaper === 'function') makePaper(b.title + ' · 模拟考试', keys, { exam: true, duration: mins * 60 });
   }
 
   function openDir(id, from) {

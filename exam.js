@@ -68,7 +68,11 @@ function stopExamTimer() { clearInterval(exTimer); }
 function startTimer() {
   clearInterval(exTimer);
   exTimer = setInterval(() => {
-    if (!EX || EX.submitted || !((EX.duration || 0) > 0)) { clearInterval(exTimer); return; }  // 不限时不跑计时器
+    if (!EX || EX.submitted) { clearInterval(exTimer); return; }
+    /* 「已用」不管限不限时都在走 */
+    const u = $('exUsed');
+    if (u) u.textContent = '已用 ' + fmtClock(Date.now() - (EX.startedAt || Date.now()));
+    if (!((EX.duration || 0) > 0)) return;                    // 不限时：不跑倒计时，也不自动交卷
     const left = EX.endAt - Date.now();
     const el = $('exClock');
     if (el) {
@@ -77,6 +81,21 @@ function startTimer() {
     }
     if (left <= 0) { clearInterval(exTimer); submitExam(true); }
   }, 500);
+}
+
+/* 自己填这场考试的时长：0 = 不限时；改完倒计时从「现在 + 新时长」重算，已用时间保留 */
+function setExamTime() {
+  if (!EX || EX.submitted) return;
+  const cur = Math.round((EX.duration || 0) / 60);
+  const v = window.prompt('这场考试限时多少分钟？（填 0 就是不限时；已经用掉的时间不会清零）', String(cur));
+  if (v == null) return;
+  const mins = Math.max(0, Math.min(600, Math.round(+v || 0)));
+  EX.duration = mins * 60;
+  EX.endAt = mins ? Date.now() + mins * 60000 : 0;
+  saveEX(); startTimer();
+  toast(mins ? ('已设限时 ' + mins + ' 分钟') : '已改为不限时（只记已用时间）');
+  const bank = bankById(EX.id);
+  if (bank) paintExamQuestion(bank);
 }
 
 function examStep(d) {
@@ -109,6 +128,8 @@ function paintExamQuestion(bank) {
       <div class="exbar">
         ${timed ? `<span class="exclock" id="exClock">${fmtClock(EX.endAt - Date.now())}</span>`
                 : `<span class="exclock flat">不限时</span>`}
+        <span class="small muted exused" id="exUsed">已用 ${fmtClock(Date.now() - (EX.startedAt || Date.now()))}</span>
+        <button class="btn tiny" id="exSetTime" title="自己填这场考试限时几分钟（0 = 不限时）">⏱ 设时长</button>
         <span class="small muted">已答 ${answeredN} / ${qs.length}</span>
         <span class="spacer-grow"></span>
         <button class="btn${marked ? ' fav-btn on' : ''}" id="exMark">${marked ? '★ 已标记' : '☆ 标记'}</button>
@@ -143,6 +164,7 @@ function paintExamQuestion(bank) {
     saveEX();
     paintExamQuestion(bank);
   });
+  on('exSetTime', () => setExamTime());
   on('exMark', () => { EX.marks.has(q.id) ? EX.marks.delete(q.id) : EX.marks.add(q.id); saveEX(); paintExamQuestion(bank); });
   on('exSubmit', () => submitExam(false));
   on('exPrev', () => examStep(-1));

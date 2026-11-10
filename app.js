@@ -543,7 +543,7 @@ let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textC
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220' };
+const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220', qtime: true };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -2566,6 +2566,47 @@ function openAnsEditor(host, k, q, done) {
 
 /* ---------- 运行时状态 ---------- */
 const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false, rw: null };
+
+/* ---------- 本套题的用时计时（答题页顶部，可隐藏） ---------- */
+const QTM = { bank: '', t0: 0, timer: 0 };
+function qtimeKey(id) { return 'qbank.t.' + id; }
+function qtimeRead(id) { try { return +localStorage.getItem(qtimeKey(id)) || 0; } catch (e) { return 0; } }
+function qtimeWrite(id, ms) { try { if (ms) localStorage.setItem(qtimeKey(id), String(ms)); else localStorage.removeItem(qtimeKey(id)); } catch (e) {} }
+function fmtQTime(ms) {
+  if (!(ms > 0)) ms = 0;
+  const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  const p = n => String(n).padStart(2, '0');
+  return (h ? h + ':' + p(m) : p(m)) + ':' + p(sec);
+}
+function qtimeStop() { if (QTM.timer) { clearInterval(QTM.timer); QTM.timer = 0; } }
+function qtimeTick() {
+  const el = document.getElementById('qElapsed');
+  if (!el) { qtimeStop(); return; }
+  const draw = () => {
+    const e2 = document.getElementById('qElapsed');
+    if (!e2 || !QTM.t0) { qtimeStop(); return; }
+    e2.textContent = '⏱ ' + fmtQTime(Date.now() - QTM.t0);
+  };
+  draw();
+  if (!QTM.timer) QTM.timer = setInterval(draw, 1000);
+}
+function qtimeStart(id) {
+  if (!id) return;
+  if (QTM.bank === id && QTM.t0) { qtimeTick(); return; }
+  QTM.bank = id;
+  let t0 = qtimeRead(id);
+  /* 距上次超过 6 小时就重新计时：睡一觉回来不该把整夜都算进去 */
+  if (!t0 || Date.now() - t0 > 6 * 3600 * 1000) { t0 = Date.now(); qtimeWrite(id, t0); }
+  QTM.t0 = t0;
+  qtimeTick();
+}
+function qtimeReset() {
+  if (!QTM.bank) return;
+  QTM.t0 = Date.now(); qtimeWrite(QTM.bank, QTM.t0); qtimeTick();
+  toast('本套题计时已归零');
+}
+window.QTIME = { start: qtimeStart, tick: qtimeTick, reset: qtimeReset, stop: qtimeStop,
+  state: function () { return { bank: QTM.bank, t0: QTM.t0, ms: QTM.t0 ? Date.now() - QTM.t0 : 0 }; } };
 /* 长按排除选项：时间戳去重（一次长按只触发一次）+ 抑制紧随其后的 click */
 let LP_LAST = 0, LP_SUPPRESS = 0;
 const SS = {
@@ -4505,6 +4546,7 @@ function renderQuiz(bankId) {
   if (!bank) { go('#/'); return; }
   if (bank.exam) { go('#/exam/' + bank.id); return; }   // 模考走专用页面
   QZ.bankId = bankId;
+  qtimeStart(bankId);
   $('appTitle').textContent = bank.title;
 
   /* 先收一下失效的六科筛选再算题池：标完最后一题「未选」/换筛法后，
@@ -4567,6 +4609,7 @@ function renderQuiz(bankId) {
           mk === 'speed' ? '速刷模式：答对约 1.2 秒自动跳下一题，答错停下看解析' :
           '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
+        <button class="chip qm qtime${SET.qtime ? ' on' : ''}" id="btnQTime" title="本套题的用时：点一下显示 / 隐藏（长按归零）">⏱ 计时</button>
         <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
           SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
         <button class="chip qm voice${SET.voice && SET.voice.on ? ' on' : ''}" id="btnVoice" title="语音刷题：自动读题 + 听你说 A / ABC（多选）；点一下开，再点关，长按调设置">${SET.voice && SET.voice.on ? '🎙 语音中' : '🎙 语音'}</button>
@@ -4575,6 +4618,7 @@ function renderQuiz(bankId) {
       </div>
       <div class="qhead">
         <span class="qno">第 ${qNo(q, pool)} 题</span>
+        ${SET.qtime ? `<span class="qelapsed" id="qElapsed" title="本套题已经花了多久（点「⏱ 计时」可隐藏）">⏱ --:--</span>` : ''}
         <span class="tag">${typeLabel(q, ansOf(fk, q))}</span>
         ${q.groupTitle ? `<span class="tag g">${esc(q.groupTitle)}</span>` : ''}
         ${bank.paper ? `<span class="tag paper-tag">临时套卷</span>` : ''}
@@ -4825,6 +4869,22 @@ function renderQuiz(bankId) {
   })();
   /* §3.6-P0① 专注模式：就地切，不整页重画（重画会打断正在生成的 AI 面板） */
   on('btnFocus', () => { uiSetFocus(!SET.focus); const b = document.getElementById('btnFocus'); if (b) b.classList.toggle('on', !!SET.focus); });
+  /* ⏱ 计时：点一下显示 / 隐藏（记进设置）；长按归零（这一个题库重新计时） */
+  (function () {
+    const b = document.getElementById('btnQTime');
+    if (!b) return;
+    let lp = 0, longPressed = false;
+    const fire = () => { longPressed = true; qtimeReset(); };
+    b.addEventListener('pointerdown', () => { longPressed = false; lp = setTimeout(fire, 650); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => clearTimeout(lp)));
+    b.onclick = () => {
+      if (longPressed) { longPressed = false; return; }
+      SET.qtime = !SET.qtime; writeLS(LS.set, SET); render();
+      toast(SET.qtime ? '已显示本套题用时' : '已隐藏计时（要显示点「⏱ 计时」）', 1800);
+    };
+    const elE = document.getElementById('qElapsed');
+    if (elE) elE.onclick = () => { SET.qtime = false; writeLS(LS.set, SET); render(); toast('已隐藏计时', 1600); };
+  })();
   /* 考点标签那一行：加 / 删 / 小浮层编辑器（就地重画，不整页重画） */
   if (typeof bindTagRow === 'function') { try { bindTagRow($('view'), bank, q); } catch (e) {} }
 

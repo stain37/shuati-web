@@ -4058,3 +4058,14 @@ body.dark .lec-pinstate.on{color:#34d399}
   .lec-bar{padding:0 12px 8px;gap:8px}
   .lec-sel{min-width:0;width:100%}
 }
+
+/* ---------- 本套题用时 + 考试计时（web707） ---------- */
+.qelapsed{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-variant-numeric:tabular-nums;
+  color:var(--sub,#64748b);background:color-mix(in srgb,var(--primary,#2563eb) 8%,transparent);
+  border:1px solid color-mix(in srgb,var(--primary,#2563eb) 22%,transparent);
+  padding:2px 9px;border-radius:999px;cursor:pointer;user-select:none;white-space:nowrap}
+.qelapsed:active{transform:translateY(1px)}
+body.dark .qelapsed{color:#c7d3ea;background:rgba(120,160,255,.16);border-color:rgba(140,180,255,.30)}
+.chip.qm.qtime.on{background:color-mix(in srgb,var(--primary,#2563eb) 16%,transparent);border-color:color-mix(in srgb,var(--primary,#2563eb) 45%,transparent)}
+.exused{font-variant-numeric:tabular-nums;white-space:nowrap}
+.exbar .btn.tiny{height:28px;padding:0 10px;border-radius:9px;font-size:12px}
