@@ -3972,3 +3972,23 @@ html[data-style][data-style] body.quiz{padding-bottom:calc(var(--quizbar-h, 72px
 /* 主题自带的粗边框别在底部画一道断掉的横线 */
 html[data-style][data-style] body:not(.quiz):not(.focus) .bnav,
 html[data-style][data-style] body.quiz .bnav{border-width:inherit!important}
+
+
+/* ===== web680：语音面板的「预设模式」卡片 + 详细设置折叠 ===== */
+#voicePanel .vs-preset{
+  display:block; width:100%; text-align:left; margin:8px 0; padding:12px 14px;
+  border-radius:16px; border:1.5px solid color-mix(in srgb, var(--primary) 34%, var(--line));
+  background:color-mix(in srgb, var(--primary) 9%, transparent);
+  color:var(--text); cursor:pointer; transition:transform .12s, border-color .12s;
+}
+#voicePanel .vs-preset:active{transform:scale(.985)}
+#voicePanel .vs-preset b{display:block; font-size:14.5px; margin-bottom:3px; color:var(--text)!important}
+#voicePanel .vs-preset span{display:block; font-size:12px; color:var(--sub)!important; line-height:1.5; opacity:.95}
+#voicePanel .vs-preset{background:color-mix(in srgb, var(--primary) 9%, transparent)!important}
+#voicePanel .vs-preset.on{
+  border-color:var(--primary);
+  background:color-mix(in srgb, var(--primary) 20%, transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+#voicePanel .vs-preset.on b{color:var(--primary)!important}
+#voicePanel .vs-adv{margin-top:4px; padding-top:2px; border-top:1px dashed var(--line)}

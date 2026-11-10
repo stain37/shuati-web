@@ -11,6 +11,7 @@
   const DEF = {
     on: false,
     /* 朗读 */
+    preset: 'study', adv: false,
     rate: 0.95, vol: 1, voiceURI: '', engine: '', readNo: true, readStem: true, readOpts: true,
     readTags: false, readExp: true, readRes: false, optStyle: 'both',
     askExp: true, sayVerdict: true,
@@ -103,7 +104,64 @@
     } catch (e) {}
   }
   function isOn() { return !!cfg().on; }
+  /* 自愈：识别偶尔会自己停掉（系统回收、切后台、错误），
+     只要还开着、还在答题页、也没在朗读，就悄悄把它拉回来 */
+  let reviveTries = 0, lastReviveWarn = 0;
+  setInterval(function () {
+    try {
+      if (!isOn() || isRecite() || !inQuiz() || speaking) { reviveTries = 0; return; }
+      if (recOn) { reviveTries = 0; return; }
+      if (asrDead) return;
+      startListen();
+      reviveTries++;
+      if (reviveTries >= 3 && Date.now() - lastReviveWarn > 45000) {
+        lastReviveWarn = Date.now();
+        flash('麦克风好像掉线了，正在重连…（还不行就点一下浮条上的 ↻）', 2600);
+      }
+    } catch (e) {}
+  }, 2200);
   /* APK 壳里 window.ANative 是原生桥：语音面板要少讲「换浏览器 / 点锁图标」那套 */
+  /* ---------- 预设模式：四个常用组合，详细设置收在后面 ---------- */
+  const PRESETS = {
+    study: {
+      name: '安静书房', icon: '📖',
+      tip: '一个都不漏地读，念完停一等你说，答错问你要不要听解析',
+      v: { mode: 'both', rate: 0.95, endSilence: 2.6, fastEnd: 1.0, grace: 0.6, maxUtt: 12,
+           halfDuplex: true, barge: false, beeps: true, autoNext: true, nextDelay: 1400,
+           readNo: true, readStem: true, readOpts: true, readTags: false, readRes: false,
+           readExp: true, askExp: true, sayVerdict: true, readPanel: true, readHints: true, sens: 'mid' }
+    },
+    commute: {
+      name: '走路 / 嘈杂', icon: '🚶',
+      tip: '更不容易被环境音打断：等得久一点、收音更挑、提示音关掉',
+      v: { mode: 'both', endSilence: 3.0, fastEnd: 1.2, grace: 0.8, maxUtt: 14,
+           halfDuplex: true, barge: true, beeps: false, autoNext: true, nextDelay: 1600,
+           sens: 'high', readPanel: true, readHints: true }
+    },
+    recite: {
+      name: '背题连读', icon: '📚',
+      tip: '麦克风关掉，一题一题念题干和答案，读完自己翻下一页',
+      v: { mode: 'read', reciteTerse: true, reciteAuto: true, reciteGap: 1.2,
+           readOpts: false, readExp: false, readRes: false, readPanel: false, readHints: false,
+           halfDuplex: true, beeps: false }
+    },
+    quiet: {
+      name: '只下命令', icon: '🤫',
+      tip: '不自动念题，只等你说话：「下一题」「选B」「念解析」',
+      v: { mode: 'listen', readNo: false, readStem: false, readOpts: false, readTags: false,
+           readRes: false, readExp: false, askExp: false, readPanel: false, readHints: false,
+           autoNext: true, beeps: false, halfDuplex: true }
+    }
+  };
+  function applyPreset(k) {
+    const P = PRESETS[k];
+    if (!P) return null;
+    const c = cfg();
+    Object.keys(P.v).forEach(function (kk) { c[kk] = P.v[kk]; });
+    c.preset = k;
+    save();
+    return P;
+  }
   function isNative() { return !!(window.ANative && window.ANative.platform); }
   let asrDead = false;
   function nativeNoAsr() {
@@ -1737,6 +1795,16 @@
         '<option value="listen"' + (c.mode === 'listen' ? ' selected' : '') + '>只判不读（默答）</option></select>') +
       row('跟着单手模式', chk('handLink'), '打开语音时自动把选项放大、翻页贴到拇指区') +
 
+      '<div class="vs-sec">选个模式（点一下就好，细节都收在下面）</div>' +
+      Object.keys(PRESETS).map(function (k) {
+        const P = PRESETS[k];
+        return '<button class="vs-preset' + (c.preset === k ? ' on' : '') + '" data-vpreset="' + k + '">' +
+          '<b>' + P.icon + ' ' + P.name + '</b><span>' + P.tip + '</span></button>';
+      }).join('') +
+      row('详细设置', '<button class="btn tiny" data-vadv="1">' + (c.adv ? '收起详细设置 ▴' : '展开详细设置 ▾') + '</button>',
+        '上面四个模式够用了；想逐项调（读什么、怎么断句、命令词、语音包）再展开') +
+      '<div class="vs-adv" id="vsAdv" style="display:' + (c.adv ? 'block' : 'none') + '">' +
+
       '<div class="vs-sec">麦克风自检</div>' +
     row('环境', '<b class="vs-val">' + diagLine(diag()) + '</b>', guideText()) +
     row('测一次', '<button class="btn tiny" data-vtest="1">现在测</button> <button class="btn tiny" data-vvoices="1">重新加载音色</button>', '会真的申请一次麦克风：能录到音、能朗读、有没有识别接口，一眼看出来') +
@@ -1813,12 +1881,28 @@
       row('提交（多选）', '<input type="text" data-vk="cSubmit" value="' + escAttr(c.cSubmit) + '">') +
       row('关掉语音', '<input type="text" data-vk="cStop" value="' + escAttr(c.cStop) + '">') +
       '</div>' +
+      '</div>' +
       '<div class="vs-foot"><button class="btn" data-vreset="1">恢复默认</button>' +
       '<button class="btn primary" data-vclose="1">好</button></div>' +
       '</div>';
     document.body.appendChild(wrap);
     wrap.addEventListener('click', ev => {
       if (ev.target.closest('[data-vclose]')) { closePanel(); return; }
+      const pr = ev.target.closest('[data-vpreset]');
+      if (pr) {
+        const P = applyPreset(pr.getAttribute('data-vpreset'));
+        closePanel(); openPanel();
+        flash(P ? ('已切到「' + P.name + '」：' + P.tip) : '没找到这个模式', 3000);
+        return;
+      }
+      if (ev.target.closest('[data-vadv]')) {
+        cfg().adv = !cfg().adv; save();
+        const box = document.getElementById('vsAdv');
+        if (box) box.style.display = cfg().adv ? 'block' : 'none';
+        const b = ev.target.closest('[data-vadv]');
+        b.textContent = cfg().adv ? '收起详细设置 ▴' : '展开详细设置 ▾';
+        return;
+      }
 
       /* 自检按钮：真跑一次权限 + 录音（web671） */
       if (ev.target.closest('[data-vtest]')) {
