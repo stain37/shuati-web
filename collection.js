@@ -357,7 +357,10 @@ function mdToHtml(md) {
     closeList(); out.push(`<p>${t}</p>`);
   }
   closeList();
-  return mdMathBack(mdFencesBack(mdEscEnd(mdColorEnd(out.join('\n'))), F.fences), MATH);
+  /* 收尾：颜色/高亮哨兵已还原成标签，这里把仍然残留的控制字符（\u0001 之类）清掉，
+     否则浏览器会把它画成一个空方块（用户看到的「豆腐块」）。 */
+  return mdMathBack(mdFencesBack(mdEscEnd(mdColorEnd(out.join('\n'))), F.fences), MATH)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 }
 
 /* 表格辅助 */

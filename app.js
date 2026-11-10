@@ -2576,6 +2576,44 @@ const SS = {
 
 /* ---------- 小工具 ---------- */
 const $ = id => document.getElementById(id);
+/* 纯转义，别在这里清控制字符：mdToHtml 的颜色哨兵（\u0001C…\u0001）要靠它们配对，
+   提前清掉会把颜色弄丢、还会漏出「/C」字样。清字符走 stripCtrlNodes()。 */
+/** 把已经渲染出来的文本里残留的控制字符去掉（浏览器会把 U+0001 之类画成空方块）。
+ *  只动文本节点，不碰 HTML 结构；C<颜色> 这种哨兵整段删掉。 */
+function stripCtrlNodes(root) {
+  if (!root || !document.createTreeWalker) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const list = [];
+  let n;
+  while ((n = w.nextNode())) {
+    const v = n.nodeValue;
+    if (v && /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(v)) list.push(n);
+  }
+  for (let i = 0; i < list.length; i++) {
+    list[i].nodeValue = list[i].nodeValue
+      .replace(/\u0001C[^\u0001]{1,24}\u0001/g, '')
+      .replace(/\u0001\/?[Cc]\u0001/g, '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  }
+}
+window.stripCtrlNodes = stripCtrlNodes;
+/* 渲染完自动扫一遍 #view：题库/解析/答案里的控制字符不管从哪进来，都在这里被清掉。
+   用 MutationObserver 是因为 render() 有十几处，逐个加调用容易漏。 */
+(function () {
+  function attach() {
+    const v = document.getElementById('view');
+    if (!v || !window.MutationObserver) return;
+    let t = 0;
+    const run = () => { t = 0; try { stripCtrlNodes(v); } catch (e) {} };
+    new MutationObserver(() => { if (!t) t = setTimeout(run, 50); })
+      .observe(v, { childList: true, subtree: true, characterData: true });
+    run();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
+  else setTimeout(attach, 0);
+})();
+
+
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /* 安全绑定：id 不存在也不会中断后面的绑定 */
 function on(id, fn, ev) { const el = $(id); if (el) el['on' + (ev || 'click')] = fn; return el; }
