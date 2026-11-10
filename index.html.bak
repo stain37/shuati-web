@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>刷题站 · 题库</title>
+<meta name="description" content="可自定义的刷题网站：选择题即时判分、答错出解析，错题本带统计与间隔重复复习，支持模考与搜索。">
+<meta name="theme-color" id="metaTheme" content="#eef1f7">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="刷题站">
+<meta name="application-name" content="刷题站">
+<link rel="stylesheet" href="style.css?v=20261110r">
+<link rel="stylesheet" href="bfui.css?v=20261014e">
+<link rel="stylesheet" href="cat.css?v=20261110b">
+<link rel="stylesheet" href="map.css?v=20261108do">
+<link rel="stylesheet" href="guide.css?v=20261022a">
+<link rel="stylesheet" href="chat.css?v=20261105c">
+<link rel="stylesheet" href="diagram.css?v=20261031a">
+<link rel="stylesheet" href="motion.css?v=20261030c">
+<link rel="stylesheet" href="anim.css?v=20261105b">
+<link rel="stylesheet" href="fxs.css?v=20261105e">
+<link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
+<script>
+  /* 皮肤层懒加载（web312）：style.css 只剩通用样式（约 60 KB gz），
+     123 套皮肤的规则全在 skins.css 里（约 113 KB gz）。
+     只有选过非默认皮肤的人才去下这一份；默认皮肤完全不用付这份流量。
+     · 这里先按存档里的 qbank.settings.v2.style 探一次，越早开始下载越好；
+     · app.js 的 applyLook() 里还有一次 ensureSkinsCss()，管运行中换皮肤 / 明暗锁定改皮肤的情况。 */
+  (function () {
+    try {
+      var s = JSON.parse(localStorage.getItem('qbank.settings.v2') || '{}');
+      var st = s && s.style;
+      if (!st || st === 'default' || document.getElementById('skinsCss')) return;
+      var l = document.createElement('link');
+      l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261107b';
+      (document.head || document.documentElement).appendChild(l);
+    } catch (e) {}
+  })();
+</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<script>
+  /* 题库注册入口：banks/*.js 通过这些函数把题库交给站点 */
+  window.__BANKS__ = [];
+  window.registerBank = function (b) { window.__BANKS__.push(b); };
+</script>
+</head>
+<body>
+<script>(function(){try{if(/[?&]pip=1/.test(location.search)){document.documentElement.className+=" pip-guest";document.addEventListener("DOMContentLoaded",function(){document.body.classList.add("pip-guest-body");var snap=null;try{snap=JSON.parse(localStorage.getItem("qbank.pip.snap.v1")||"null");}catch(e){}
+var m=/[?&]bank=([^&]+)/.exec(location.search);var want=m?("#/bank/"+m[1]):"";var n=0,injected=false;
+var iv=setInterval(function(){n++;
+  if(snap&&m&&window.__PIP_INJECT&&!injected){try{injected=window.__PIP_INJECT(snap.bank);}catch(e){}}
+  if(want&&(location.hash===""||location.hash==="#/")){try{location.hash=want;}catch(e){}}
+  try{localStorage.setItem("pip.dbg",JSON.stringify({snap:!!snap,inj:!!injected,m:!!m,hash:location.hash,n:n,hasFn:!!window.__PIP_INJECT,keys:(window.BANKS?Object.keys(window.BANKS).length:-1)}));}catch(e){}
+  if(n>40){clearInterval(iv);}
+},250);});}}catch(e){}})();</script>
+<script>
+  /* 小窗（父窗口 pip.js）放大到全屏时，会 postMessage 让我们退出「迷你客串模式」，
+     这样全屏小窗看起来就跟正常答题界面一样（顶栏 / 底栏 / 版心宽度都回来）。
+     还原成小窗时再切回迷你模式。 */
+  (function () {
+    if (!/[?&]pip=1/.test(location.search)) return;
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.t !== 'pip-guest') return;
+      try {
+        if (e.origin && e.origin !== location.origin) return;
+      } catch (err) {}
+      var mini = !!e.data.on;
+      document.documentElement.classList.toggle('pip-guest', mini);
+      document.documentElement.classList.toggle('pip-full', !mini);
+      try { document.body.classList.toggle('pip-guest-body', mini); } catch (err) {}
+      /* 正常形态下别让侧栏盖住小窗里的答题区 */
+      try {
+        if (!mini && window.SIDE && SideSetWide) {}
+      } catch (err) {}
+    });
+  })();
+</script>
+
+<div class="top">
+  <div class="row">
+    <button class="btn" id="backFix" style="display:none" title="返回上一页（没上一页就回首页）" aria-label="返回">←</button>
+    <button class="btn" id="btnHome" style="display:none">⌂ 主页</button>
+    <span class="title" id="appTitle">刷题站</span>
+    <span class="stat" id="stat"></span>
+    <button class="btn" id="btnSide" title="题库侧栏：按目录看题库 / 新建 / 重命名 / 删除（Alt+Q）">📚</button>
+    <button class="btn" id="btnTheme" title="切换外观：跟随系统 / 浅色 / 深色">◐</button>
+    <button class="btn" id="btnGrid" style="display:none">题号</button>
+    <button class="btn chips-toggle" id="btnChips" title="展开 / 收起科目与筛选题目的两行">筛选</button>
+    <button class="btn" id="btnQuizSet" style="display:none">设置</button>
+  </div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="subjchips" id="subjchips" style="display:none"></div>
+  <div class="chips" id="chips" style="display:none"></div>
+</div>
+
+<div class="wrap" id="view"><!-- §3.6-P2⑥ 首屏骨架：JS 和几 MB 的知识库还在解析时先给个形状，别白屏；真内容一画好就被顶掉 -->
+  <div class="skel" aria-hidden="true">
+    <div class="sk-hero"><i class="sk-bl" style="width:38%"></i><i class="sk-bl" style="width:72%"></i><i class="sk-bl" style="width:54%"></i></div>
+    <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:76%"></i></div>
+    <div class="sk-grid">
+      <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:62%"></i></div>
+      <div class="sk-card"><i class="sk-bl" style="width:100%"></i><i class="sk-bl" style="width:58%"></i></div>
+    </div>
+  </div>
+</div>
+
+<!-- §3.6-P0① 专注模式：只在 body.focus 时浮出来（那时顶栏/底栏都收起来了），点它或按 Esc 退出 -->
+<button class="btn focus-exit" id="btnFocusExit" title="退出专注模式（Esc）">⛶ 退出专注</button>
+
+<div class="nav" id="nav" style="display:none">
+  <button class="btn" id="prev" title="上一题（←）">‹ 上一题</button>
+  <button class="btn mid" id="jumpInfo" title="点开答题卡（K）">—</button>
+  <button class="btn primary" id="next" title="下一题（→ 或 Enter）">下一题 ›</button>
+</div>
+
+<!-- 底部统一导航：六个去处。答题时它会在「上一题 / 答题卡 / 下一题」那条上面再叠一行（见 body.quiz）。 -->
+<div class="bnav" id="bnav">
+  <button class="btn" id="bnHome" title="首页"><i class="bn-ic">⌂</i><span>首页</span></button>
+  <button class="btn" id="btnGoWrong" title="错题本"><i class="bn-ic">✗</i><span>错题</span></button>
+  <button class="btn" id="btnGoFav" title="我的收藏"><i class="bn-ic">★</i><span>收藏</span></button>
+  <button class="btn" id="btnGoSearch" title="搜索题目（快捷键 /）"><i class="bn-ic">⌕</i><span>搜索</span></button>
+  <button class="btn" id="btnGoKb" title="AI 解析与知识库"><i class="bn-ic">✦</i><span>AI</span></button>
+  <button class="btn" id="btnSetAll" title="设置 / 深色模式 / 字号"><i class="bn-ic">⚙</i><span>设置</span></button>
+</div>
+
+<div class="mask" id="gridMask"><div class="sheet">
+  <div class="shead"><h3>答题卡</h3><span class="spacer-grow"></span><button class="btn tiny" id="gridClose">关闭</button></div>
+  <div class="legend">
+    <span><i class="lg-done"></i>做对</span>
+    <span><i class="lg-err"></i>做错</span>
+    <span><i></i>没做</span>
+    <span><i class="lg-cur"></i>当前题</span>
+  </div>
+  <div class="gridf" id="gridFilter"></div>
+  <div id="gridBody"></div>
+</div></div>
+
+<div class="mask" id="setMask"><div class="sheet">
+  <h3>设置</h3>
+  <div class="hint">作答记录、错题、收藏、自定义解析、复习排期都保存在本机浏览器里，关掉页面不会丢。</div>
+  <div class="tools" style="margin-top:12px">
+    <span class="tl">外观</span>
+    <select class="num" id="setTheme">
+      <option value="auto">跟随系统</option>
+      <option value="light">浅色</option>
+      <option value="dark">深色</option>
+    </select>
+    <span class="tl">字号</span>
+    <select class="num" id="setFs">
+      <option value="s">小</option>
+      <option value="m">标准</option>
+      <option value="l">大</option>
+      <option value="xl">特大</option>
+    </select>
+    <span class="tl" title="只放大题干、选项、解析的字，按钮和导航保持原样">大字模式</span>
+    <select class="num" id="setBig" title="只放大题干 / 选项 / 解析的字，离屏幕远也看得清；按钮和导航不变">
+      <option value="0">关</option>
+      <option value="1">大字 ×1.22</option>
+      <option value="2">特大 ×1.45</option>
+    </select>
+    <span class="tl">正文颜色</span>
+    <select class="num" id="setTextColor" title="题干 / 选项 / 解析正文的字色；不动按钮和标题">
+      <option value="auto">跟随主题</option>
+      <option value="ink">墨黑</option>
+      <option value="blue">深蓝</option>
+      <option value="brown">棕褐</option>
+      <option value="green">墨绿</option>
+      <option value="custom">自定义…</option>
+    </select>
+    <input type="color" id="setTextColorPick" value="#334155" title="自定义正文颜色">
+    <span class="tl" title="皮肤配色和深浅模式打架时，文字可能压在看不清的底色上；开着会自动换成一黑或一白">界面文字</span>
+    <select class="num" id="setUiText" title="自动 = 跟皮肤走，看不清时自动换成黑的或白的；也可以自己定">
+      <option value="auto">自动（推荐）</option>
+      <option value="ink">深墨</option>
+      <option value="light">浅白</option>
+      <option value="custom">自定义…</option>
+    </select>
+    <input type="color" id="setUiTextPick" value="#0b1220" title="自定义界面文字色">
+    <label class="tl" for="setAutoContrast" title="关掉后完全按皮肤原样，看不清也不管"
+      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="setAutoContrast" checked>自动保证文字看得清
+    </label>
+    <label class="tl" for="setOffline" title="打开后除了本站自己的静态文件，任何联网请求（AI、云同步、外部接口）都会被拦下并提示；读 PDF、刷题、本地抽题照常"
+      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" id="setOffline">🔌 离线模式（不联网）
+    </label>
+    <span class="tl">主题色</span>
+    <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
+      <option value="teal">冷静青（默认）</option>
+      <option value="indigo">靛蓝</option>
+      <option value="warm">蓝 + 暖橙</option>
+      <option value="violet">紫</option>
+      <option value="rose">玫瑰</option>
+      <option value="amber">琥珀</option>
+      <option value="emerald">森林</option>
+      <option value="ocean">海洋</option>
+      <option value="graphite">石墨金</option>
+      <option value="candy">糖果</option>
+    </select>
+    <span class="tl">背景</span>
+    <select class="num" id="setBg" title="整页底纹：只换背景，不影响内容和按钮大小">
+      <option value="default">默认微光</option>
+      <option value="aurora">极光</option>
+      <option value="grid">细网格</option>
+      <option value="dots">圆点</option>
+      <option value="lines">斜纹</option>
+      <option value="rings">涟漪</option>
+      <option value="paper">纸感</option>
+      <option value="plain">纯色</option>
+      <option value="custom">自定义图片…</option>
+      <option value="video">视频背景…</option>
+    </select>
+    <select class="num" id="setStyle" title="整站的皮肤：边框 / 圆角 / 阴影 / 字体气质；和主题色、深浅色、背景可以随便搭" style="display:none">
+      <option value="default">清爽（默认）</option>
+      <option value="neo">新野兽派</option>
+      <option value="glass">毛玻璃</option>
+      <option value="clay">粘土拟态</option>
+      <option value="mag">编辑杂志</option>
+      <option value="pixel">像素 8-bit</option>
+      <option value="flat">极简扁平</option>
+      <option value="y2k">Y2K 千禧</option>
+      <option value="memphis">孟菲斯</option>
+      <option value="bauhaus">包豪斯</option>
+      <option value="riso">Risograph</option>
+      <option value="retro">复古怀旧</option>
+      <option value="cyber">赛博霓虹</option>
+      <option value="pencil">铅笔手绘</option>
+      <option value="water">水彩晕染</option>
+      <option value="gothic">哥特</option>
+      <option value="acid">酸性平面</option>
+    </select>
+    <button class="btn small" id="setBgPick" title="选一张本机图片当整页背景">选图</button>
+    <button class="btn small" id="setBgVideoPick" title="选一段视频（mp4 / webm）当动态背景">选视频</button>
+    <button class="btn small" id="setBgClear" title="删掉本机存的背景图和视频">清除</button>
+    <input type="file" id="setBgFile" accept="image/*" style="display:none">
+    <input type="file" id="setBgVideo" accept="video/*" style="display:none">
+  </div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（74 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
+  <div class="sty-tabs" id="styleTabs"></div>
+      <div class="stylegrid" id="styleGrid"></div>
+  <div class="hint" id="styleHint" style="margin-top:2px"></div>
+  <label class="chk"><input type="checkbox" id="setStyleAuto" checked> 换风格时自动配一套主推主题色（不勾就一直用你选的颜色）</label>
+  <div class="hint" style="margin-top:14px;margin-bottom:0">主题保存器：把现在这套「皮肤 + 主题色 + 深浅 + 背景 + 磨砂/发光」存成一个 .theme.json，自己留着或者发给别人；也可以用主题商店里别人（目前只有站长）部署上去的主题。</div>
+  <div class="tools" style="margin-top:6px">
+    <button class="btn small" id="thSave" title="把当前外观存成主题包，并下载一份 .theme.json">💾 存成主题包</button>
+    <button class="btn small" id="thImport" title="选一个 .theme.json 套用">📥 导入主题包</button>
+    <button class="btn small" id="thStore" title="看商店里有哪些主题（只下你想用的那一个）">🛍 主题商店</button>
+    <button class="btn small" id="thReset" title="清掉主题包，回到官方默认外观">↩ 恢复官方外观</button>
+    <input type="file" id="thFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="hint" id="thMine" style="margin-top:6px"></div>
+  <div class="tools" style="margin-top:8px">
+    <span class="tl">面板不透明度</span>
+    <input type="range" id="setUiAlpha" min="30" max="100" step="5" value="100" style="width:120px;vertical-align:middle">
+    <span class="small muted" id="setUiAlphaVal">100%</span>
+    <span class="tl">磨砂强度</span>
+    <input type="range" id="setFrostPx" min="0" max="30" step="2" value="14" style="width:100px;vertical-align:middle">
+    <span class="small muted" id="setFrostPxVal">14px</span>
+  </div>
+    <div class="tools" style="margin-top:6px">
+      <span class="tl">卡片/首屏外发光</span>
+      <select class="num" id="setGlowMode" title="跟随风格＝这套风格本来是什么阴影就是什么；开＝统一换成你选的颜色；关＝连彩色阴影一起收掉">
+        <option value="auto">跟随风格（默认）</option>
+        <option value="on">开（用下面的颜色）</option>
+        <option value="off">关（不发光）</option>
+      </select>
+    </div>
+    <div class="tools" style="margin-top:6px">
+      <span class="tl">光晕颜色</span>
+      <input type="color" class="num" id="setGlowPick" value="#0d9488" title="选一个颜色">
+      <button class="btn small" type="button" id="setGlowReset">跟随主色</button>
+      <span class="hint" id="glowHint" style="margin-top:0"></span>
+    </div>
+  <label class="chk"><input type="checkbox" id="setFrost" checked> 面板磨砂（背景模糊，关掉就是纯半透明）</label>
+  <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
+  <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
+  <div class="tools" style="margin-top:6px">
+    <span class="tl">⚡ 速刷限时</span>
+    <input class="num" type="number" id="setSpeedSec" min="0" max="300" step="5" style="width:78px">
+    <span class="small muted">秒 / 题（0 = 不限时）—— 只在「⚡ 速刷模式」生效，超时算答错并自动跳</span>
+  </div>
+  <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
+  <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
+  <label class="chk"><input type="checkbox" id="setMinimal"> 极简模式（关掉背景氛围 / 动效 / 首页引导卡，只留刷题和管理的界面）</label>
+  <label class="chk"><input type="checkbox" id="setReduceMotion"> 减少动态效果（关掉全站动画 / 过渡 / 彩带，和系统「减少动态效果」同效）</label>
+  <div class="tools" style="margin-top:6px">
+    <span class="tl">动效速度</span>
+    <select class="num" id="fxSpd">
+      <option value="0.7">慢一点</option>
+      <option value="1">标准</option>
+      <option value="1.4">快一点</option>
+      <option value="1.8">很快</option>
+    </select>
+    <span class="small muted">影响换页、换题、弹窗、入场这些动画的时长（上面勾了「减少动态效果」就不播）</span>
+  </div>
+  <div class="tools" style="margin-top:12px">
+    <span class="tl">复习曲线</span>
+    <select class="num" id="srsMode"></select>
+    <span class="small muted">松＝长期记忆，标准＝经典 / Anki，勤快＝考前冲刺</span>
+  </div>
+  <div class="small muted" id="srsDesc" style="margin-top:6px"></div>
+  <div class="srsline" id="srsPreview"></div>
+  <details class="fold" id="setAdv">
+    <summary>高级：复习参数 · 庆祝范围 · 快捷键</summary>
+    <div class="fold-body">
+      <label class="chk"><input type="checkbox" id="setFocus"> 专注模式：刷题时把顶栏和底栏收起来，只看题目（答题页右上角「⛶ 专注」，Esc 退出）</label>
+      <label class="chk"><input type="checkbox" id="setFxNormalBank"> 普通题库刷完也庆祝（默认只在套卷 / 模考时放）</label>
+      <div class="small muted" style="margin-top:10px">下面这些数字就是「复习曲线」的参数。选档位＝一次把它们填好，之后还能逐项微调（改任何一项会自动变成「自定义」）。改档位只影响<b>以后</b>的排期。</div>
+      <div class="srsbox">
+        <div class="srsgrid">
+          <label>首次答对（天）<input type="number" id="srsFirst" min="0" max="60" step="1"></label>
+          <label>第二次答对（天）<input type="number" id="srsSecond" min="0" max="120" step="1"></label>
+          <label>间隔增长
+            <select id="srsFactor">
+              <option value="ease">× 当时易度</option>
+              <option value="1.5">× 1.5</option>
+              <option value="2">× 2</option>
+              <option value="2.5">× 2.5</option>
+              <option value="3">× 3</option>
+            </select>
+          </label>
+          <label>初始易度<input type="number" id="srsEase0" min="1.3" max="3" step="0.05"></label>
+          <label>答对加易度<input type="number" id="srsEaseUp" min="0" max="0.5" step="0.05"></label>
+          <label>答错减易度<input type="number" id="srsEaseDown" min="0" max="0.5" step="0.05"></label>
+          <label>易度下限<input type="number" id="srsMinEase" min="1.1" max="3" step="0.05"></label>
+          <label>最长间隔（天）<input type="number" id="srsMaxIvl" min="1" max="3650" step="1"></label>
+          <label>答错后间隔（天）<input type="number" id="srsWrongIvl" min="0" max="30" step="1"></label>
+          <label>每日复习上限<input type="number" id="srsDaily" min="0" max="999" step="1"></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="srsWrongToday"> 答错的题当天继续排进复习（不勾就按上面的「答错后间隔」）</label>
+        <label class="chk"><input type="checkbox" id="srsPile"> 逾期卡片堆到当天（不勾：逾期的不自动进今日复习，只在「复习日历」里标出来）</label>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn small" id="srsReset">填回推荐值</button>
+          <button class="btn small" id="srsSyncEase">统一易度</button>
+          <button class="btn small" id="fixAllRe">按修正答案重判</button>
+        </div>
+        <div class="small muted" style="margin-top:8px">改档位只影响<b>以后</b>的排期；想立刻重排历史记录，用上面「统一易度」「按修正答案重判」，或者答题时点「改答案」。</div>
+      </div>
+      <div class="small muted" style="margin-top:10px">快捷键：A–H 或 1–8 选选项，Enter 提交 / 下一题，← → 翻页，<b>S</b> 收藏本题，<b>K</b> 打开答题卡，<b>/</b> 搜索，<b>?</b> 打开帮助，Esc 关弹窗。顶栏的 <b>◐</b> 可以一键切换深浅色。</div>
+    </div>
+  </details>
+  <div class="actions" style="margin-top:16px">
+    <button class="btn" id="goKb2" title="配置 AI 与本地知识库">AI 解析 / 知识库</button>
+    <button class="btn" id="goSync2" title="用 GitHub 私有仓库在电脑和手机之间同步记录">云同步（电脑 ↔ 手机）</button>
+    <button class="btn" id="goGuide2" title="新手引导：导入题库 / 制作题库 / 知识库 / API / 云同步，点哪段看哪段">🎓 新手引导 / 基础用法</button>
+    <button class="btn" id="expAll2">导出全部数据（备份）</button>
+    <button class="btn danger" id="resetAll">清空作答记录</button>
+    <button class="btn" id="closeSet">关闭</button>
+  </div>
+  <div class="hint" style="margin-top:10px">「清空作答记录」只清空对错、次数和复习排期，<b>不会再动</b>收藏和自定义解析。</div>
+</div></div>
+
+<!-- 题库：一个 .js 文件一个题库，放进 banks/ 后再在下面加一行即可加载，例如
+     <script src="banks/你的题库.js"></script>
+     也可以完全不动文件，直接在网页上用「导入题库」加自己的题（存在浏览器里）。
+     这一份（在线版）已经把原作者的内置模考卷移除，banks/ 里是空的。 -->
+
+<script src="vendor/katex/katex.min.js?v=20261101c"></script>
+<script src="csv.js?v=20261104a"></script>
+<script src="mastery.js?v=20261108a"></script>
+<script src="offline.js?v=20261110c"></script>
+<script src="theme.js?v=20261111a"></script>
+<script src="app.js?v=20261110ab"></script>
+<script src="sim.js?v=20261108a"></script>
+<script src="map.js?v=20261109b"></script>
+<script src="side.js?v=20261111b"></script>
+<script src="keys.js?v=20261106a"></script>
+<script src="fxs.js?v=20261105d"></script>
+<script src="collection.js?v=20261110g"></script>
+<script src="diagram.js?v=20261111b"></script>
+<script src="exam.js?v=20261110a"></script>
+<script src="kb.js?v=20261107b"></script>
+<script src="lecture.js?v=20261110g"></script>
+<script src="ai.js?v=20261130h"></script>
+
+<!-- 目录式题库（cat.js）与本机题库文件（bf.js / bfui.js）
+     放在最后：它们只做「给已有首页加一层目录视图」和「把题库存成文件」，
+     用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
+<script src="bfui.js?v=20261014e"></script>
+<script src="scheme.js?v=20261111b"></script>
+<script src="cat.js?v=20261110b"></script>
+<script src="bf.js?v=20261109a"></script>
+<link rel="stylesheet" href="bf-folder.css?v=20261014e">
+<script src="bf-folder.js?v=20261104a"></script>
+
+<!-- 云同步（sync.js）：用【私有】仓库当云盘（GitHub / 码云 Gitee 可选），电脑 ↔ 手机共用一份记录。
+     它只加一个 #/sync 页面、顶栏「同步」按钮和首页小卡片，其余功能不受影响。 -->
+<script src="sync.js?v=20261110c"></script>
+
+<!-- 做完一套题 / 交卷时的小庆祝（fx.js）：自写 canvas 彩带 + 🎺，只动 transform/opacity，
+     4 秒内自己收尾，尊重系统「减少动态效果」；开关在「设置」里。 -->
+<script src="fx.js?v=20261018d"></script>
+
+<!-- AI 变式题（variant.js）：基于一道题（尤其错题）让 AI 出同考点新题，
+     再跟库里的相似题并排对比；生成结果可一键存成新题库。
+     它复用 ai.js 的 aiChat/aiContext 和 app.js 的 parseInput，自己只加面板和相似度比对。 -->
+<script src="variant.js?v=20261110b"></script>
+
+<!-- 考点标签（tags.js，方案五）：考点词表可以由你批量导入（一行一个）或让 AI 起一份，
+     然后让 AI 读每道题、从词表里挑标签贴上去；统计页的「按考点」只汇总这些贴好的标签。
+     标签独立存在 qbank.tags.v1 / qbank.tagvocab.v1，不塞进题库对象。 -->
+<script src="tags.js?v=20261109a"></script>
+
+<!-- AI 学情诊断（report.js，方案七）：把作答记录 / 错次 / 考点标签 / 复习排期聚合成一小段摘要，
+     让模型写成「这周怎么样、最弱在哪、下周干什么」的周报；统计页有折叠区块，也能走 #/report 看历史。 -->
+<script src="report.js?v=20261018h"></script>
+<script src="guide.js?v=20261108c"></script>
+<script src="chat.js?v=20261106a"></script>
+<script src="skills.js?v=20261031c"></script>
+<script src="ai-ops.js?v=20261105c"></script>
+<script src="motion.js?v=20261030b"></script>
+<script src="pip.js?v=20261106c"></script>
+<script src="ink.js?v=20261106e"></script>
+<script src="voice.js?v=20261110i"></script>
+<script src="exp.js?v=20261220d"></script>
+
+<script>
+  /* 等 app.js / collection.js / exam.js / kb.js / ai.js 全部加载完再渲染。
+     以前这行在 collection.js 末尾，那时 exam.js / kb.js 还没加载，
+     直接打开 #/exam/... 或 #/kb 会空白。
+
+     笔记与自建题库现在存在 IndexedDB 里（localStorage 只有 5MB，装不下），
+     所以要等它们读进内存再画第一屏，否则会先闪一下空题库/空解析。 */
+  /* 探针/自动化环境：用连续的 204 请求把虚拟时钟拖住，否则无头浏览器的
+     virtual-time 会把计时器一次性跑完，IndexedDB 的回调还没轮到就被判定超时。
+     只在 window.__PUMP 被显式打开时启用，真实用户完全不受影响。 */
+  if (window.__PUMP) {
+    (function pump() {
+      var n = 0;
+      (function step() {
+        if (n++ > 120) return;   /* 只在前 ~2.4s 虚拟时间里拖住时钟，够 IndexedDB 开库即可 */
+        fetch('__pump').catch(function () {}).finally(function () { setTimeout(step, 20); });
+      })();
+    })();
+  }
+
+  (function boot() {
+    /* 先画一屏（本地数据本来就在内存里），IndexedDB 读完再补画一次。
+       刻意不设「最多等 1.5 秒」那种定时器：无头/虚拟时钟下定时器会抢跑，
+       真实用户那边又没必要为一次读盘拖住首屏。 */
+    try { render(); } catch (e) { console.log('[boot] 首屏失败', e); }
+    if (typeof window.__bigLoad !== 'function') { window.__bootBl = 'no-idb'; return; }
+    window.__bigLoad().then(function (r) {
+      window.__bootBl = r;
+      try { if (typeof invalidateBanks === 'function') invalidateBanks(); } catch (e) {}
+      try { render(); } catch (e) { console.log('[boot] 二次渲染失败', e); }
+    }, function (e) {
+      window.__bootBl = 'ERR ' + ((e && e.message) || e);
+    });
+  })();
+
+  /* PWA：只在 http(s) 下注册（双击本地打开时浏览器不支持 Service Worker） */
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+</script>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="monetOil" x="-5%" y="-5%" width="110%" height="110%">
+<feTurbulence type="fractalNoise" baseFrequency="0.003 0.012" numOctaves="1" result="noise"/>
+<feDisplacementMap in="SourceGraphic" in2="noise" scale="9" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+<feGaussianBlur in="disp" stdDeviation="0.4" result="soft"/>
+<feComposite in="SourceGraphic" in2="soft" operator="arithmetic" k1="0" k2="0.55" k3="0.45" k4="0"/>
+</filter></svg>
+
+<div class="oilpick" id="oilPick" aria-label="切换画作">
+  <button type="button" data-oil="1" class="on"><i class="dot"></i>睡莲</button>
+  <button type="button" data-oil="2"><i class="dot"></i>撑阳伞</button>
+  <button type="button" data-oil="3"><i class="dot"></i>日出</button>
+</div>
+<script>
+(function(){
+  var KEY='qbank.oilimg.v1';
+  var cur='1';
+  try{ var v=localStorage.getItem(KEY); if(v==='1'||v==='2'||v==='3') cur=v; }catch(e){}
+  function paint(n){
+    document.documentElement.setAttribute('data-oil', n);
+    var bs=document.querySelectorAll('#oilPick button');
+    for(var i=0;i<bs.length;i++){ bs[i].classList.toggle('on', bs[i].getAttribute('data-oil')===n); }
+    try{ localStorage.setItem(KEY, n); }catch(e){}
+  }
+  paint(cur);
+  var box=document.getElementById('oilPick');
+  if(box){ box.addEventListener('click', function(ev){
+    var b=ev.target.closest('button[data-oil]'); if(!b) return; paint(b.getAttribute('data-oil'));
+  }); }
+})();
+</script>
+</body>
+</html>

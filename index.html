@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261110r">
+<link rel="stylesheet" href="style.css?v=20261110s">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261110b">
 <link rel="stylesheet" href="map.css?v=20261108do">
@@ -226,11 +226,8 @@ var iv=setInterval(function(){n++;
       <option value="flat">极简扁平</option>
       <option value="y2k">Y2K 千禧</option>
       <option value="memphis">孟菲斯</option>
-      <option value="bauhaus">包豪斯</option>
-      <option value="riso">Risograph</option>
       <option value="retro">复古怀旧</option>
       <option value="cyber">赛博霓虹</option>
-      <option value="pencil">铅笔手绘</option>
       <option value="water">水彩晕染</option>
       <option value="gothic">哥特</option>
       <option value="acid">酸性平面</option>
@@ -241,7 +238,7 @@ var iv=setInterval(function(){n++;
     <input type="file" id="setBgFile" accept="image/*" style="display:none">
     <input type="file" id="setBgVideo" accept="video/*" style="display:none">
   </div>
-  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（74 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
+  <div class="hint" style="margin-top:10px;margin-bottom:0">点下面任意一张卡就换风格（<span id="styleCount">42</span> 套，缩略图就是这套的边框／圆角／阴影／字色气质，上面可按大类筛）：</div>
   <div class="sty-tabs" id="styleTabs"></div>
       <div class="stylegrid" id="styleGrid"></div>
   <div class="hint" id="styleHint" style="margin-top:2px"></div>
@@ -366,7 +363,7 @@ var iv=setInterval(function(){n++;
 <script src="mastery.js?v=20261108a"></script>
 <script src="offline.js?v=20261110c"></script>
 <script src="theme.js?v=20261111a"></script>
-<script src="app.js?v=20261110ab"></script>
+<script src="app.js?v=20261110ae"></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261109b"></script>
 <script src="side.js?v=20261111b"></script>

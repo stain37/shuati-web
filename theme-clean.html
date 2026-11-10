@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN" data-style="default">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>主题清理 · 标记要删的皮肤</title>
+<link rel="stylesheet" href="style.css?v=20261110r">
+<link rel="stylesheet" href="skins.css?v=20261110n">
+<style>
+  body{padding:14px 14px 92px}
+  .tc-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .tc-head h1{font-size:17px;margin:0}
+  .tc-head .sp{flex:1}
+  .tc-tip{font-size:12px;color:var(--sub);line-height:1.55;margin:0 0 10px}
+  .tc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  .tc-it{position:relative;display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:12px;
+         border:1px solid var(--line);background:var(--card);cursor:pointer}
+  .tc-it.marked{border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.22)}
+  .tc-it.marked .nm{text-decoration:line-through;color:#ef4444}
+  .tc-cb{width:18px;height:18px;flex:0 0 auto;margin-top:2px;accent-color:#ef4444;cursor:pointer}
+  .tc-sw{width:34px;height:34px;flex:0 0 auto;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  .tc-meta{min-width:0;flex:1}
+  .tc-meta .nm{display:block;font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tc-meta .id{display:block;font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tc-meta .ct{display:inline-block;margin-top:3px;font-size:10px;padding:0 5px;border-radius:6px;background:rgba(37,99,235,.1);color:var(--primary)}
+  .tc-prev{margin-top:14px}
+  .tc-prevbox{padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--card2)}
+  .tc-prevbox .stem{font-size:14px;margin:0 0 8px}
+  .tc-opt{padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--card);margin:6px 0;font-size:13px;color:var(--text)}
+  .tc-opt.ok{border-color:#10b981;background:rgba(16,185,129,.12)}
+  .tc-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .tc-bar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:8px;align-items:center;
+          padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--card);
+          border-top:1px solid var(--line);backdrop-filter:blur(12px)}
+  .tc-bar b{font-size:13px}
+  .tc-bar .sp{flex:1}
+  .tc-btn{padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:13px;cursor:pointer}
+  .tc-btn.danger{border-color:#ef4444;color:#ef4444}
+  .tc-list{display:none;margin-top:10px;font-size:12.5px;line-height:1.7;white-space:pre-wrap;background:var(--card2);padding:10px;border-radius:12px}
+  .tc-list.on{display:block}
+</style>
+</head>
+<body>
+<div class="tc-head">
+  <h1>🎨 主题清理</h1>
+  <span class="sp"></span>
+  <button class="tc-btn" id="btnAll">全选</button>
+  <button class="tc-btn" id="btnNone">清空</button>
+</div>
+<p class="tc-tip">点卡片上的小方格 = 标记「这套要删掉」；点<b>名字</b>= 把整页临时换成这套皮肤，看下面预览实际长什么样。标记存在本机，刷新不丢。现在设置页里在用的那套建议先别删。</p>
+
+<div class="tc-grid" id="grid"></div>
+
+<div class="tc-prev">
+  <div class="tc-prevbox">
+    <b style="font-size:13px">当前预览：<span id="pvName">default</span></b>
+    <p class="stem" style="margin-top:8px">阑尾炎最常见的病因是？</p>
+    <div class="tc-opt">A. 阑尾管腔阻塞</div>
+    <div class="tc-opt ok">B. 细菌感染 ✔ 正确答案</div>
+    <div class="tc-opt">C. 血运障碍</div>
+    <div class="tc-row">
+      <button class="tc-btn">下一题</button>
+      <button class="tc-btn">收藏</button>
+      <button class="tc-btn">看解析</button>
+      <input class="tc-btn" style="min-width:120px" placeholder="输入框样子">
+    </div>
+  </div>
+</div>
+
+<div class="tc-list" id="outList"></div>
+
+<div class="tc-bar">
+  <b>已标记 <span id="cnt">0</span> 套要删</b>
+  <span class="sp"></span>
+  <button class="tc-btn" id="btnCopy">复制清单</button>
+  <button class="tc-btn danger" id="btnDown">下载清单</button>
+</div>
+
+<script>
+var ITEMS = [{"id": "default", "name": "清爽（默认）", "cat": "基础", "bg": "#f6f6f4", "cd": "#ffffff", "ac": "#2f9e8f", "r": "10px"}, {"id": "flat", "name": "极简扁平", "cat": "基础", "bg": "#f6f6f4", "cd": "#fff", "ac": "#2f9e8f", "r": "10px"}, {"id": "baroque", "name": "巴洛克", "cat": "古典", "bg": "#20100e", "cd": "#2b1714", "ac": "#c98a2e", "r": "6px"}, {"id": "artdeco", "name": "装饰艺术", "cat": "古典", "bg": "#0f2b28", "cd": "#123330", "ac": "#2f9e6a", "r": "0"}, {"id": "steampunk", "name": "蒸汽朋克", "cat": "古典", "bg": "#2b2118", "cd": "#3a2d20", "ac": "#c98a2e", "r": "6px"}, {"id": "gothic", "name": "哥特", "cat": "古典", "bg": "#0f0d0b", "cd": "#17130f", "ac": "#4a4a4a", "r": "2px"}, {"id": "retro", "name": "复古怀旧", "cat": "古典", "bg": "#f3e9d2", "cd": "#fbf3df", "ac": "#c98a2e", "r": "3px"}, {"id": "pencil", "name": "铅笔手绘", "cat": "绘画", "bg": "#faf6ec", "cd": "#fffdf7", "ac": "#4a4a4a", "r": "8px"}, {"id": "riso", "name": "Risograph", "cat": "绘画", "bg": "#fdf7ea", "cd": "#fffdf6", "ac": "#c46a3a", "r": "6px"}, {"id": "pop", "name": "波普", "cat": "绘画", "bg": "#ffffff", "cd": "#ffffff", "ac": "#e0558a", "r": "0"}, {"id": "sketch", "name": "概念草图", "cat": "绘画", "bg": "#f8fafc", "cd": "rgba(255,255,255,.72)", "ac": "#4a4a4a", "r": "2px"}, {"id": "surreal", "name": "超现实", "cat": "绘画", "bg": "#f3eefc", "cd": "rgba(255,255,255,.78)", "ac": "#7c5cd6", "r": "40px"}, {"id": "tenebrism", "name": "暗色调", "cat": "绘画", "bg": "#05060a", "cd": "#0b0d14", "ac": "#4a4a4a", "r": "0"}, {"id": "neo", "name": "新野兽派", "cat": "现代", "bg": "#f4f1e8", "cd": "#fffdf4", "ac": "#c98a2e", "r": "0"}, {"id": "bauhaus", "name": "包豪斯", "cat": "现代", "bg": "#f4f1ea", "cd": "#fff", "ac": "#e0558a", "r": "0"}, {"id": "blueprint", "name": "蓝图", "cat": "现代", "bg": "#0b2a5b", "cd": "rgba(12,44,92,.72)", "ac": "#4c6ef5", "r": "0"}, {"id": "pixel", "name": "像素 8-bit", "cat": "数字", "bg": "#e8eef8", "cd": "#f7faff", "ac": "#2f9e6a", "r": "0"}, {"id": "y2k", "name": "Y2K 千禧", "cat": "数字", "bg": "#eef3ff", "cd": "rgba(255,255,255,.86)", "ac": "#e878b0", "r": "18px"}, {"id": "cyberpunk", "name": "赛博朋克", "cat": "neon", "bg": "#0a0a0a", "cd": "#111111", "ac": "#c98a2e", "r": "2px"}, {"id": "disco", "name": "迪斯科", "cat": "数字", "bg": "#170f26", "cd": "rgba(40,22,64,.85)", "ac": "#e878b0", "r": "999px"}, {"id": "acid", "name": "酸性平面", "cat": "数字", "bg": "#f2f2ef", "cd": "#fff", "ac": "#7c5cd6", "r": "0"}, {"id": "win95", "name": "复古窗口", "cat": "数字", "bg": "#008080", "cd": "#c0c0c0", "ac": "#2f9e8f", "r": "0"}, {"id": "terminal", "name": "终端", "cat": "数字", "bg": "#05080a", "cd": "#0a1014", "ac": "#39ff88", "r": "0"}, {"id": "hologram", "name": "全息", "cat": "neon", "bg": "#0a0d18", "cd": "rgba(20,26,46,.78)", "ac": "#7cf", "r": "14px"}, {"id": "zen", "name": "日式禅意", "cat": "东方", "bg": "#e9e4d8", "cd": "#f2eee3", "ac": "#2f9e6a", "r": "3px"}, {"id": "ukiyoe", "name": "浮世绘", "cat": "东方", "bg": "#f4ede0", "cd": "#fdf8ee", "ac": "#2f6f9e", "r": "0"}, {"id": "porcelain", "name": "青花瓷", "cat": "东方", "bg": "#f7fafc", "cd": "#ffffff", "ac": "#2f6f9e", "r": "2px"}, {"id": "mehndi", "name": "印度曼海蒂", "cat": "东方", "bg": "#fdf1e3", "cd": "#fff8ef", "ac": "#c46a3a", "r": "0"}, {"id": "arabic", "name": "阿拉伯几何", "cat": "东方", "bg": "#0e1a33", "cd": "#122140", "ac": "#c98a2e", "r": "0"}, {"id": "botanical", "name": "植物图鉴", "cat": "东方", "bg": "#f2f6ee", "cd": "#fbfdf8", "ac": "#5d7f4a", "r": "2px"}, {"id": "morandi", "name": "莫兰迪", "cat": "材质", "bg": "#eeeae6", "cd": "#f5f2ee", "ac": "#4a4a4a", "r": "12px"}, {"id": "macaron", "name": "马卡龙", "cat": "材质", "bg": "#fdf6f9", "cd": "#fffdfd", "ac": "#e0558a", "r": "22px"}, {"id": "rococo", "name": "洛可可", "cat": "古典", "bg": "#fbf5ef", "cd": "#fffdfa", "ac": "#e0558a", "r": "18px"}, {"id": "construct", "name": "构成主义", "cat": "现代", "bg": "#f2efe6", "cd": "#fffdf6", "ac": "#e0558a", "r": "0"}, {"id": "cubism", "name": "立体主义", "cat": "绘画", "bg": "#f4efe6", "cd": "#fffaf0", "ac": "#c46a3a", "r": "6px"}, {"id": "opart", "name": "欧普艺术", "cat": "数字", "bg": "#ffffff", "cd": "#ffffff", "ac": "#4a4a4a", "r": "0"}, {"id": "psyche", "name": "迷幻艺术", "cat": "绘画", "bg": "#2a0f3f", "cd": "#3b1554", "ac": "#7c5cd6", "r": "26px"}, {"id": "glitch", "name": "故障艺术", "cat": "数字", "bg": "#0c0d10", "cd": "#14161b", "ac": "#2f6f9e", "r": "2px"}, {"id": "newwave", "name": "新浪潮字体", "cat": "数字", "bg": "#fffdf6", "cd": "#ffffff", "ac": "#4a4a4a", "r": "2px"}, {"id": "noir", "name": "黑色电影", "cat": "古典", "bg": "#111315", "cd": "#181b1f", "ac": "#4a4a4a", "r": "2px"}, {"id": "naive", "name": "稚拙绘画", "cat": "绘画", "bg": "#fffdf3", "cd": "#ffffff", "ac": "#e878b0", "r": "8px"}, {"id": "atompunk", "name": "原子朋克", "cat": "数字", "bg": "#fdf1e3", "cd": "#fff8ec", "ac": "#c46a3a", "r": "4px"}, {"id": "dieselpunk", "name": "柴油朋克", "cat": "数字", "bg": "#2b2620", "cd": "#3a332a", "ac": "#c46a3a", "r": "2px"}, {"id": "streamline", "name": "流线型现代", "cat": "现代", "bg": "#f2f5f8", "cd": "#ffffff", "ac": "#4c6ef5", "r": "999px"}, {"id": "renais", "name": "文艺复兴", "cat": "古典", "bg": "#f6efe2", "cd": "#fffaf0", "ac": "#c98a2e", "r": "4px"}, {"id": "baimiao", "name": "白描", "cat": "东方", "bg": "#fffef8", "cd": "#ffffff", "ac": "#4a4a4a", "r": "0"}, {"id": "gongbi", "name": "工笔画", "cat": "东方", "bg": "#fdf7ee", "cd": "#fffdf7", "ac": "#2f9e6a", "r": "6px"}, {"id": "rinpa", "name": "琳派", "cat": "东方", "bg": "#f7f1e3", "cd": "#fffdf4", "ac": "#c98a2e", "r": "8px"}, {"id": "thangka", "name": "唐卡", "cat": "东方", "bg": "#1c1410", "cd": "#26190f", "ac": "#c98a2e", "r": "10px"}, {"id": "persian", "name": "波斯细密画", "cat": "东方", "bg": "#f6efe2", "cd": "#fffaf1", "ac": "#4c6ef5", "r": "12px"}, {"id": "madhubani", "name": "米提拉绘画", "cat": "东方", "bg": "#fff8e7", "cd": "#fffdf3", "ac": "#e0558a", "r": "6px"}, {"id": "superflat", "name": "超扁平", "cat": "数字", "bg": "#fdf6fb", "cd": "#ffffff", "ac": "#e0558a", "r": "18px"}, {"id": "corpmemphis", "name": "企业孟菲斯", "cat": "现代", "bg": "#f7f9ff", "cd": "#ffffff", "ac": "#4c6ef5", "r": "24px"}, {"id": "fauvism", "name": "野兽派", "cat": "绘画", "bg": "#fff1e6", "cd": "#ffe9d6", "ac": "#ff4d3d", "r": "0"}, {"id": "expressionism", "name": "表现主义", "cat": "绘画", "bg": "#15130f", "cd": "#1f1c15", "ac": "#ffb703", "r": "2"}, {"id": "neoexpr", "name": "新表现主义", "cat": "绘画", "bg": "#e9e2d3", "cd": "#f3ecdd", "ac": "#b8532a", "r": "2"}, {"id": "photoreal", "name": "照相写实", "cat": "现代", "bg": "#eceff3", "cd": "#ffffff", "ac": "#2f6f9e", "r": "6"}, {"id": "lowbrow", "name": "低眉艺术", "cat": "现代", "bg": "#fff7f2", "cd": "#ffffff", "ac": "#e8467c", "r": "16"}, {"id": "wabisabi", "name": "侘寂", "cat": "东方", "bg": "#efeadf", "cd": "#f6f1e6", "ac": "#8a7a5e", "r": "2"}, {"id": "minhwa", "name": "韩国民画", "cat": "东方", "bg": "#fdf4e3", "cd": "#fffdf4", "ac": "#c0392b", "r": "4"}, {"id": "neopop", "name": "新波普", "cat": "现代", "bg": "#fff6ee", "cd": "#ffffff", "ac": "#ff3b30", "r": "0"}, {"id": "bluegreen", "name": "青绿山水", "cat": "东方", "bg": "#eef4ea", "cd": "#fbfdf6", "ac": "#2f8f79", "r": "2"}, {"id": "clay", "name": "粘土拟态", "cat": "材质", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "aurora", "name": "极光渐变", "cat": "neon", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "sticker", "name": "贴纸拼贴", "cat": "绘画", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "newsprint", "name": "报纸印刷", "cat": "古典", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "synthwave", "name": "合成波", "cat": "neon", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "scrapbook", "name": "手账剪贴", "cat": "绘画", "bg": "#eee", "cd": "#fff", "ac": "#2563eb", "r": "12px"}, {"id": "vaporwave", "name": "霓虹复古", "cat": "neon", "bg": "#1a0a2e", "cd": "#2b0057", "ac": "#ff71ce", "r": "14px"}, {"id": "neontokyo", "name": "霓虹东京", "cat": "neon", "bg": "#0a0a1a", "cd": "#12041e", "ac": "#ff1493", "r": "3px"}, {"id": "oil", "name": "油画印象派", "cat": "绘画", "bg": "#f5f0e1", "cd": "#f5f0e1", "ac": "#e8a87c", "r": "12px"}, {"id": "qline", "name": "线条速写", "cat": "", "bg": "#fafaf8", "cd": "#ffffff", "ac": "#2152e7", "r": "17px"}, {"id": "neu", "name": "新拟态", "cat": "", "bg": "#e0e5ec", "cd": "#e0e5ec", "ac": "#6d5dfc", "r": "22px"}, {"id": "softui", "name": "柔和 3D", "cat": "", "bg": "#f8fafc", "cd": "#ffffff", "ac": "#6366f1", "r": "24px"}, {"id": "glass", "name": "液态玻璃", "cat": "材质", "bg": "linear-gradient(140deg,#dfe8ff,#f5e9ff 60%,#e3fbf6)", "cd": "#ffffff", "ac": "#3b82f6", "r": "20px"}];
+var KEY = 'theme.clean.mark.v1';
+var marked = {};
+try { marked = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { marked = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(marked)); } catch (e) {} }
+function esc(x){ return String(x == null ? '' : x).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+function applyStyle(id) {
+  document.documentElement.setAttribute('data-style', id);
+  document.getElementById('pvName').textContent = id;
+  try { location.hash = '#' + id; } catch (e) {}
+}
+function render() {
+  var g = document.getElementById('grid');
+  g.innerHTML = ITEMS.map(function (it) {
+    var m = !!marked[it.id];
+    return '<div class="tc-it' + (m ? ' marked' : '') + '" data-id="' + it.id + '">' +
+      '<input class="tc-cb" type="checkbox" data-id="' + it.id + '"' + (m ? ' checked' : '') + '>' +
+      '<span class="tc-sw" style="background:' + esc(it.bg) + ';border-radius:' + esc(it.r) + ';border:1px solid rgba(0,0,0,.16);color:' + esc(it.ac) + '">Aa</span>' +
+      '<span class="tc-meta"><span class="nm">' + esc(it.name) + '</span>' +
+      '<span class="id">' + esc(it.id) + '</span>' +
+      '<span class="ct">' + esc(it.cat) + '</span></span></div>';
+  }).join('');
+  document.getElementById('cnt').textContent = Object.keys(marked).filter(function (k) { return marked[k]; }).length;
+  var list = ITEMS.filter(function (it) { return marked[it.id]; });
+  var box = document.getElementById('outList');
+  box.textContent = list.length ? ('要删的 ' + list.length + ' 套：\n' + list.map(function (it) { return '· ' + it.name + '（' + it.id + '）'; }).join('\n')) : '';
+  box.classList.toggle('on', !!list.length);
+}
+document.getElementById('grid').addEventListener('click', function (ev) {
+  var cb = ev.target.closest('input.tc-cb');
+  var id = (cb || ev.target.closest('.tc-it') || {}).getAttribute && (cb || ev.target.closest('.tc-it')).getAttribute('data-id');
+  if (!id) return;
+  if (cb) { marked[id] = cb.checked; if (!marked[id]) delete marked[id]; save(); render(); }
+  else { applyStyle(id); }
+});
+document.getElementById('btnAll').onclick = function () { ITEMS.forEach(function (it) { marked[it.id] = true; }); save(); render(); };
+document.getElementById('btnNone').onclick = function () { marked = {}; save(); render(); };
+document.getElementById('btnCopy').onclick = function () {
+  var t = document.getElementById('outList').textContent || '（还没标记）';
+  if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { alert('已复制'); }, function () { prompt('复制这段：', t); });
+  else prompt('复制这段：', t);
+};
+document.getElementById('btnDown').onclick = function () {
+  var list = ITEMS.filter(function (it) { return marked[it.id]; });
+  var txt = list.map(function (it) { return it.id + '\t' + it.name; }).join('\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+  a.download = '要删的主题.txt'; a.click();
+};
+var h = (location.hash || '').replace('#', '');
+render();
+if (h && ITEMS.some(function (it) { return it.id === h; })) applyStyle(h); else applyStyle('default');
+</script>
+</body>
+</html>
