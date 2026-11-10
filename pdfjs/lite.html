@@ -119,12 +119,31 @@ async function open() {
   try {
     st('正在下载 PDF…');
     const ctl = new AbortController();
-    const timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, 60000);
+    const timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, 150000);
     let r;
     try { r = await fetch(FILE, { signal: ctl.signal, cache: 'no-store' }); }
     finally { clearTimeout(timer); }
     if (!r || !r.ok) throw new Error('HTTP ' + (r ? r.status : '?'));
-    buf = await r.arrayBuffer();
+    const total = parseInt(r.headers.get('content-length') || '0', 10) || 0;
+    if (r.body && r.body.getReader) {
+      const reader = r.body.getReader();
+      const chunks = [];
+      let got = 0;
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) break;
+        chunks.push(step.value);
+        got += step.value.byteLength;
+        const mb = (n) => (n / 1048576).toFixed(1);
+        st('正在下载 PDF… ' + mb(got) + (total ? ' / ' + mb(total) : '') + ' MB');
+      }
+      const all = new Uint8Array(got);
+      let off = 0;
+      for (const c of chunks) { all.set(c, off); off += c.byteLength; }
+      buf = all.buffer;
+    } else {
+      buf = await r.arrayBuffer();
+    }
     st('已下载 ' + (buf.byteLength / 1048576).toFixed(1) + ' MB，正在解析…');
   } catch (e) {
     st('整份下载没成功（' + ((e && e.message) || e) + '），改用流式读取…');

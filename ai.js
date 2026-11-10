@@ -1120,27 +1120,36 @@ function aiPdfImgMap() {
   if (PDFIMG_MAP) return PDFIMG_MAP;
   PDFIMG_MAP = {};
   try {
-    const ls = readLS('qbank.pdfimg.v1', null);
-    if (ls && ls.ts && Date.now() - ls.ts < 86400000 && ls.map) PDFIMG_MAP = ls.map;
+    /* 2026-11-10：v1 的缓存里如果少了新加的页图，会一直用到 24 小时后才更新 ——
+       用户那边表现就是「明明有页图，点开还是灰的」，所以换 key 并把有效期降到 6 小时。 */
+    const ls = readLS('qbank.pdfimg.v2', null);
+    if (ls && ls.ts && Date.now() - ls.ts < 21600000 && ls.map) PDFIMG_MAP = ls.map;
   } catch (e) {}
   return PDFIMG_MAP;
 }
+let PDFIMG_WARMING = false;
 function aiPdfImgWarm() {
   const m = aiPdfImgMap();
-  if (Object.keys(m).length) return;
+  /* 已经缓存过也要在后台再核对一次（只补新的，不删旧的），否则新加的页图永远看不到 */
+  if (PDFIMG_WARMING) return;
+  PDFIMG_WARMING = true;
   try {
     fetch(aiPdfBase() + 'pdfimg/index.json', { cache: 'force-cache' }).then(r => r.ok ? r.json() : null).then(j => {
       if (!j) return;
       const map = {};
       Object.keys(j).forEach(k => { const o = j[k] || {}; if (o.f) map[o.f + '#' + o.p] = k; });
+      Object.keys(m).forEach(k => { if (!(k in map)) map[k] = m[k]; });
       PDFIMG_MAP = map;
-      try { writeLS('qbank.pdfimg.v1', { ts: Date.now(), map: map }); } catch (e) {}
-    }).catch(() => {});
+      try { writeLS('qbank.pdfimg.v2', { ts: Date.now(), map: map }); } catch (e) {}
+      PDFIMG_WARMING = false;
+    }).catch(() => { PDFIMG_WARMING = false; });
   } catch (e) {}
 }
 function aiPdfImgUrl(h) {
   try {
-    if (!h || !h.file) return '';
+    if (!h || !h.file) {
+      return '';
+    }
     const base = String(h.file).split(/[\\\/]/).pop();
     const pg = String(h.pdfp || h.page || '');
     if (!base || !pg) return '';
@@ -1206,13 +1215,13 @@ function aiPdfBlockHtml(h, full) {
     : '';
   /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
   return _prev + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-img="' + esc(_img || '') + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
+    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(lite || viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-img="' + esc(_img || '') + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
     + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（原站直链，加载慢一点）">' + label + ' ↗</a>'
     + '</div>'
     + (_img
       ? '<div class="small muted" style="margin:0 0 9px">要翻页 / 搜索整本时，点上面「' + esc(label) + '」或「⛶ 全屏看原页」。</div>'
       : '<div class="pdf-embed" style="margin:0 0 9px">'
-        + '<iframe src="' + esc(viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
+        + '<iframe src="' + esc(lite || viewer) + '" loading="lazy" title="' + esc(title) + '" style="width:100%;height:74vh;min-height:460px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--card)"></iframe>'
         + '<div class="small muted" style="margin:4px 0 0">这一页由站内阅读器渲染，PDF 从 <b>' + esc(aiPdfMirLabel(aiPdfMirId() || PDF_MIRS[0].id)) + '</b> 取（实测比直连快十几倍）；半天不出来就点上面的「' + esc(label) + ' ↗」用系统阅读器看。</div>'
         + '</div>');
 }
@@ -1375,7 +1384,7 @@ function aiPdfFullscreen(pdf, title, rel, anchor, img) {
         + '<div style="display:flex;justify-content:center"><button class="btn tiny" type="button" id="pdfFsReader">翻整本 / 搜文字（加载 PDF 阅读器）</button></div>'
       : '')
     + '<iframe id="pdfFsFrame" src="' + esc(img ? '' : pdf) + '" title="' + esc(title || 'PDF') + '" style="' + (img ? 'display:none;' : '') + 'flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>'
-    + '<div class="pdfFsTip small" style="color:#cbd5e1;margin:0"></div>';
+    + '<div class="pdfFsTip small" style="color:#cbd5e1;margin:0">' + (img ? '' : '正在整份下载 PDF（线上大约 30–40KB/s，几 MB 要一两分钟）；等不及就点右上角「新窗口打开」用系统阅读器。') + '</div>';
   document.body.appendChild(box);
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   const close = () => {
