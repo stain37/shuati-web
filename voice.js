@@ -110,8 +110,40 @@
     const s = synth(); if (!s) return [];
     return (s.getVoices() || []).filter(v => /^zh/i.test(v.lang || ''));
   }
+  /* ---------- 音色加载（web675）----------
+     安卓很多浏览器的 getVoices() 一开始是空的：要么等 voiceschanged，要么得先真的 speak 一次
+     才会去加载系统 TTS 引擎。以前面板里显示「0 个音色」就是这么来的。 */
+  let voicesReady = false, voicesWarm = 0;
+  function voiceCount() {
+    const s = synth(); if (!s) return 0;
+    let n = 0; try { n = (s.getVoices() || []).length; } catch (e) {}
+    if (n) voicesReady = true;
+    return n;
+  }
+  function warmVoices(force) {
+    const s = synth(); if (!s) return;
+    if (voiceCount()) return;
+    if (voicesWarm && !force) return;
+    voicesWarm = 1;
+    try {
+      /* 一次几乎无声、极短的发音，只为触发引擎加载音色列表 */
+      const u = new SpeechSynthesisUtterance('嗯');
+      u.volume = 0.01; u.rate = 2; u.pitch = 1;
+      s.speak(u);
+    } catch (e) {}
+    setTimeout(function () { try { voiceCount(); } catch (e) {} }, 900);
+  }
+  try {
+    if (synth()) {
+      synth().addEventListener && synth().addEventListener('voiceschanged', function () { try { voiceCount(); } catch (e) {} });
+      synth().onvoiceschanged = function () { try { voiceCount(); } catch (e) {} };
+      warmVoices();
+    }
+  } catch (e) {}
+
   function pickVoice() {
     const s = synth(); if (!s) return null;
+    if (!voiceCount()) warmVoices();
     const all = s.getVoices() || [];
     const want = cfg().voiceURI;
     if (want) { const f = all.find(v => v.voiceURI === want); if (f) return f; }
@@ -710,10 +742,13 @@
       tts: !!s,
       asr: !!SRc,
       voices: 0,
+      voicesReady: false,
       perm: 'unknown',
       ua: navigator.userAgent || ''
     };
     try { out.voices = (s ? s.getVoices() : []).length; } catch (e) {}
+    if (!out.voices) { try { warmVoices(); } catch (e) {} }
+    out.voicesReady = !!voicesReady;
     return out;
   }
   function uaKind() {
@@ -742,6 +777,7 @@
     if (!d.tts) bits.push('不能朗读');
     if (!d.asr) bits.push('没有语音识别接口');
     if (d.asr && d.perm === 'denied') bits.push('麦克风被拒绝');
+    if (d.tts && !d.voices) bits.push('能朗读但系统还没有音色（0 个）');
     if (!bits.length) bits.push(d.perm === 'granted' ? '看起来都正常' : '可以试听一下');
     return bits.join(' · ');
   }
@@ -762,6 +798,28 @@
     } catch (e) {
       res.push('❌ 录不到音：' + (e && e.name ? e.name : '未知错误'));
     }
+    /* 真的念一声（音量压到几乎听不见），确认引擎能出声 —— 「有接口但没音色」就卡在这里 */
+    let ttsTry = '没测';
+    try {
+      ttsTry = await new Promise(function (res2) {
+        const s = synth();
+        if (!s) return res2('no');
+        let done = false;
+        const u = new SpeechSynthesisUtterance('测试');
+        u.volume = 0.01; u.rate = 1;
+        u.onstart = function () { if (!done) { done = true; res2('start'); } };
+        u.onend = function () { if (!done) { done = true; res2('start'); } };
+        u.onerror = function (e) { if (!done) { done = true; res2('err:' + ((e && e.error) || 'unknown')); } };
+        try { s.cancel(); s.speak(u); } catch (e) { done = true; res2('throw'); }
+        setTimeout(function () { if (!done) { done = true; res2('timeout'); } }, 2800);
+      });
+    } catch (e) {}
+    const cnt = voiceCount();
+    res.push('🔈 试读：' + (ttsTry === 'start' ? '引擎出声了（正常）'
+      : ttsTry === 'timeout' ? '没有回应（系统 TTS 没装 / 被系统省电拦了）'
+      : ttsTry === 'no' ? '这个浏览器没有 speechSynthesis'
+      : ('失败 ' + ttsTry)));
+    res.push('🎵 音色：' + cnt + ' 个' + (cnt ? '' : '（安卓常见：先去 设置 → 无障碍 → 文字转语音 装中文语音包 / 选一个语音引擎，再回来点「重新加载音色」）'));
     res.push('🌐 环境：' + location.protocol + ' / ' + (d.secure ? '安全上下文' : '非安全上下文'));
     return res;
   }
@@ -1605,7 +1663,7 @@
 
       '<div class="vs-sec">麦克风自检</div>' +
     row('环境', '<b class="vs-val">' + diagLine(diag()) + '</b>', guideText()) +
-    row('测一次', '<button class="btn tiny" data-vtest="1">现在测</button>', '会真的申请一次麦克风：能录到音、能朗读、有没有识别接口，一眼看出来') +
+    row('测一次', '<button class="btn tiny" data-vtest="1">现在测</button> <button class="btn tiny" data-vvoices="1">重新加载音色</button>', '会真的申请一次麦克风：能录到音、能朗读、有没有识别接口，一眼看出来') +
     '<div id="vsTestOut" class="vs-testout"></div>' +
 
     '<div class="vs-sec">朗读</div>' +
@@ -1665,7 +1723,7 @@
       learnListHtml() +
 
       '<div class="vs-sec">语音包（音色 + 语速 + 音调 + 音量 + 语言）</div>' +
-      row('试听', '<button class="btn tiny" data-vtest="1">▶ 念一句试试</button>', '用现在的音色念一句示例') +
+      row('试听', '<button class="btn tiny" data-vplay="1">▶ 念一句试试</button>', '用现在的音色念一句示例') +
       row('导出', '<button class="btn tiny" data-vpack="export">⬇ 存成 .json</button>', '把这套音色参数存下来，换设备 / 发给别人都能用') +
       row('导入', '<input type="file" accept=".json,application/json" data-vpack="import">', '选一个语音包 .json，立刻套用') +
       '<div class="vs-sec">命令词（逗号分隔，可自己改）</div>' +
@@ -1697,8 +1755,19 @@
         }).catch(function (e) { if (out) out.textContent = '测试失败：' + (e && e.message || e); });
         return;
       }
-      if (ev.target.closest('[data-vtest]')) {
+      if (ev.target.closest('[data-vplay]')) {
+        warmVoices();
         speak('这是现在的音色，第三题，下列关于真核生物转录起始的叙述，错误的是。A，转录因子。B，TATA 盒。');
+        return;
+      }
+      /* 安卓：0 音色时点一下，逼引擎把音色列表加载出来 */
+      if (ev.target.closest('[data-vvoices]')) {
+        warmVoices(true);
+        flash('正在重新加载音色…', 1200);
+        setTimeout(function () {
+          const n = voiceCount();
+          flash(n ? ('现在有 ' + n + ' 个音色了') : '还是 0 个音色：去「设置 → 无障碍 → 文字转语音」装一个中文语音包，或换 Chrome', 5200);
+        }, 1400);
         return;
       }
       const lx = ev.target.closest('[data-vlrn]');

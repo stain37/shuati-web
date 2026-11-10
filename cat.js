@@ -1572,7 +1572,7 @@
     var S = DETAIL_SORT;
     function th(key, label) {
       var on = S.key === key;
-      return '<th class="' + (on ? 'on' : '') + '" data-act="sort" data-v="' + key + '" title="点一下按「' + label + '」排序（再点一下倒过来）">'
+      return '<th class="c-' + key + (on ? ' on' : '') + '" data-act="sort" data-v="' + key + '" title="点一下按「' + label + '」排序（再点一下倒过来）">'
         + label + (on ? (S.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
     }
     function rowOf(it) {
@@ -1584,13 +1584,13 @@
       return '<tr class="nb-drow nb-' + it.kind + (on ? ' nb-on' : '') + '" ' + attr + ' draggable="true">'
         + '<td class="nb-dname"><span class="nb-dic">' + (it.kind === 'dir' ? ICON_FOLDER : ICON_BANK) + '</span>'
         + '<span class="nb-dtext">' + E(it.name) + (it.crumb ? '<span class="small muted">　在 ' + E(it.crumb) + '</span>' : '') + '</span></td>'
-        + '<td class="small muted">' + it.type + '</td>'
-        + '<td class="nb-ddate small muted">' + (fmtDay(it.at) || '—') + '</td>'
-        + '<td class="num">' + it.q + '</td>'
-        + '<td class="num">' + it.done + '</td>'
-        + '<td class="num">' + (it.done ? it.acc + '%' : '—') + '</td>'
-        + '<td class="num' + (it.wr ? ' warn' : '') + '">' + (it.wr || '—') + '</td>'
-        + '<td class="nb-dacts">' + acts + '</td>'
+        + '<td class="c-type small muted">' + it.type + '</td>'
+        + '<td class="c-at nb-ddate small muted">' + (fmtDay(it.at) || '—') + '</td>'
+        + '<td class="c-q num">' + it.q + '</td>'
+        + '<td class="c-done num">' + it.done + '</td>'
+        + '<td class="c-acc num">' + (it.done ? it.acc + '%' : '—') + '</td>'
+        + '<td class="c-wr num' + (it.wr ? ' warn' : '') + '">' + (it.wr || '—') + '</td>'
+        + '<td class="nb-dacts c-acts">' + acts + '</td>'
         + '</tr>';
     }
     var rows;
@@ -1611,7 +1611,7 @@
     }
     return '<table class="nb-table"><thead><tr>'
       + th('name', '名称') + th('type', '类型') + th('at', '添加时间') + th('q', '题目数') + th('done', '已答') + th('acc', '正确率') + th('wr', '错题')
-      + '<th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      + '<th class="c-acts">操作</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
   /* 考点文件夹的「详细信息」视图：这里是题目，不是题库（否则 ▤ 模式下会一片空白） */
@@ -1639,10 +1639,10 @@
       return '<tr class="nb-drow nb-q' + (it.wrong ? ' nb-on' : '') + '" data-tgq="' + E(it.id) + '" draggable="false">'
         + '<td class="nb-dname"><span class="nb-dic nb-dmark">' + mark + '</span>'
         + '<span class="nb-dtext">' + E(it.name) + '</span></td>'
-        + '<td class="small muted">' + E(it.bank) + '</td>'
-        + '<td class="small muted">' + (it.done ? (it.ok ? '已答对' : '答错过') : '未做') + '</td>'
-        + '<td class="num">' + (it.wrong || '—') + '</td>'
-        + '<td class="nb-dacts"><button class="btn tiny primary" data-tgq="' + E(it.id) + '">' + (it.done ? '再做' : '做这题') + '</button></td>'
+        + '<td class="c-bank small muted">' + E(it.bank) + '</td>'
+        + '<td class="c-state small muted">' + (it.done ? (it.ok ? '已答对' : '答错过') : '未做') + '</td>'
+        + '<td class="c-wr num">' + (it.wrong || '—') + '</td>'
+        + '<td class="nb-dacts c-acts"><button class="btn tiny primary" data-tgq="' + E(it.id) + '">' + (it.done ? '再做' : '做这题') + '</button></td>'
         + '</tr>';
     }).join('');
     return '<table class="nb-table nb-qtable"><thead><tr>'

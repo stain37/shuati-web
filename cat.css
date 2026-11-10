@@ -325,3 +325,48 @@ body.nbm { user-select: none; -webkit-user-select: none; }
 .ql-exp-body { margin-top: 8px; padding: 10px 12px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; line-height: 1.7; font-size: calc(var(--fs) * .94); overflow-wrap: anywhere; }
 
 
+
+/* ===== web673：窄屏（手机/Pad 竖屏）别把详细信息表挤爆 =====
+   名称列可换行压缩，次要列按屏宽逐个让位，操作列永远留在屏幕里。 */
+.nb-table .nb-dtext{display:block;min-width:0}
+@media (max-width:860px){
+  .nb-table .c-type{display:none}
+}
+@media (max-width:760px){
+  .nb-table .c-at{display:none}
+  .nb-table .c-acc{display:none}
+}
+@media (max-width:640px){
+  .nb-table td,.nb-table th{padding:7px 8px}
+  .nb-dname{min-width:0}
+  .nb-table .nb-dtext{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+  .nb-table .c-wr{display:none}
+  .nb-table .nb-dacts .btn{padding:5px 9px;min-height:30px;font-size:12px}
+  .nb-table .nb-dacts .btn+.btn{margin-left:5px}
+}
+@media (max-width:470px){
+  .nb-table .c-q{display:none}
+  .nb-table .nb-dacts .btn:not(.primary){display:none}
+}
+/* 表格本身别撑出容器：横向永远不滚，只在必要时压缩 */
+.nb-wrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ===== web674：详细信息表在平板/手机上按宽度逐列让位（原先 8 列全挤，右侧被裁） ===== */
+.nb-details{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nb-table .nb-dtext{display:block;min-width:0;max-width:52vw;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1150px){ .nb-table .c-type{display:none} }
+@media (max-width:1000px){
+  .nb-dname{min-width:150px}
+  .nb-table .c-at{display:none}
+}
+@media (max-width:900px){ .nb-table .c-acc{display:none} }
+@media (max-width:780px){
+  .nb-table .c-wr{display:none}
+  .nb-table td,.nb-table th{padding:7px 9px}
+  .nb-table .nb-dacts .btn{padding:5px 10px;min-height:30px;font-size:12px}
+}
+@media (max-width:600px){
+  .nb-table .c-q{display:none}
+  .nb-table .nb-dtext{max-width:46vw;white-space:normal;line-height:1.35}
+  .nb-table .nb-dacts .btn:not(.primary){display:none}
+}
