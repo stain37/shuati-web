@@ -4085,3 +4085,8 @@ body.dark .qelapsed{color:#c7d3ea;background:rgba(120,160,255,.16);border-color:
 body.dark .lec-find input,body.dark .lec-find button{background:rgba(20,28,44,.55);border-color:rgba(140,170,220,.28);color:#e7eefb}
 body.dark .lec-hits{background:rgba(18,26,40,.72)}
 body.dark .lec-hit .htxt{color:#dbe6f8}
+
+/* 讲义搜索：跨全部讲义开关（web709） */
+.lec-fa{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--sub,#64748b);white-space:nowrap;cursor:pointer;user-select:none;padding:0 2px}
+.lec-fa input{width:15px;height:15px;accent-color:var(--primary,#2563eb);cursor:pointer}
+body.dark .lec-fa{color:#a9b7d0}

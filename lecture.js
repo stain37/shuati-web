@@ -113,7 +113,8 @@
           '<button data-lec="next" title="下一页（→）">›</button>' +
         '</div>' +
       '</div>' +
-      '<div class="lec-find"><input id="lecFind" type="search" placeholder="搜讲义里的字…（如 麦氏点 / HCO3）" title="先搜这份讲义，没找到再搜全部"><button data-lec="find" title="搜一下（回车也行）">🔎</button></div>' +
+      '<div class="lec-find"><input id="lecFind" type="search" placeholder="搜讲义里的字…（空格分隔＝都要有）" title="多个词用空格隔开，只出同时包含这些词的页"><button data-lec="find" title="搜一下（回车也行）">🔎</button>' +
+        '<label class="lec-fa" title="勾上＝在这套题库相关的全部讲义里找；不勾＝只找当前这份"><input type="checkbox" id="lecFindAll">全部讲义</label></div>' +
       '<div class="lec-hits" id="lecHits" hidden></div>' +
       '<div class="lec-body" id="lecBody"><img id="lecImg" alt="讲义原页"><div id="lecEmpty" class="lec-empty">这份讲义还没有页图，点右下角「看整本 PDF」。</div></div>' +
       '<div class="lec-foot">' +
@@ -123,7 +124,7 @@
     var zoom = ce('div', 'lec-zoom'); zoom.id = 'lecZoom'; zoom.innerHTML = '<img alt="讲义原页（放大）"><button data-lec="unzoom">×</button>';
     document.body.appendChild(mask); document.body.appendChild(sheet); document.body.appendChild(zoom);
     el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom,
-      hits: $('#lecHits'), find: $('#lecFind') };
+      hits: $('#lecHits'), find: $('#lecFind'), findAll: $('#lecFindAll') };
 
     mask.addEventListener('click', close);
     sheet.addEventListener('click', function (ev) {
@@ -151,6 +152,7 @@
         else if (ev.key === 'Escape') { hideHits(); ev.stopPropagation(); }
       });
       el.find.addEventListener('input', function () { if (!el.find.value.trim()) hideHits(); });
+      if (el.findAll) el.findAll.addEventListener('change', function () { if (el.find.value.trim()) doFind(); });
     }
     document.addEventListener('keydown', function (ev) {
       if (!el.sheet || !el.sheet.classList.contains('on')) return;
@@ -247,35 +249,53 @@
     var a = Math.max(0, i - 34), b = Math.min(t.length, i + q.length + 46);
     return (a > 0 ? '…' : '') + t.slice(a, b).replace(/\s+/g, ' ') + (b < t.length ? '…' : '');
   }
+  function findTerms(raw) {
+    return String(raw || '').split(/[\s,，、;；]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 0; });
+  }
+  function countOf(hay, needle) {
+    var n = 0, i = 0;
+    while ((i = hay.indexOf(needle, i)) >= 0) { n++; i += needle.length; }
+    return n;
+  }
   function doFind() {
-    var q = (el.find && el.find.value || '').trim();
-    if (!q) { hideHits(); return; }
-    if (q.length < 2) toast('至少两个字，不然搜出来一大片');
+    var raw = (el.find && el.find.value || '').trim();
+    if (!raw) { hideHits(); return; }
+    var terms = findTerms(raw);
+    if (!terms.length) { hideHits(); return; }
+    if (terms.join('').length < 2) toast('至少两个字，不然搜出来一大片');
+    var all = !!(el.findAll && el.findAll.checked);
     loadText().then(function (rows) {
-      var cur = [];
+      var out = [];
       (rows || []).forEach(function (r) {
         if (!r || !r.t) return;
-        var t = String(r.t);
-        if (t.toLowerCase().indexOf(q.toLowerCase()) < 0) return;
-        var n = 0, i = 0;
-        while ((i = t.toLowerCase().indexOf(q.toLowerCase(), i)) >= 0) { n++; i += q.length; }
-        cur.push({ src: r.src, p: r.p, f: r.f, t: t, n: n, same: r.src === CUR.src });
+        if (!all && r.src !== CUR.src) return;
+        var t = String(r.t), low = t.toLowerCase(), n = 0, ok = true;
+        for (var k = 0; k < terms.length; k++) {
+          var w = terms[k].toLowerCase(), c = countOf(low, w);
+          if (!c) { ok = false; break; }
+          n += c;
+        }
+        if (!ok) return;
+        out.push({ src: r.src, p: r.p, f: r.f, t: t, n: n, same: r.src === CUR.src });
       });
-      cur.sort(function (a, b) { return (b.same ? 1 : 0) - (a.same ? 1 : 0) || b.n - a.n; });
-      HITS = cur.slice(0, 30);
-      renderHits(q);
-      if (!HITS.length) toast('没搜到「' + q + '」（扫描页没有文字，这种只能靠 📌 手动绑）');
+      out.sort(function (a, b) { return (b.same ? 1 : 0) - (a.same ? 1 : 0) || b.n - a.n || a.p - b.p; });
+      HITS = out.slice(0, 30);
+      renderHits(terms);
+      if (!HITS.length) toast('没搜到「' + terms.join(' + ') + '」' + (all ? '' : '（试试勾「全部讲义」）') + '（扫描页没有文字，只能靠 📌 手动绑）');
     }).catch(function (e) { toast('讲义文字还没准备好：' + (e.message || e)); });
   }
-  function renderHits(q) {
+  function renderHits(terms) {
     if (!el.hits) return;
     if (!HITS.length) { el.hits.hidden = true; return; }
-    var h = '<div class="lec-hits-t">找到 ' + HITS.length + ' 处（点一条跳过去；同名的页排在前面 = 本讲义优先）</div>';
+    if (typeof terms === 'string') terms = findTerms(terms);
+    var head = (el.findAll && el.findAll.checked ? '全部讲义 · ' : '本讲义 · ') +
+      '找到 ' + HITS.length + ' 页' + (terms.length > 1 ? '（同时包含：' + terms.join(' / ') + '）' : '');
+    var h = '<div class="lec-hits-t">' + head + '（点一条跳过去）</div>';
     HITS.forEach(function (r, i) {
       h += '<button class="lec-hit" data-lec="hit" data-i="' + i + '">' +
         '<i class="hpage">第 ' + r.p + ' 页</i>' +
         '<em class="hfile">' + (r.same ? '本讲义' : String(r.f || r.src).replace(/\.pdf$/i, '')) + '</em>' +
-        '<span class="htxt">' + snippet(r.t, q).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }) + '</span>' +
+        '<span class="htxt">' + snippet(r.t, terms[0]).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }) + '</span>' +
         '</button>';
     });
     el.hits.innerHTML = h;
