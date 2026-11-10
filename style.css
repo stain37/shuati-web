@@ -3933,3 +3933,42 @@ html[data-native] body:not(.quiz) { padding-bottom: calc(82px + env(safe-area-in
 
 /* 启动/切页时别出现「选中蓝」闪一下 */
 html[data-native] ::selection { background: rgba(37,99,235,.22); }
+
+
+/* ===== web679：底部导航改成「整块圆角浮起的面板」（四个角都圆） =====
+   之前为了贴底只圆上面两个角，边框粗的主题（corpmemphis / win95）看起来像直角方块。
+   现在四条边都圆、左右和底部各留一点缝，整块像一个悬浮的胶囊面板。 */
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav{
+  left:10px!important; right:10px!important;
+  bottom:max(8px, env(safe-area-inset-bottom))!important;
+  max-width:none!important; margin:0!important;
+  border-radius:26px!important;
+  box-shadow:0 10px 28px rgba(15,23,42,.20)!important;
+}
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav .btn{border-radius:18px!important}
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav .bnav-ind{border-radius:20px!important}
+
+/* 答题页：两条栏都浮起、四角圆 */
+html[data-style][data-style] body.quiz .nav{
+  left:10px!important; right:10px!important;
+  bottom:max(8px, env(safe-area-inset-bottom))!important;
+  max-width:none!important; margin:0!important;
+  border-radius:22px!important;
+}
+html[data-style][data-style] body.quiz .bnav{
+  left:10px!important; right:10px!important;
+  bottom:calc(var(--quizbar-h, 72px) + max(10px, env(safe-area-inset-bottom)) + 4px)!important;
+  max-width:none!important; margin:0!important;
+  border-radius:22px!important;
+  box-shadow:0 10px 26px rgba(15,23,42,.18)!important;
+}
+html[data-style][data-style] body.quiz .nav .qbtn,
+html[data-style][data-style] body.quiz .bnav .btn{border-radius:16px!important}
+
+/* 留出浮起面板的高度，内容不会被压住 */
+html[data-style][data-style] body:not(.quiz):not(.focus){padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
+html[data-style][data-style] body.quiz{padding-bottom:calc(var(--quizbar-h, 72px) + 92px + env(safe-area-inset-bottom))!important}
+
+/* 主题自带的粗边框别在底部画一道断掉的横线 */
+html[data-style][data-style] body:not(.quiz):not(.focus) .bnav,
+html[data-style][data-style] body.quiz .bnav{border-width:inherit!important}
