@@ -113,6 +113,8 @@
           '<button data-lec="next" title="下一页（→）">›</button>' +
         '</div>' +
       '</div>' +
+      '<div class="lec-find"><input id="lecFind" type="search" placeholder="搜讲义里的字…（如 麦氏点 / HCO3）" title="先搜这份讲义，没找到再搜全部"><button data-lec="find" title="搜一下（回车也行）">🔎</button></div>' +
+      '<div class="lec-hits" id="lecHits" hidden></div>' +
       '<div class="lec-body" id="lecBody"><img id="lecImg" alt="讲义原页"><div id="lecEmpty" class="lec-empty">这份讲义还没有页图，点右下角「看整本 PDF」。</div></div>' +
       '<div class="lec-foot">' +
         '<button class="btn" data-lec="zoom">⤢ 放大看</button>' +
@@ -120,7 +122,8 @@
       '</div>';
     var zoom = ce('div', 'lec-zoom'); zoom.id = 'lecZoom'; zoom.innerHTML = '<img alt="讲义原页（放大）"><button data-lec="unzoom">×</button>';
     document.body.appendChild(mask); document.body.appendChild(sheet); document.body.appendChild(zoom);
-    el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom };
+    el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom,
+      hits: $('#lecHits'), find: $('#lecFind') };
 
     mask.addEventListener('click', close);
     sheet.addEventListener('click', function (ev) {
@@ -136,10 +139,19 @@
       if (a === 'zoom') return doZoom();
       if (a === 'unzoom') return unzoom();
       if (a === 'pdf') return openPdf();
+      if (a === 'find') return doFind();
+      if (a === 'hit') return goHit(b.getAttribute('data-i'));
     });
     zoom.addEventListener('click', function (ev) { if (ev.target.closest('[data-lec="unzoom"]') || ev.target === zoom) unzoom(); });
     el.sel.addEventListener('change', function () { CUR.src = el.sel.value; CUR.p = 1; paint(); remember(); });
     el.page.addEventListener('change', function () { go(parseInt(el.page.value, 10) || 1); });
+    if (el.find) {
+      el.find.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); doFind(); }
+        else if (ev.key === 'Escape') { hideHits(); ev.stopPropagation(); }
+      });
+      el.find.addEventListener('input', function () { if (!el.find.value.trim()) hideHits(); });
+    }
     document.addEventListener('keydown', function (ev) {
       if (!el.sheet || !el.sheet.classList.contains('on')) return;
       if (ev.key === 'Escape') { unzoom(); close(); }
@@ -226,6 +238,57 @@
     return false;
   }
 
+  /* ---------- 搜文字找页（页图上没法高亮，所以给「页码 + 上下文」，点一下跳过去） ---------- */
+  var HITS = [];
+  function hideHits() { HITS = []; if (el.hits) { el.hits.hidden = true; el.hits.innerHTML = ''; } }
+  function snippet(t, q) {
+    var i = t.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return t.slice(0, 90);
+    var a = Math.max(0, i - 34), b = Math.min(t.length, i + q.length + 46);
+    return (a > 0 ? '…' : '') + t.slice(a, b).replace(/\s+/g, ' ') + (b < t.length ? '…' : '');
+  }
+  function doFind() {
+    var q = (el.find && el.find.value || '').trim();
+    if (!q) { hideHits(); return; }
+    if (q.length < 2) toast('至少两个字，不然搜出来一大片');
+    loadText().then(function (rows) {
+      var cur = [];
+      (rows || []).forEach(function (r) {
+        if (!r || !r.t) return;
+        var t = String(r.t);
+        if (t.toLowerCase().indexOf(q.toLowerCase()) < 0) return;
+        var n = 0, i = 0;
+        while ((i = t.toLowerCase().indexOf(q.toLowerCase(), i)) >= 0) { n++; i += q.length; }
+        cur.push({ src: r.src, p: r.p, f: r.f, t: t, n: n, same: r.src === CUR.src });
+      });
+      cur.sort(function (a, b) { return (b.same ? 1 : 0) - (a.same ? 1 : 0) || b.n - a.n; });
+      HITS = cur.slice(0, 30);
+      renderHits(q);
+      if (!HITS.length) toast('没搜到「' + q + '」（扫描页没有文字，这种只能靠 📌 手动绑）');
+    }).catch(function (e) { toast('讲义文字还没准备好：' + (e.message || e)); });
+  }
+  function renderHits(q) {
+    if (!el.hits) return;
+    if (!HITS.length) { el.hits.hidden = true; return; }
+    var h = '<div class="lec-hits-t">找到 ' + HITS.length + ' 处（点一条跳过去；同名的页排在前面 = 本讲义优先）</div>';
+    HITS.forEach(function (r, i) {
+      h += '<button class="lec-hit" data-lec="hit" data-i="' + i + '">' +
+        '<i class="hpage">第 ' + r.p + ' 页</i>' +
+        '<em class="hfile">' + (r.same ? '本讲义' : String(r.f || r.src).replace(/\.pdf$/i, '')) + '</em>' +
+        '<span class="htxt">' + snippet(r.t, q).replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }) + '</span>' +
+        '</button>';
+    });
+    el.hits.innerHTML = h;
+    el.hits.hidden = false;
+    el.hits.scrollTop = 0;
+  }
+  function goHit(i) {
+    var r = HITS[parseInt(i, 10)]; if (!r) return;
+    if (r.src !== CUR.src) { var f = fileOf(r.src); CUR.src = r.src; if (f) { CUR.n = f.n || CUR.n; var o = el.sel && el.sel.querySelector('option[value="' + r.src + '"]'); if (!o && el.sel) { fillSelect(); o = el.sel.querySelector('option[value="' + r.src + '"]'); } if (o) el.sel.value = r.src; } }
+    CUR.p = r.p;
+    paint(); remember();
+    hideHits();
+  }
   function go(p) { CUR.p = p; paint(); }
 
   function doZoom() {
@@ -378,6 +441,7 @@
   }, true);
 
   window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: search, text: loadText,
-    bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
+    bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
+    find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: function (src, p) { var f = fileOf(src); return f && f.pages[p]; } };
 })();

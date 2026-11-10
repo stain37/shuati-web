@@ -19,7 +19,7 @@ const SYNC_LS = 'qbank.sync.v1';
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
-  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false },
+  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false, lec: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -36,6 +36,7 @@ const SYNC_SCOPES = [
   { k: 'qtn', label: '口诀 / 思路便签', tip: '答题页右侧那份小便签（几个字的口诀、判别法、易错点）。跟解析分开存，所以单独一项。' },
   { k: 'paper', label: '套卷（组卷）', tip: '临时套卷的定义' },
   { k: 'var', label: '变式题', tip: 'AI 照原题出的变式题（纯练习，不计错题本 / 正确率；删掉的也会跟着走）' },
+  { k: 'lec', label: '讲义页绑定', tip: '「📖 讲义」里用 📌 绑死的「这题 → 讲义第几页」，换设备也能直达同一页' },
   { k: 'srs', label: '背诵 / 复习曲线', tip: '间隔重复的档位设置' },
   { k: 'cat', label: '分类目录', tip: '自建题库的分类树' },
   { k: 'star', label: '星标常驻（侧栏）', tip: '侧栏里标了 ★ 的题库 / 文件夹，两边保持一致；搜索词、展开状态这些设备偏好不跟着走' },
@@ -278,6 +279,13 @@ async function syncPayload() {
       } catch (e) {}
     }
   }
+  /* 讲义页绑定：题 → 讲义文件 + 页码，本地键 qbank.lec.bind.v1 */
+  if (s.lec !== false) {
+    try {
+      const b = JSON.parse(localStorage.getItem('qbank.lec.bind.v1') || '{}');
+      if (b && typeof b === 'object' && Object.keys(b).length) d.lecBind = b;
+    } catch (e) {}
+  }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   /* 侧栏星标：只拿 star 这一项，搜索词 / 展开状态 / 多选状态都是每台设备自己的偏好 */
   if (s.star) {
@@ -304,12 +312,30 @@ async function syncPayload() {
   if (s.cat && typeof CAT !== 'undefined' && CAT && CAT.drops) out.catsDrop = CAT.drops();    /* 删掉的文件夹同理 */
   return out;
 }
+/* 讲义页绑定：按题 id 并集，同一条取 ts 较新的 */
+function syncMergeLecBind(theirs) {
+  if (!theirs || typeof theirs !== 'object') return 0;
+  let mine = {};
+  try { mine = JSON.parse(localStorage.getItem('qbank.lec.bind.v1') || '{}') || {}; } catch (e) { mine = {}; }
+  let ch = 0;
+  Object.keys(theirs).forEach(k => {
+    const a = theirs[k] || {}, b = mine[k];
+    if (!a || !a.src) return;
+    if (!b || (a.ts || 0) > (b.ts || 0)) { mine[k] = a; ch++; }
+  });
+  if (ch) {
+    try { localStorage.setItem('qbank.lec.bind.v1', JSON.stringify(mine)); } catch (e) {}
+    try { if (window.LECTURE && LECTURE.binds) LECTURE.refresh && LECTURE.refresh(); } catch (e) {}
+  }
+  return ch;
+}
 /* 把云端的这份数据并进本机（本机自己那套合并写入负责时间戳和墓碑） */
 function syncMergeCloud(cloud) {
   if (!cloud || cloud.app !== 'shuati-sync') throw new Error('云端文件不是刷题站的同步数据');
   const d = cloud.data || {}, ct = cloud.tomb || {}, s = SYC.scope;
   let added = 0;
 
+  if (s.lec !== false && d.lecBind) { try { added += syncMergeLecBind(d.lecBind); } catch (e) {} }
   /* 0-方案) 多方案：方案清单按 id 并集，归属按方案并集；本机已有的不动 */
   if (s.cat && window.SCM && SCM.raw && (d.schemes || d.catmap)) {
     try {
