@@ -12,7 +12,8 @@
   var BIP = null;
   var installed = false;
   try {
-    installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    installed = !!document.documentElement.getAttribute('data-native')   /* APK 壳里不用再装 */
+    || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || window.navigator.standalone === true;
   } catch (e) {}
 
