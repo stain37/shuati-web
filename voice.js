@@ -24,6 +24,7 @@
     reciteTerse: true,        /* 背题只念「题干 + 正确答案」，不念选项和解析 */
     reciteAuto: true,         /* 一题读完自动跳下一题 */
     reciteGap: 1.2,           /* 两题之间停多久（秒） */
+  sentGap: 0,               /* 长解析被分句时，句与句之间再等多久（秒）；0 = 不额外等 */
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     endSilence: 2.6,         /* 说完后静音多久算一句说完（秒；0 = 用浏览器自带的断句） */
@@ -126,15 +127,43 @@
   }
   /* 把长文本按句子切段（参考 moss 的 TextQueue：一句一句合成播放，
      首句更快出声、也方便在句间打断，不用等整段念完） */
-  function splitSent(text) {
-    const t = String(text).replace(/\s+/g, ' ').trim();
+  /* ---------- 念之前先把符号换成中文（web670）
+     系统 TTS 会把「✓」按「根号」念、把「×」按「乘」念，判断题听着就全乱了。
+     规则尽量保守：只在「单独出现」时替换，像「心率×3」「X 线」这种专业写法不动。 ---------- */
+  const TTS_MAP = [
+    [/[√✓✔☑]/g, '对'],
+    [/[✗✘☒]/g, '错'],
+    [/×/g, function (m, off, s) {
+      const prev = s.charAt(off - 1), next = s.charAt(off + 1);
+      if (/\d/.test(prev) || /\d/.test(next) || /[a-zA-Z]/.test(next)) return '×';   /* 心率×3 / 3×4：保留 */
+      return '错';
+    }],
+    /* 单独一个 X/x 才算「错」：前后得有空格、标点或行首行尾；「X 线」「X 光」「AX」都不动 */
+    [/(?<![A-Za-z0-9])[xX](?=\s*(?:[，。；、：:！!？?）)]|$))/g, '错'],
+    [/→|→/g, '变为'],
+    [/≥/g, '大于等于'], [/≤/g, '小于等于'], [/≠/g, '不等于'],
+    [/℃/g, '摄氏度'], [/‰/g, '千分之'],
+    [/①/g, '第一'], [/②/g, '第二'], [/③/g, '第三'], [/④/g, '第四'], [/⑤/g, '第五'],
+    [/⑥/g, '第六'], [/⑦/g, '第七'], [/⑧/g, '第八'], [/⑨/g, '第九'], [/⑩/g, '第十'],
+    [/[“”"]/g, ''], [/…/g, '，']
+  ];
+  function ttsFix(text) {
+    let s = String(text == null ? '' : text);
+    for (let i = 0; i < TTS_MAP.length; i++) {
+      try { s = s.replace(TTS_MAP[i][0], TTS_MAP[i][1]); } catch (e) {}
+    }
+    return s.replace(/[ \t]{2,}/g, ' ').replace(/ +([，。；、：:！!？?）)])/g, '$1').replace(/([（(]) +/g, '$1').trim();
+  }
+  function splitSent(text, opt) {
+    const t = ttsFix(text).replace(/\s+/g, ' ').trim();
     if (!t) return [];
-    if (t.length <= 70) return [t];
+    if (opt && opt.whole) return [t];        /* 背题连读 / 整段读：不切，句间停顿交给标点，避免每句之间多出一次引擎接缝 */
+    if (t.length <= 150) return [t];         /* 以前 70 字就切，短解析也会被切成两三截，句间就多出几段空白 */
     const raw = t.split(/(?<=[。！？；!?;])\s*/).filter(Boolean);
     const out = []; let cur = '';
     raw.forEach(function (p) {
       cur += p;
-      if (cur.length >= 40) { out.push(cur); cur = ''; }
+      if (cur.length >= 60) { out.push(cur); cur = ''; }
     });
     if (cur.trim()) out.push(cur.trim());
     return out.length ? out : [t];
@@ -148,12 +177,12 @@
     const v = pickVoice(); if (v) u.voice = v;
     return u;
   }
-  function speak(text, done) {
+  function speak(text, done, opt) {
     if (text) said.push(String(text).slice(0, 80));
     const s = synth();
     if (!s || !text) { done && done(); return; }
     if (cfg().stopOnSpeak) { try { s.cancel(); } catch (e) {} }
-    const chunks = splitSent(text);
+    const chunks = splitSent(text, opt);
     speakChunks = chunks.slice();
     speaking = true; setPill('speaking');
     let fin = false, at = 0, lastTick = Date.now(), wd = null, curLen = 0;
@@ -170,7 +199,7 @@
       curLen = String(chunks[at]).length;
       const u = mkUtter(chunks[at++]);
       u.onstart = mark; u.onboundary = mark;
-      u.onend = function () { mark(); setTimeout(next, 40); };
+      u.onend = function () { mark(); setTimeout(next, 40 + Math.max(0, Math.min(1.2, +cfg().sentGap || 0)) * 1000); };
       u.onerror = function () { mark(); setTimeout(next, 40); };
       try { s.speak(u); } catch (e) { next(); }
     };
@@ -643,7 +672,7 @@
     setPill('recite');
     const txt = reciteSpeech();
     reciteLen = txt.length;
-    speak(txt, reciteAfterOne);
+    speak(txt, reciteAfterOne, { whole: true });
   }
   /* 说「我不太懂」→ 把这道题丢进站内 AI，写完念给你听 */
   function askAI() {
@@ -1514,6 +1543,7 @@
       row('音调', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="pitch" value="' + (c.pitch == null ? 1 : c.pitch) + '"><b class="vs-val" data-vv="pitch">' + (+(c.pitch == null ? 1 : c.pitch)).toFixed(2) + '</b>') +
       row('读弹窗内容', chk('readPanel'), '脑图 / 相似题 / 批注这些面板打开时，读它的标题和按钮；里面的按钮也能用说的点，说「关闭」就关掉') +
       row('念提示词', chk('readHints'), '念完选项后要不要说「请选择 / 可以多选，选完说确认」；关掉更安静') +
+    row('句子之间停多久', '<input type="range" min="0" max="1.2" step="0.05" data-vk="sentGap" value="' + (c.sentGap == null ? 0 : c.sentGap) + '"><b class="vs-val">' + (c.sentGap == null ? 0 : c.sentGap).toFixed(2) + 's</b>', '只有很长的解析被分成几段读时才生效；0 = 一口气念完。背题连读本来就不分句') +
       row('读题号', chk('readNo')) +
       row('读题干', chk('readStem')) +
       row('读选项', chk('readOpts')) +
@@ -1628,7 +1658,8 @@
             : k === 'fastEnd' ? (+val).toFixed(2) + 's'
               : k === 'grace' ? (+val).toFixed(1) + 's'
             : k === 'maxUtt' ? val + 's'
-              : k === 'reciteGap' ? (+val).toFixed(1) + 's'
+              : k === 'sentGap' ? (+val).toFixed(2) + 's'
+      : k === 'reciteGap' ? (+val).toFixed(1) + 's'
                 : (val / 1000).toFixed(1) + 's';
       if (k === 'on') { if (val) { on(); beep('wake'); } else off(); }
       if (k === 'rate' || k === 'vol' || k === 'voiceURI' || k === 'lang') { /* 下一次朗读生效 */ }
@@ -1723,6 +1754,7 @@
   function sync() { paintChip(); if (isOn() && inQuiz()) ensurePill(); }
 
   window.VOICE = {
+    _ttsFix: ttsFix,
     toggle: toggle, on: on, off: off, openPanel: openPanel, sync: sync,
     onQuizRender: onQuizRender, speak: speak, supported: supported,
     cfg: cfg, _heard: handleHeard, _parse: function (t) { return parseLetters(t); },
