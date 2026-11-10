@@ -20,6 +20,10 @@
     readHints: true,          /* 念完选项后要不要说「请选择 / 可以多选」这类提示 */
     btnCtl: true,             /* 答题页里的按钮能不能用说的点 */
     readPanel: true,
+    /* 背题连读：麦克风关掉，一题一题自己往下读 */
+    reciteTerse: true,        /* 背题只念「题干 + 正确答案」，不念选项和解析 */
+    reciteAuto: true,         /* 一题读完自动跳下一题 */
+    reciteGap: 1.2,           /* 两题之间停多久（秒） */
     /* 识别 */
     lang: 'zh-CN', multiPause: 1200, needConfirm: false, autoJudgeSingle: true,
     endSilence: 2.6,         /* 说完后静音多久算一句说完（秒；0 = 用浏览器自带的断句） */
@@ -72,7 +76,7 @@
 
   let V = null;                 // 合并后的设置
   let rec = null, recOn = false;
-  let speaking = false, pending = new Set(), qk = '', announced = false;
+  let speaking = false, pending = new Set(), qk = '', announced = false, lastMode = '';
   let pauseT = null, nextT = null, lastHeard = '';
   let askT = null, askState = '', said = [];
   /* 断句状态机（参考 SpeakControl 的「文本停住 N 秒就断句」） */
@@ -117,6 +121,7 @@
     const s = synth(); if (!s) return;
     try { s.cancel(); } catch (e) {}
     speaking = false; speakChunks = [];
+    try { reciteStop(); } catch (e) {}
     setPill('idle');
   }
   /* 把长文本按句子切段（参考 moss 的 TextQueue：一句一句合成播放，
@@ -565,18 +570,58 @@
     if (cfg().sayVerdict) speak(ok ? '答对了。' : '答错了。');
     if (cfg().mode !== 'read') startListen();
   }
-  /* 背题模式：直接念题干 + 选项 + 答案 + 解析 */
+  /* 背题模式：默认只念题干 + 正确答案（麦克风关掉，读完自动下一题） */
   function reciteSpeech() {
     const c = cfg(), parts = [];
     if (c.readNo) { const n = qNoText(); if (n) parts.push(n); }
     if (c.readStem) parts.push(stemText());
-    if (c.readOpts) optionItems().forEach(o => parts.push(c.optStyle === 'letter' ? o.letter : (c.optStyle === 'text' ? o.text : o.letter + '\uff0c' + o.text)));
+    if (!c.reciteTerse) {
+      if (c.readOpts) optionItems().forEach(o => parts.push(c.optStyle === 'letter' ? o.letter : (c.optStyle === 'text' ? o.text : o.letter + '\uff0c' + o.text)));
+    }
     const a = answerText(); if (a) parts.push(a);
-    const e = expText(); if (e) parts.push('\u89e3\u6790\uff1a' + e.slice(0, 420));
+    if (!c.reciteTerse) { const e = expText(); if (e) parts.push('\u89e3\u6790\uff1a' + e.slice(0, 420)); }
     /* 每段末尾的句号先去掉，统一由 join 补，否则会念成「答案是 B。。解析：…」 */
     return parts.filter(Boolean)
-      .map(function (x) { return String(x).replace(/[\u3002\uff0c\u3001\uff1b\s]+$/, ''); })
+      .map(function (x) { return String(x).replace(/[\u3002\uff0c\u3001\uff1b\uff1f\uff01!?\u2026\s]+$/, ''); })
       .join('\u3002');
+  }
+  /* 背题连读：读完这道，停一会儿自动点「下一题」，到最后一题就停 */
+  let reciteT = null, reciteAt = 0, reciteLen = 0;
+  function reciteStop() { clearTimeout(reciteT); reciteT = null; }
+  function reciteAfterOne() {
+    reciteStop();
+    const c = cfg();
+    if (!c.reciteAuto || !c.on || !isOn() || !isRecite() || !inQuiz()) return;
+    const nx = document.getElementById('next');
+    if (!nx) return;
+    const last = nx.disabled || nx.getAttribute('aria-disabled') === 'true' || /最后|没有下一|已是最后/.test(nx.textContent || '');
+    if (last) { setPill('idle'); flash('背题读完了：已经是最后一题', 2400); return; }
+    setPill('recite');
+    /* 每道题至少停 1.4 秒再翻页：万一这台设备 TTS 没出声（没装中文语音 / 系统静音），
+       也不会像疯了一样一秒钟跳十道题 */
+    const elapsed = Date.now() - (reciteAt || Date.now());
+    /* 按字数估一个「至少该停多久」：TTS 正常时早就念完了，这个值不起作用；
+       万一设备没声（没装中文语音 / 静音），也不会一秒钟跳好几道题 */
+    const minMs = Math.max(1400, Math.min(20000, (reciteLen || 0) * 95 / Math.max(.6, +c.rate || 1)));
+    const waitMs = Math.max(0, minMs - elapsed) + Math.max(0, (+c.reciteGap || 0) * 1000);
+    reciteT = setTimeout(function () {
+      reciteT = null;
+      if (!isOn() || !isRecite() || !inQuiz() || speaking) return;
+      if (document.hidden) return;                       /* 页面切到后台就别自己翻了 */
+      const b = document.getElementById('next');
+      if (!b || b.disabled) return;
+      b.click();
+    }, waitMs);
+  }
+  /* 进入背题连读：关麦克风 → 念题干 + 答案 → 完了自动下一题 */
+  function recitePlay() {
+    stopListen();
+    reciteStop();
+    reciteAt = Date.now();
+    setPill('recite');
+    const txt = reciteSpeech();
+    reciteLen = txt.length;
+    speak(txt, reciteAfterOne);
   }
   /* 说「我不太懂」→ 把这道题丢进站内 AI，写完念给你听 */
   function askAI() {
@@ -611,6 +656,7 @@
     const s = p.querySelector('.vp-txt');
     if (s) s.textContent = state === 'listening' ? '正在听…'
       : state === 'speaking' ? '正在读…'
+      : state === 'recite' ? '背题连读中…'
       : state === 'think' ? 'AI 在想…'
       : (isOn() ? '语音待命' : '语音已关');
     if (heard != null) {
@@ -1249,12 +1295,14 @@
     if (!supported()) {
       flash('这个浏览器不支持语音识别，只能朗读；换成 Chrome / Edge 或安卓 Chrome 试试');
     }
-    resetForQuestion(); readCurrent();
+    resetForQuestion();
+    /* 背题模式：麦克风不打开，直接一题一题往下念 */
+    if (isRecite()) recitePlay(); else readCurrent();
     if (window.SET && typeof renderQuiz === 'function' && QZ && QZ.bankId) { /* 让单手类布局重画一次 */ }
   }
   function off() {
     cfg().on = false; save();
-    stopListen(); stopSpeak();
+    stopListen(); stopSpeak(); reciteStop();
     clearTimeout(pauseT); clearTimeout(nextT);
     const p = document.getElementById('voicePill'); if (p) p.remove();
     paintChip();
@@ -1457,6 +1505,11 @@
       row('念一句对错', chk('sayVerdict'), '只念「答对了 / 答错了」，不念累计次数') +
       row('答错读解析', chk('readExp')) +
 
+      '<div class="vs-sec">背题连读</div>' +
+      row('背题只念题干＋答案', chk('reciteTerse'), '背题模式（题目上方的「背题」）下，只念题干和正确答案，不念选项、不念解析') +
+      row('背题自动下一题', chk('reciteAuto'), '一题读完停一会儿自己翻下一题；连读时麦克风是关的，想停就点浮条上的 ✕ 或再点一次「🎙 语音中」') +
+      row('两题之间停多久', '<input type="range" min="0" max="5" step="0.1" data-vk="reciteGap" value="' + (c.reciteGap == null ? 1.2 : c.reciteGap) + '"><b class="vs-val" data-vv="reciteGap">' + (+(c.reciteGap == null ? 1.2 : c.reciteGap)).toFixed(1) + 's</b>') +
+
       '<div class="vs-sec">听你说</div>' +
       row('语言 / 口音', '<select data-vk="lang">' +
         ['zh-CN', 'zh-TW', 'yue-Hant-HK', 'en-US'].map(l => '<option value="' + l + '"' + (c.lang === l ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>') +
@@ -1553,7 +1606,8 @@
             : k === 'fastEnd' ? (+val).toFixed(2) + 's'
               : k === 'grace' ? (+val).toFixed(1) + 's'
             : k === 'maxUtt' ? val + 's'
-              : (val / 1000).toFixed(1) + 's';
+              : k === 'reciteGap' ? (+val).toFixed(1) + 's'
+                : (val / 1000).toFixed(1) + 's';
       if (k === 'on') { if (val) { on(); beep('wake'); } else off(); }
       if (k === 'rate' || k === 'vol' || k === 'voiceURI' || k === 'lang') { /* 下一次朗读生效 */ }
       if (k === 'needConfirm' || k === 'mode') resetForQuestion();
@@ -1624,17 +1678,19 @@
   }
   function onQuizRender() {
     paintChip();
-    if (!isOn()) { const p = document.getElementById('voicePill'); if (p) p.remove(); stopListen(); stopSpeak(); return; }
-    if (!inQuiz()) { stopListen(); stopSpeak(); const p = document.getElementById('voicePill'); if (p) p.remove(); return; }
+    if (!isOn()) { const p = document.getElementById('voicePill'); if (p) p.remove(); stopListen(); stopSpeak(); reciteStop(); return; }
+    if (!inQuiz()) { stopListen(); stopSpeak(); reciteStop(); const p = document.getElementById('voicePill'); if (p) p.remove(); return; }
     ensurePill();
     const k = qKeyNow();
-    const locked = !document.querySelector('#view .opt:not(.lock) .k') ? false : false;   /* 占位，下面用真实判断 */
+    const md = quizMode();
+    const modeChanged = md !== lastMode;
+    lastMode = md;
     /* 背题模式下选项都被标成 .lock（不用作答），别把它当「已作答」，否则永远不念答案 */
     const answered = !isRecite() && !document.querySelector('#view .opt:not(.lock)') && !!document.querySelector('#view .opt.lock');
-    if (k !== qk) {
+    if (k !== qk || modeChanged) {
       qk = k; resetForQuestion();
       if (!answered) {
-        if (isRecite()) { stopListen(); speak(reciteSpeech()); }
+        if (isRecite()) recitePlay();
         else readCurrent();
       } else { setPill('idle'); startListen(); }
       return;
@@ -1649,6 +1705,8 @@
     onQuizRender: onQuizRender, speak: speak, supported: supported,
     cfg: cfg, _heard: handleHeard, _parse: function (t) { return parseLetters(t); },
     _recite: reciteSpeech,
+    _recitePlay: recitePlay, _reciteAfter: reciteAfterOne, _reciteStop: reciteStop,
+    _mic: function () { return recOn; },
     _tick: tickEnd, _flush: flushLive, _beep: beep, _echo: isEcho, _split: splitSent,
     _ech: function (t) { return echoish(t); },
     _speaking: function () { return speaking; },
