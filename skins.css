@@ -7398,7 +7398,7 @@ html[data-style="glass"] .nav .qbtn.on{
 /* ---------- glass · 首页 hero（统计条原来是深蓝 --grad，压在玻璃上面看不见） ---------- */
 html[data-style="glass"] .hero{color:#111a26!important;box-shadow:0 18px 44px rgba(31,45,80,.16)!important}
 html[data-style="glass"] .hero::after{
-  background:linear-gradient(135deg,rgba(255,255,255,.62),rgba(255,255,255,.30) 58%,rgba(255,255,255,.46))!important;
+  background:linear-gradient(135deg,rgba(255,255,255,.34),rgba(255,255,255,.12) 58%,rgba(255,255,255,.24))!important;
   opacity:1!important;
 }
 html[data-style="glass"] .hero,html[data-style="glass"] .hero h1,html[data-style="glass"] .hero p,
@@ -7432,3 +7432,176 @@ html[data-bg="video"] .bg-video{display:block!important}
 html[data-bg="video"]{background:var(--bg)!important}
 /* 视频背景时，皮肤那层不透明「水洗」会盖住视频，压到很淡 */
 html[data-bg="video"] body::before{opacity:.35!important}
+
+/* ============ glass v2：更像玻璃（更强折射 + 更透的卡片 + 彩色底） ============ */
+html[data-style="glass"]{
+  --glass-blur:blur(24px) saturate(190%);
+  --glass-blur2:blur(30px) saturate(200%);
+}
+/* 底：更饱和的光斑，玻璃才有东西可折射 */
+html[data-style="glass"]:not([data-bg="custom"]):not([data-bg="video"]) body{
+  background-color:#c9d8fb!important;
+  background-image:linear-gradient(178deg,#9fc3ff 0%,#c3b3ff 26%,#ffcfe9 58%,#9ce9dd 100%)!important;
+  background-size:100% 100%!important;background-repeat:no-repeat!important;background-attachment:fixed!important;
+  background-position:0 0!important;
+}
+html[data-style="glass"] body{
+  --card:rgba(255,255,255,.30);
+  --card2:rgba(255,255,255,.20);
+  --card3:rgba(255,255,255,.38);
+  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.46),rgba(255,255,255,.10) 56%,rgba(255,255,255,.22));
+  --glass-edge:0 22px 48px -14px rgba(28,48,96,.34), inset 0 1px 0 rgba(255,255,255,.95), inset 1px 0 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(255,255,255,.28);
+  --line:rgba(255,255,255,.72);
+  --line2:rgba(255,255,255,.44);
+}
+html[data-style="glass"] body.dark{
+  --card:rgba(34,44,68,.52);
+  --card2:rgba(20,26,44,.46);
+  --card3:rgba(48,58,88,.46);
+  --glass-fill:linear-gradient(150deg,rgba(64,82,124,.46),rgba(12,18,34,.28) 56%,rgba(30,40,66,.38));
+  --glass-edge:0 24px 52px -16px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.26), inset 1px 0 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(255,255,255,.05);
+  --line:rgba(255,255,255,.26);
+}
+html[data-style="glass"]:not([data-bg="custom"]):not([data-bg="video"]) body.dark{
+  background-color:#070c18!important;
+  background-image:linear-gradient(178deg,#0a1a3e 0%,#180e34 30%,#33102c 62%,#06282c 100%)!important;
+  background-size:100% 100%!important;background-repeat:no-repeat!important;background-attachment:fixed!important;
+  background-position:0 0!important;
+}
+/* 卡片 / 浮层：更透 + 更强的模糊与高光 */
+html[data-style="glass"] .card,
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .vb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .fixbox,
+html[data-style="glass"] .modal,
+html[data-style="glass"] .pop,
+html[data-style="glass"] .drawer,
+html[data-style="glass"] .ai-bubble,
+html[data-style="glass"] .quizbar,
+html[data-style="glass"] .exp,
+html[data-style="glass"] .opt,
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip{
+  -webkit-backdrop-filter:var(--glass-blur);
+  backdrop-filter:var(--glass-blur);
+}
+html[data-style="glass"] .grid,
+html[data-style="glass"] .hero,
+html[data-style="glass"] .top,
+html[data-style="glass"] .bnav,
+html[data-style="glass"] .nav,
+html[data-style="glass"] .nb-card{
+  -webkit-backdrop-filter:var(--glass-blur2);
+  backdrop-filter:var(--glass-blur2);
+}
+/* 顶栏/底栏：边缘更亮，像一块浮起的玻璃 */
+html[data-style="glass"] .top{
+  background:linear-gradient(180deg,rgba(255,255,255,.60),rgba(255,255,255,.34))!important;
+  border:1px solid rgba(255,255,255,.70)!important;
+  box-shadow:0 14px 34px -18px rgba(28,48,96,.42),inset 0 1px 0 rgba(255,255,255,.95)!important;
+}
+html[data-style="glass"] body.dark .top{
+  background:linear-gradient(180deg,rgba(40,52,82,.66),rgba(18,24,40,.50))!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+}
+html[data-style="glass"] .bnav,
+html[data-style="glass"] .nav{
+  background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(255,255,255,.36))!important;
+  border:1px solid rgba(255,255,255,.75)!important;
+  box-shadow:0 18px 40px -16px rgba(28,48,96,.40),inset 0 1px 0 rgba(255,255,255,.98),inset 0 -1px 0 rgba(255,255,255,.30)!important;
+}
+html[data-style="glass"] body.dark .bnav,
+html[data-style="glass"] body.dark .nav{
+  background:linear-gradient(180deg,rgba(44,56,88,.68),rgba(16,22,38,.56))!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+}
+/* 选项：玻璃胶囊，答对/答错保留色相 */
+html[data-style="glass"] .opt{
+  background:linear-gradient(150deg,rgba(255,255,255,.50),rgba(255,255,255,.22) 60%,rgba(255,255,255,.34))!important;
+  border:1px solid rgba(255,255,255,.80)!important;
+  box-shadow:0 12px 26px -14px rgba(28,48,96,.30),inset 0 1px 0 rgba(255,255,255,.95)!important;
+}
+html[data-style="glass"] body.dark .opt{
+  background:linear-gradient(150deg,rgba(52,66,102,.50),rgba(18,24,42,.34) 60%,rgba(38,48,76,.42))!important;
+  border:1px solid rgba(255,255,255,.20)!important;
+}
+
+/* glass v2 · 让卡片真的半透明（前面有规则直接写了 .8 的白渐变，必须显式覆盖） */
+html[data-style="glass"] .card,
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .vb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .nb-card,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .fixbox,
+html[data-style="glass"] .modal,
+html[data-style="glass"] .pop,
+html[data-style="glass"] .drawer,
+html[data-style="glass"] .ai-bubble,
+html[data-style="glass"] .quizbar,
+html[data-style="glass"] .exp,
+html[data-style="glass"] .stat,
+html[data-style="glass"] .list-item,
+html[data-style="glass"] .row-card{
+  background:var(--glass-fill)!important;
+  border:1px solid rgba(255,255,255,.62);
+  box-shadow:var(--glass-edge)!important;
+}
+html[data-style="glass"] body.dark .card,
+html[data-style="glass"] body.dark .qcard,
+html[data-style="glass"] body.dark .vb-card,
+html[data-style="glass"] body.dark .sk-card,
+html[data-style="glass"] body.dark .hcard,
+html[data-style="glass"] body.dark .nb-card,
+html[data-style="glass"] body.dark .sheet,
+html[data-style="glass"] body.dark .fixbox,
+html[data-style="glass"] body.dark .modal,
+html[data-style="glass"] body.dark .pop,
+html[data-style="glass"] body.dark .drawer,
+html[data-style="glass"] body.dark .ai-bubble,
+html[data-style="glass"] body.dark .quizbar,
+html[data-style="glass"] body.dark .exp,
+html[data-style="glass"] body.dark .stat,
+html[data-style="glass"] body.dark .list-item,
+html[data-style="glass"] body.dark .row-card{
+  border:1px solid rgba(255,255,255,.20);
+}
+/* 首页统计条：玻璃小格 */
+html[data-style="glass"] .hero .hstat>button.hs,
+html[data-style="glass"] .hero .hstat>span{
+  -webkit-backdrop-filter:blur(16px) saturate(180%);
+  backdrop-filter:blur(16px) saturate(180%);
+}
+
+/* glass v3 · 侧栏也做成玻璃（原来 0.9 的深底 + 中央光斑透过来像一束杂光） */
+html[data-style="glass"] .qside{
+  background:var(--glass-fill)!important;
+  -webkit-backdrop-filter:blur(30px) saturate(190%)!important;
+  backdrop-filter:blur(30px) saturate(190%)!important;
+  border-right:1px solid rgba(255,255,255,.55)!important;
+  box-shadow:18px 0 44px -26px rgba(24,44,92,.45), inset -1px 0 0 rgba(255,255,255,.35)!important;
+}
+html[data-style="glass"] body.dark .qside{
+  border-right:1px solid rgba(255,255,255,.16)!important;
+  box-shadow:18px 0 44px -26px rgba(0,0,0,.6), inset -1px 0 0 rgba(255,255,255,.08)!important;
+}
+html[data-style="glass"] .qs-tab,html[data-style="glass"] .qs-ct,html[data-style="glass"] .qs-bank{
+  background:transparent!important;
+}
+html[data-style="glass"] .qs-tab.on,html[data-style="glass"] .qs-ct.on{
+  background:rgba(255,255,255,.42)!important;border-radius:12px!important;
+}
+html[data-style="glass"] body.dark .qs-tab.on,html[data-style="glass"] body.dark .qs-ct.on{
+  background:rgba(255,255,255,.14)!important;
+}
+
+/* glass v4 · 去掉内容列自己的底色 / 侧栏残留阴影，避免左侧出现一条竖直亮带 */
+html[data-style="glass"] .wrap,
+html[data-style="glass"] .page,
+html[data-style="glass"] main{background:transparent!important;box-shadow:none!important}
+html[data-style="glass"] .qside{box-shadow:none!important}
+html[data-style="glass"] .qside-mask{background:rgba(10,16,28,.32)!important}
