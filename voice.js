@@ -700,6 +700,73 @@
   /* ---------- 听 ---------- */
   function SR() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
   function supported() { return !!SR(); }
+  /* ---------- 环境自检（web671）：把「为什么用不了」说清楚，而不是一直弹「打不开权限」 ---------- */
+  function diag() {
+    const s = synth();
+    const SRc = SR();
+    const out = {
+      secure: !!window.isSecureContext,
+      proto: location.protocol,
+      tts: !!s,
+      asr: !!SRc,
+      voices: 0,
+      perm: 'unknown',
+      ua: navigator.userAgent || ''
+    };
+    try { out.voices = (s ? s.getVoices() : []).length; } catch (e) {}
+    return out;
+  }
+  function uaKind() {
+    const u = navigator.userAgent || '';
+    if (/MicroMessenger/i.test(u)) return 'wechat';
+    if (/Huawei|HUAWEI|HarmonyOS/i.test(u)) return 'huawei';
+    if (/QQ\//i.test(u)) return 'qq';
+    if (/MiuiBrowser|XiaoMi/i.test(u)) return 'mi';
+    if (/iPhone|iPad|iPod/i.test(u)) return 'ios';
+    if (/Edg|Chrome|CriOS/i.test(u)) return 'chrome';
+    return 'other';
+  }
+  function guideText() {
+    const k = uaKind();
+    if (k === 'wechat') return '微信内置浏览器不能录音：点右上角「…」→「在浏览器打开」，再用 Chrome 或系统浏览器。';
+    if (k === 'huawei') return '华为浏览器经常根本不给网页录音权限（有的版本没有语音识别接口）：① 手机「设置 → 应用 → 浏览器 → 权限 → 麦克风」允许；② 浏览器「设置 → 网站设置 → 麦克风」允许本站；③ 还不行就换 Chrome / Edge（华为的语音服务不含网页识别，换浏览器通常就好）。';
+    if (k === 'mi') return '小米浏览器：「设置 → 隐私与安全 → 网站权限 → 麦克风」允许本站；系统「设置 → 应用 → 浏览器 → 权限」也要开。';
+    if (k === 'ios') return 'iPhone 要用 Safari（iOS 14.5 以上），并开「设置 → Siri 与搜索 → 听写」；Chrome for iOS 不支持语音识别。';
+    if (k === 'qq') return 'QQ 内置浏览器不支持录音：「…」→「在浏览器打开」。';
+    if (k === 'chrome') return '点地址栏左边的 🔒 / 锁图标 → 网站设置 → 麦克风 → 允许，然后刷新页面。';
+    return '点地址栏左边的 🔒 → 网站设置 → 麦克风 → 允许；不行就换 Chrome / Edge。';
+  }
+  function diagLine(d) {
+    const bits = [];
+    if (!d.secure) bits.push('不是安全连接');
+    if (!d.tts) bits.push('不能朗读');
+    if (!d.asr) bits.push('没有语音识别接口');
+    if (d.asr && d.perm === 'denied') bits.push('麦克风被拒绝');
+    if (!bits.length) bits.push(d.perm === 'granted' ? '看起来都正常' : '可以试听一下');
+    return bits.join(' · ');
+  }
+  async function testMic() {
+    const d = diag();
+    const res = ['🔊 朗读：' + (d.tts ? '可以（' + d.voices + ' 个音色）' : '这个浏览器不支持')];
+    res.push('🎙 语音识别接口：' + (d.asr ? '有' : '没有'));
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const p = await navigator.permissions.query({ name: 'microphone' });
+        res.push('🔐 麦克风权限：' + ({ granted: '已允许', denied: '被拒绝', prompt: '还没选过' }[p.state] || p.state));
+      }
+    } catch (e) {}
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+      st.getTracks().forEach(function (x) { try { x.stop(); } catch (e) {} });
+      res.push('✅ 真的录到音了（麦克风可用）');
+    } catch (e) {
+      res.push('❌ 录不到音：' + (e && e.name ? e.name : '未知错误'));
+    }
+    res.push('🌐 环境：' + location.protocol + ' / ' + (d.secure ? '安全上下文' : '非安全上下文'));
+    return res;
+  }
+  window.__VOICE_TEST = testMic;
+
   function setPill(state, heard) {
     const p = document.getElementById('voicePill');
     if (!p) return;
@@ -772,7 +839,7 @@
       rec.onerror = ev => {
         recOn = false;
         if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-          flash('麦克风没开：点地址栏左边的🔒，把「麦克风」改成允许');
+          flash('麦克风没开：' + guideText(), 7000);
           cfg().on = false; save(); paintChip(); setPill('idle');
         }
       };
@@ -1344,7 +1411,7 @@
     if (cfg().handLink && window.SET && (!SET.hand || SET.hand === 'off')) { SET.hand = 'right'; if (typeof writeLS === 'function') writeLS(LS.set, SET); if (typeof applyHandMode === 'function') applyHandMode(); }
     ensurePill(); paintChip(); setPill('idle');
     if (!supported()) {
-      flash('这个浏览器不支持语音识别，只能朗读；换成 Chrome / Edge 或安卓 Chrome 试试');
+      flash('这个浏览器不支持语音识别，只能朗读。' + guideText(), 7000);
     }
     resetForQuestion();
     /* 背题模式：麦克风不打开，直接一题一题往下念 */
@@ -1536,7 +1603,12 @@
         '<option value="listen"' + (c.mode === 'listen' ? ' selected' : '') + '>只判不读（默答）</option></select>') +
       row('跟着单手模式', chk('handLink'), '打开语音时自动把选项放大、翻页贴到拇指区') +
 
-      '<div class="vs-sec">朗读</div>' +
+      '<div class="vs-sec">麦克风自检</div>' +
+    row('环境', '<b class="vs-val">' + diagLine(diag()) + '</b>', guideText()) +
+    row('测一次', '<button class="btn tiny" data-vtest="1">现在测</button>', '会真的申请一次麦克风：能录到音、能朗读、有没有识别接口，一眼看出来') +
+    '<div id="vsTestOut" class="vs-testout"></div>' +
+
+    '<div class="vs-sec">朗读</div>' +
       row('语速', '<input type="range" min="0.6" max="1.6" step="0.05" data-vk="rate" value="' + c.rate + '"><b class="vs-val" data-vv="rate">' + c.rate + '×</b>') +
       row('音量', '<input type="range" min="0" max="1" step="0.05" data-vk="vol" value="' + c.vol + '"><b class="vs-val" data-vv="vol">' + Math.round(c.vol * 100) + '%</b>') +
       row('音色', '<select data-vk="voiceURI">' + voiceOpts + '</select>', '系统的中文语音；没有列出来就先点一下页面再打开面板') +
@@ -1613,6 +1685,18 @@
     document.body.appendChild(wrap);
     wrap.addEventListener('click', ev => {
       if (ev.target.closest('[data-vclose]')) { closePanel(); return; }
+
+      /* 自检按钮：真跑一次权限 + 录音（web671） */
+      if (ev.target.closest('[data-vtest]')) {
+        const out = document.getElementById('vsTestOut');
+        if (out) { out.classList.add('on'); out.textContent = '测试中…'; }
+        testMic().then(function (lines) {
+          if (out) out.textContent = lines.join('\n');
+          const bad = lines.some(function (x) { return x.indexOf('❌') === 0; });
+          flash(bad ? '测试结果在面板里：' + lines.filter(function (x) { return x.indexOf('❌') === 0; }).join('；') : '麦克风正常，可以说 A / B / C 试试');
+        }).catch(function (e) { if (out) out.textContent = '测试失败：' + (e && e.message || e); });
+        return;
+      }
       if (ev.target.closest('[data-vtest]')) {
         speak('这是现在的音色，第三题，下列关于真核生物转录起始的叙述，错误的是。A，转录因子。B，TATA 盒。');
         return;

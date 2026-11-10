@@ -3888,3 +3888,9 @@ html[data-style][data-style] input,
 html[data-style][data-style] textarea,
 html[data-style][data-style] select{border-radius:14px}
 html[data-style][data-style] .exp.rich-edit{border-radius:18px!important}
+
+/* web671：语音面板「麦克风自检」的输出块（整行铺开，别挤在窄格里） */
+#voicePanel .vs-testout{display:none;margin:2px 0 10px;padding:10px 12px;border-radius:14px;
+  background:color-mix(in srgb,var(--primary-soft) 80%,transparent);border:1px solid var(--line);
+  font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+#voicePanel .vs-testout.on{display:block}
