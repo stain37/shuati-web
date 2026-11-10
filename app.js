@@ -1979,7 +1979,7 @@ function ensureSkinsCss(style) {
   if (style === 'default') return;                 /* 默认皮肤只在 style.css 里 */
   if (document.getElementById('skinsCss')) return;
   var l = document.createElement('link');
-  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261110l';
+  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261110m';
   (document.head || document.documentElement).appendChild(l);
 }
 function applyLook() {
