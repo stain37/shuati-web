@@ -88,7 +88,10 @@
       out.push('backdrop-filter:blur(' + (+s.blur) + 'px)!important');
       out.push('-webkit-backdrop-filter:blur(' + (+s.blur) + 'px)!important');
     }
-    if (s.sat || s.bri) {
+    /* body 上写 filter 会把 position:fixed 的后代（顶栏 / 底栏 / 浮标 / 面板）的包含块
+       从视口改成 body，它们会跑到长文档的最底部 —— 表现就是「底部导航栏呼唤不起来」。
+       body 的饱和度 / 亮度改用 #dzTint 的 backdrop-filter 来叠加（见 updateTint）。 */
+    if ((s.sat || s.bri) && m.id !== 'body') {
       var f = [];
       if (s.sat) f.push('saturate(' + (+s.sat) + '%)');
       if (s.bri) f.push('brightness(' + (+s.bri) + '%)');
@@ -105,17 +108,37 @@
     var parts = MODS.map(css).filter(Boolean);
     return parts.join('\n');
   }
+  /* body 的饱和度 / 亮度不能写成 body{filter:…}（会让 fixed 后代失去视口包含块），
+     改用一个铺满视口、不接收点击的 #dzTint，用它的 backdrop-filter 去作用在底下所有内容上 */
+  function updateTint() {
+    var s = modState('body') || {};
+    var t = document.getElementById('dzTint');
+    if (!s.sat && !s.bri) { if (t) t.style.display = 'none'; return; }
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'dzTint';
+      document.body.appendChild(t);
+    }
+    var f = [];
+    if (s.sat) f.push('saturate(' + (+s.sat) + '%)');
+    if (s.bri) f.push('brightness(' + (+s.bri) + '%)');
+    t.style.display = 'block';
+    t.style.backdropFilter = f.join(' ');
+    t.style.webkitBackdropFilter = f.join(' ');
+  }
   function apply() {
     var text = buildCss();
     var el = document.getElementById(CSS_ID);
     if (!text) {
       if (el) el.remove();
       document.documentElement.removeAttribute('data-dz');
+      updateTint();
       return;
     }
     if (!el) { el = document.createElement('style'); el.id = CSS_ID; document.head.appendChild(el); }
     el.textContent = text;
     document.documentElement.setAttribute('data-dz', '1');
+    updateTint();
   }
   function exportCssText() { return buildCss(); }
 
@@ -124,6 +147,7 @@
     '#dzFab{position:fixed;right:12px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:20040;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.6);',
     'background:linear-gradient(160deg,#fff,#eef2ff);color:#1e293b;font-size:20px;box-shadow:0 8px 22px rgba(15,23,42,.22);cursor:pointer}',
     '#dzFab:active{transform:scale(.96)}',
+    '#dzTint{position:fixed;inset:0;z-index:12000;pointer-events:none;display:none}',
     '.dz{position:fixed;top:0;right:0;bottom:0;width:392px;max-width:100%;z-index:20050;display:none;flex-direction:column;',
     'background:rgba(252,253,255,.97);backdrop-filter:blur(18px);color:#111a26;border-left:1px solid rgba(15,23,42,.12);box-shadow:-10px 0 40px rgba(15,23,42,.18);font-size:13px}',
     '.dz.on{display:flex}',
@@ -378,6 +402,12 @@
   window.DZ = {
     open: open, close: close, state: function () { return st; }, css: exportCssText,
     apply: apply, mods: MODS,
+    set: function (id, patch) {
+      if (!id || !patch) return false;
+      var s = modState(id);
+      Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
+      save(); apply(); renderBody(); return true;
+    },
     resetAll: function () { st = { v: 1, mods: {} }; save(); apply(); },
     importPack: function (obj) {
       if (!obj || !obj.mods) return false;
