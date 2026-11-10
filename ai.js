@@ -669,7 +669,19 @@ function aiPanelBind(host) {
     if (!st) return;
     aiCopy(aiSysText() + '\n\n' + aiUserText(st.q, (st.ctx && st.ctx.text) || '', '', st.k), host);
   };
-  q('.ai-save').onclick = () => aiSaveOut(host);
+  /* 2026-11-10：以前是在面板节点上直接 onclick，整页重画后旧节点被替换 → 第一次点没反应、
+     要点第二次才存上（用户报「按两次才能存入」）。改成文档级委托，重画多少次都有效。 */
+  if (!window.__aiSaveDelegated) {
+    window.__aiSaveDelegated = 1;
+    document.addEventListener('click', function (ev) {
+      const b = ev.target && ev.target.closest ? ev.target.closest('.ai-save') : null;
+      if (!b) return;
+      const h2 = b.closest('[data-aiid]');
+      if (!h2) return;
+      ev.preventDefault();
+      try { aiSaveOut(h2); } catch (e) {}
+    }, true);
+  }
   q('.ai-clear').onclick = () => {
     const st0 = AI_LAST[host.dataset.aiid];
     if (!st0) return;
@@ -1701,6 +1713,9 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
   const H = () => (aiFindHost(st) || host);       /* 重画之后画到「当前活着的那个宿主」里，流不会断 */
   H().querySelector('.ai-stop').disabled = false;
   H().querySelector('.ai-go').disabled = true;
+  /* 生成中「存入本题解析」按了是没用的（正文还没写完），以前只弹一句 toast，
+     用户以为是按钮坏了、于是连点两三次。现在直接把它变成「生成中…」并禁用。 */
+  try { const sb = H().querySelector('.ai-save'); if (sb) { sb.disabled = true; sb.dataset.autoSavePending = ''; sb.textContent = '生成中…'; } } catch (e) {}
   aiState(H(), '正在准备资料库…');
   /* 首次用要下 4.8MB 知识库 + 建索引：这里每半秒把进度写到面板上，
      不然那几十秒里界面一动不动，看着就像卡死了（用户 2026-10-16 报的）。 */
@@ -1761,6 +1776,12 @@ async function aiRun(host, userQ) {  const st = AI_LAST[host.dataset.aiid];
     st.running = false; st.endTs = Date.now(); st.ts = Date.now();
     try { aiPaintFollow(H(), !!(st && st.text)); } catch (e) {}   /* §3.6-P1⑤：出完就给三个快捷追问 */
     try { H().querySelector('.ai-stop').disabled = true; H().querySelector('.ai-go').disabled = false; } catch (e) {}
+    try {
+      const sb = H().querySelector('.ai-save');
+      const wantAuto = sb && sb.dataset.autoSavePending === '1';
+      if (sb) { sb.disabled = false; sb.textContent = host.dataset.aiuse === '1' ? '写进解析框' : '存入本题解析'; delete sb.dataset.autoSavePending; }
+      if (wantAuto && st.text) setTimeout(() => { try { aiSaveOut(H()); } catch (e) {} }, 80);
+    } catch (e) {}
   }
 }
 /* ---------- 「只看资料」：只检索、不回答 ----------
@@ -1958,8 +1979,14 @@ function aiSaveOut(host) {
   /* 以前这里没内容就直接 return，用户看到的就是「点了没反应」（实测反馈）。现在都给一句话。 */
   if (!text) {
     const sb = host.querySelector('.ai-save');
+    if (st.running) {
+      /* 生成中点了「存」：别只弹一句话，记下来，等写完自动存进去 */
+      if (sb) sb.dataset.autoSavePending = '1';
+      toast('还在生成，等它写完我自动帮你存进本题解析', 2800);
+      return;
+    }
     if (sb) { sb.disabled = false; }
-    toast(st.running ? '还在生成中，等它写完再存' : '还没有内容：先点上面的「生成解析」', 2800, 'bad');
+    toast('还没有内容：先点上面的「生成解析」', 2800, 'bad');
     return;
   }
   if (typeof st.onUse === 'function') {
