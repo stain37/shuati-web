@@ -7446,19 +7446,19 @@ html[data-style="glass"]:not([data-bg="custom"]):not([data-bg="video"]) body{
   background-position:0 0!important;
 }
 html[data-style="glass"] body{
-  --card:rgba(255,255,255,.22);
-  --card2:rgba(255,255,255,.14);
-  --card3:rgba(255,255,255,.28);
-  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 56%,rgba(255,255,255,.16));
+  --card:rgba(255,255,255,.15);
+  --card2:rgba(255,255,255,.09);
+  --card3:rgba(255,255,255,.19);
+  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.24),rgba(255,255,255,.03) 56%,rgba(255,255,255,.10));
   --glass-edge:0 22px 48px -14px rgba(28,48,96,.34), inset 0 1px 0 rgba(255,255,255,.95), inset 1px 0 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(255,255,255,.28);
   --line:rgba(255,255,255,.72);
   --line2:rgba(255,255,255,.44);
 }
 html[data-style="glass"] body.dark{
-  --card:rgba(34,44,68,.40);
-  --card2:rgba(20,26,44,.34);
-  --card3:rgba(48,58,88,.36);
-  --glass-fill:linear-gradient(150deg,rgba(64,82,124,.34),rgba(12,18,34,.18) 56%,rgba(30,40,66,.26));
+  --card:rgba(34,44,68,.30);
+  --card2:rgba(20,26,44,.24);
+  --card3:rgba(48,58,88,.26);
+  --glass-fill:linear-gradient(150deg,rgba(64,82,124,.26),rgba(12,18,34,.10) 56%,rgba(30,40,66,.18));
   --glass-edge:0 24px 52px -16px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.26), inset 1px 0 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(255,255,255,.05);
   --line:rgba(255,255,255,.26);
 }
@@ -7557,7 +7557,6 @@ html[data-style="glass"] .drawer,
 html[data-style="glass"] .ai-bubble,
 html[data-style="glass"] .quizbar,
 html[data-style="glass"] .exp,
-html[data-style="glass"] .stat,
 html[data-style="glass"] .list-item,
 html[data-style="glass"] .row-card{
   background:var(--glass-fill)!important;
@@ -7620,13 +7619,15 @@ html[data-style="glass"] .qside{box-shadow:none!important}
 html[data-style="glass"] .qside-mask{background:rgba(10,16,28,.32)!important}
 
 /* glass · 用自定义图片/视频当背景时，玻璃要更实一点，否则字看不清 */
-html[data-style="glass"][data-bg="custom"],
-html[data-style="glass"][data-bg="video"]{
-  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.78),rgba(255,255,255,.56) 56%,rgba(255,255,255,.68));
+html[data-style="glass"][data-bg="custom"] body,
+html[data-style="glass"][data-bg="video"] body{
+  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.74),rgba(255,255,255,.52) 56%,rgba(255,255,255,.64))!important;
+  --card:rgba(255,255,255,.62)!important;--card2:rgba(255,255,255,.52)!important;--card3:rgba(255,255,255,.68)!important;
 }
 html[data-style="glass"][data-bg="custom"] body.dark,
 html[data-style="glass"][data-bg="video"] body.dark{
-  --glass-fill:linear-gradient(150deg,rgba(26,34,54,.80),rgba(10,14,26,.66) 56%,rgba(22,30,50,.74));
+  --glass-fill:linear-gradient(150deg,rgba(26,34,54,.78),rgba(10,14,26,.64) 56%,rgba(22,30,50,.72))!important;
+  --card:rgba(24,32,52,.70)!important;--card2:rgba(16,22,38,.60)!important;--card3:rgba(30,40,62,.66)!important;
 }
 
 /* ============ glass v5 · 玻璃光泽（顶部漫反射 + 亮边，不用重复的斜条纹） ============ */
@@ -7704,3 +7705,424 @@ html[data-style="glass"] body.dark .top .btn,
 html[data-style="glass"] body.dark .top .chip{
   box-shadow:0 6px 16px -12px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 1px rgba(255,255,255,.16)!important;
 }
+
+/* ============================================================
+   glass v6 · 高级感重做（低饱和底 + 中性玻璃 + 细噪点 + 柔和级差阴影）
+   ============================================================ */
+html[data-style="glass"]{
+  --lg-blur:blur(30px) saturate(130%) brightness(1.03);
+  --lg-fill:rgba(255,255,255,.62);
+  --lg-fill-2:rgba(255,255,255,.40);
+  --lg-line:rgba(255,255,255,.55);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.92),inset 0 0 0 1px rgba(255,255,255,.34);
+  --lg-shadow:0 26px 60px -34px rgba(18,28,54,.46);
+  --card:var(--lg-fill);
+  --card2:var(--lg-fill-2);
+  --card3:rgba(255,255,255,.68);
+  --line:var(--lg-line);
+  --text:#101827;--sub:#4c5871;--muted:#78849a;--ink:#101827;
+  background-color:#eef1f7!important;
+  background-image:
+    radial-gradient(1200px 820px at 10% -14%,#c6d7f2 0%,rgba(198,215,242,0) 60%),
+    radial-gradient(900px 700px at 98% -2%,#dfd0ee 0%,rgba(223,208,238,0) 56%),
+    radial-gradient(1000px 900px at 50% 114%,#c6e6dd 0%,rgba(198,230,221,0) 60%),
+    linear-gradient(158deg,#eef2f9,#dfe6f2)!important;
+  background-size:100% 100%!important;
+  background-repeat:no-repeat!important;
+  background-attachment:fixed!important;
+}
+html[data-style="glass"] body{
+  background:transparent!important;
+  color:var(--text);
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
+html[data-style="glass"] body.dark{
+  --lg-fill:rgba(24,28,38,.62);
+  --lg-fill-2:rgba(20,24,33,.48);
+  --lg-line:rgba(255,255,255,.12);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.16),inset 0 0 0 1px rgba(255,255,255,.08);
+  --lg-shadow:0 30px 70px -36px rgba(0,0,0,.75);
+  --card:var(--lg-fill);--card2:var(--lg-fill-2);--card3:rgba(46,52,66,.55);
+  --line:var(--lg-line);
+  --text:#eef2f9;--sub:#a6b0c4;--muted:#7c8699;--ink:#eef2f9;
+  background-color:#080b11!important;
+  background-image:
+    radial-gradient(1100px 800px at 10% -8%,#16223a 0%,rgba(22,34,58,0) 62%),
+    radial-gradient(900px 700px at 96% 0%,#1b1730 0%,rgba(27,23,48,0) 58%),
+    radial-gradient(900px 850px at 50% 112%,#0e2129 0%,rgba(14,33,41,0) 62%),
+    linear-gradient(158deg,#0b0f18,#07090f)!important;
+}
+/* 玻璃层：卡片 / 浮层 / 面板 */
+html[data-style="glass"] .card,
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .vb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .nb-card,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .fixbox,
+html[data-style="glass"] .modal,
+html[data-style="glass"] .pop,
+html[data-style="glass"] .drawer,
+html[data-style="glass"] .ai-bubble,
+html[data-style="glass"] .quizbar,
+html[data-style="glass"] .exp,
+html[data-style="glass"] .list-item,
+html[data-style="glass"] .row-card,
+html[data-style="glass"] .hero{
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.52))!important;
+  -webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:var(--lg-shadow),var(--lg-rim)!important;
+  color:var(--text);
+}
+/* hero（首页统计条）不要深色渐层 */
+html[data-style="glass"] .hero::after{background:transparent!important;opacity:0!important}
+html[data-style="glass"] .hero,
+html[data-style="glass"] .hero h1,
+html[data-style="glass"] .hero p,
+html[data-style="glass"] .hero .hstat,
+html[data-style="glass"] .hero .hstat b,
+html[data-style="glass"] .hero .hstat span{color:var(--text)!important}
+html[data-style="glass"] .hero .hstat>button.hs{
+  background:var(--lg-fill-2)!important;border:1px solid var(--lg-line)!important;border-radius:16px;
+}
+/* 顶栏 / 底栏：薄玻璃，无白条 */
+html[data-style="glass"] .top{
+  background:rgba(255,255,255,.42)!important;
+  -webkit-backdrop-filter:blur(26px) saturate(150%);backdrop-filter:blur(26px) saturate(150%);
+  border:1px solid transparent!important;border-radius:0!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.55), 0 12px 30px -26px rgba(18,28,54,.5)!important;
+}
+html[data-style="glass"] body.dark .top{
+  background:rgba(14,18,28,.55)!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.08), 0 12px 30px -26px rgba(0,0,0,.8)!important;
+}
+html[data-style="glass"] .nav,
+html[data-style="glass"] .bnav{
+  background:rgba(255,255,255,.50)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(150%);backdrop-filter:blur(28px) saturate(150%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:0 20px 44px -30px rgba(18,28,54,.55),var(--lg-rim)!important;
+}
+html[data-style="glass"] body.dark .nav,
+html[data-style="glass"] body.dark .bnav{
+  background:rgba(16,20,30,.60)!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+}
+/* 按钮：中性玻璃 + 发丝高光，不再大斜纹 */
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip,
+html[data-style="glass"] .nav .btn,
+html[data-style="glass"] .nav .qbtn,
+html[data-style="glass"] .bnav .btn{
+  background:var(--lg-fill-2)!important;
+  -webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 8px 18px -14px rgba(18,28,54,.5)!important;
+  color:var(--text)!important;
+  transition:transform .12s ease, box-shadow .18s ease, background .18s ease;
+}
+html[data-style="glass"] .top .btn,
+html[data-style="glass"] .top .chip{border:0!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 0 0 1px var(--lg-line)!important}
+html[data-style="glass"] .btn.prim{
+  background:linear-gradient(180deg,#3b82f6,#2563eb)!important;
+  border:1px solid rgba(255,255,255,.28)!important;
+  box-shadow:0 14px 30px -18px rgba(37,99,235,.75),inset 0 1px 0 rgba(255,255,255,.42)!important;
+  color:#fff!important;
+}
+html[data-style="glass"] .btn:active,
+html[data-style="glass"] .chip:active{transform:translateY(1px)}
+html[data-style="glass"] .opt{
+  background:var(--lg-fill-2)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 10px 22px -18px rgba(18,28,54,.45)!important;
+}
+html[data-style="glass"] body.dark .opt{background:rgba(28,32,44,.55)!important;border:1px solid rgba(255,255,255,.10)!important}
+/* 输入框 / 编辑器 */
+html[data-style="glass"] input,
+html[data-style="glass"] textarea,
+html[data-style="glass"] select,
+html[data-style="glass"] .rich-edit{
+  background:var(--lg-fill-2)!important;border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 2px rgba(18,28,54,.06)!important;color:var(--text)!important;
+}
+/* 侧栏 */
+html[data-style="glass"] .qside{
+  background:var(--lg-fill)!important;
+  -webkit-backdrop-filter:blur(34px) saturate(150%);backdrop-filter:blur(34px) saturate(150%);
+  border-right:1px solid var(--lg-line)!important;box-shadow:none!important;
+}
+/* 细噪点：消色带，加质感 */
+html[data-style="glass"] body::after{
+  content:"";position:fixed;inset:0;z-index:30000;pointer-events:none;
+  opacity:.05;mix-blend-mode:soft-light;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size:160px 160px;
+}
+html[data-style="glass"] body.dark::after{opacity:.07;mix-blend-mode:overlay}
+html[data-style="glass"] ::selection{background:rgba(37,99,235,.22)}
+html[data-style="glass"] *::-webkit-scrollbar-thumb{background:rgba(120,132,154,.35);border-radius:8px}
+
+/* ============ glass v7 · 真·透明玻璃（低不透明度 + 强模糊 + 有色彩的底） ============ */
+html[data-style="glass"]{
+  --lg-blur:blur(34px) saturate(185%) brightness(1.06);
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.09) 58%,rgba(255,255,255,.15));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,.12));
+  --lg-line:rgba(255,255,255,.62);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.95),inset 0 0 0 1px rgba(255,255,255,.30);
+  --lg-shadow:0 22px 50px -30px rgba(24,42,86,.40);
+  --card:rgba(255,255,255,.14);--card2:rgba(255,255,255,.09);--card3:rgba(255,255,255,.24);
+  --line:var(--lg-line);
+  --text:#0c1424;--sub:#3b4a66;--muted:#6c7a94;--ink:#0c1424;
+  background-color:#dfe8fb!important;
+  background-image:
+    radial-gradient(760px 700px at 6% -6%,#6fa6ff 0%,rgba(111,166,255,0) 62%),
+    radial-gradient(720px 680px at 100% 4%,#b58cff 0%,rgba(181,140,255,0) 58%),
+    radial-gradient(820px 760px at 82% 106%,#5ee0c6 0%,rgba(94,224,198,0) 60%),
+    radial-gradient(700px 620px at 22% 96%,#ffb9dd 0%,rgba(255,185,221,0) 58%),
+    linear-gradient(160deg,#eef4ff,#e6ecff)!important;
+  background-size:100% 100%!important;background-repeat:no-repeat!important;background-attachment:fixed!important;
+}
+html[data-style="glass"] body{background:transparent!important;color:var(--text);-webkit-backdrop-filter:none;backdrop-filter:none}
+html[data-style="glass"] body.dark{
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.04) 58%,rgba(255,255,255,.08));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
+  --lg-line:rgba(255,255,255,.16);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.07);
+  --lg-shadow:0 26px 56px -32px rgba(0,0,0,.85);
+  --card:rgba(255,255,255,.07);--card2:rgba(255,255,255,.04);--card3:rgba(255,255,255,.10);
+  --line:var(--lg-line);
+  --text:#eef3fb;--sub:#9fadc4;--muted:#78849a;--ink:#eef3fb;
+  background-color:#070a12!important;
+  background-image:
+    radial-gradient(760px 700px at 4% -8%,#2a4c8f 0%,rgba(42,76,143,0) 62%),
+    radial-gradient(720px 680px at 100% 2%,#4a2a7a 0%,rgba(74,42,122,0) 58%),
+    radial-gradient(820px 760px at 84% 108%,#0d5c58 0%,rgba(13,92,88,0) 60%),
+    radial-gradient(700px 620px at 18% 98%,#6b2350 0%,rgba(107,35,80,0) 58%),
+    linear-gradient(160deg,#0a0f1c,#070910)!important;
+}
+html[data-style="glass"] .card,
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .vb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .nb-card,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .fixbox,
+html[data-style="glass"] .modal,
+html[data-style="glass"] .pop,
+html[data-style="glass"] .drawer,
+html[data-style="glass"] .ai-bubble,
+html[data-style="glass"] .quizbar,
+html[data-style="glass"] .exp,
+html[data-style="glass"] .list-item,
+html[data-style="glass"] .row-card{
+  background:var(--lg-fill)!important;
+  -webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:var(--lg-shadow),var(--lg-rim)!important;
+  color:var(--text);
+}
+html[data-style="glass"] .hero{
+  background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.10))!important;
+  -webkit-backdrop-filter:var(--lg-blur);backdrop-filter:var(--lg-blur);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:var(--lg-shadow),var(--lg-rim)!important;
+}
+html[data-style="glass"] .hero::after{background:transparent!important;opacity:0!important}
+html[data-style="glass"] .top{
+  background:rgba(255,255,255,.22)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);
+  border:1px solid transparent!important;border-radius:0!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.55)!important;
+}
+html[data-style="glass"] body.dark .top{background:rgba(10,14,24,.40)!important;box-shadow:0 1px 0 rgba(255,255,255,.08)!important}
+html[data-style="glass"] .nav,
+html[data-style="glass"] .bnav{
+  background:rgba(255,255,255,.24)!important;
+  -webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:0 20px 44px -30px rgba(24,42,86,.55),var(--lg-rim)!important;
+}
+html[data-style="glass"] body.dark .nav,
+html[data-style="glass"] body.dark .bnav{background:rgba(12,16,26,.42)!important;border:1px solid rgba(255,255,255,.12)!important}
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip,
+html[data-style="glass"] .nav .btn,
+html[data-style="glass"] .nav .qbtn,
+html[data-style="glass"] .bnav .btn{
+  background:var(--lg-fill-2)!important;
+  -webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 8px 18px -14px rgba(24,42,86,.5)!important;
+  color:var(--text)!important;
+}
+html[data-style="glass"] .top .btn,
+html[data-style="glass"] .top .chip{border:0!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 0 0 1px var(--lg-line)!important}
+html[data-style="glass"] .btn.prim{
+  background:linear-gradient(180deg,rgba(59,130,246,.92),rgba(37,99,235,.92))!important;
+  border:1px solid rgba(255,255,255,.30)!important;color:#fff!important;
+  box-shadow:0 14px 30px -18px rgba(37,99,235,.8),inset 0 1px 0 rgba(255,255,255,.45)!important;
+}
+html[data-style="glass"] .opt{
+  background:var(--lg-fill-2)!important;
+  -webkit-backdrop-filter:blur(20px) saturate(170%);backdrop-filter:blur(20px) saturate(170%);
+  border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 12px 24px -20px rgba(24,42,86,.5)!important;
+}
+html[data-style="glass"] body.dark .opt{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.14)!important}
+html[data-style="glass"] input,html[data-style="glass"] textarea,html[data-style="glass"] select,html[data-style="glass"] .rich-edit{
+  background:rgba(255,255,255,.35)!important;border:1px solid var(--lg-line)!important;
+  box-shadow:inset 0 1px 2px rgba(24,42,86,.08)!important;color:var(--text)!important;
+}
+html[data-style="glass"] .qside{
+  background:linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,.12))!important;
+  -webkit-backdrop-filter:blur(36px) saturate(180%);backdrop-filter:blur(36px) saturate(180%);
+  border-right:1px solid var(--lg-line)!important;
+}
+
+/* glass v7b · 细节：统计小卡别是死白、卡片带斜向高光（交错角度避免重复） */
+html[data-style="glass"] .hero .hstat>button.hs,
+html[data-style="glass"] .hstat>button.hs{
+  background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.12))!important;
+  -webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);
+  border:1px solid rgba(255,255,255,.55)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95)!important;
+  border-radius:18px!important;
+}
+html[data-style="glass"] body.dark .hstat>button.hs{
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.04))!important;
+  border:1px solid rgba(255,255,255,.14)!important;
+}
+html[data-style="glass"] .card:nth-child(2n),
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .sheet{
+  background:
+    linear-gradient(118deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.08) 34%,rgba(255,255,255,.02) 62%,rgba(255,255,255,.16) 100%),
+    var(--lg-fill)!important;
+}
+html[data-style="glass"] .card:nth-child(2n+1){
+  background:
+    linear-gradient(72deg,rgba(255,255,255,.30) 0%,rgba(255,255,255,.06) 36%,rgba(255,255,255,.02) 66%,rgba(255,255,255,.14) 100%),
+    var(--lg-fill)!important;
+}
+html[data-style="glass"] body.dark .card:nth-child(2n),
+html[data-style="glass"] body.dark .qcard,
+html[data-style="glass"] body.dark .sheet{
+  background:
+    linear-gradient(118deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.03) 36%,rgba(255,255,255,.0) 64%,rgba(255,255,255,.08) 100%),
+    var(--lg-fill)!important;
+}
+html[data-style="glass"] body.dark .card:nth-child(2n+1){
+  background:
+    linear-gradient(72deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,.03) 38%,rgba(255,255,255,.0) 66%,rgba(255,255,255,.07) 100%),
+    var(--lg-fill)!important;
+}
+
+/* ===== glass v8 · 朦胧（大半径模糊）+ 清澈（硬边高光 + 干净字形） ===== */
+html[data-style="glass"]{
+  --lg-blur:blur(44px) saturate(160%) brightness(1.04);
+  --lg-blur-xl:blur(64px) saturate(150%) brightness(1.05);
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.07) 60%,rgba(255,255,255,.13));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.10));
+  --lg-line:rgba(255,255,255,.72);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,1),inset 0 0 0 1px rgba(255,255,255,.34),0 26px 54px -32px rgba(18,34,72,.42);
+  --card:rgba(255,255,255,.12);--card2:rgba(255,255,255,.07);--card3:rgba(255,255,255,.22);
+  --line:rgba(255,255,255,.72);
+  --text:#0a1120;--sub:#3a4763;--muted:#6b7890;--ink:#0a1120;
+  -webkit-font-smoothing:antialiased;
+  background-color:#e6ecfb!important;
+  background-image:
+    radial-gradient(1100px 1000px at 8% -8%,#8fb6f7 0%,rgba(143,182,247,0) 66%),
+    radial-gradient(1000px 940px at 100% 2%,#c3aaf2 0%,rgba(195,170,242,0) 62%),
+    radial-gradient(1100px 1000px at 86% 104%,#8fe3cf 0%,rgba(143,227,207,0) 64%),
+    radial-gradient(900px 860px at 12% 100%,#ffc6dd 0%,rgba(255,198,221,0) 60%),
+    linear-gradient(160deg,#f2f6ff,#e6ecfb)!important;
+  background-size:100% 100%!important;background-repeat:no-repeat!important;background-attachment:fixed!important;
+}
+html[data-style="glass"] body.dark{
+  --lg-fill:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.03) 60%,rgba(255,255,255,.07));
+  --lg-fill-2:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05));
+  --lg-line:rgba(255,255,255,.20);
+  --lg-rim:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(255,255,255,.07),0 28px 60px -34px rgba(0,0,0,.9);
+  --card:rgba(255,255,255,.06);--card2:rgba(255,255,255,.03);--card3:rgba(255,255,255,.09);
+  --line:rgba(255,255,255,.20);
+  --text:#eff4fc;--sub:#a3b0c6;--muted:#78849a;--ink:#eff4fc;
+  background-color:#060911!important;
+  background-image:
+    radial-gradient(1000px 900px at 6% -10%,#294a86 0%,rgba(41,74,134,0) 66%),
+    radial-gradient(940px 860px at 100% 0%,#3f2a72 0%,rgba(63,42,114,0) 62%),
+    radial-gradient(1000px 960px at 88% 106%,#0f5a55 0%,rgba(15,90,85,0) 64%),
+    radial-gradient(860px 820px at 10% 102%,#5f2148 0%,rgba(95,33,72,0) 60%),
+    linear-gradient(160deg,#090e19,#060911)!important;
+}
+/* 大面板：最大模糊，像隔着毛玻璃看灯 */
+html[data-style="glass"] .qcard,
+html[data-style="glass"] .card,
+html[data-style="glass"] .sheet,
+html[data-style="glass"] .hero,
+html[data-style="glass"] .nb-card,
+html[data-style="glass"] .sk-card,
+html[data-style="glass"] .hcard,
+html[data-style="glass"] .vb-card{
+  -webkit-backdrop-filter:var(--lg-blur-xl)!important;backdrop-filter:var(--lg-blur-xl)!important;
+  background:
+    linear-gradient(115deg,rgba(255,255,255,.30) 0%,rgba(255,255,255,.06) 38%,rgba(255,255,255,.02) 64%,rgba(255,255,255,.14) 100%),
+    var(--lg-fill)!important;
+  border:1px solid var(--lg-line)!important;
+  box-shadow:var(--lg-rim)!important;
+  border-radius:26px!important;
+}
+html[data-style="glass"] body.dark .qcard,
+html[data-style="glass"] body.dark .card,
+html[data-style="glass"] body.dark .sheet,
+html[data-style="glass"] body.dark .hero,
+html[data-style="glass"] body.dark .nb-card,
+html[data-style="glass"] body.dark .sk-card,
+html[data-style="glass"] body.dark .hcard,
+html[data-style="glass"] body.dark .vb-card{
+  background:
+    linear-gradient(115deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.03) 40%,rgba(255,255,255,0) 66%,rgba(255,255,255,.08) 100%),
+    var(--lg-fill)!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+}
+/* 小控件：中等模糊 + 硬高光，保证「清澈」 */
+html[data-style="glass"] .btn,
+html[data-style="glass"] .chip,
+html[data-style="glass"] .opt,
+html[data-style="glass"] .nav .btn,
+html[data-style="glass"] .nav .qbtn,
+html[data-style="glass"] .bnav .btn,
+html[data-style="glass"] .hstat>button.hs,
+html[data-style="glass"] input,
+html[data-style="glass"] textarea,
+html[data-style="glass"] .rich-edit{
+  -webkit-backdrop-filter:blur(22px) saturate(170%)!important;backdrop-filter:blur(22px) saturate(170%)!important;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.10) 52%,rgba(255,255,255,.16))!important;
+  border:1px solid rgba(255,255,255,.80)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,1),0 6px 16px -12px rgba(18,34,72,.45)!important;
+  color:var(--text)!important;
+  text-shadow:none;
+}
+html[data-style="glass"] body.dark .btn,
+html[data-style="glass"] body.dark .chip,
+html[data-style="glass"] body.dark .opt,
+html[data-style="glass"] body.dark .nav .btn,
+html[data-style="glass"] body.dark .nav .qbtn,
+html[data-style="glass"] body.dark .bnav .btn,
+html[data-style="glass"] body.dark .hstat>button.hs,
+html[data-style="glass"] body.dark input,
+html[data-style="glass"] body.dark textarea,
+html[data-style="glass"] body.dark .rich-edit{
+  background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.04) 54%,rgba(255,255,255,.09))!important;
+  border:1px solid rgba(255,255,255,.22)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34)!important;
+}
+/* 字形清晰度：正文描边不要太重 */
+html[data-style="glass"] body .stem,
+html[data-style="glass"] body .opt,
+html[data-style="glass"] body .card,
+html[data-style="glass"] body .btn{letter-spacing:.1px}
