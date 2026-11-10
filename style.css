@@ -3992,3 +3992,7 @@ html[data-style][data-style] body.quiz .bnav{border-width:inherit!important}
 }
 #voicePanel .vs-preset.on b{color:var(--primary)!important}
 #voicePanel .vs-adv{margin-top:4px; padding-top:2px; border-top:1px dashed var(--line)}
+
+
+/* web683：不要「装成 App」入口了（用户要求删掉） */
+#installChip,.install-chip,#installMask,#installSheet{display:none!important}

@@ -687,6 +687,7 @@ const UI_STYLES = [
   'qline',
   'neu',
   'softui',
+  'glass',
 ];
 
 const UI_STYLE_NAME = {
@@ -763,6 +764,7 @@ const UI_STYLE_NAME = {
   vaporwave: '霓虹复古',
   neontokyo: '霓虹东京',
   oil: '油画印象派',
+  glass: '液态玻璃',
 };
 const UI_STYLE_DESC = {
   default: '现在这套：白卡片、圆角、轻阴影，干净耐看。',
@@ -838,6 +840,7 @@ const UI_STYLE_DESC = {
   vaporwave: '90 年代蒸汽波：紫粉青渐变 + 霓虹光晕 + 透视网格底，卡片半透明玻璃',
   neontokyo: '歌舞伎町夜色：近黑蓝底 + 粉/青/橙/紫多色霓虹描边 + 湿润倒影',
   oil: '米白画布 + 暖橙厚涂：笔触纹理、斑驳光影、衬线粗体（不用等宽/纯黑/直角）',
+  glass: '液态玻璃：毛玻璃卡片 + 彩色光斑底 + 高光边，iOS 26 那种通透感',
 };
 /* 分类（设置里的筛选标签用）：base 通用 / classic 古典装饰 / painting 绘画手作 / modern 现代平面 / digital 数字复古 / east 东方 / material 质感色彩 */
 const UI_STYLE_CAT = {
@@ -911,7 +914,8 @@ const UI_STYLE_CAT = {
   scrapbook: 'painting',
   vaporwave: 'neon',
   neontokyo: 'neon',
-  oil: 'painting'
+  oil: 'painting',
+  glass: 'material'
 };
 const UI_STYLE_CATS = [{ id: 'all', name: '全部' }, { id: 'base', name: '通用' }, { id: 'classic', name: '古典装饰' }, { id: 'painting', name: '绘画手作' }, { id: 'modern', name: '现代主义' }, { id: 'digital', name: '数字复古' }, { id: 'neon', name: '霓虹未来' }, { id: 'east', name: '东方' }, { id: 'material', name: '质感色彩' }];
 /* 每套皮肤主推一个主题色（THEME_COLORS 里的 key）：换风格时自动配一套，设置里可以关（#setStyleAuto）。 */
@@ -1068,6 +1072,7 @@ const UI_STYLE_SWATCH = {
   qline: {r:'17px', bd:'1px', sh:'0 6px 0 -1px rgba(32,34,32,.14)', bg:'#fafaf8', cd:'#ffffff', ac:'#2152e7'},
   neu: {r:'22px', bd:'0', sh:'8px 8px 16px #b8bcc2, -8px -8px 16px #ffffff', bg:'#e0e5ec', cd:'#e0e5ec', ac:'#6d5dfc'},
   softui: {r:'24px', bd:'0', sh:'0 12px 32px rgba(99,102,241,.18)', bg:'#f8fafc', cd:'#ffffff', ac:'#6366f1'},
+  glass: {r:'20px', bd:'1px solid rgba(255,255,255,.75)', sh:'0 10px 24px rgba(31,45,80,.18),inset 0 1px 0 #fff', bg:'linear-gradient(140deg,#dfe8ff,#f5e9ff 60%,#e3fbf6)', cd:'#ffffff', ac:'#3b82f6'},
 };
 
 /* ---------- 自定义背景图（本机） ----------
@@ -1974,7 +1979,7 @@ function ensureSkinsCss(style) {
   if (style === 'default') return;                 /* 默认皮肤只在 style.css 里 */
   if (document.getElementById('skinsCss')) return;
   var l = document.createElement('link');
-  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261107b';
+  l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261110c';
   (document.head || document.documentElement).appendChild(l);
 }
 function applyLook() {
