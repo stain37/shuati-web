@@ -112,9 +112,28 @@ async function open() {
   $('dl').href = FILE;
   try { st('准备解析器…'); } catch (e) { }
   workerHow = await makeWorker();
-  st('正在打开 PDF…（' + workerHow + '）');
+  /* 2026-11-10：之前直接 getDocument({url}) —— pdf.js 会用 Range 边下边解析，
+     但加速线路（gh-proxy / raw）对 Range 支持不稳，实测在大文件上会**卡在「正在打开 PDF…」永远不动**。
+     改成自己整份下载（一次 GET，带 60s 超时），拿 ArrayBuffer 交给 pdf.js 解析。 */
+  let buf = null;
   try {
-    const task = pdfjsLib.getDocument({ url: FILE });
+    st('正在下载 PDF…');
+    const ctl = new AbortController();
+    const timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, 60000);
+    let r;
+    try { r = await fetch(FILE, { signal: ctl.signal, cache: 'no-store' }); }
+    finally { clearTimeout(timer); }
+    if (!r || !r.ok) throw new Error('HTTP ' + (r ? r.status : '?'));
+    buf = await r.arrayBuffer();
+    st('已下载 ' + (buf.byteLength / 1048576).toFixed(1) + ' MB，正在解析…');
+  } catch (e) {
+    st('整份下载没成功（' + ((e && e.message) || e) + '），改用流式读取…');
+  }
+  try {
+    const opt = buf
+      ? { data: new Uint8Array(buf) }
+      : { url: FILE, disableRange: true, disableStream: true };
+    const task = pdfjsLib.getDocument(opt);
     doc = await task.promise;
   } catch (e) {
     fail('打开失败：' + (e && e.message || e), '（pdf.js 4.6.82 legacy / ' + workerHow + '）');

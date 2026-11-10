@@ -1098,7 +1098,10 @@ function aiPdfLiteHref(h) {
 /* 华为 / 鸿蒙那一类内核：官方阅读器基本跑不起来，直接用轻量的 */
 function aiPdfLiteFirst() {
   try { if (window.__pdfLiteFirst != null) return !!window.__pdfLiteFirst; } catch (e) {}
-  try { return /ArkWeb|HuaweiBrowser|HarmonyOS|OpenHarmony/i.test(navigator.userAgent || ''); } catch (e) { return false; }
+  /* 2026-11-10：官方那份 pdf.js 阅读器（viewer.html）在线上每次都是「工具栏出来了、页面一片灰」——
+     它内部用 Range 流式取 PDF，加速线路不稳定时会永远停在加载中。轻量阅读器已经改成
+     「整份下载 + ArrayBuffer 解析」，所以**默认就用轻量那个**，官方那份只留作兜底。 */
+  return true;
 }
 /* 触屏设备（手机 / 平板）：内嵌 iframe 一律没用（白屏 + 白下载几十 MB），走网页阅读器。
    window.__pdfTouch 是给探针用的开关，能强扮手机 / 电脑。 */
@@ -1184,7 +1187,7 @@ function aiPdfBlockHtml(h, full) {
     const plabel = useLite ? '📖 看原页（轻量阅读器）' : '📖 看原页（网页阅读器）';
     return (_img0 ? '<div class="pdf-prev" style="margin:0 0 8px"><div style="position:relative;display:block"><img class="pdf-hl-img" src="' + esc(_img0) + '" loading="lazy" alt="' + esc(title) + '" data-snip="' + esc(String(h.snip || full || '').slice(0, 400)) + '" style="display:block;width:100%;border:1px solid var(--line);border-radius:var(--r-s);background:#fff"></div><div class="small muted" style="margin:4px 0 0"><span class="pdf-hl-tip">正在定位引用句…</span></div></div>' : '')
       + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(primary) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="' + (useLite ? '1' : '0') + '" data-title="' + esc(title) + '" title="在本站里打开原页（纯网页渲染，安卓 / iPhone / 华为平板都行；Esc 或右上角关闭退出）">' + plabel + '</button>'
+      + '<button class="btn tiny primary pdf-full" type="button" data-pdf="' + esc(primary) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="' + (useLite ? '1' : '0') + '" data-img="' + esc(_img0 || '') + '" data-title="' + esc(title) + '" title="在本站里打开原页（纯网页渲染，安卓 / iPhone / 华为平板都行；Esc 或右上角关闭退出）">' + plabel + '</button>'
       + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="直接打开 PDF 文件本身（手机会交给下载 / PDF 应用处理）">' + label + ' ↗</a>'
       + ((useLite || !lite) ? '' : '<button class="btn tiny pdf-lite" type="button" data-pdf="' + esc(lite) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-lite="1" data-title="' + esc(title) + '" title="轻量阅读器：给官方那份跑不起来的老内核用">轻量阅读器</button>')
       + '</div>'
@@ -1203,7 +1206,7 @@ function aiPdfBlockHtml(h, full) {
     : '';
   /* 电脑：内嵌也改成阅读器（因为加速线路返回的是 octet-stream，原生内嵌会变成「下载」） */
   return _prev + '<div class="pdfrow" style="margin:0 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
+    + '<button class="btn tiny pdf-full" type="button" data-pdf="' + esc(viewer) + '" data-rel="' + esc(rel) + '" data-anchor="' + esc(anchor) + '" data-img="' + esc(_img || '') + '" data-title="' + esc(title) + '" title="把阅读器放大到整屏（不离开本站，Esc 退出）">⛶ 全屏看原页</button>'
     + '<a class="btn tiny" href="' + esc(direct) + '" target="_blank" rel="noopener" title="用本机的 PDF 阅读器打开这一节（原站直链，加载慢一点）">' + label + ' ↗</a>'
     + '</div>'
     + (_img
@@ -1353,7 +1356,7 @@ document.addEventListener('click', function (e) {
 }, false);
 
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
-function aiPdfFullscreen(pdf, title, rel, anchor) {
+function aiPdfFullscreen(pdf, title, rel, anchor, img) {
   const old = document.getElementById('pdfFs');
   if (old) old.remove();
   const box = document.createElement('div');
@@ -1365,7 +1368,13 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
     + '<a class="btn tiny" target="_blank" rel="noopener" href="' + esc(pdf) + '">新窗口打开 ↗</a>'
     + '<button class="btn tiny" type="button" id="pdfFsClose">关闭（Esc）</button>'
     + '</div>'
-    + '<iframe src="' + esc(pdf) + '" title="' + esc(title || 'PDF') + '" style="flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>'
+    + (img
+      ? '<div id="pdfFsStage" style="flex:1 1 auto;overflow:auto;background:#fff;border-radius:12px;padding:6px;text-align:center">'
+        + '<img src="' + esc(img) + '" alt="' + esc(title || 'PDF') + '" style="max-width:100%;display:block;margin:0 auto;border-radius:8px">'
+        + '</div>'
+        + '<div style="display:flex;justify-content:center"><button class="btn tiny" type="button" id="pdfFsReader">翻整本 / 搜文字（加载 PDF 阅读器）</button></div>'
+      : '')
+    + '<iframe id="pdfFsFrame" src="' + esc(img ? '' : pdf) + '" title="' + esc(title || 'PDF') + '" style="' + (img ? 'display:none;' : '') + 'flex:1 1 auto;width:100%;border:0;border-radius:12px;background:#fff"></iframe>'
     + '<div class="pdfFsTip small" style="color:#cbd5e1;margin:0"></div>';
   document.body.appendChild(box);
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
@@ -1376,6 +1385,20 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
   document.addEventListener('keydown', onKey, true);
   const btn = document.getElementById('pdfFsClose');
   if (btn) btn.onclick = close;
+  /* 有预渲染页图时：先让人**马上看到这一页**，阅读器等点了才加载（线上 PDF 只有 30-40KB/s，
+     整本 3.6MB 要一分多钟，谁也不想对着灰屏等）。 */
+  const frameEl = document.getElementById('pdfFsFrame');
+  const readerBtn = document.getElementById('pdfFsReader');
+  if (readerBtn && frameEl) readerBtn.onclick = () => {
+    try {
+      const st = document.getElementById('pdfFsStage');
+      if (st) st.style.display = 'none';
+      readerBtn.style.display = 'none';
+      frameEl.style.display = '';
+      if (!frameEl.getAttribute('src')) frameEl.src = pdf;
+    } catch (e) {}
+  };
+  const frameVisible = () => !!(frameEl && frameEl.style.display !== 'none');
   box.addEventListener('click', e => { if (e.target === box) close(); });
   const sw = document.getElementById('pdfFsSwap');
   /* 看门狗：站内阅读器是**同源**的，可以直接问它「PDF 打开了没」。
@@ -1392,7 +1415,7 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
   };
   const tip = t => { try { const el = box.querySelector('.pdfFsTip'); if (el) el.textContent = t; } catch (e) {} };
   const tRetry = setTimeout(() => {
-    if (!box.isConnected || openedNow() || !rel) return;
+    if (!box.isConnected || !frameVisible() || openedNow() || !rel) return;
     if (document.getElementById('pdfFsFail')) return;
     try {
       const f = box.querySelector('iframe');
@@ -1404,7 +1427,7 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
     } catch (e) {}
   }, 12000);
   const tGiveUp = setTimeout(() => {
-    if (!box.isConnected || openedNow() || document.getElementById('pdfFsFail')) return;
+    if (!box.isConnected || !frameVisible() || openedNow() || document.getElementById('pdfFsFail')) return;
     try {
       aiPdfNoViewerSet(true);                     /* 记住：这台设备上阅读器打不开，以后直接给系统阅读器 */
       const bar = document.createElement('div');
@@ -1449,7 +1472,7 @@ function aiPdfFullscreen(pdf, title, rel, anchor) {
 /* 「⛶ 全屏看原页」按钮的绑定 */
 function aiBindPdfInline(root) {
   (root || document).querySelectorAll('.pdf-full, .pdf-lite').forEach(btn => {
-    btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF', btn.dataset.rel || '', btn.dataset.anchor || '');
+    btn.onclick = () => aiPdfFullscreen(btn.dataset.pdf || '', btn.dataset.title || 'PDF', btn.dataset.rel || '', btn.dataset.anchor || '', btn.dataset.img || '');
   });
   /* 「再试一次站内阅读器」：清掉「这台设备打不开」的标记，下次又给阅读器 */
   (root || document).querySelectorAll('[data-pdf-retryviewer]').forEach(btn => {
