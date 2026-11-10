@@ -7441,24 +7441,24 @@ html[data-style="glass"]{
 /* 底：更饱和的光斑，玻璃才有东西可折射 */
 html[data-style="glass"]:not([data-bg="custom"]):not([data-bg="video"]) body{
   background-color:#c9d8fb!important;
-  background-image:linear-gradient(178deg,#9fc3ff 0%,#c3b3ff 26%,#ffcfe9 58%,#9ce9dd 100%)!important;
+  background-image:linear-gradient(178deg,#93b9ff 0%,#b6b6ff 30%,#dcc4ef 62%,#93e6da 100%)!important;
   background-size:100% 100%!important;background-repeat:no-repeat!important;background-attachment:fixed!important;
   background-position:0 0!important;
 }
 html[data-style="glass"] body{
-  --card:rgba(255,255,255,.30);
-  --card2:rgba(255,255,255,.20);
-  --card3:rgba(255,255,255,.38);
-  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.46),rgba(255,255,255,.10) 56%,rgba(255,255,255,.22));
+  --card:rgba(255,255,255,.22);
+  --card2:rgba(255,255,255,.14);
+  --card3:rgba(255,255,255,.28);
+  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 56%,rgba(255,255,255,.16));
   --glass-edge:0 22px 48px -14px rgba(28,48,96,.34), inset 0 1px 0 rgba(255,255,255,.95), inset 1px 0 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(255,255,255,.28);
   --line:rgba(255,255,255,.72);
   --line2:rgba(255,255,255,.44);
 }
 html[data-style="glass"] body.dark{
-  --card:rgba(34,44,68,.52);
-  --card2:rgba(20,26,44,.46);
-  --card3:rgba(48,58,88,.46);
-  --glass-fill:linear-gradient(150deg,rgba(64,82,124,.46),rgba(12,18,34,.28) 56%,rgba(30,40,66,.38));
+  --card:rgba(34,44,68,.40);
+  --card2:rgba(20,26,44,.34);
+  --card3:rgba(48,58,88,.36);
+  --glass-fill:linear-gradient(150deg,rgba(64,82,124,.34),rgba(12,18,34,.18) 56%,rgba(30,40,66,.26));
   --glass-edge:0 24px 52px -16px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.26), inset 1px 0 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(255,255,255,.05);
   --line:rgba(255,255,255,.26);
 }
@@ -7499,13 +7499,26 @@ html[data-style="glass"] .nb-card{
 }
 /* 顶栏/底栏：边缘更亮，像一块浮起的玻璃 */
 html[data-style="glass"] .top{
-  background:linear-gradient(180deg,rgba(255,255,255,.60),rgba(255,255,255,.34))!important;
-  border:1px solid rgba(255,255,255,.70)!important;
-  box-shadow:0 14px 34px -18px rgba(28,48,96,.42),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  background:rgba(255,255,255,.10)!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.28)!important;
 }
 html[data-style="glass"] body.dark .top{
-  background:linear-gradient(180deg,rgba(40,52,82,.66),rgba(18,24,40,.50))!important;
-  border:1px solid rgba(255,255,255,.20)!important;
+  background:rgba(10,16,32,.18)!important;
+  border:0!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.12)!important;
+}
+/* 顶栏里那颗「文件」白胶囊也降一档白 */
+html[data-style="glass"] .top .btn,
+html[data-style="glass"] .top .chip{
+  background:rgba(255,255,255,.26)!important;
+  border:1px solid rgba(255,255,255,.45)!important;
+}
+html[data-style="glass"] body.dark .top .btn,
+html[data-style="glass"] body.dark .top .chip{
+  background:rgba(255,255,255,.10)!important;
+  border:1px solid rgba(255,255,255,.16)!important;
 }
 html[data-style="glass"] .bnav,
 html[data-style="glass"] .nav{
@@ -7605,3 +7618,13 @@ html[data-style="glass"] .page,
 html[data-style="glass"] main{background:transparent!important;box-shadow:none!important}
 html[data-style="glass"] .qside{box-shadow:none!important}
 html[data-style="glass"] .qside-mask{background:rgba(10,16,28,.32)!important}
+
+/* glass · 用自定义图片/视频当背景时，玻璃要更实一点，否则字看不清 */
+html[data-style="glass"][data-bg="custom"],
+html[data-style="glass"][data-bg="video"]{
+  --glass-fill:linear-gradient(150deg,rgba(255,255,255,.78),rgba(255,255,255,.56) 56%,rgba(255,255,255,.68));
+}
+html[data-style="glass"][data-bg="custom"] body.dark,
+html[data-style="glass"][data-bg="video"] body.dark{
+  --glass-fill:linear-gradient(150deg,rgba(26,34,54,.80),rgba(10,14,26,.66) 56%,rgba(22,30,50,.74));
+}
