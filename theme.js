@@ -26,7 +26,8 @@
   function snapshot(fields) {
     fields = fields || {};
     var look = {};
-    LOOK_KEYS.forEach(function (k) { if (window.SET && SET[k] != null) look[k] = SET[k]; });
+    var S = window.SET || {};
+    LOOK_KEYS.forEach(function (k) { if (S[k] != null) look[k] = S[k]; });
     return {
       v: 1,
       name: fields.name || '未命名主题',
@@ -65,14 +66,31 @@
     el.textContent = css;
   }
 
+  /* 套用后把设置页里的下拉/网格同步过来，免得看到的值和实际不一致 */
+  function syncSetUI() {
+    try {
+      var S = window.SET || {};
+      [['#setStyle', 'style'], ['#setTheme', 'theme'], ['#setColor', 'color'], ['#setBg', 'bg'], ['#setFs', 'fs']]
+        .forEach(function (p) {
+          var el = $(p[0]);
+          if (el && S[p[1]] != null && String(el.value) !== String(S[p[1]])) el.value = S[p[1]];
+        });
+      if (typeof paintStyleGrid === 'function') paintStyleGrid();
+      if (typeof modeLockHint === 'function') modeLockHint();
+    } catch (e) {}
+  }
+
   function apply(t, opts) {
     if (!t || !t.look) return false;
-    Object.keys(t.look).forEach(function (k) { try { SET[k] = t.look[k]; } catch (e) {} });
-    try { if (typeof writeLS === 'function' && window.LS && LS.set) writeLS(LS.set, SET); } catch (e) {}
+    var S = window.SET || null;
+    if (!S) { toast('设置还没加载好，稍等一秒再点'); return false; }
+    Object.keys(t.look).forEach(function (k) { try { S[k] = t.look[k]; } catch (e) {} });
+    try { if (typeof writeLS === 'function' && window.LS && LS.set) writeLS(LS.set, S); } catch (e) {}
     try { if (typeof applyLook === 'function') applyLook(); } catch (e) {}
     setCss(t.css || '');
     try { localStorage.setItem(K_ACT, t.id || t.name || ''); } catch (e) {}
     document.documentElement.setAttribute('data-theme-pack', t.id || t.name || '');
+    syncSetUI();
     if (!opts || !opts.quiet) toast('已套用主题「' + (t.name || '') + '」', 1800);
     renderMine();
     return true;
@@ -156,6 +174,7 @@
     setCss('');
     try { localStorage.removeItem(K_ACT); } catch (e) {}
     document.documentElement.removeAttribute('data-theme-pack');
+    syncSetUI();
     renderMine();
     toast('已恢复官方外观', 1800);
   }
@@ -223,27 +242,49 @@
     });
   }
 
-  /* ---------- 绑定 ---------- */
+  /* ---------- 绑定（全部走文档级委托，设置页重画后依然有效） ---------- */
   function bind() {
-    var s = $('#thSave'); if (s) s.onclick = saveCurrent;
-    var st = $('#thStore'); if (st) st.onclick = store;
-    var rs = $('#thReset'); if (rs) rs.onclick = resetLook;
-    var im = $('#thImport'); var fi = $('#thFile');
-    if (im && fi) {
-      im.onclick = function () { fi.value = ''; fi.click(); };
-      fi.onchange = function () { importFile(this.files && this.files[0]); };
+    if (!window.__themeBoxDelegated) {
+      window.__themeBoxDelegated = 1;
+      document.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var chip = t.closest('#thMine [data-th]');
+        if (chip) {
+          ev.preventDefault();
+          var id = chip.getAttribute('data-id');
+          var one = mine().filter(function (x) { return x && x.id === id; })[0];
+          if (!one) return;
+          if (chip.getAttribute('data-th') === 'use') apply(one);
+          else { delMine(id); toast('已从本机删除「' + (one.name || '') + '」', 1500); }
+          return;
+        }
+        var b = t.closest('#thSave,#thStore,#thReset,#thImport');
+        if (!b) return;
+        ev.preventDefault();
+        if (b.id === 'thSave') saveCurrent();
+        else if (b.id === 'thStore') store();
+        else if (b.id === 'thReset') resetLook();
+        else if (b.id === 'thImport') { var fi = $('#thFile'); if (fi) { fi.value = ''; fi.click(); } }
+      }, true);
+      document.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.id === 'thFile') importFile(ev.target.files && ev.target.files[0]);
+      }, true);
     }
-    var box = $('#thMine');
-    if (box) box.addEventListener('click', function (ev) {
-      var b = ev.target.closest('[data-th]');
-      if (!b) return;
-      var id = b.getAttribute('data-id');
-      var t = mine().filter(function (x) { return x && x.id === id; })[0];
-      if (!t) return;
-      if (b.getAttribute('data-th') === 'use') apply(t);
-      else { delMine(id); toast('已从本机删除「' + (t.name || '') + '」', 1500); }
-    });
     renderMine();
+    /* 设置页每次重画都会生成新的 #thMine（空壳），这里补画一次，省得看不到「我的主题」 */
+    if (!window.__themeBoxWatch) {
+      window.__themeBoxWatch = 1;
+      var timer = 0;
+      var ob = new MutationObserver(function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          var box = $('#thMine');
+          if (box && !box.querySelector('[data-th]')) renderMine();
+        }, 60);
+      });
+      ob.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);

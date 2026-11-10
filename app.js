@@ -540,6 +540,10 @@ let NOTES = readLS(LS.note, {});
 let QTN = readLS(LS.qtn, {});      /* 答题页右侧便签（口诀 / 思路）：跟解析分开存，一个题目一条 */
 let PAPERS = readLS(LS.paper, []);     // [{ id, title, createdAt, keys:[] }]
 let SET = readLS(LS.set, { expOnOk: true, autoNext: false, shuffle: false, textColor: 'auto' });
+
+/* 把 SET / LS 暴露到 window（theme.js 等要读写当前外观；用 getter 保证 SET 被重新赋值后仍指向最新对象） */
+try { Object.defineProperty(window, 'SET', { get: function () { return SET; }, configurable: true }); } catch (e) {}
+try { Object.defineProperty(window, 'LS', { get: function () { return LS; }, configurable: true }); } catch (e) {}
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
@@ -659,6 +663,52 @@ const UI_STYLES = [
 
 /* 每套皮肤「天生」的明暗（web716）：light = 只有浅色版、dark = 只有深色版、auto = 两版都行。
    开了「皮肤锁明暗」时，换皮肤会强制切到它自己的明暗，避免白卡配白字。 */
+const UI_STYLE_NAME = {
+  neu: '新拟态',
+  default: '清爽（默认）',
+  flat: '极简扁平',
+  baroque: '巴洛克',
+  artdeco: '装饰艺术',
+  steampunk: '蒸汽朋克',
+  gothic: '哥特',
+  retro: '复古怀旧',
+  pop: '波普',
+  sketch: '概念草图',
+  tenebrism: '暗色调',
+  neo: '新野兽派',
+  blueprint: '蓝图',
+  pixel: '像素 8-bit',
+  y2k: 'Y2K 千禧',
+  disco: '迪斯科',
+  acid: '酸性平面',
+  win95: '复古窗口',
+  terminal: '终端',
+  hologram: '全息',
+  zen: '日式禅意',
+  botanical: '植物图鉴',
+  macaron: '马卡龙',
+
+  rococo: '洛可可',
+  cubism: '立体主义',
+  opart: '欧普艺术',
+  psyche: '迷幻艺术',
+  glitch: '故障艺术',
+  naive: '稚拙绘画',
+  dieselpunk: '柴油朋克',
+  rinpa: '琳派',
+  corpmemphis: '企业孟菲斯',
+  expressionism: '表现主义',
+  neopop: '新波普',
+  'clay': '粘土拟态',
+  'aurora': '极光',
+  'sticker': '贴纸',
+  'newsprint': '报纸',
+  'synthwave': '合成波',
+
+  vaporwave: '霓虹复古',
+  neontokyo: '霓虹东京',
+  glass: '液态玻璃',
+};
 const UI_STYLE_MODE = {
   default: 'auto',
   flat: 'light',
