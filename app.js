@@ -4561,7 +4561,7 @@ function renderQuiz(bankId) {
       <div id="qBody">
       ${q.group ? `<div class="gstem"><b>共用题干：</b>${stemHtml(q.group)}</div>` : ''}
       <div class="stem">${stemHtml(q.stem)}</div>
-      ${tagRowHtml(fk, q)}
+      ${(typeof tagRowHtml === 'function') ? tagRowHtml(fk, q) : ''}
       <div class="opts">${opts}</div>
       </div>
       </div>
