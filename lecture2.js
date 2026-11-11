@@ -82,6 +82,67 @@
     });
   }
 
+  /* ---------- 资源线路（多路兜底） ----------
+     同一个文件在三条线路上都有：本站 github.io、gh-proxy 镜像、ghfast 镜像。
+     实测 github.io 只有 18KB/s（1.3MB 的文字块要 73 秒，经常断），
+     两个镜像 87-97KB/s。所以：能走镜像就走镜像，走通哪条就记住哪条（30 分钟）。 */
+  var GH_RAW = 'https://raw.githubusercontent.com/stain37/shuati-web/main/';
+  var BASES = [
+    { id: 'ghproxy', pre: 'https://gh-proxy.com/' + GH_RAW },
+    { id: 'ghfast', pre: 'https://ghfast.top/' + GH_RAW },
+    { id: 'origin', pre: '' }
+  ];
+  var BASE_KEY = 'qbank.lec.base.v1';
+  var CUR_BASE = 'origin';
+  function baseOrder() {
+    var saved = readLS(BASE_KEY, null);
+    var id = (saved && saved.id && Date.now() - (saved.ts || 0) < 30 * 60e3) ? saved.id : '';
+    var arr = BASES.slice();
+    if (id) arr.sort(function (a, b) { return (b.id === id ? 1 : 0) - (a.id === id ? 1 : 0); });
+    return arr;
+  }
+  function setBase(id) {
+    if (CUR_BASE === id) return;
+    CUR_BASE = id;
+    try { writeLS(BASE_KEY, { id: id, ts: Date.now() }); } catch (e) {}
+  }
+  function baseUrl(b, rel) { return b.pre ? b.pre + rel : rel; }
+
+  /* 取文本（不用 r.json()，方便看进度/兜底） */
+  function fetchText(url, ms) {
+    return new Promise(function (resolve, reject) {
+      var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tid = setTimeout(function () { if (ctl) try { ctl.abort(); } catch (e) {} }, ms || 40000);
+      var opt = { cache: 'no-store' };
+      if (ctl) opt.signal = ctl.signal;
+      fetch(url, opt).then(function (r) {
+        clearTimeout(tid);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(resolve).catch(function (e) { clearTimeout(tid); reject(e); });
+    });
+  }
+
+  /* 逐条线路试，成功即记住这条线路 */
+  function fetchAsset(rel, o) {
+    o = o || {};
+    var list = baseOrder(), i = 0;
+    function next(lastErr) {
+      if (i >= list.length) return Promise.reject(lastErr || new Error('所有线路都不通'));
+      var b = list[i++];
+      var u = baseUrl(b, rel);
+      if (o.json) {
+        return fetchJson(u, o.tries || 1, o.timeout || 20000)
+          .then(function (j) { setBase(b.id); return j; })
+          .catch(next);
+      }
+      return fetchText(u, o.timeout || 40000)
+        .then(function (t) { setBase(b.id); return t; })
+        .catch(next);
+    }
+    return next(null);
+  }
+
   function loadIndex(force) {
     if (IDX && !force) return Promise.resolve(IDX);
     if (!force) {
@@ -91,7 +152,7 @@
           applyIdx(JSON.parse(c.raw));
           /* 本机缓存 12 小时内直接用；更老的先用着，后台再刷 */
           if (Date.now() - (c.ts || 0) < 12 * 3600e3) return Promise.resolve(IDX);
-          fetchJson('pdfimg/idx.json', 1, 25000).then(function (j) {
+          fetchAsset('pdfimg/idx.json', { json: true, timeout: 25000 }).then(function (j) {
             writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) });
             applyIdx(j); if (FILES && el.sel) { fillSelect(); paint(); }
           }).catch(function () {});
@@ -103,7 +164,7 @@
     var urls = ['pdfimg/idx.json', 'data/lec-idx.json'], i = 0;
     function tryNext(lastErr) {
       if (i >= urls.length) return Promise.reject(lastErr || new Error('no url'));
-      return fetchJson(urls[i++], 2, 25000).then(function (j) {
+      return fetchAsset(urls[i++], { json: true, tries: 2, timeout: 25000 }).then(function (j) {
         applyIdx(j);
         try { writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) }); } catch (e) {}
         return IDX;
@@ -261,23 +322,32 @@
     el.empty.innerHTML = html;
     el.empty.style.display = '';
   }
-  function setImg(u) {
+  function setImg(rel) {
     if (!el.img) return;
     if (el.empty) el.empty.style.display = 'none';
     el.img.style.display = '';
-    el.img.onload = function () { if (el.empty) el.empty.style.display = 'none'; };
-    el.img.onerror = function () {
-      /* 线上带宽只有 ~20KB/s，一张 110KB 的图经常半路断；先带 ?r= 重试一次 */
-      if (!IMG_TRIED[u]) {
-        IMG_TRIED[u] = 1;
-        el.img.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'r=' + Date.now();
-        return;
-      }
+    var list = baseOrder(), idx = 0, retried = false;
+    function load() {
+      var b = list[idx];
+      if (!b) { fail(); return; }
+      el.img.src = baseUrl(b, rel) + '?r=' + Date.now();
+    }
+    function fail() {
       el.img.style.display = 'none';
       showEmpty('这张页图没下来（网络慢或站点正在更新）。' +
         '<button class="btn tiny" data-lec="imgretry">重试</button>');
+    }
+    el.img.onload = function () {
+      if (list[idx]) setBase(list[idx].id);
+      if (el.empty) el.empty.style.display = 'none';
     };
-    el.img.src = u;
+    el.img.onerror = function () {
+      if (!retried) { retried = true; load(); return; }   /* 同一线路再试一次 */
+      retried = false; idx++;
+      if (idx < list.length) { load(); return; }          /* 换下一条线路 */
+      fail();
+    };
+    load();
   }
 
   /* 取「某份讲义第 N 页」对应的页图 key。
@@ -503,7 +573,7 @@
   function loadManifest() {
     if (MAN) return Promise.resolve(MAN);
     if (MAN_JOB) return MAN_JOB;
-    MAN_JOB = fetchJson('pdftext/t_index.json', 3, 15000).then(function (m) { MAN = m; return m; })
+    MAN_JOB = fetchAsset('pdftext/t_index.json', { json: true, tries: 2, timeout: 15000 }).then(function (m) { MAN = m; return m; })
       .catch(function (e) { MAN_JOB = null; throw e; });
     return MAN_JOB;
   }
@@ -530,7 +600,7 @@
     return idb('get', 'part:' + pid).then(function (c) {
       var cached = (c && Array.isArray(c.rows)) ? c.rows.filter(Boolean) : null;
       if (cached && cached.length) { TXT_CACHE[pid] = cached; return cached; }
-      return fetchJson('pdftext/' + pid + '.json', 3, 40000).then(function (arr) {
+      return fetchAsset('pdftext/' + pid + '.json', { json: true, tries: 2, timeout: 45000 }).then(function (arr) {
         var rows = rowsOf(arr);
         if (!rows.length) throw new Error('这一块是空的');
         TXT_CACHE[pid] = rows;
