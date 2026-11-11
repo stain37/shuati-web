@@ -4321,3 +4321,13 @@ body.dark .srcpop-s{color:#93c5fd;background:rgba(147,197,253,.14)}
 .lec-crow div b{font-size:13.5px}
 /* web756：右下角调色板悬浮球去掉了（改从「设置 → 🎨 主题设计器」进） */
 #dzFab{display:none!important}
+
+
+/* ==== web757：鉴别题重排开关 ==== */
+.lec-srow { margin: 10px 2px 0; padding: 10px 12px; border-radius: 12px; background: rgba(15,23,42,.05); display: flex; flex-direction: column; gap: 3px; }
+.lec-srow label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #141a22; cursor: pointer; }
+.lec-srow span { font-size: 11.5px; line-height: 1.4; color: #5b6472; }
+.lec-srow input { width: 16px; height: 16px; accent-color: #0a84ff; }
+body.dark .lec-srow { background: rgba(255,255,255,.07); }
+body.dark .lec-srow label { color: #e9eef6; }
+body.dark .lec-srow span { color: #96a2b4; }

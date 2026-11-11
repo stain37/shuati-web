@@ -668,13 +668,15 @@
     for (i = 0; i < n - 1; i++) { var g = s.substr(i, 2); out[g] = (out[g] || 0) + 1; }
     return out;
   }
+  var QP = { stem: '', opts: [] };   /* 最近一次读取的题干与选项 */
   function questionText() {
     var parts = [];
+    QP = { stem: '', opts: [] };
     var stem = document.querySelector('#qBody .stem, #qBody .gstem, .stem');
-    if (stem) parts.push(stem.textContent || '');
+    if (stem) { QP.stem = (stem.textContent || '').trim(); parts.push(QP.stem); }
     Array.prototype.forEach.call(document.querySelectorAll('#qBody .opt, .opts .opt'), function (el) {
-      var t = (el.textContent || '').replace(/^[A-H][\s.、]?/, '').trim();
-      if (t) parts.push(t);
+      var t = (el.textContent || '').replace(/^[A-H][\s.．、:：)）\]]?/, '').trim();
+      if (t) { QP.opts.push(t); parts.push(t); }
     });
     return parts.join(' ');
   }
@@ -835,6 +837,121 @@
     }
     return rankPages(pages, q);
   }
+  /* ---------- 鉴别/多选型：候选页按「概念覆盖 + 对照表」重排 ---------- */
+  var DIFF_KEY = 'qbank.lec.diff.v1';
+  var DIFF = readLS(DIFF_KEY, true);
+  function diffOn() { return DIFF !== false; }
+  function diffSet(v) { DIFF = !!v; try { writeLS(DIFF_KEY, DIFF); } catch (e) {} }
+  var DIFF_ASK = /有$|包括|属于|常增高|常降低|最常见于|鉴别|哪些|以下|下列|正确的有/;
+  var TBL_IND = ['血清铁', '转铁蛋白饱和度', '总铁结合力', '血清铁蛋白', '骨髓细胞内铁', '骨髓细胞外铁',
+    'MCV', 'MCH', '网织红细胞', '抗核抗体', '补体C3', '铁蛋白'];
+  var QPAGE = /真题解析·|真题解析：|习惯一读|读完所有选项|选择最佳答案/;
+  function commonAffix(arr) {
+    var pre = '', suf = '', i, c;
+    var minLen = arr[0].length;
+    for (i = 1; i < arr.length; i++) if (arr[i].length < minLen) minLen = arr[i].length;
+    for (i = 0; i < minLen; i++) {
+      c = arr[0].charAt(i);
+      var all = true;
+      for (var j = 1; j < arr.length; j++) if (arr[j].charAt(i) !== c) { all = false; break; }
+      if (!all) break;
+      pre += c;
+    }
+    for (i = 1; i <= minLen - pre.length; i++) {
+      c = arr[0].charAt(arr[0].length - i);
+      var all2 = true;
+      for (var k = 1; k < arr.length; k++) if (arr[k].charAt(arr[k].length - i) !== c) { all2 = false; break; }
+      if (!all2) break;
+      suf = c + suf;
+    }
+    return [pre, suf];
+  }
+  function stripAffix(o, pre, suf) {
+    var a = pre ? o.indexOf(pre) === 0 ? pre.length : 0 : 0;
+    var b = suf ? o.lastIndexOf(suf) === o.length - suf.length ? o.length - suf.length : o.length : o.length;
+    if (b <= a) return o;
+    return o.slice(a, b);
+  }
+  var OPT_SUF = ['性贫血', '细胞贫血', '贫血', '综合征', '症', '病'];
+  function optVariants(opt, pre, suf) {
+    var o = String(opt || '').replace(/[（(].*?[）)]/g, '').trim();
+    if (o.length < 2) return [];
+    var out = [o];
+    for (var i = 0; i < OPT_SUF.length; i++) {
+      var sf = OPT_SUF[i];
+      if (o.length - sf.length >= 2 && o.slice(-sf.length) === sf) out.push(o.slice(0, -sf.length));
+    }
+    if (pre && o.indexOf(pre) === 0 && o.length - pre.length >= 2) out.push(o.slice(pre.length));
+    var core = stripAffix(o, pre, suf);
+    if (core !== o) {
+      out.push(core);
+      if (/性$/.test(core) && core.length > 3) out.push(core.slice(0, -1));
+    }
+    if (o.indexOf('地中海贫血') >= 0 || o.indexOf('珠蛋白生成障碍') >= 0) out.push('地中海贫血', '珠蛋白生成障碍性贫血', '地贫');
+    var seen = {}, res = [];
+    out.forEach(function (x) {
+      if (!x || x.length < 2 || x === pre || x === suf) return;
+      if (!seen[x]) { seen[x] = 1; res.push(x); }
+    });
+    return res;
+  }
+  /* 判断是不是「多个并列概念」的鉴别/多选型题目；是则返回重排方案 */
+  function diffPlan(stem, opts) {
+    if (!diffOn() || !opts || opts.length < 3) return null;
+    var clean = [];
+    opts.forEach(function (o) {
+      var t = String(o || '').replace(/\s+/g, '');
+      if (t && t.length <= 16 && !/[0-9．.，,；;：:]/.test(t)) clean.push(t);
+    });
+    if (clean.length < 3) return null;
+    if (!DIFF_ASK.test(String(stem || ''))) return null;
+    var ax = commonAffix(clean);
+    var vs = [];
+    clean.forEach(function (o) {
+      var v = optVariants(o, ax[0], ax[1]);
+      if (v.length) vs.push(v);
+    });
+    if (vs.length < 3) return null;
+    return { opts: clean, vs: vs };
+  }
+  /* 去掉讲义页眉（每页都有的导航行），否则「真题解析」四个字会误伤所有页 */
+  function lecClean(t) {
+    var x = String(t || '');
+    x = x.replace(/每日计划[\s\S]{0,120}?考点补充/, '');
+    return x.replace(/\s+/g, '');
+  }
+
+  function tableBoost(t) {
+    var n = 0;
+    for (var i = 0; i < TBL_IND.length; i++) if (t.indexOf(TBL_IND[i]) >= 0) n++;
+    if (t.indexOf('鉴别诊断') >= 0 && n >= 3) return 0.38;
+    if (n >= 5) return 0.34;
+    if (n >= 3) return 0.20;
+    return 0;
+  }
+  function diffRerank(list, plan) {
+    if (!plan || !list || !list.length) return list;
+    var rows = [];
+    list.forEach(function (x) {
+      var t = lecClean(x.t);
+      var cover = 0;
+      if (t) {
+        plan.vs.forEach(function (g) {
+          for (var i = 0; i < g.length; i++) if (t.indexOf(g[i]) >= 0) { cover++; return; }
+        });
+      }
+      var s = (x.score || 0) * 0.65 + (cover / plan.vs.length) * 0.35 + tableBoost(t) - (t && QPAGE.test(t) ? 0.5 : 0);
+      rows.push({ x: x, s: t ? s : s - 0.2, cover: cover });
+    });
+    var best = 0;
+    rows.forEach(function (r) { if (r.cover > best) best = r.cover; });
+    /* 保守：没有任何一页同时讲到 >=3 个选项时，说明这不是「几个病/几个概念的对照」，
+       保持原相似度排序，避免把判别性线索（题干里的特征词）挤掉 */
+    if (best < 3) return list;
+    rows.sort(function (a, b) { return b.s - a.s; });
+    return rows.map(function (r) { r.x.diff = r.cover; return r.x; });
+  }
+
   function applyCands(list, tag) {
     list = (list || []).slice(0, 18);
     if (!list.length) return false;
@@ -981,7 +1098,9 @@
       var on = (SCOPE.mode === 'subj' && SCOPE.subj === nm) ? ' on' : '';
       h += '<button class="lec-schip' + on + '" data-sc="pick" data-v="subj" data-subj="' + nm + '">' + nm + '<em>' + subs[nm].length + '</em></button>';
     }
-    h += '</div></div><div class="lec-sfoot">只影响「🔍 定位到这题」，不会换掉你正在看的讲义</div>';
+    h += '</div>';
+    h += '<div class="lec-srow"><label><input type="checkbox" id="lecDiffChk"' + (diffOn() ? ' checked' : '') + ' data-sc="diff">鉴别题优先「对照表」</label><span>选项是多个并列概念时，先推讲这几项区别的那一页</span></div>';
+    h += '<div class="lec-sfoot">只影响「🔍 定位到这题」，不会换掉你正在看的讲义</div>';
     sheet.innerHTML = h;
     mask.appendChild(sheet);
     mask.addEventListener('click', function (ev) {
@@ -990,6 +1109,7 @@
       var a = b.getAttribute('data-sc');
       if (a === 'x') return closeScope();
       if (a === 'pick') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
+      if (a === 'diff') { diffSet(b.checked); toast(b.checked ? '已开启：鉴别题优先「对照表」' : '已关闭：鉴别题重排'); return; }
     });
     document.body.appendChild(mask);
     window.__closeLecScope = function () { try { mask.parentNode.removeChild(mask); } catch (e) {} };
@@ -1072,7 +1192,19 @@
      ② 每一份都在这份自己的正文里按关键词补候选页
      ③ 每份内部用语义相似度排，取前 3 页
      ④ 全部页按相似度排，再按这份的最高分排「份」 */
-  function multiLocate(q) {
+  function pageText(rows, src, p) {
+    var fo = fileOf(src) || {};
+    var want = normName(src);
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r) continue;
+      if (r.src !== src && normName(r.src) !== want) continue;
+      if (localPage(fo, r.p) === p) return r.t || '';
+    }
+    return '';
+  }
+  function multiLocate(q, opts) {
+    var plan = diffPlan(QP.stem, opts);
     var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
     var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
     return Promise.all([kbRows(q), prevP]).then(function (r) {
@@ -1157,6 +1289,10 @@
           var out = [];
           all.forEach(function (arr) { (arr || []).forEach(function (x) { if (x && x.p > 0) out.push(x); }); });
           out.sort(function (a, b) { return b.score - a.score; });
+          if (plan) {
+            out.forEach(function (x) { if (!x.t) x.t = pageText(bySrc[x.src] || [], x.src, x.p); });
+            out = diffRerank(out, plan);
+          }
           return out;
         });
       });
@@ -1179,7 +1315,7 @@
     var tag = (SCOPE.mode === 'subj') ? ('📚 ' + (SCOPE.subj || '这一科')) : '📚 多份检索';
     if (el.meta) el.meta.textContent = '正在多份讲义里一起找这一页…';
     /* 首选：多份 PDF 一起检索（知识库命中的每一份 + 当前位置），按相似度排 */
-    withTimeout(multiLocate(q), 45000).then(function (list) {
+    withTimeout(multiLocate(q, QP.opts), 45000).then(function (list) {
       if (list && list.length) { applyCands(list, tag); return null; }
       if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
       /* 退路：和 AI 解析共用同一套资料检索（kb.js）→ 在这份 PDF 里逐页排序 */
@@ -1390,7 +1526,6 @@
     openHit: openHit,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
-    /* 调试用：直接看 KB 检索返回什么 */
-    kb: function () { return kbLocate(questionText()); }, q: questionText,
-    cand2: function () { return CAND2.length; } };
+    diff: { on: diffOn, set: diffSet, plan: diffPlan, rerank: diffRerank, text: pageText },
+  };
 })();
