@@ -3242,7 +3242,8 @@ function route() {
   if (parts[0] === 'cal') return { name: 'cal' };             /* 复习日历（web184）：按月翻页看哪天到期 */
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
-  if (parts[0] === 'chat') return { name: 'chat' };                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
+  if (parts[0] === 'chat') return { name: 'chat' };
+  if (parts[0] === 'notes') return { name: 'notes' };   /* 知识点笔记（notes.js） */                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
   return { name: 'home' };
 }
 function go(hash) {
@@ -3561,6 +3562,7 @@ function renderInner() {
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else if (r.name === 'qlist') { if (window.CAT && CAT.qlistRender) CAT.qlistRender(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">题目管理模块没加载（cat.js）。</div></div>'; }
   else if (r.name === 'chat') { if (window.CHAT && CHAT.render) CHAT.render(); else $('view').innerHTML = '<div class="card"><div class="empty">AI 对话模块没加载（chat.js）。</div></div>'; }
+  else if (r.name === 'notes') { if (window.LECNOTES && window.LECNOTES.render) window.LECNOTES.render(); else $('view').innerHTML = '<div class="card"><div class="empty">笔记模块没加载（notes.js）。</div></div>'; }
   else renderQuiz(r.bankId);
   markTop(r.name);
   try { uiPaintBadge(); } catch (e) {}
@@ -4228,7 +4230,8 @@ function openQEditor(host, fk, q, target, done) {
     var b = document.createElement('div');
     b.className = 'qctx';
     b.innerHTML = '<button type="button" data-qctx="copy">📋 复制</button>'
-      + (window.SIMQ && SIMQ.openText ? '<button type="button" data-qctx="sim">🔍 在题库里找相关题</button>' : '');
+      + (window.SIMQ && SIMQ.openText ? '<button type="button" data-qctx="sim">🔍 在题库里找相关题</button>' : '')
+      + (window.LECTURE && LECTURE.searchWeb ? '<button type="button" data-qctx="lec">📚 在所有讲义里找这个知识点</button>' : '');
     document.body.appendChild(b);
     var w = b.offsetWidth, h = b.offsetHeight;
     b.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
@@ -4241,6 +4244,7 @@ function openQEditor(host, fk, q, target, done) {
       close();
       if (act === 'copy') copyText(text);
       else if (act === 'sim') { try { SIMQ.openText(text); } catch (e) {} }
+      else if (act === 'lec') { try { LECTURE.searchWeb(text); } catch (e) { toast('讲义模块没加载', 1600, 'bad'); } }
     });
     setTimeout(function () {
       document.addEventListener('mousedown', onDown, true);

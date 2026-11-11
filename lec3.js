@@ -326,6 +326,7 @@
       /* Esc 的优先级：范围弹层 → 放大图 → 讲义抽屉本身。谁在最上面就只关谁，
          否则会一路冒泡到 app 的「返回上一页」，表现成退出了讲义。 */
       if (ev.key === 'Escape') {
+        if (document.getElementById('lecWebMask')) { closeWeb(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         if (document.getElementById('lecCandMask')) { closeCands(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         if (document.getElementById('lecScopeMask')) { closeScope(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         var z = document.getElementById('lecZoom');
@@ -1552,6 +1553,26 @@
      ② 每一份都在这份自己的正文里按关键词补候选页
      ③ 每份内部用语义相似度排，取前 3 页
      ④ 全部页按相似度排，再按这份的最高分排「份」 */
+
+  function kbRaw(q, topK) {
+    if (typeof kbSearch !== 'function') return Promise.resolve([]);
+    var ids = [];
+    try { ids = (typeof kbSelected === 'function') ? (kbSelected() || []) : []; } catch (e) { ids = []; }
+    if (!ids.length) return Promise.resolve([]);
+    return kbSearch(String(q).slice(0, 600), ids, topK || 24).then(function (hs) {
+      var out = [];
+      (hs || []).forEach(function (h) {
+        var f = null; try { f = fileByHit(h); } catch (e) { f = null; }
+        if (!f) return;
+        var pg = (h.pdfp | 0) || (h.page | 0) || 0;
+        if (pg > (f.n || 9999)) pg = 0;
+        if (pg > 0) pg = localPage(f, pg);
+        out.push({ src: f.src, p: pg, score: (h.rr != null ? +h.rr : +h.score) || 0, name: f.f, head: h.head || '' });
+      });
+      return out;
+    }).catch(function () { return []; });
+  }
+
   function pageText(rows, src, p) {
     var fo = fileOf(src) || {};
     var want = normName(src);
@@ -1568,6 +1589,31 @@
   function rowsFor(subj) {
     if (SUBROWS[subj]) return Promise.resolve(SUBROWS[subj]);
     return loadRows(subj, true).then(function (rows) { SUBROWS[subj] = rows || []; return SUBROWS[subj]; });
+  }
+
+  /* 取某科目的「带正文的行」：先用文字索引（一定有 t），失败再退回 rowsFor */
+  /* 全库文字行（按科目一遍拿齐，缓存）；「全讲义找知识点」用它取句子 */
+  var ALLROWS = null;
+  function allTextRows() {
+    if (ALLROWS) return Promise.resolve(ALLROWS);
+    var subs = ['病理', '内科', '生化', '生理', '外科', '其他'];
+    return Promise.all(subs.map(function (s) {
+      return Promise.resolve().then(function () { return loadTextSubj(s); }).catch(function () { return []; });
+    })).then(function (lists) {
+      var all = [];
+      lists.forEach(function (l) { if (l && l.length) all = all.concat(l); });
+      ALLROWS = all;
+      return all;
+    });
+  }
+
+  function textRowsFor(subj) {
+    return Promise.resolve().then(function () {
+      return (typeof loadTextSubj === 'function') ? loadTextSubj(subj) : null;
+    }).then(function (rows) {
+      if (rows && rows.length) return rows;
+      return rowsFor(subj);
+    }).catch(function () { return rowsFor(subj).catch(function () { return []; }); });
   }
 
   function multiLocate(q, opts) {
@@ -1880,12 +1926,326 @@
     open();
   }, true);
 
+
+  /* ===== 选中文字 → 在所有讲义里找这个知识点（右键菜单） ===== */
+  function askKeys(sel, qtext) {
+    var fallback = (function () {
+      var s0 = String(sel).replace(/\s+/g, ''), cands = [];
+      s0.split(/[，,。；;：:、\n]/).forEach(function (seg) {
+        seg = seg.trim();
+        if (seg.length < 2) return;
+        if (seg.length > 6) { cands.push(seg.slice(0, 4)); cands.push(seg.slice(0, 6)); cands.push(seg.slice(-4)); }
+        else cands.push(seg);
+      });
+      cands = cands.filter(function (x, i, a) { return x && x.length >= 2 && a.indexOf(x) === i; }).slice(0, 4);
+      if (!cands.length) cands = [s0.slice(0, 6)];
+      return { keys: cands, why: '' };
+    })();
+    if (typeof window.aiChat !== 'function') return Promise.resolve(fallback);
+    var msgs = [
+      { role: 'system', content: '你是医学讲义检索助手。用户选中了题目里的一句话，你要给出「在讲义里找它」用的检索短语。只输出 JSON：{"keys":["2-4个短语，用讲义术语，每个≤14字"],"why":"这段在解题里起什么作用，≤20字"}。短语要能匹配讲义原词（例如「血清铁」「转铁蛋白饱和度」），不要整句照抄。' },
+      { role: 'user', content: '整道题：' + String(qtext || '').slice(0, 500) + '\n选中的文字：' + String(sel).slice(0, 300) }
+    ];
+    return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 300 }), 9000).then(function (txt) {
+      var s = String(txt || '').replace(/```json/gi, '').replace(/```/g, '');
+      var a = s.indexOf('{'), b2 = s.lastIndexOf('}');
+      if (a < 0 || b2 < a) return fallback;
+      var o = JSON.parse(s.slice(a, b2 + 1));
+      var keys = (o.keys || []).map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2 && x.length <= 20; });
+      if (!keys.length) return fallback;
+      return { keys: keys.slice(0, 4), why: String(o.why || '').slice(0, 30) };
+    }).catch(function () { return fallback; });
+  }
+
+  function closeWeb() { var m = $('#lecWebMask'); if (m) m.remove(); }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function sentsOf(t, keys) {
+    var text = String(t || '').replace(/每日计划[\s\S]{0,60}?考点补充/, '');
+    var parts = text.split(/[。！？；\n]+/), out = [];
+    parts.forEach(function (s) {
+      s = s.replace(/\s+/g, ' ').trim();
+      if (s.length < 10 || s.length > 170) return;
+      var hits = [];
+      keys.forEach(function (k) { if (k && s.indexOf(k) >= 0) hits.push(k); });
+      if (!hits.length) return;
+      var w = 0;
+      hits.forEach(function (k) { w += keys.indexOf(k) === 0 ? 2 : 1; });
+      out.push({ t: s, hits: hits, w: w });
+    });
+    out.sort(function (a, b) { return b.w - a.w || b.t.length - a.t.length; });
+    return out.slice(0, 2);
+  }
+
+  function markSents(s, hits) {
+    var html = esc(s);
+    (hits || []).forEach(function (k) {
+      if (!k) return;
+      var kk = esc(k);
+      html = html.split(kk).join('<mark>' + kk + '</mark>');
+    });
+    return html;
+  }
+
+  /* 一次「全讲义找知识点」= 一份笔记：选中的话 + AI 说明 + 关键词 + 命中页/句子 */
+  function buildNote(sel, spec, pages) {
+    var items = [];
+    pages.forEach(function (x) {
+      var ss = sentsOf(x.raw || x.snip || '', (spec.keys || []).slice(0, 4));
+      if (!ss.length) return;
+      items.push({ src: x.src, name: String(x.f || '').replace(/\.pdf$/i, ''), p: x.p, score: x.score, sents: ss });
+    });
+    var note = {
+      v: 1, id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      sel: String(sel).slice(0, 200), why: spec.why || '', keys: (spec.keys || []).slice(0, 6),
+      q: (function () { try { var s = (QP.stem || '').slice(0, 60); return s; } catch (e) { return ''; } })(),
+      ts: Date.now(), items: items
+    };
+    return note;
+  }
+
+  function noteHtml(note) {
+    var order = [], map = {};
+    note.items.forEach(function (x) { if (!map[x.src]) { map[x.src] = []; order.push(x.src); } map[x.src].push(x); });
+    order.sort(function (a, b) { return (map[b][0].score || 0) - (map[a][0].score || 0); });
+    var body = '';
+    order.forEach(function (src) {
+      var arr = map[src];
+      body += '<div class="lec-cgrp"><b>' + esc(arr[0].name || '').slice(0, 40) + '</b><span>' + arr.length + ' 页 · ' + Math.round((arr[0].score || 0) * 100) + '%</span></div>';
+      arr.forEach(function (x) {
+        x.sents.forEach(function (s, si) {
+          body += '<button class="lec-nsent" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">'
+            + '<u>第 ' + x.p + ' 页</u><i>' + markSents(s.t, s.hits) + '</i></button>';
+        });
+      });
+    });
+    return body || '<div class="lec-srow">这段在各份讲义里没找到成句的表述</div>';
+  }
+
+  /* 一键总结：把已截到的句子交给模型压成 3–5 条要点，每条挂回一页，点它能跳 */
+  function parseSum(text, note) {
+    var out = [];
+    String(text || '').split(/\n+/).forEach(function (ln) {
+      ln = ln.replace(/^\s*[-*·•\d.、)）]+\s*/, '').trim();
+      if (!ln || ln.length < 6) return;
+      var m = ln.match(/第\s*(\d+)\s*页/);
+      var pg = m ? +m[1] : 0;
+      var hit = null;
+      (note.items || []).forEach(function (x) { if (!hit && pg && x.p === pg) hit = x; });
+      if (!hit) {
+        var best = 0;
+        (note.items || []).forEach(function (x) {
+          var sc = 0;
+          (note.keys || []).forEach(function (k) { if (k && ln.indexOf(k) >= 0 && x.sents && x.sents.some(function (s) { return s.t.indexOf(k) >= 0; })) sc += 1; });
+          if (sc > best) { best = sc; hit = x; }
+        });
+      }
+      if (!hit) hit = (note.items || [])[0];
+      out.push({ t: ln.replace(/[【(（]?\s*第\s*\d+\s*页\s*[】)）]?/g, '').replace(/【\s*】/g, '').trim(), src: hit ? hit.src : '', p: hit ? hit.p : 1, name: hit ? hit.name : '' });
+    });
+    return out.slice(0, 6);
+  }
+
+  function summarize(note) {
+    if (!window.aiChat) return Promise.reject(new Error('没配 AI'));
+    var lines = [];
+    var n = 0;
+    (note.items || []).forEach(function (x) {
+      (x.sents || []).forEach(function (s) {
+        if (n >= 12) return;
+        n++;
+        lines.push('【第' + x.p + '页】' + s.t);
+      });
+    });
+    if (!lines.length) return Promise.reject(new Error('没有可总结的句子'));
+    var msgs = [
+      { role: 'system', content: '你是医学考研讲义的整理助手。根据给出的句子片段，写出 3–5 条要点，帮助考生回忆这个知识点。每条单独一行，以「- 」开头；每条结尾用【第N页】标注它主要来自哪一页，页码只能用给定片段里出现过的。不要编造片段里没有的内容，不要写开场白和结语。' },
+      { role: 'user', content: '知识点：' + note.sel + '\n' + (note.why ? ('说明：' + note.why + '\n') : '') + '片段：\n' + lines.join('\n') }
+    ];
+    return withTimeout(aiChat(msgs, null, null, { stream: false, temp: 0.1, maxTokens: 700 }), 18000).then(function (txt) {
+      var s = String(txt || '');
+      return parseSum(s, note);
+    });
+  }
+
+  function sumHtml(note) {
+    if (!note.sum || !note.sum.length) return '';
+    var h = '<div class="lec-nsum"><b>✨ 总结</b>';
+    note.sum.forEach(function (x) {
+      h += '<button class="lec-nsum-item" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">'
+        + '<i>' + markSents(x.t, note.keys || []) + '</i><u>' + esc(String(x.name || '').slice(0, 14)) + ' · 第 ' + x.p + ' 页</u></button>';
+    });
+    return h + '</div>';
+  }
+
+  /* 存笔记：统一入口（按钮 / 委托 / 外部调用都走它） */
+  function saveNoteNow() {
+    var n = NOTE_LAST;
+    if (!n) { toast('还没有可存的汇总', 1600, 'bad'); return; }
+    if (!window.LECNOTES || !window.LECNOTES.save) { toast('笔记模块没加载', 1600, 'bad'); return; }
+    if (!n.items || !n.items.length) { toast('还没截到成句的内容，先别存', 1800, 'bad'); return; }
+    var r0 = window.LECNOTES.save(n);
+    toast(r0 && r0.dup ? '这份已经存过了' : '已存进「📚 知识点笔记」', 1800, 'ok');
+  }
+  if (!window.__lecNoteClick) {
+    window.__lecNoteClick = 1;
+    document.addEventListener('click', function (ev) {
+      var b = ev.target && ev.target.closest && ev.target.closest('[data-web="save"]');
+      if (!b) return;
+      var m = document.getElementById('lecWebMask');
+      if (!m || !m.contains(b)) return;
+      ev.preventDefault(); ev.stopPropagation();
+      saveNoteNow();
+    }, true);
+  }
+
+  function renderNote(note, reuse) {
+    var old = document.getElementById('lecWebMask');
+    if (old) old.parentNode.removeChild(old);
+    NOTE_LAST = note;
+    var mask = document.createElement('div');
+    mask.className = 'lec-smask';
+    mask.id = 'lecWebMask';
+    mask.innerHTML = '<div class="lec-ssheet"><div class="lec-shead"><b>📚 知识点汇总</b>'
+      + '<button class="lec-sx" data-web="close">×</button></div>'
+      + '<div class="lec-slaber">「' + esc(note.sel.slice(0, 46)) + (note.sel.length > 46 ? '…' : '') + '」'
+      + (note.why ? ('<br>· ' + esc(note.why)) : '') + '</div>'
+      + '<div class="lec-sbody">' + sumHtml(note) + noteHtml(note) + '</div>'
+      + '<div class="lec-sfoot"><span>' + Object.keys(note.items.reduce(function (o, x) { o[x.src] = 1; return o; }, {})).length + ' 份讲义 / ' + note.items.length + ' 句</span>'
+      + (note.sum && note.sum.length ? '<button class="lec-nsum2" data-web="sum">↻ 重新总结</button>' : '<button class="lec-nsum2" data-web="sum">✨ AI 一键总结</button>')
+      + '<button class="lec-nsave" data-web="save">💾 存成笔记</button></div></div>';
+    document.body.appendChild(mask);
+    var ub = mask.querySelector('.lec-nsum2');
+    if (ub) ub.addEventListener('click', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (!window.aiChat) { toast('设置里先配好 AI', 1800, 'bad'); return; }
+      ub.textContent = '总结中…'; ub.disabled = true;
+      summarize(note).then(function (sum) {
+        if (!sum.length) { toast('AI 没给出要点', 1600, 'bad'); ub.textContent = '✨ AI 一键总结'; ub.disabled = false; return; }
+        note.sum = sum;
+        renderNote(note, true);
+        toast('已总结 ' + sum.length + ' 条', 1400, 'ok');
+      }).catch(function (e) {
+        toast('总结失败：' + (e && e.message || e), 2200, 'bad');
+        ub.textContent = '✨ AI 一键总结'; ub.disabled = false;
+      });
+    });
+    var sb = mask.querySelector('.lec-nsave');
+    if (sb) sb.addEventListener('click', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (!window.LECNOTES || !window.LECNOTES.save) { toast('笔记模块没加载', 1600, 'bad'); return; }
+      if (!note.items || !note.items.length) { toast('还没截到成句的内容，先别存', 1800, 'bad'); return; }
+      var r0 = window.LECNOTES.save(note);
+      toast(r0 && r0.dup ? '这份已经存过了' : '已存进「📚 知识点笔记」', 1800, 'ok');
+    });
+    mask.addEventListener('click', function (ev) {
+      var t2 = ev.target.closest('[data-web]');
+      if (!t2) { if (ev.target === mask) mask.parentNode.removeChild(mask); return; }
+      var a = t2.getAttribute('data-web');
+      if (a === 'close') { ev.stopPropagation(); return mask.parentNode.removeChild(mask); }
+      if (a === 'save') {
+        ev.stopPropagation();
+        if (!window.LECNOTES || !window.LECNOTES.save) { toast('笔记模块没加载', 1600, 'bad'); return; }
+        var r0 = window.LECNOTES.save(note);
+        toast(r0 && r0.dup ? '这份已经存过了' : '已存进「📚 知识点笔记」', 1800, 'ok');
+        return;
+      }
+      if (a === 'go') {
+        ev.stopPropagation();
+        var src = t2.getAttribute('data-src'), pg = +t2.getAttribute('data-p') || 1;
+        jumpFromNote(note, src, pg);
+      }
+    });
+  }
+
+  /* 跳走之后仍能回来：记住当前笔记，抽屉里放一个「‹ 返回汇总」 */
+  function jumpFromNote(note, src, pg) {
+    var m = document.getElementById('lecWebMask');
+    if (m) m.parentNode.removeChild(m);
+    var ready = (FILES && FILES.length) ? Promise.resolve() : loadIndex();
+    ready.catch(function () { return null; }).then(function () {
+      var sheet = document.getElementById('lecSheet');
+      if (!sheet || !sheet.classList.contains('on')) { try { open(); } catch (e) {} }
+      return new Promise(function (r2) { setTimeout(r2, 60); });
+    }).then(function () {
+      try { jumpToSrc(src, pg, '📖 知识点：' + note.sel.slice(0, 12)); } catch (e) {}
+      showResBack(note);
+    });
+  }
+
+  function showResBack(note) {
+    var old = document.getElementById('lecBackRes');
+    if (old) old.parentNode.removeChild(old);
+    var b = document.createElement('button');
+    b.id = 'lecBackRes';
+    b.className = 'lec-resback';
+    b.innerHTML = '‹ 返回汇总';
+    b.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      b.parentNode.removeChild(b);
+      renderNote(note, true);
+    });
+    document.body.appendChild(b);
+  }
+
+  function searchWeb(sel) {
+    sel = String(sel || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!sel) return Promise.resolve(false);
+    var qtext = '';
+    try { qtext = questionText(); } catch (e) { qtext = ''; }
+    var mustIdx = (FILES && FILES.length) ? Promise.resolve() : loadIndex();
+    return mustIdx.catch(function () { return null; }).then(function () {
+      if (typeof kbEnsureFilesLoaded === 'function') return kbEnsureFilesLoaded();
+      return null;
+    }).then(function () { return askKeys(sel, qtext); }).then(function (spec) {
+      var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
+      var query = keys.join(' ').slice(0, 240);
+      return kbRaw(query, 48).then(function (rows) {
+        if (!rows.length) { toast('讲义库里没搜到这句', 2000, 'bad'); return false; }
+        var bySrc = {};
+        rows.forEach(function (r) { if (!r.src || !r.p) return; (bySrc[r.src] = bySrc[r.src] || []).push(r); });
+        var srcs = Object.keys(bySrc).slice(0, 8);
+        return Promise.all(srcs.map(function (src) {
+          return textRowsFor(subjOf(src)).then(function (all) {
+            var out = [];
+            (all || []).forEach(function (r) {
+              if (!r.t) return;
+              if (r.src !== src && normName(r.src) !== normName(src)) return;
+              var tx = lecClean(r.t), w = 0, den = 0;
+              keys.forEach(function (k, ki) { var w0 = ki === 0 ? 2 : 1; den += w0; if (tx.indexOf(k) >= 0) w += w0; });
+              if (!w) return;
+              var s0 = w / Math.max(1, den);
+              if (typeof isQPage === 'function' && isQPage(r.t)) s0 *= 0.45;
+              out.push({ src: src, p: r.p, score: s0, raw: tx, f: (fileOf(src) || {}).f });
+            });
+            out.sort(function (a, b) { return b.score - a.score || a.p - b.p; });
+            var keep = out.slice(0, 5);
+            keep.forEach(function (x) { x.score = Math.min(0.99, 0.5 + 0.49 * x.score); });
+            return keep;
+          }).catch(function () { return []; });
+        })).then(function (lists) {
+          var all = [];
+          lists.forEach(function (l) { (l || []).forEach(function (x) { all.push(x); }); });
+          all.sort(function (a, b) { return b.score - a.score; });
+          var per = {}, keep = [];
+          all.forEach(function (x) { per[x.src] = (per[x.src] || 0) + 1; if (per[x.src] <= 4) keep.push(x); });
+          keep = keep.slice(0, 26);
+          var note = buildNote(sel, { keys: keys, why: spec.why || '' }, keep);
+          if (!note.items.length) { toast('找到了页，但没截到成句的表述', 2200, 'bad'); }
+          renderNote(note);
+          return note;
+        });
+      });
+    }).catch(function (e) { toast('检索失败：' + (e && e.message || e), 2400, 'bad'); return false; });
+  }
+
   window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     openHit: openHit,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     diff: { on: diffOn, set: diffSet, plan: diffPlan, rerank: diffRerank, text: pageText },
-    multi: multiLocate, rowsFor: rowsFor, _fbh: fileByHit, _nm: normName, _kb: function (q) { return kbRows(q); }, spec: function () { return knowSpec(QP.stem, QP.opts, null); }, cont: function () { return CAND2; },
+    multi: multiLocate, rowsFor: rowsFor, searchWeb: searchWeb, kbRaw: kbRaw, note: function () { return NOTE_LAST; }, saveNote: saveNoteNow, renderNote: renderNote, jumpFromNote: jumpFromNote, _fbh: fileByHit, _nm: normName, _kb: function (q) { return kbRows(q); }, spec: function () { return knowSpec(QP.stem, QP.opts, null); }, cont: function () { return CAND2; },
   };
 })();
