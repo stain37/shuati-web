@@ -87,7 +87,9 @@
      实测 github.io 只有 18KB/s（1.3MB 的文字块要 73 秒，经常断），
      两个镜像 87-97KB/s。所以：能走镜像就走镜像，走通哪条就记住哪条（30 分钟）。 */
   var GH_RAW = 'https://raw.githubusercontent.com/stain37/shuati-web/main/';
+  var COS = 'https://123ttt-1312809820.cos.ap-guangzhou.myqcloud.com/';
   var BASES = [
+    { id: 'cos', pre: COS },
     { id: 'ghproxy', pre: 'https://gh-proxy.com/' + GH_RAW },
     { id: 'ghfast', pre: 'https://ghfast.top/' + GH_RAW },
     { id: 'origin', pre: '' }

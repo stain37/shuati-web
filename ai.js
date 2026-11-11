@@ -844,7 +844,9 @@ function aiPdfBase() { return location.origin + location.pathname.replace(/[^\/]
    谁先回来用谁；点开时要是这条挂了，阅读器里有「换条线路」按钮立刻换。 */
 const PDF_MIR_LS = 'qbank.pdfmirror.v1';
 const PDF_RAW_BASE = 'https://raw.githubusercontent.com/stain37/shuati-web/main/';
+const PDF_COS = 'https://123ttt-1312809820.cos.ap-guangzhou.myqcloud.com/';
 const PDF_MIRS = [
+  { id: 'cos', pre: PDF_COS, raw: true, label: '国内直连' },
   { id: 'gh-proxy', pre: 'https://gh-proxy.com/', label: '加速线路①' },
   { id: 'ghfast', pre: 'https://ghfast.top/', label: '加速线路②' },
   { id: 'direct', pre: '', label: '原站直连' }
@@ -862,6 +864,7 @@ function aiPdfMirId() {
 }
 function aiPdfMirUrl(rel, id) {
   const m = PDF_MIRS.find(x => x.id === id) || PDF_MIRS[0];
+  if (m.raw) return m.pre + rel;                 /* 对象存储：直接拼相对路径 */
   return m.pre ? (m.pre + PDF_RAW_BASE + rel) : (aiPdfBase() + rel);
 }
 function aiPdfMirLabel(id) { const m = PDF_MIRS.find(x => x.id === id); return m ? m.label : ''; }
