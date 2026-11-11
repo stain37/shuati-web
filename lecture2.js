@@ -1010,6 +1010,93 @@
       .catch(function () { return ruleExpand(s0); });
   }
 
+  /* ---------- 「解题所需知识」：先想清这题要用什么知识，再按这个算相关性 ---------- */
+  var KNOW_KEY = 'qbank.lec.know.v1';        /* 规范缓存：题面 -> {ts, spec} */
+  var KNOW_ON_KEY = 'qbank.lec.knowon.v1';
+  function knowOn() { var v = readLS(KNOW_ON_KEY, true); return v !== false; }
+  function knowSet(v) { writeLS(KNOW_ON_KEY, !!v); }
+  var KNOW_CACHE = readLS(KNOW_KEY, {}) || {};
+  function knowKey(stem, opts) { return (String(stem || '').slice(0, 120) + '|' + (opts || []).join('/')).slice(0, 300); }
+
+  function ruleKnow(stem, opts) {
+    var need = [], diff = [], clean = [];
+    (opts || []).forEach(function (o) {
+      var t = String(o || '').replace(/^[A-H][\s.．、:：)）\]]?/, '').replace(/\s+/g, '');
+      if (t && t.length <= 16) clean.push(t);
+    });
+    var core = String(stem || '').replace(/(最可能的诊断是|下列|以下|关于|正确的是|错误的是|首选|不应|除了|哪些|包括)/g, ' ').trim();
+    if (core) need.push(core.slice(0, 24));
+    clean.forEach(function (c) { if (need.indexOf(c) < 0) need.push(c); if (diff.indexOf(c) < 0) diff.push(c); });
+    return { goal: core.slice(0, 20), need: need.slice(0, 8), diff: diff.slice(0, 6), src: 'rule' };
+  }
+
+  function parseKnow(txt) {
+    var m = String(txt || '').match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try {
+      var o = JSON.parse(m[0]);
+      function arr(v) {
+        return (v || []).map(function (x) { return String(x || '').replace(/\s+/g, '').slice(0, 18); })
+          .filter(function (x) { return x.length >= 2; }).slice(0, 8);
+      }
+      var need = arr(o.need), diff = arr(o.diff);
+      if (!need.length && !diff.length) return null;
+      return { goal: String(o.goal || '').slice(0, 30), need: need, diff: diff, src: 'ai' };
+    } catch (e) { return null; }
+  }
+
+  function knowSpec(stem, opts) {
+    if (!knowOn()) return Promise.resolve(null);
+    var k = knowKey(stem, opts), c = KNOW_CACHE[k];
+    if (c && c.spec && (Date.now() - (c.ts || 0)) < 7 * 864e5) return Promise.resolve(c.spec);
+    var fb = ruleKnow(stem, opts);
+    if (typeof window.aiChat !== 'function') return Promise.resolve(fb);
+    var msgs = [
+      { role: 'system', content: '你是医学考研命题老师。读完题，写出解这道题必需的讲义知识点。只输出 JSON，不要解释：{"goal":"这道题要判断什么，≤20字","need":["解题必需的知识点，3-6个，每个≤14字，用讲义里的术语，不要照抄选项"],"diff":["选项之间的判别依据，2-4个，每个≤14字"]}' },
+      { role: 'user', content: '题干：' + String(stem || '').slice(0, 800) + '\n选项：' + (opts || []).join(' / ') }
+    ];
+    return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 420 }), 12000)
+      .then(function (txt) {
+        var spec = parseKnow(txt) || fb;
+        KNOW_CACHE[k] = { ts: Date.now(), spec: spec };
+        try { writeLS(KNOW_KEY, KNOW_CACHE); } catch (e) {}
+        return spec;
+      })
+      .catch(function () { return fb; });
+  }
+
+  function knowTerms(spec) {
+    if (!spec) return [];
+    var out = [], seen = {};
+    (spec.need || []).concat(spec.diff || []).forEach(function (x) {
+      var t = String(x || '').replace(/\s+/g, '');
+      if (t.length < 2 || t.length > 20) return;
+      if (seen[t]) return;
+      seen[t] = 1; out.push(t);
+    });
+    return out;
+  }
+
+  /* 按「这页讲到了多少解题必需的知识点」重排：相似度 0.6 + 知识覆盖 0.4 */
+  function knowRerank(list, spec) {
+    var terms = knowTerms(spec);
+    if (terms.length < 2 || !list || !list.length) return list;
+    var rows = [], best = 0;
+    list.forEach(function (x) {
+      var t = lecClean(x.t), cover = 0;
+      terms.forEach(function (w) { if (t && t.indexOf(w) >= 0) cover++; });
+      if (cover > best) best = cover;
+      rows.push({ x: x, cover: cover });
+    });
+    if (best < 2) return list;   /* 没有一页真正讲到所需知识：不动，别把好页挤掉 */
+    rows.forEach(function (r) {
+      r.x.know = r.cover; r.x.knowN = terms.length;
+      r.x.score = (r.x.score || 0) * 0.6 + (r.cover / terms.length) * 0.4;
+    });
+    rows.sort(function (a, b) { return (b.x.score || 0) - (a.x.score || 0); });
+    return rows.map(function (r) { return r.x; });
+  }
+
   function diffPlan(stem, opts) {
     if (!diffOn() || !opts || opts.length < 3) return null;
     var clean = [];
@@ -1076,6 +1163,7 @@
     var top = list[0];
     var f = fileOf(top.src);
     var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
+    if (top.know) hint += ' · 知识点 ' + top.know + '/' + (top.knowN || '');
     jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + localPage(f, top.p) + ' 页' + hint);
     return true;
   }
@@ -1216,6 +1304,7 @@
       h += '<button class="lec-schip' + on + '" data-sc="pick" data-v="subj" data-subj="' + nm + '">' + nm + '<em>' + subs[nm].length + '</em></button>';
     }
     h += '</div>';
+    h += '<div class="lec-srow"><label><input type="checkbox" id="lecKnowChk"' + (knowOn() ? ' checked' : '') + ' data-sc="know">优先「解题所需知识」</label><span>先让模型写出这题要用哪些知识点，再按这个算相关性</span></div>';
     h += '<div class="lec-srow"><label><input type="checkbox" id="lecDiffChk"' + (diffOn() ? ' checked' : '') + ' data-sc="diff">鉴别题优先「对照表」</label><span>选项是多个并列概念时，先推讲这几项区别的那一页</span></div>';
     h += '<div class="lec-sfoot">只影响「🔍 定位到这题」，不会换掉你正在看的讲义</div>';
     sheet.innerHTML = h;
@@ -1227,6 +1316,7 @@
       if (a === 'x') return closeScope();
       if (a === 'pick') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
       if (a === 'diff') { diffSet(b.checked); toast(b.checked ? '已开启：鉴别题优先「对照表」' : '已关闭：鉴别题重排'); return; }
+      if (a === 'know') { knowSet(b.checked); toast(b.checked ? '已开启：按解题所需知识排序' : '已关闭：只按字面相似度'); return; }
     });
     document.body.appendChild(mask);
     window.__closeLecScope = function () { try { mask.parentNode.removeChild(mask); } catch (e) {} };
@@ -1325,10 +1415,14 @@
     var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
     var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
     var expP = expandQuery(QP.stem).catch(function () { return ''; });
-    return Promise.all([kbRows(q), prevP, expP]).then(function (r) {
+    var knowP = knowSpec(QP.stem, opts).catch(function () { return null; });
+    return Promise.all([kbRows(q), prevP, expP, knowP]).then(function (r) {
       var kb = r[0] || [], prev = r[1] || [];
       var extraQ = String(r[2] || '').trim();
-      var qAll = extraQ ? (q + ' ' + extraQ) : q;
+      var know = r[3] || null;
+      var kws = know ? knowTerms(know).join(' ') : '';
+      var qEmb = q + (know && know.goal ? (' ' + know.goal) : '');
+      var qAll = [q, extraQ, kws].filter(Boolean).join(' ');
       var bySrc = {};
       function addRows(rows) {
         (rows || []).forEach(function (x) {
@@ -1397,7 +1491,7 @@
           }
           var withT = pages.filter(function (x) { return x.t && x.p > 0; });
           if (withT.length >= 2) {
-            return withTimeout(rankPages(withT, qAll), 11000).then(function (rk) {
+            return withTimeout(rankPages(withT, qEmb), 11000).then(function (rk) {
               var got = (rk || []).slice(0, 3);
               return got.length ? got : fallback();
             }).catch(fallback);
@@ -1413,7 +1507,8 @@
             if (isQPage(x.t)) { x.score = (x.score || 0) * Q_PENALTY; x.isq = 1; }
           });
           out.sort(function (a, b) { return b.score - a.score; });
-          if (plan) out = diffRerank(out, plan);
+          if (know) out = knowRerank(out, know);      /* 先按「解题所需知识」重排 */
+          if (plan) out = diffRerank(out, plan);      /* 再对鉴别题倾向于对照表 */
           return out;
         });
       });
