@@ -1082,7 +1082,7 @@
       }
       var det = TAGDIR ? qDetailsHtml(bsorted) : detailsHtml(pdirs, pbanks, false, grouped);
       var agg = CUR ? subStat(CUR) : null;
-      body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
+      body = (CUR ? backBarHtml() : '') + '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
         + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
         + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
@@ -1658,6 +1658,21 @@
     return '<div class="nb-icons nb-icons-' + iconSize() + '">' + iconHtml + '</div>';
   }
 
+  /* 进到文件夹里以后常驻在顶部的返回条：不用再滚回上面点「↑ 上一级」 */
+  function hEscape(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function backBarHtml() {
+    var p = [], c = byId(CUR), guard = 0;
+    while (c && guard++ < 40) { p.unshift(TITLE(c)); c = byId(c.parent); }
+    var full = p.join(' \u203a ');
+    return '<div class="nb-backbar">'
+      + '<button class="btn small" data-act="up" title="回到上一层">\u2039 返回</button>'
+      + '<button class="btn small" data-act="homeup" title="回到最外层（根目录）">\u2302 根目录</button>'
+      + '<button class="btn small" data-act="expandAll" title="展开 / 收起目录树">\ud83d\uddc2 目录树</button>'
+      + '<span class="nb-backpath" title="' + hEscape(full) + '">' + hEscape(full) + '</span>'
+      + '</div>';
+  }
   function treeHtml() {
     ensure();
     function walk(pid, depth) {
@@ -2017,19 +2032,19 @@
     HOME_PAGE = 1;
     try { localStorage.setItem(CUR_KEY, JSON.stringify({ id: CUR, ts: Date.now() })); } catch (e) {}
     repaint();
+    /* 点完树里那一行，按钮节点已经没了；不主动 blur 的话焦点掉到 body 上，
+       手机上一按空格 / 一滑就整页乱跑（用户报的「失焦后上下滑动」）。 */
+    try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (eB) {}
     if (from === 'tree') {
-      /* 从目录树里点进来：树保持展开，滚回树/列表这一块，不要弹回页面最上面 */
+      /* 从目录树里点进来：树保持展开（方便连着点几个），但把「返回条」顶上来，
+         让人马上看到这个文件夹的内容；瞬时、不平滑。 */
       TREE_OPEN = true;
-      var t = document.getElementById('nbTree');
-      if (t) { try { t.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { try { t.scrollIntoView(true); } catch (e2) {} } }
-      return;
     }
-    /* 进入目录 / 新建目录：滚到「全部题库」标题，不要甩回 hero 最上面。
-       从目录树进来时保留原来的「滚到树」逻辑。 */
-    var sc = document.querySelector('.sechead');
-    if (sc) {
-      var top = Math.max(0, sc.getBoundingClientRect().top + (window.scrollY || 0) - 64);
-      try { window.scrollTo({ top: top }); } catch (e3) { window.scrollTo(0, top); }
+    /* 进入目录：只把「返回条」滚到视口顶部，瞬时到位，不做平滑动画 */
+    var bb = document.querySelector('.nb-backbar') || document.querySelector('.sechead');
+    if (bb) {
+      var top = Math.max(0, bb.getBoundingClientRect().top + (window.scrollY || 0) - 8);
+      try { window.scrollTo({ top: top, behavior: 'auto' }); } catch (e3) { window.scrollTo(0, top); }
     }
   }
 
@@ -2093,6 +2108,7 @@
       case 'showdate': setShowDate(!showDate()); repaintKeepY(); break;
       case 'dategroup': setDateGroup(!dateGroupOn()); HOME_PAGE = 1; repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
+      case 'homeup': openDir(null); break;
       case 'newcat': askNewCat(); break;
       case 'newbank': if (typeof go === 'function') go('#/import'); break;
       case 'start': startBankWrapped(id); break;
@@ -2162,8 +2178,13 @@
           t.style.display = open ? 'block' : 'none';
           if (open) {
             if (!t.innerHTML) t.innerHTML = treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>';
-            try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { try { t.scrollIntoView(false); } catch (e2) {} }
+            /* 只在它整个跑到视口外时才拉回来，瞬时（平滑滚动会让人以为页面自己乱滑） */
+            try {
+              var r = t.getBoundingClientRect();
+              if (r.bottom < 80 || r.top > innerHeight - 80) t.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+            } catch (e) { try { t.scrollIntoView(false); } catch (e2) {} }
           }
+          try { if (host && host.blur) host.blur(); } catch (e3) {}
         }
         break;
       default: break;
