@@ -30,6 +30,23 @@
   }
   function del(id) { var d = read(); d.list = d.list.filter(function (x) { return x.id !== id; }); write(d); }
   function rename(id, t) { var d = read(); d.list.forEach(function (x) { if (x.id === id) x.sel = t; }); write(d); }
+  function saveOverview(st) {
+    var items = [];
+    (st.ov && st.ov.sections || []).forEach(function (sec) {
+      (sec.items || []).forEach(function (it) {
+        (it.cites || []).forEach(function (c) {
+          items.push({ src: c.src, name: c.name, p: c.p, score: 1, sents: [{ t: it.t, hits: [] }] });
+        });
+      });
+    });
+    var note = {
+      v: 1, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      sel: String(st.sel || '').slice(0, 200), why: '知识点总览（' + (st.mode === 'long' ? '长版' : '中版') + '）',
+      keys: st.keys || [], q: '', ts: Date.now(), items: items, ov: st.ov, mode: st.mode
+    };
+    return save(note);
+  }
+
   function list() { return read().list; }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -59,13 +76,26 @@
     if (n.q) h += '<div class="nt-q">出自：' + esc(n.q) + '</div>';
     if (n.why) h += '<div class="nt-why">💡 ' + esc(n.why) + '</div>';
     if (open) {
-      if (n.sum && n.sum.length) {
+      if (n.ov && n.ov.sections && n.ov.sections.length) {
+        n.ov.sections.forEach(function (sec) {
+          h += '<div class="nt-ovh">' + esc(sec.h) + '</div>';
+          (sec.items || []).forEach(function (it) {
+            var cites = (it.cites || []).map(function (c) {
+              return '<button class="nt-cite" data-nt-act="go" data-id="' + n.id + '" data-src="' + esc(c.src) + '" data-p="' + c.p + '">📖 ' + esc(String(c.name || '').slice(0, 14)) + ' · 第 ' + c.p + ' 页</button>';
+            }).join('');
+            h += '<div class="nt-ovli">' + esc(it.t) + cites + '</div>';
+          });
+          if (sec.conflict) h += '<div class="nt-ovwarn">⚠️ ' + esc(sec.conflict) + '</div>';
+        });
+        if (n.ov.conflict) h += '<div class="nt-ovwarn">⚠️ ' + esc(n.ov.conflict) + '</div>';
+        if (n.sum && n.sum.length) {
         h += '<div class="nt-sum"><b>✨ AI 总结</b>';
         n.sum.forEach(function (x) {
           h += '<button class="nt-sumitem" data-nt-act="go" data-id="' + n.id + '" data-src="' + esc(x.src || '') + '" data-p="' + (x.p || 1) + '">'
             + '<i>' + esc(x.t) + '</i><u>' + esc(String(x.name || '').replace(/\.pdf$/i, '').slice(0, 16)) + (x.name ? ' · 第 ' + (x.p || 1) + ' 页' : '') + '</u></button>';
         });
         h += '</div>';
+        }
       }
       var order = [], map = {};
       (n.items || []).forEach(function (x) { if (!map[x.src]) { map[x.src] = []; order.push(x.src); } map[x.src].push(x); });
@@ -213,7 +243,7 @@
   });
   window.__ntOpenBound = 1;
 
-  window.LECNOTES = { save: save, del: del, rename: rename, list: list, render: render, KEY: KEY };
+  window.LECNOTES = { save: save, saveOverview: saveOverview, del: del, rename: rename, list: list, render: render, KEY: KEY };
 })();
 
 try { window.NOTES = window.LECNOTES; } catch (e) {}

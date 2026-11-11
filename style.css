@@ -4442,3 +4442,26 @@ body.dark .nt-selbar{background:rgba(255,255,255,.06)}
 body.dark .lec-nsum-item em{color:#e9eef6}
 body.dark .lec-nsum-item q{color:#c3cddd;background:rgba(242,183,5,.16)}
 body.dark .lec-nsum-item u{color:#94a1b5}
+/* web772：知识点总览 */
+.lec-ovh{margin:14px 0 6px;font-size:13.5px;font-weight:800;color:#0a84ff;padding-left:9px;border-left:3px solid #0a84ff}
+.lec-ovbody{margin:0 0 4px}
+.lec-ovli{position:relative;margin:6px 0;padding:8px 10px;border:1px solid rgba(15,23,42,.08);border-radius:11px;background:#fbfcfe;color:#141a22;font-size:13px;line-height:1.62}
+.lec-ovli mark{background:#ffe58a;border-radius:3px;padding:0 1px}
+.lec-ovcite{margin:4px 4px 0 0;padding:2px 7px;border:1px solid rgba(10,132,255,.22);border-radius:999px;background:rgba(10,132,255,.07);color:#0a5cbf;font-size:10.5px;font-weight:700;cursor:pointer}
+.lec-ovcov{margin-left:4px}
+.lec-ovcov i{font-style:normal;margin-right:4px;padding:1px 6px;border-radius:5px;background:#eef3fb;color:#44607f;font-size:10px}
+.lec-ovwarn{margin:10px 0;padding:9px 11px;border-radius:11px;border:1px solid #f0d9a0;background:#fff8e6;color:#6b4d00;font-size:12.5px;line-height:1.6}
+.lec-ovmode{padding:6px 12px;border:1px solid rgba(15,23,42,.14);border-radius:999px;background:#fff;color:#141a22;font-size:12.5px;cursor:pointer}
+.lec-ovmode.on{background:#0a84ff;border-color:#0a84ff;color:#fff;font-weight:700}
+body.dark .lec-ovli{background:#0f1620;border-color:rgba(255,255,255,.1);color:#e9eef6}
+body.dark .lec-ovli mark{background:rgba(255,214,102,.28);color:#fff2c9}
+body.dark .lec-ovwarn{background:rgba(120,90,20,.3);border-color:rgba(255,214,102,.3);color:#ffe9b0}
+body.dark .lec-ovmode{background:#151c27;color:#e9eef6;border-color:rgba(255,255,255,.14)}
+body.dark .lec-ovmode.on{background:#0a84ff;color:#fff}
+body.dark .lec-ovcov i{background:rgba(255,255,255,.08);color:#b9c9dc}
+.nt-ovh{margin:12px 0 4px;font-size:13px;font-weight:700;color:#0a84ff}
+.nt-ovli{position:relative;margin:5px 0;padding:8px 10px;border:1px solid rgba(15,23,42,.08);border-radius:10px;background:#fbfcfe;font-size:13px;line-height:1.6}
+.nt-cite{margin:4px 4px 0 0;padding:2px 7px;border:1px solid rgba(10,132,255,.22);border-radius:999px;background:rgba(10,132,255,.07);color:#0a5cbf;font-size:10.5px;font-weight:700;cursor:pointer}
+.nt-ovwarn{margin:8px 0;padding:8px 10px;border-radius:10px;border:1px solid #f0d9a0;background:#fff8e6;color:#6b4d00;font-size:12px;line-height:1.55}
+body.dark .nt-ovli{background:#0f1620;border-color:rgba(255,255,255,.1)}
+body.dark .nt-ovwarn{background:rgba(120,90,20,.3);border-color:rgba(255,214,102,.3);color:#ffe9b0}

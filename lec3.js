@@ -1556,6 +1556,19 @@
      ③ 每份内部用语义相似度排，取前 3 页
      ④ 全部页按相似度排，再按这份的最高分排「份」 */
 
+  function fileOfName(nm) {
+    var want = normName(nm || '');
+    if (!want) return null;
+    var L = (typeof FILES !== 'undefined' && FILES) ? FILES : [];
+    for (var i = 0; i < L.length; i++) { if (normName(L[i].src) === want) return L[i]; }
+    for (var j = 0; j < L.length; j++) {
+      var a = normName(L[j].src), b = normName(L[j].f);
+      if (want.length > 5 && (a.indexOf(want) >= 0 || want.indexOf(a) >= 0)) return L[j];
+      if (b && (b === want || (want.length > 5 && b.indexOf(want) >= 0))) return L[j];
+    }
+    return null;
+  }
+
   function kbRaw(q, topK) {
     if (typeof kbSearch !== 'function') return Promise.resolve([]);
     var ids = [];
@@ -1564,7 +1577,7 @@
     return kbSearch(String(q).slice(0, 600), ids, topK || 24).then(function (hs) {
       var out = [];
       (hs || []).forEach(function (h) {
-        var f = null; try { f = fileByHit(h); } catch (e) { f = null; }
+        var f = null; try { f = fileByHit(h) || fileOfName(h.file || h.doc || h.name || h.path); } catch (e) { f = fileOfName(h.file || h.doc || h.name); }
         if (!f) return;
         var pg = (h.pdfp | 0) || (h.page | 0) || 0;
         if (pg > (f.n || 9999)) pg = 0;
@@ -1609,12 +1622,14 @@
     });
   }
 
+  var TEXTROWS = {};
   function textRowsFor(subj) {
+    if (TEXTROWS[subj]) return Promise.resolve(TEXTROWS[subj]);
     return Promise.resolve().then(function () {
       return (typeof loadTextSubj === 'function') ? loadTextSubj(subj) : null;
     }).then(function (rows) {
-      if (rows && rows.length) return rows;
-      return rowsFor(subj);
+      if (rows && rows.length) { TEXTROWS[subj] = rows; return rows; }
+      return rowsFor(subj).then(function (r2) { TEXTROWS[subj] = r2 || []; return TEXTROWS[subj]; });
     }).catch(function () { return rowsFor(subj).catch(function () { return []; }); });
   }
 
@@ -1980,7 +1995,13 @@
       s = s.replace(/\s+/g, ' ').trim();
       if (s.length < 10 || s.length > 170) return;
       var hits = [];
-      keys.forEach(function (k) { if (k && s.indexOf(k) >= 0) hits.push(k); });
+      keys.forEach(function (k) {
+        if (!k) return;
+        if (s.indexOf(k) >= 0) { hits.push(k); return; }
+        var sh = k.length > 3 ? k.slice(0, 3) : '';
+        if (sh && s.indexOf(sh) >= 0) hits.push(sh);
+        else { var sh2 = k.length > 2 ? k.slice(0, 2) : ''; if (sh2 && s.indexOf(sh2) >= 0) hits.push(sh2); }
+      });
       if (!hits.length) return;
       var w = 0;
       hits.forEach(function (k) { w += keys.indexOf(k) === 0 ? 2 : 1; });
@@ -2065,6 +2086,177 @@
       });
     }
     return out.slice(0, 6);
+  }
+
+  /* ===== 知识点总览：全库合并成一份，每条挂「哪份讲义第几页」 ===== */
+  var OV_MODE = 'mid';
+  var OV_ST = null;
+  var OV_LAST = null;
+
+  function collectSources(keys, cap) {
+    var q = keys.join(' ');
+    var prep = Promise.resolve();
+    try { prep = prep.then(function () { return (FILES && FILES.length) ? null : loadIndex(); }); } catch (e) {}
+    try { if (typeof kbEnsureFilesLoaded === 'function') prep = prep.then(function () { return kbEnsureFilesLoaded(); }).catch(function () { return null; }); } catch (e) {}
+    return prep.then(function () { return kbRaw(q, 80); }).then(function (rows) {
+      var bySrc = {}, order = [];
+      (rows || []).forEach(function (r) { if (!r.src) return; if (!bySrc[r.src]) { bySrc[r.src] = 1; order.push(r.src); } });
+      var srcs = order.slice(0, 6);
+      return Promise.all(srcs.map(function (src) {
+        return textRowsFor(subjOf(src)).then(function (all) {
+          var out = [], keys2 = keys.slice(0, 4);
+          (all || []).forEach(function (r) {
+            if (!r.t) return;
+            if (r.src !== src && normName(r.src) !== normName(src)) return;
+            var ss = sentsOf(lecClean(r.t), keys2);
+            ss.forEach(function (s) {
+              out.push({ src: src, name: String((fileOf(src) || {}).f || '').replace(/\.pdf$/i, ''), p: r.p, t: s.t, hits: s.hits, w: s.w, isq: (typeof isQPage === 'function' && isQPage(r.t)) ? 1 : 0 });
+            });
+          });
+          out.sort(function (a, b) { return b.w - a.w; });
+          return out.filter(function (x) { return !x.isq; }).slice(0, 5);
+        }).catch(function () { return []; });
+      })).then(function (lists) {
+        var all = [];
+        lists.forEach(function (l) { all = all.concat(l || []); });
+        all.sort(function (a, b) { return b.w - a.w; });
+        all = all.slice(0, cap || 36);
+        all.forEach(function (x, i) { x.i = i + 1; });
+        return all;
+      });
+    });
+  }
+
+  function ovPrompt(sel, keys, sources, mode) {
+    var list = sources.map(function (x) {
+      return '[' + x.i + ']（' + x.name + '·第' + x.p + '页）' + x.t;
+    }).join('\n');
+    var num = mode === 'long' ? '30–40' : '12–18';
+    var sys = '你是医学考研讲义的整理助手。给你一个知识点，和一组带编号的讲义原句。把原句合并成一份有结构的总览，只输出 JSON：'
+      + '{"sections":[{"h":"一、小节标题","items":[{"t":"一句要点（≤40字）","c":[编号,…],"cov":["讲义简称"]}],"conflict":"（可选）不同讲义说法不一致之处"}],"conflict":"（可选）"}。'
+      + '规则：1) 每条 item 的 c 至少 1 个编号，只能引用给定编号，禁止编造；2) 正文按主流说法合并，确有不一致时正文照主流写、同时在 conflict 里写清「A说…，B说…」；'
+      + '3) 分节按医学逻辑（定义/机制/对比/例子/易错/考点）；4) 这次写 ' + num + ' 条；5) 不要开场白、不要解释。';
+    var user = '知识点：' + sel + '\n讲义原句：\n' + list;
+    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null, { stream: false, temp: 0.1, maxTokens: mode === 'long' ? 2200 : 1400 }), mode === 'long' ? 45000 : 30000);
+  }
+
+  function parseOverview(text, sources) {
+    var s = String(text || '').replace(/```json/gi, '').replace(/```/g, '');
+    var a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    var o;
+    try { o = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+    var out = { sections: [], conflict: String(o.conflict || '') };
+    (o.sections || []).forEach(function (sec) {
+      var items = [];
+      (sec.items || []).forEach(function (it) {
+        var cs = (it.c || []).map(function (n) { return sources[(+n || 0) - 1]; }).filter(Boolean);
+        if (!cs.length) return;
+        items.push({ t: String(it.t || '').slice(0, 120), cites: cs, cov: (it.cov || []).slice(0, 5) });
+      });
+      if (items.length) out.sections.push({ h: String(sec.h || '').slice(0, 30), items: items, conflict: String(sec.conflict || '') });
+    });
+    return out.sections.length ? out : null;
+  }
+
+  function ovHtml(st) {
+    var keys = st.keys || [];
+    var h = '';
+    if (!st.ov) h += '<div class="lec-srow">还没有生成，点右下角「生成」</div>';
+    else {
+      st.ov.sections.forEach(function (sec) {
+        h += '<div class="lec-ovh">' + esc(sec.h) + '</div><div class="lec-ovbody">';
+        sec.items.forEach(function (it) {
+          h += '<div class="lec-ovli">' + markSents(it.t, keys)
+            + it.cites.map(function (c) {
+              return '<button class="lec-ovcite" data-web="go" data-src="' + esc(c.src) + '" data-p="' + c.p + '">📖 ' + esc(String(c.name).slice(0, 16)) + ' · 第 ' + c.p + ' 页</button>';
+            }).join('')
+            + (it.cov && it.cov.length ? '<span class="lec-ovcov">' + it.cov.map(function (x) { return '<i>' + esc(x) + '</i>'; }).join('') + '</span>' : '')
+            + '</div>';
+        });
+        h += '</div>';
+        if (sec.conflict) h += '<div class="lec-ovwarn">⚠️ ' + esc(sec.conflict) + '</div>';
+      });
+      if (st.ov.conflict) h += '<div class="lec-ovwarn">⚠️ 说法不一致：' + esc(st.ov.conflict) + '</div>';
+    }
+    return h;
+  }
+
+  function renderOverview(st) {
+    OV_ST = st;
+    var old = document.getElementById('lecWebMask'); if (old) old.remove();
+    OV_LAST = st;
+    var mask = document.createElement('div');
+    mask.className = 'lec-smask';
+    mask.id = 'lecWebMask';
+    var n = (st.ov && st.ov.sections) ? st.ov.sections.reduce(function (a, s) { return a + s.items.length; }, 0) : 0;
+    mask.innerHTML = '<div class="lec-ssheet"><div class="lec-shead"><b>🧩 知识点总览</b>'
+      + '<button class="lec-sx" data-web="close">×</button></div>'
+      + '<div class="lec-slaber">「' + esc(st.sel.slice(0, 46)) + '」<br>· 全库 ' + (st.sources || []).length + ' 条原句合并 · ' + n + ' 条要点</div>'
+      + '<div class="lec-sbody">' + ovHtml(st) + '</div>'
+      + '<div class="lec-sfoot">'
+      + '<button class="lec-ovmode' + (st.mode === 'mid' ? ' on' : '') + '" data-web="mode" data-m="mid">中版</button>'
+      + '<button class="lec-ovmode' + (st.mode === 'long' ? ' on' : '') + '" data-web="mode" data-m="long">长版</button>'
+      + '<button class="lec-nsum2" data-web="gen">' + (st.ov ? '↻ 重新生成' : '✨ 生成') + '</button>'
+      + '<button class="lec-nsave" data-web="saveov">💾 存成笔记</button></div></div>';
+    document.body.appendChild(mask);
+    mask.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-web]');
+      if (!b) { if (ev.target === mask) return; return; }
+      var a = b.getAttribute('data-web');
+      if (a === 'close') { ev.stopPropagation(); return mask.remove(); }
+      if (a === 'mode') {
+        ev.stopPropagation();
+        st.mode = b.getAttribute('data-m'); OV_MODE = st.mode;
+        renderLoading('正在生成' + (st.mode === 'long' ? '长版' : '中版') + '总览…', '把全库原句合并成一份');
+        return runOverview(st.sel, st.keys, st.mode, st);
+      }
+      if (a === 'gen') {
+        ev.stopPropagation();
+        renderLoading('正在重新生成…', '重扫全库原句');
+        return runOverview(st.sel, st.keys, st.mode, st);
+      }
+      if (a === 'saveov') {
+        ev.stopPropagation();
+        if (!window.LECNOTES || !window.LECNOTES.saveOverview) { toast('笔记模块没加载', 1600, 'bad'); return; }
+        var r = window.LECNOTES.saveOverview(st);
+        toast(r && r.dup ? '这份已经存过了' : '已存进「📚 知识点笔记」', 1800, 'ok');
+        return;
+      }
+      if (a === 'go') {
+        ev.stopPropagation();
+        var src = b.getAttribute('data-src'), pg = +b.getAttribute('data-p') || 1;
+        jumpFromNote({ sel: st.sel, items: [] }, src, pg);
+        return;
+      }
+    });
+  }
+
+  function runOverview(sel, keys, mode, keep) {
+    var st = keep || { sel: sel, keys: keys, mode: mode, sources: [], ov: null };
+    st.mode = mode;
+    var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, mode === 'long' ? 40 : 36);
+    return p1.then(function (srcs) {
+      st.sources = srcs;
+      if (!srcs.length) { st.ov = { sections: [], conflict: '' }; st.sources = []; renderOverview(st); toast('全库没捞到原句', 2000, 'bad'); return; }
+      return ovPrompt(sel, keys, srcs, mode).then(function (txt) {
+        var ov = parseOverview(txt, srcs);
+        if (!ov) { toast('AI 没给出结构化的总览', 2200, 'bad'); return; }
+        st.ov = ov;
+        renderOverview(st);
+      });
+    }).catch(function (e) { toast('生成失败：' + (e && e.message || e), 2400, 'bad'); });
+  }
+
+  function overview(sel, keysHint) {
+    sel = String(sel || '').trim().slice(0, 300);
+    if (!sel) return Promise.resolve(false);
+    var qtext = ''; try { qtext = questionText(); } catch (e) {}
+    renderLoading('正在扫全库…', '先从所有讲义里把讲这个知识点的句子捞出来');
+    return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : askKeys(sel, qtext)).then(function (spec) {
+      var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
+      return runOverview(sel, keys, OV_MODE);
+    });
   }
 
   function summarize(note) {
@@ -2156,11 +2348,15 @@
       + (note.why ? ('<br>· ' + esc(note.why)) : '') + '</div>'
       + '<div class="lec-sbody">' + reuseHtml(note) + sumHtml(note) + noteHtml(note) + '</div>'
       + '<div class="lec-sfoot"><span>' + Object.keys(note.items.reduce(function (o, x) { o[x.src] = 1; return o; }, {})).length + ' 份讲义 / ' + note.items.length + ' 句</span>'
-      + (note.sum && note.sum.length ? '<button class="lec-nsum2" data-web="sum">↻ 重新总结</button>' : '<button class="lec-nsum2" data-web="sum">✨ AI 一键总结</button>')
+      + '<button class="lec-nsum2" data-web="ov">🧩 知识点总览</button>'
       + '<button class="lec-nsave" data-web="save">💾 存成笔记</button></div></div>';
     document.body.appendChild(mask);
     var ub = mask.querySelector('.lec-nsum2');
-    if (ub) ub.addEventListener('click', function (ev) {
+    if (ub && ub.getAttribute('data-web') === 'ov') ub.addEventListener('click', function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      overview(note.sel, note.keys);
+    });
+    if (ub && ub.getAttribute('data-web') !== 'ov') ub.addEventListener('click', function (ev) {
       ev.preventDefault(); ev.stopPropagation();
       if (!window.aiChat) { toast('设置里先配好 AI', 1800, 'bad'); return; }
       ub.textContent = '总结中…'; ub.disabled = true;
@@ -2229,7 +2425,7 @@
     b.addEventListener('click', function (ev) {
       ev.stopPropagation();
       b.parentNode.removeChild(b);
-      renderNote(note, true);
+      if (OV_ST) { renderOverview(OV_ST); } else { renderNote(note, true); }
     });
     document.body.appendChild(b);
   }
@@ -2319,12 +2515,12 @@
     }).catch(function (e) { toast('检索失败：' + (e && e.message || e), 2400, 'bad'); return false; });
   }
 
-  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
+  window.LECTURE = { fileOfName: fileOfName, open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     openHit: openHit,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     diff: { on: diffOn, set: diffSet, plan: diffPlan, rerank: diffRerank, text: pageText },
-    multi: multiLocate, rowsFor: rowsFor, searchWeb: searchWeb, kbRaw: kbRaw, note: function () { return NOTE_LAST; }, saveNote: saveNoteNow, renderNote: renderNote, jumpFromNote: jumpFromNote, _fbh: fileByHit, _nm: normName, _kb: function (q) { return kbRows(q); }, spec: function () { return knowSpec(QP.stem, QP.opts, null); }, cont: function () { return CAND2; },
+    multi: multiLocate, rowsFor: rowsFor, searchWeb: searchWeb, kbRaw: kbRaw, note: function () { return NOTE_LAST; }, saveNote: saveNoteNow, overview: overview, renderNote: renderNote, jumpFromNote: jumpFromNote, _fbh: fileByHit, _nm: normName, _kb: function (q) { return kbRows(q); }, spec: function () { return knowSpec(QP.stem, QP.opts, null); }, cont: function () { return CAND2; },
   };
 })();
