@@ -257,7 +257,10 @@
         '<button class="btn" data-lec="pdf">📄 看整本 PDF</button>' +
         '<button class="btn lec-hard" data-lec="hardreset" title="讲义一直加载不出来时点这个：清掉本站缓存再重载（题库/作答不受影响）">🧹 清缓存重载</button>' +
       '</div>';
-    var zoom = ce('div', 'lec-zoom'); zoom.id = 'lecZoom'; zoom.innerHTML = '<img alt="讲义原页（放大）"><button data-lec="unzoom">×</button>';
+    var zoom = ce('div', 'lec-zoom'); zoom.id = 'lecZoom';
+    zoom.innerHTML = '<div class="lec-zbar"><b>讲义原页 · 放大</b><span>点空白处、按 Esc 或点右上角关闭</span>' +
+      '<button class="lec-zx" data-lec="unzoom" title="关闭（Esc）">×</button></div>' +
+      '<img alt="讲义原页（放大）">';
     document.body.appendChild(mask); document.body.appendChild(sheet); document.body.appendChild(zoom);
     el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom,
       hits: $('#lecHits'), find: $('#lecFind'), findAll: $('#lecFindAll') };
@@ -272,7 +275,7 @@
       if (a === 'scopeok') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
       if (a === 'pin') return pinNow();
       if (a === 'unpin') return unpinNow();
-      if (a === 'alt') return nextCand();
+      if (a === 'alt') return openCands();
       if (a === 'prev') return go(CUR.p - 1);
       if (a === 'next') return go(CUR.p + 1);
       if (a === 'zoom') return doZoom();
@@ -296,11 +299,19 @@
       if (el.findAll) el.findAll.addEventListener('change', function () { if (el.find.value.trim()) doFind(); });
     }
     document.addEventListener('keydown', function (ev) {
+      /* Esc 的优先级：范围弹层 → 放大图 → 讲义抽屉本身。谁在最上面就只关谁，
+         否则会一路冒泡到 app 的「返回上一页」，表现成退出了讲义。 */
+      if (ev.key === 'Escape') {
+        if (document.getElementById('lecCandMask')) { closeCands(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+        if (document.getElementById('lecScopeMask')) { closeScope(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+        var z = document.getElementById('lecZoom');
+        if (z && z.classList.contains('on')) { unzoom(); ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+      }
       if (!el.sheet || !el.sheet.classList.contains('on')) return;
-      if (ev.key === 'Escape') { unzoom(); close(); }
+      if (ev.key === 'Escape') { close(); ev.stopImmediatePropagation(); }
       else if (ev.key === 'ArrowLeft') { go(CUR.p - 1); ev.preventDefault(); }
       else if (ev.key === 'ArrowRight') { go(CUR.p + 1); ev.preventDefault(); }
-    });
+    }, true);
     /* 图片点一下也放大 */
     el.img.addEventListener('click', doZoom);
   }
@@ -839,10 +850,10 @@
     var b = $('#lecAlt');
     if (!b) {
       b = ce('button', 'lec-alt'); b.id = 'lecAlt'; b.setAttribute('data-lec', 'alt');
-      b.title = '这不是那页？看下一个可能的页'; b.textContent = '换个候选';
+      b.title = '看全部候选页（按相关度排序），点一条直接跳过去'; b.textContent = '候选';
       var bar = $('.lec-bar'); if (bar) bar.appendChild(b);
     }
-    if (n > 1) { b.style.display = ''; b.textContent = '换个候选 1/' + n; }
+    if (n > 1) { b.style.display = ''; b.textContent = '候选 ' + (CAND_I + 1) + '/' + n + ' ▾'; }
     else b.style.display = 'none';
   }
   function jumpToSrc(src, p, label) {
@@ -936,38 +947,37 @@
 
   /* ---------- 范围选择弹层 ---------- */
   function openScope() {
-    var old = document.getElementById('lecScopeMask');
-    if (old) old.parentNode.removeChild(old);
+    closeScope();
     var mask = ce('div', 'lec-smask'); mask.id = 'lecScopeMask';
     var sheet = ce('div', 'lec-ssheet');
     var subs = {};
     try { subs = subjects() || {}; } catch (e) { subs = {}; }
     var names = Object.keys(subs).filter(function (k) { return (subs[k] || []).length; });
     var curName = (CUR.src && (fileOf(CUR.src) || {}).f) || '当前这份';
-    var h = '<div class="lec-shead"><b>定位范围</b><button class="lec-sx" data-sc="x">×</button></div><div class="lec-sbody">';
-    h += '<button class="lec-sopt' + (SCOPE.mode === 'auto' ? ' on' : '') + '" data-sc="pick" data-v="auto"><b>🎯 自动（推荐）</b><span>先在 AI 解析的资料库里找是哪一份讲义，再进去逐页比语义</span></button>';
-    h += '<button class="lec-sopt' + (SCOPE.mode === 'file' ? ' on' : '') + '" data-sc="pick" data-v="file" data-src="' + String(CUR.src || '').replace(/"/g, '&quot;') + '"><b>📄 只在这份里找</b><span>' + String(curName).replace(/</g, '&lt;') + '</span></button>';
-    h += '<div class="lec-slabel">按科目找（只用这个科目的讲义）</div><div class="lec-schips">';
+    var h = '<div class="lec-shead"><b>去哪儿找这题的讲义页</b><button class="lec-sx" data-sc="x" title="关闭（Esc）">×</button></div>';
+    h += '<div class="lec-sbody">';
+    h += '<button class="lec-sopt' + (SCOPE.mode === 'auto' ? ' on' : '') + '" data-sc="pick" data-v="auto">' +
+      '<i>🎯</i><div><b>自动（推荐）</b><span>先用 AI 解析的资料库判断是哪一份讲义，再进去逐页比语义</span></div></button>';
+    h += '<button class="lec-sopt' + (SCOPE.mode === 'file' ? ' on' : '') + '" data-sc="pick" data-v="file" data-src="' + String(CUR.src || '').replace(/"/g, '&quot;') + '">' +
+      '<i>📄</i><div><b>只在这份里找</b><span>' + String(curName).replace(/</g, '&lt;') + '</span></div></button>';
+    h += '<div class="lec-slabel">按科目找</div><div class="lec-schips">';
     for (var i = 0; i < names.length; i++) {
       var nm = names[i];
       var on = (SCOPE.mode === 'subj' && SCOPE.subj === nm) ? ' on' : '';
-      h += '<button class="lec-schip' + on + '" data-sc="pick" data-v="subj" data-subj="' + nm + '">' + nm + '（' + subs[nm].length + '）</button>';
+      h += '<button class="lec-schip' + on + '" data-sc="pick" data-v="subj" data-subj="' + nm + '">' + nm + '<em>' + subs[nm].length + '</em></button>';
     }
-    h += '</div></div>';
+    h += '</div></div><div class="lec-sfoot">只影响「🔍 定位到这题」，不会换掉你正在看的讲义</div>';
     sheet.innerHTML = h;
-    var mask2 = ce('div', ''); mask2.style.cssText = 'position:fixed;inset:0;background:rgba(8,12,24,.55);backdrop-filter:blur(3px);z-index:26000';
-    mask2.id = 'lecScopeMask';
-    mask2.appendChild(sheet);
-    sheet.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--card,#fff);color:var(--text,#111);border:1px solid var(--line,rgba(0,0,0,.12));border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:12px 14px;font:14px/1.5 system-ui;z-index:26001';
-    mask2.addEventListener('click', function (ev) {
-      if (ev.target === mask2) return closeScope();
+    mask.appendChild(sheet);
+    mask.addEventListener('click', function (ev) {
+      if (ev.target === mask) return closeScope();
       var b = ev.target.closest('[data-sc]'); if (!b) return;
       var a = b.getAttribute('data-sc');
       if (a === 'x') return closeScope();
       if (a === 'pick') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
     });
-    document.body.appendChild(mask2);
-    window.__closeLecScope = function () { try { mask2.parentNode.removeChild(mask2); } catch (e) {} };
+    document.body.appendChild(mask);
+    window.__closeLecScope = function () { try { mask.parentNode.removeChild(mask); } catch (e) {} };
   }
   function closeScope() { if (window.__closeLecScope) window.__closeLecScope(); }
   function pickScope(v, subj, src) {
@@ -1090,12 +1100,46 @@
       b.style.display = '';
     }
   }
+  /* 候选页列表：按相关度从小到大排，点一条直接跳 */
+  function openCands() {
+    closeCands();
+    if (!CAND2.length) { toast('还没有候选：先点「🔍 定位到这题」'); return; }
+    var mask = ce('div', 'lec-smask'); mask.id = 'lecCandMask';
+    var sheet = ce('div', 'lec-ssheet');
+    var h = '<div class="lec-shead"><b>候选页 · ' + CAND2.length + ' 个</b><button class="lec-sx" data-cd="x" title="关闭（Esc）">×</button></div>';
+    h += '<div class="lec-sbody">';
+    for (var i = 0; i < CAND2.length; i++) {
+      var c = CAND2[i], f = fileOf(c.src) || {};
+      var nm = String(f.f || c.src || '').replace(/\.pdf$/i, '');
+      var sc = (c.score > 0 && c.score <= 1) ? c.score.toFixed(2) : '';
+      h += '<button class="lec-crow' + (i === CAND_I ? ' on' : '') + '" data-cd="go" data-i="' + i + '">' +
+        '<em>' + (i + 1) + '</em>' +
+        '<div><b>' + nm.replace(/</g, '&lt;') + '</b><span>第 ' + c.p + ' 页' + (f.n ? ' / 共 ' + f.n + ' 页' : '') + '</span></div>' +
+        (sc ? '<i class="lec-cbar"><u style="width:' + Math.round(Math.max(6, Math.min(100, c.score * 100))) + '%"></u></i><s>' + sc + '</s>' : '') +
+        '</button>';
+    }
+    h += '</div><div class="lec-sfoot">按相关度排序，最像的在最上面</div>';
+    sheet.innerHTML = h;
+    mask.appendChild(sheet);
+    mask.addEventListener('click', function (ev) {
+      if (ev.target === mask) return closeCands();
+      var b = ev.target.closest('[data-cd]'); if (!b) return;
+      if (b.getAttribute('data-cd') === 'x') return closeCands();
+      var i = parseInt(b.getAttribute('data-i'), 10) || 0;
+      var c = CAND2[i]; if (!c) return;
+      CAND_I = i;
+      closeCands();
+      jumpToSrc(c.src, c.p, '📚 候选 ' + (i + 1) + '/' + CAND2.length + '：第 ' + c.p + ' 页' + (c.score <= 1 ? ' · 相似度 ' + c.score.toFixed(2) : ''));
+    });
+    document.body.appendChild(mask);
+    window.__closeLecCands = function () { try { mask.parentNode.removeChild(mask); } catch (e) {} };
+  }
+  function closeCands() { if (window.__closeLecCands) window.__closeLecCands(); }
   function nextCand() {
     if (CAND2.length) {
       CAND_I = (CAND_I + 1) % CAND2.length;
       var c = CAND2[CAND_I];
       jumpToSrc(c.src, c.p, '📚 资料检索：第 ' + c.p + ' 页（候选 ' + (CAND_I + 1) + '/' + CAND2.length + '）');
-      var b = $('#lecAlt'); if (b) b.textContent = '换个候选 ' + (CAND_I + 1) + '/' + CAND2.length;
       toast('换到第 ' + c.p + ' 页（相似度 ' + (c.score <= 1 ? c.score.toFixed(2) : c.score) + '）');
       return;
     }
