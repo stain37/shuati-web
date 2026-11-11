@@ -15,11 +15,15 @@
   }
   function write(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
 
-  function save(note) {
+  function save(note, force) {
     var d = read();
     for (var i = 0; i < d.list.length; i++) {
       var x = d.list[i];
-      if (x.id === note.id) return { dup: true, id: x.id };
+      if (x.id === note.id) {
+        if (!force) return { dup: true, id: x.id };
+        d.list[i] = note; write(d);
+        return { ok: true, id: x.id };
+      }
       if (x.sel === note.sel && Math.abs((x.ts || 0) - (note.ts || 0)) < 120000) return { dup: true, id: x.id };
     }
     d.list.unshift(note);
@@ -31,8 +35,13 @@
   function del(id) { var d = read(); d.list = d.list.filter(function (x) { return x.id !== id; }); write(d); }
   function rename(id, t) { var d = read(); d.list.forEach(function (x) { if (x.id === id) x.sel = t; }); write(d); }
   function saveOverview(st) {
-    var items = [];
-    (st.ov && st.ov.sections || []).forEach(function (sec) {
+    var o = st.ov || {}, items = [];
+    (o.sections || []).forEach(function (sec) {
+      (sec.paras || []).forEach(function (p) {
+        (p.cites || []).forEach(function (c) {
+          items.push({ src: c.src, name: c.name, p: c.p, score: 1, sents: [{ t: String(p.raw || '').slice(0, 120), hits: [] }] });
+        });
+      });
       (sec.items || []).forEach(function (it) {
         (it.cites || []).forEach(function (c) {
           items.push({ src: c.src, name: c.name, p: c.p, score: 1, sents: [{ t: it.t, hits: [] }] });
@@ -41,8 +50,10 @@
     });
     var note = {
       v: 1, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      sel: String(st.sel || '').slice(0, 200), why: '知识点总览（' + (st.mode === 'long' ? '长版' : '中版') + '）',
-      keys: st.keys || [], q: '', ts: Date.now(), items: items, ov: st.ov, mode: st.mode
+      sel: String(st.sel || '').slice(0, 200),
+      why: '知识点讲解（' + (st.mode === 'chapter' ? '整章' : '标准') + '）',
+      keys: st.keys || [], q: '', ts: Date.now(), items: items,
+      ov: st.ov, mode: st.mode, sources: (st.sources || []).slice(0, 40)
     };
     return save(note);
   }
@@ -65,6 +76,78 @@
     return Object.keys(o).length;
   }
 
+  var EDIT = {};
+
+  /* 正文里的 [[n]] → 可点的上标出处 */
+  function chapPara(t, sources, hits, id) {
+    var s0 = String(t || ''), out = '', re = /\[\[(\d+)\]\]/g, last = 0, m;
+    while ((m = re.exec(s0))) {
+      if (m.index > last) out += mark(s0.slice(last, m.index), hits);
+      var n2 = +m[1], c = (sources || [])[n2 - 1];
+      if (c) out += '<sup class="nt-csup" data-nt-act="go" data-id="' + id + '" data-src="' + esc(c.src) + '" data-p="' + c.p
+        + '" title="' + esc(String(c.name || '') + ' · 第 ' + c.p + ' 页') + '">' + n2 + '</sup>';
+      last = m.index + m[0].length;
+    }
+    if (last < s0.length) out += mark(s0.slice(last), hits);
+    return out;
+  }
+
+  function parseEdited(raw) {
+    var secs = [], cur = { h: '', paras: [] };
+    secs._title = '';
+    String(raw || '').split('\n').forEach(function (ln) {
+      ln = ln.replace(/\r$/, '');
+      if (/^#\s+/.test(ln)) { secs._title = ln.replace(/^#\s+/, '').trim(); return; }
+      if (/^##\s+/.test(ln)) {
+        if (cur.h || cur.paras.length) secs.push(cur);
+        cur = { h: ln.replace(/^##\s+/, '').trim(), paras: [] };
+        return;
+      }
+      if (!ln.trim()) return;
+      cur.paras.push({ t: ln.trim() });
+    });
+    if (cur.h || cur.paras.length) secs.push(cur);
+    return secs;
+  }
+
+  function chapEditSrc(n) {
+    var o = n.ov || {}, out = [];
+    if (o.title) out.push('# ' + o.title);
+    if (o.lead) out.push(o.lead);
+    (o.sections || []).forEach(function (sec) {
+      out.push('## ' + (sec.h || ''));
+      (sec.paras || []).forEach(function (p) { out.push(p.t); });
+    });
+    return out.join('\n');
+  }
+
+  function chapHtml(n) {
+    var o = n.ov || {}, srcs = n.sources || [], h = '';
+    var ed = n.edit ? parseEdited(n.edit) : null;
+    if (!ed) {
+      if (o.title) h += '<div class="nt-ovtitle">' + esc(o.title) + '</div>';
+      if (o.lead) h += '<div class="nt-ovlead">' + esc(o.lead) + '</div>';
+      if (o.coverage) {
+        h += '<div class="nt-ovcover">全库 ' + (o.coverage.total || (n.items || []).length) + ' 份讲义讲到它 · 覆盖 ' + (o.coverage.hit || 0) + ' 份'
+          + ((o.coverage.missing && o.coverage.missing.length) ? ' · 未覆盖 ' + o.coverage.missing.map(function (x) { return '<i>' + esc(x) + '</i>'; }).join('') : '')
+          + '</div>';
+      }
+    } else {
+      h += '<div class="nt-ovedit">✏️ 已编辑（出处仍可点）</div>';
+      if (ed._title) h += '<div class="nt-ovtitle">' + esc(ed._title) + '</div>';
+    }
+    var secs = ed || o.sections || [];
+    secs.forEach(function (sec) {
+      if (sec.h) h += '<div class="nt-ovh">' + esc(sec.h) + '</div>';
+      (sec.paras || []).forEach(function (p) {
+        h += '<p class="nt-ovp">' + chapPara(p.t, srcs, n.keys, n.id) + '</p>';
+      });
+      if (sec.conflict) h += '<div class="nt-ovwarn">⚠️ ' + esc(sec.conflict) + '</div>';
+    });
+    if (o.conflict) h += '<div class="nt-ovwarn">⚠️ 说法不一致：' + esc(o.conflict) + '</div>';
+    return h;
+  }
+
   function cardHtml(n) {
     var open = !!OPEN[n.id];
     var h = '<div class="nt-card' + (open ? ' on' : '') + '" data-nt="' + n.id + '">'
@@ -76,7 +159,22 @@
     if (n.q) h += '<div class="nt-q">出自：' + esc(n.q) + '</div>';
     if (n.why) h += '<div class="nt-why">💡 ' + esc(n.why) + '</div>';
     if (open) {
-      if (n.ov && n.ov.sections && n.ov.sections.length) {
+      var isChap = !!(n.ov && n.ov.sections && n.ov.sections.length && n.ov.sections[0].paras);
+      if (isChap) {
+        if (EDIT[n.id]) {
+          h += '<div class="nt-edwrap"><textarea class="nt-edit" data-nt-ed="' + n.id + '">' + esc(chapEditSrc(n)) + '</textarea>'
+            + '<div class="nt-edbar"><span>「## 小节标题」开新节，一行一段，[[n]] 是出处编号（可删，别改数字含义）</span>'
+            + '<button class="btn tiny" data-nt-act="editSave" data-id="' + n.id + '">保存</button>'
+            + '<button class="btn tiny" data-nt-act="editCancel" data-id="' + n.id + '">取消</button></div></div>';
+        } else {
+          h += chapHtml(n);
+          h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="edit" data-id="' + n.id + '">✏️ 编辑</button>'
+            + (n.edit ? '<button class="btn tiny" data-nt-act="editReset" data-id="' + n.id + '">↺ 还原 AI 原文</button>' : '')
+            + '<button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
+            + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
+        }
+      }
+      if (!isChap && n.ov && n.ov.sections && n.ov.sections.length) {
         n.ov.sections.forEach(function (sec) {
           h += '<div class="nt-ovh">' + esc(sec.h) + '</div>';
           (sec.items || []).forEach(function (it) {
@@ -89,14 +187,15 @@
         });
         if (n.ov.conflict) h += '<div class="nt-ovwarn">⚠️ ' + esc(n.ov.conflict) + '</div>';
         if (n.sum && n.sum.length) {
-        h += '<div class="nt-sum"><b>✨ AI 总结</b>';
-        n.sum.forEach(function (x) {
-          h += '<button class="nt-sumitem" data-nt-act="go" data-id="' + n.id + '" data-src="' + esc(x.src || '') + '" data-p="' + (x.p || 1) + '">'
-            + '<i>' + esc(x.t) + '</i><u>' + esc(String(x.name || '').replace(/\.pdf$/i, '').slice(0, 16)) + (x.name ? ' · 第 ' + (x.p || 1) + ' 页' : '') + '</u></button>';
-        });
-        h += '</div>';
+          h += '<div class="nt-sum"><b>✨ AI 总结</b>';
+          n.sum.forEach(function (x) {
+            h += '<button class="nt-sumitem" data-nt-act="go" data-id="' + n.id + '" data-src="' + esc(x.src || '') + '" data-p="' + (x.p || 1) + '">'
+              + '<i>' + esc(x.t) + '</i><u>' + esc(String(x.name || '').replace(/\.pdf$/i, '').slice(0, 16)) + (x.name ? ' · 第 ' + (x.p || 1) + ' 页' : '') + '</u></button>';
+          });
+          h += '</div>';
         }
       }
+      if (!isChap) {
       var order = [], map = {};
       (n.items || []).forEach(function (x) { if (!map[x.src]) { map[x.src] = []; order.push(x.src); } map[x.src].push(x); });
       order.sort(function (a, b) { return (map[b][0].score || 0) - (map[a][0].score || 0); });
@@ -110,8 +209,9 @@
           });
         });
       });
-      h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
-        + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
+        h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
+          + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
+      }
     }
     return h + '</div>';
   }
@@ -222,6 +322,21 @@
         var note = list().filter(function (x) { return x.id === id; })[0];
         if (!note) return;
         if (act === 'toggle') { OPEN[id] = !OPEN[id]; render(); return; }
+        if (act === 'edit') { EDIT[id] = 1; render(); return; }
+        if (act === 'editCancel') { delete EDIT[id]; render(); return; }
+        if (act === 'editSave') {
+          var ta = v.querySelector('[data-nt-ed="' + id + '"]');
+          note.edit = ta ? ta.value : '';
+          note.editTs = Date.now();
+          save(note, true); delete EDIT[id]; render();
+          if (window.toast) toast('已保存修改', 1400, 'ok');
+          return;
+        }
+        if (act === 'editReset') {
+          delete note.edit; save(note, true); render();
+          if (window.toast) toast('已还原成 AI 原文', 1400, 'ok');
+          return;
+        }
         if (act === 'del') { if (confirm('删除这条笔记？')) { del(id); render(); } return; }
         if (act === 'copy') {
           var txt = note.sel + '\n' + (note.items || []).map(function (x) { return '· ' + x.name + ' 第 ' + x.p + ' 页'; }).join('\n');

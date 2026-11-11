@@ -4465,3 +4465,39 @@ body.dark .lec-ovcov i{background:rgba(255,255,255,.08);color:#b9c9dc}
 .nt-ovwarn{margin:8px 0;padding:8px 10px;border-radius:10px;border:1px solid #f0d9a0;background:#fff8e6;color:#6b4d00;font-size:12px;line-height:1.55}
 body.dark .nt-ovli{background:#0f1620;border-color:rgba(255,255,255,.1)}
 body.dark .nt-ovwarn{background:rgba(120,90,20,.3);border-color:rgba(255,214,102,.3);color:#ffe9b0}
+
+
+/* ===== web774 知识点讲解：正文排版 + 句末出处上标 ===== */
+.lec-ovtitle { font-size:17px; font-weight:700; color:#141a22; margin:2px 0 6px; line-height:1.45; }
+.lec-ovlead { font-size:13px; color:#5b6472; line-height:1.7; margin:0 0 10px; }
+.lec-ovcover { font-size:12px; color:#0a5fd0; background:rgba(10,132,255,.09); border-radius:9px; padding:7px 10px; margin:0 0 12px; line-height:1.65; }
+.lec-ovcover i { font-style:normal; background:#fff; border-radius:5px; padding:0 5px; margin-left:4px; color:#8a5a00; border:1px solid rgba(245,158,11,.35); }
+.lec-ovp { font-size:14px; line-height:1.9; color:#1c2430; margin:0 0 10px; text-align:justify; }
+.lec-ovp.lec-ovpnc { border-left:3px solid rgba(229,72,77,.32); padding-left:8px; }
+.lec-csup { font-size:10px; font-weight:700; color:#fff; background:#0a84ff; border-radius:5px; padding:1px 4px; margin:0 1px; vertical-align:super; cursor:pointer; border:0; line-height:1.4; }
+.lec-csup:hover { background:#0868cc; }
+body.dark .lec-ovtitle { color:#e9eef6; }
+body.dark .lec-ovlead { color:#9aa7b8; }
+body.dark .lec-ovp { color:#dfe7f1; }
+body.dark .lec-ovcover { color:#9cc8ff; background:rgba(10,132,255,.18); }
+body.dark .lec-ovcover i { background:#0f1620; border-color:rgba(245,158,11,.4); }
+
+/* 笔记里的讲解卡：正文 + 编辑 */
+.nt-ovtitle { font-size:16px; font-weight:700; color:#141a22; margin:8px 0 4px; }
+.nt-ovlead { font-size:12.5px; color:#5b6472; line-height:1.7; margin:0 0 8px; }
+.nt-ovcover { font-size:11.5px; color:#0a5fd0; background:rgba(10,132,255,.08); border-radius:8px; padding:6px 9px; margin:0 0 10px; line-height:1.6; }
+.nt-ovcover i { font-style:normal; background:#fff; border-radius:4px; padding:0 4px; margin-left:3px; color:#8a5a00; }
+.nt-ovp { font-size:13.5px; line-height:1.85; color:#1c2430; margin:0 0 8px; text-align:justify; }
+.nt-csup { font-size:9.5px; font-weight:700; color:#fff; background:#0a84ff; border-radius:4px; padding:1px 3px; margin:0 1px; vertical-align:super; cursor:pointer; border:0; }
+.nt-ovedit { font-size:11.5px; color:#0a6cff; margin:0 0 8px; }
+.nt-edwrap { margin:8px 0; }
+.nt-edit { width:100%; box-sizing:border-box; min-height:240px; border:1px solid rgba(15,23,42,.2); border-radius:10px; padding:10px 12px; font:inherit; font-size:13.5px; line-height:1.8; resize:vertical; background:#fff; color:#141a22; }
+.nt-edbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.nt-edbar span { flex:1 1 200px; font-size:11.5px; color:#5b6472; line-height:1.5; }
+body.dark .nt-ovtitle { color:#e9eef6; }
+body.dark .nt-ovlead { color:#9aa7b8; }
+body.dark .nt-ovp { color:#dfe7f1; }
+body.dark .nt-ovcover { color:#9cc8ff; background:rgba(10,132,255,.16); }
+body.dark .nt-ovcover i { background:#0f1620; }
+body.dark .nt-edit { background:#0f1620; color:#e9eef6; border-color:rgba(255,255,255,.16); }
+body.dark .nt-edbar span { color:#9aa7b8; }
