@@ -4572,3 +4572,9 @@ body.dark .lec-ovkeys{color:#7fb6ff;background:rgba(10,108,255,.14);border-color
 body.dark .lec-ovsr s{color:#7fb6ff;background:rgba(10,108,255,.14)}
 .lec-ovpara{font-size:11.5px;color:#5b6472;padding:2px 4px 8px;line-height:1.5}
 body.dark .lec-ovpara{color:#9aa7b8}
+/* web785: 标准/整篇 开关放到标题栏，手机不用滚到底 */
+.lec-ovmh{display:inline-flex;gap:4px;margin-left:auto;margin-right:8px;flex:none}
+.lec-ovmh .lec-ovmode{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid rgba(15,23,42,.14);background:rgba(15,23,42,.04);color:#33404f;line-height:1.2}
+.lec-ovmh .lec-ovmode.on{background:#0a6cff;border-color:#0a6cff;color:#fff}
+body.dark .lec-ovmh .lec-ovmode{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#cbd5e1}
+body.dark .lec-ovmh .lec-ovmode.on{background:#3b82f6;border-color:#3b82f6;color:#fff}

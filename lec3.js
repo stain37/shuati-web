@@ -2741,19 +2741,20 @@
       meta.push('<button class="lec-ovsrcb" data-web="srcs">依据 ' + st.sources.length + ' 条 ▾</button>');
     }
     mask.innerHTML = '<div class="lec-ssheet lec-ovsheet">'
-      + '<div class="lec-shead"><b>📖 知识点讲解</b><button class="lec-sx" data-web="close">×</button></div>'
+      + '<div class="lec-shead"><b>📖 知识点讲解</b>'
+      + '<span class="lec-ovmh">'
+      + '<button class="lec-ovmode' + (st.mode !== 'chapter' ? ' on' : '') + '" data-web="mode" data-m="mid" title="标准版：12–16 段，快">标准</button>'
+      + '<button class="lec-ovmode' + (st.mode === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter" title="整篇版：30–50 段，长">整篇</button>'
+      + '</span><button class="lec-sx" data-web="close">×</button></div>'
       + '<div class="lec-ovmeta"><span class="lec-ovq" title="你输入的搜索词">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
       + ((st.keys && st.keys.length) ? '<button class="lec-ovkeys" data-web="ask" title="点这里改词重搜">词：' + esc(st.keys.join('/')) + '</button>' : '')
       + (meta.length ? '<i>·</i>' + meta.join('<i>·</i>') : '') + '</div>'
       + ovSrcBox(st)
       + '<div class="lec-sbody">' + ovHtml(st) + '</div>'
       + '<div class="lec-sfoot">'
-      + '<span class="lec-ovmodes">'
-      + '<button class="lec-ovmode' + (st.mode !== 'chapter' ? ' on' : '') + '" data-web="mode" data-m="mid">标准</button>'
-      + '<button class="lec-ovmode' + (st.mode === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter">整章</button></span>'
       + (pend
         ? '<button class="lec-nsum2" data-web="stop">■ 停止</button>'
-        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? '↻ 重新生成' : '✨ 生成') + '</button>')
+        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? ('↻ 重新生成' + (st.mode === 'chapter' ? '整篇' : '')) : '✨ 生成') + '</button>')
       + '<button class="lec-nsave" data-web="saveov">💾 存成笔记</button></div></div>';
     document.body.appendChild(mask);
     mask.addEventListener('click', function (ev) {
@@ -2805,7 +2806,11 @@
       if (a === 'stop') { ev.stopPropagation(); OV_STOPPED = true; toast('已停止，写好的部分保留', 1800); return; }
       if (a === 'mode') {
         ev.stopPropagation();
-        st.mode = b.getAttribute('data-m'); OV_MODE = st.mode;
+        var m = b.getAttribute('data-m');
+        if (m === st.mode && st.ov && st.ov.sections && st.ov.sections.length) return;
+        st.mode = m; OV_MODE = st.mode;
+        Array.prototype.forEach.call(mask.querySelectorAll('.lec-ovmode'), function (x) { x.classList.toggle('on', x.getAttribute('data-m') === st.mode); });
+        toast(st.mode === 'chapter' ? '整篇版：要重写 30–50 段，慢一点' : '标准版：12–16 段，快', 1600);
         renderLoading('正在写' + (st.mode === 'chapter' ? '整章' : '标准') + '版讲解…', '把全库原句按知识逻辑写成讲解');
         return runOverview(st.sel, st.keys, st.mode, st);
       }
