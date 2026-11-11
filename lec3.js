@@ -2141,9 +2141,31 @@
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
+  /* 讲义里常有一整段没有句号：先按逗号切，再按长度硬切，别让长段整段丢掉 */
+  function sentChunks(text) {
+    var parts = String(text || '').split(/[。！？；\n]+/), out = [];
+    parts.forEach(function (p) {
+      p = p.replace(/\s+/g, ' ').trim();
+      if (!p) return;
+      if (p.length <= 170) { out.push(p); return; }
+      var pieces = p.split(/[，,]/), buf = '';
+      pieces.forEach(function (q) {
+        q = String(q || '').trim();
+        if (!q) return;
+        if ((buf + '，' + q).length <= 165) { buf = buf ? buf + '，' + q : q; return; }
+        if (buf) out.push(buf);
+        if (q.length <= 165) { buf = q; return; }
+        for (var i = 0; i < q.length; i += 150) out.push(q.slice(i, i + 150));
+        buf = '';
+      });
+      if (buf) out.push(buf);
+    });
+    return out;
+  }
+
   function sentsOf(t, keys) {
     var text = String(t || '').replace(/每日计划[\s\S]{0,60}?考点补充/, '');
-    var parts = text.split(/[。！？；\n]+/), out = [];
+    var parts = sentChunks(text), out = [];
     parts.forEach(function (s) {
       s = s.replace(/\s+/g, ' ').trim();
       if (s.length < 10 || s.length > 170) return;
@@ -2265,6 +2287,22 @@
   }
 
   /* 全库知识点检索：KB 片段先给方向，真正出处以讲义正文为准（web779） */
+  /* 讲义一页常常「上半讲解、下半真题解析」：把真题那半段切掉，保留讲解部分 */
+  function ovStripQ(t) {
+    var raw = String(t || '').trim();
+    var s = raw.replace(/每日计划[\s\S]{0,140}?考点补充/g, '');
+    var m = /(?:真题解析|真题回放|历年真题)\s*[·：:]?/.exec(s);
+    if (m) {
+      var head = s.slice(0, m.index), rest = s.slice(m.index);
+      var nx = rest.search(/专题串联|易错小结|考点补充|核心精讲|思维导图/);
+      var cut = (nx > 0) ? head + rest.slice(nx) : head;
+      /* 切完只剩一小截说明这页本来就是真题页：宁可保留原文（后续按真题页降权） */
+      if (cut.trim().length >= 120) s = cut;
+    }
+    s = s.replace(/习惯一读|读完所有选项|选择最佳答案|正确答案是?[A-E]?/g, '');
+    return s.trim();
+  }
+
   /* 单句打分：术语密度 / 是否句首出现 / 文件名是否就是这个主题 / 乱码与水印惩罚 */
   function ovSentBoost(t, keys, name) {
     var txt = String(t || ''), nm = String(name || '').toLowerCase(), b = 0, occ = 0;
@@ -2291,12 +2329,13 @@
   function collectSources(keys, cap) {
     keys = expandKeys(cleanKeys(keys || []));
     if (!keys.length) return Promise.resolve([]);
-    var kk = keys.slice(0, 4);
+    var kk = cleanKeys(keys || []).slice(0, 3);
+    var sx = keys.slice(0, 6);
     var capN = cap || 24;
     var prep = Promise.resolve();
     try { prep = prep.then(function () { return (FILES && FILES.length) ? null : loadIndex(); }); } catch (e) {}
     try { if (typeof kbEnsureFilesLoaded === 'function') prep = prep.then(function () { return kbEnsureFilesLoaded(); }).catch(function () { return null; }); } catch (e) {}
-    return prep.then(function () { return kbMulti(kk, 30).catch(function () { return []; }); }).then(function (rows) {
+    return prep.then(function () { return kbMulti(sx, 30).catch(function () { return []; }); }).then(function (rows) {
       var quick = [], order = [], seen = {}, seenTxt = {};
       (rows || []).forEach(function (r) {
         if (!r || !r.f || !(Number(r.p) >= 1)) return;
@@ -2327,7 +2366,8 @@
             if (!r || !r.t) return;
             var pg = Number(r.p) || 0;
             if (!(pg >= 1)) return;
-            var txt = lecClean(r.t);
+            var txt = ovStripQ(lecClean(r.t));
+            if (txt.length < 20) return;
             var ss = sentsOf(txt, kk);
             if (!ss.length) return;
             var pk = normName(r.src) + '#' + pg;
@@ -2350,14 +2390,14 @@
           var pk = normName(x.src) + '#' + x.p;
           if ((pageK[pk] || 0) >= 2) x.w += 0.6;
         });
-        all = all.filter(function (x) { return !x.isq; });
+        all.forEach(function (x) { if (x.isq) x.w *= 0.45; });
         all.sort(function (a, b) { return b.w - a.w; });
         /* 每份讲义最多 5 句，总量 cap */
         var per = {}, out = [];
         for (var i = 0; i < all.length && out.length < capN; i++) {
           var x = all[i];
           per[x.src] = per[x.src] || 0;
-          if (per[x.src] >= 5) continue;
+          if (per[x.src] >= 8) continue;
           per[x.src]++;
           out.push(x);
         }
@@ -2809,8 +2849,21 @@
     };
   }
 
+  /* 从候选句里挑「铺得开」的一批：每份讲义最多 2 条，优先高分 */
+  function ovSpread(list, n) {
+    var per = {}, out = [];
+    (list || []).forEach(function (x) {
+      if (out.length >= n) return;
+      per[x.src] = per[x.src] || 0;
+      if (per[x.src] >= 2) return;
+      per[x.src]++;
+      out.push(x);
+    });
+    return out.length ? out : (list || []).slice(0, n);
+  }
+
   function ovOutline(sel, keys, sources, mode) {
-    var pool = sources.slice(0, 12);                 /* 大纲只看 12 条代表句，避免一口气塞太多 */
+    var pool = ovSpread(sources, 18);                /* 大纲看 18 条、按讲义铺开，别只堆在同一份里 */
     var list = pool.map(ovSrcBrief).join('\n');
     var nsec = mode === 'chapter' ? '5–7 节' : '3–5 节';
     var sys = '你是医学考研讲义撰稿人。第一步只出讲解大纲，不写正文。只输出 JSON：'
@@ -2886,7 +2939,7 @@
         return Promise.resolve(true);
       }
     }
-    var cap = mode === 'chapter' ? 56 : 32;
+    var cap = mode === 'chapter' ? 72 : 48;
     if (st.sel) {
       st.ov = { pending: 1, prog: '正在全库扫「' + (keys || []).join('、') + '」相关原句…' };
       renderOverview(st);
