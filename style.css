@@ -4331,3 +4331,18 @@ body.dark .srcpop-s{color:#93c5fd;background:rgba(147,197,253,.14)}
 body.dark .lec-srow { background: rgba(255,255,255,.07); }
 body.dark .lec-srow label { color: #e9eef6; }
 body.dark .lec-srow span { color: #96a2b4; }
+
+/* ===== web759 讲义：多页绑定 / 真题页标记 ===== */
+.lec-binds{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid rgba(15,23,42,.07);background:rgba(255,255,255,.72)}
+.lec-binds[hidden]{display:none}
+.lec-bchip{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(15,23,42,.16);background:#fff;border-radius:999px;padding:4px 7px 4px 4px;font-size:12px;color:#141a22;cursor:pointer;max-width:48%;line-height:1.2}
+.lec-bchip:hover{border-color:#0a84ff}
+.lec-bchip em{flex:0 0 auto;width:17px;height:17px;border-radius:50%;background:#0a84ff;color:#fff;font-style:normal;font-size:10.5px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.lec-bchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lec-bchip .lec-bx{flex:0 0 auto;width:17px;height:17px;border-radius:50%;background:rgba(15,23,42,.08);color:#5b6472;font-style:normal;display:flex;align-items:center;justify-content:center;font-size:12px}
+.lec-bchip .lec-bx:hover{background:#e5484d;color:#fff}
+.lec-qtag{font-style:normal;margin-left:6px;font-size:10.5px;padding:1px 5px;border-radius:5px;background:rgba(229,72,77,.12);color:#c8332f;vertical-align:1px}
+body.dark .lec-binds{background:rgba(20,26,36,.72);border-bottom-color:rgba(255,255,255,.08)}
+body.dark .lec-bchip{background:#1b2331;border-color:rgba(255,255,255,.16);color:#e9eef6}
+body.dark .lec-bchip .lec-bx{background:rgba(255,255,255,.12);color:#c3ccd8}
+body.dark .lec-qtag{background:rgba(229,72,77,.22);color:#ff9d9a}
