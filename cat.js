@@ -2056,7 +2056,7 @@
        手机上就是「点一下就瞬移」的元凶 —— 现在一律不动。 */
     var y0 = 0;
     try { y0 = window.scrollY || window.pageYOffset || 0; } catch (eY) {}
-    if (from === 'tree') TREE_OPEN = false;   /* 点进文件夹后把目录树收起来，省得占着半屏 */
+    if (from === 'tree') TREE_OPEN = true;    /* 点进文件夹后目录树保持展开：页面一点不动 */
     repaint();
     try { syncBackFab(); } catch (eF2) {}
     /* 点完树里那一行，按钮节点已经没了；不 blur 的话焦点掉到 body 上，
