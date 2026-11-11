@@ -372,7 +372,7 @@
     if (!terms.length) { hideHits(); toast('至少写一个要搜的词（以 - 开头的算排除）'); return; }
     if (terms.join('').length < 2) toast('至少两个字，不然搜出来一大片');
     var all = !!(el.findAll && el.findAll.checked);
-    loadText().then(function (rows) {
+    (all ? loadText() : loadTextSubj()).then(function (rows) {
       var out = [];
       (rows || []).forEach(function (r) {
         if (!r || !r.t) return;
@@ -444,6 +444,7 @@
 
   /* ---------- ② 按题干自动定位到最可能的讲义页 ---------- */
   var TXT = null, TXT_JOB = null, CAND = [], CAND_I = 0;
+  var TXT_CACHE = {}, MAN = null, MAN_JOB = null;
   var IDB_NAME = 'qbank-lec', IDB_STORE = 'kv';
   function idb(kind, k, v) {
     return new Promise(function (resolve) {
@@ -462,47 +463,61 @@
       };
     });
   }
-  function readWithProgress(r) {
-    if (!r.body || !r.body.getReader) return r.text();
-    var reader = r.body.getReader(), chunks = [], got = 0, last = 0;
-    var total = +(r.headers.get('content-length') || 0);
-    return new Promise(function (resolve, reject) {
-      (function pump() {
-        reader.read().then(function (res) {
-          if (res.done) {
-            var all = new Uint8Array(got), off = 0;
-            chunks.forEach(function (c) { all.set(c, off); off += c.length; });
-            return resolve(new TextDecoder('utf-8').decode(all));
-          }
-          chunks.push(res.value); got += res.value.length;
-          if (got - last > 1200000) {
-            last = got;
-            toast('正在下载讲义文字索引… ' + (got / 1048576).toFixed(1) +
-              (total ? ' / ' + (total / 1048576).toFixed(1) : '') + ' MB');
-          }
-          pump();
-        }).catch(reject);
-      })();
+
+  /* ---------- 讲义文字索引：按科目切成 ~1.3MB 的小块，弱网也能一块块下完 ---------- */
+  function loadManifest() {
+    if (MAN) return Promise.resolve(MAN);
+    if (MAN_JOB) return MAN_JOB;
+    MAN_JOB = fetchJson('pdftext/t_index.json', 3, 15000).then(function (m) { MAN = m; return m; })
+      .catch(function (e) { MAN_JOB = null; throw e; });
+    return MAN_JOB;
+  }
+  function subjOf(src) { var p = String(src || '').split('/'); return p.length > 2 ? p[1] : ''; }
+  function loadPart(pid) {
+    if (TXT_CACHE[pid]) return Promise.resolve(TXT_CACHE[pid]);
+    return idb('get', 'part:' + pid).then(function (c) {
+      if (c && c.rows) { TXT_CACHE[pid] = c.rows; return c.rows; }
+      return fetchJson('pdftext/' + pid + '.json', 3, 40000).then(function (arr) {
+        var rows = (arr || []).map(function (r) {
+          var src = r[2] || '';
+          return { k: r[0], p: r[1], src: src, f: src.split('/').pop(), t: r[3] };
+        });
+        TXT_CACHE[pid] = rows;
+        idb('set', 'part:' + pid, { ts: Date.now(), rows: rows });
+        return rows;
+      });
     });
   }
-  /* all.json 有 8MB 多，线上要下很久：下完就存进 IndexedDB，之后定位/搜索都是秒出 */
-  function loadText() {
-    if (TXT) return Promise.resolve(TXT);
-    if (TXT_JOB) return TXT_JOB;
-    TXT_JOB = idb('get', 'text').then(function (cached) {
-      if (cached && cached.rows && cached.rows.length) { TXT = cached.rows; return TXT; }
-      toast('第一次要下载讲义文字索引（约 8 MB），网络慢会等一会儿；下完就存在本机了');
-      return fetch('pdftext/all.json?t=' + new Date().toISOString().slice(0, 10))
-        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return readWithProgress(r); })
-        .then(function (txt) {
-          var rows = JSON.parse(txt) || [];
-          TXT = rows;
-          idb('set', 'text', { ts: Date.now(), rows: rows });
-          return TXT;
+  function partsFor(subj) {
+    return loadManifest().then(function (m) {
+      var ps = (m.parts || []).filter(function (p) { return !subj || p.subj === subj; });
+      if (!ps.length && subj) ps = (m.parts || []);
+      return ps;
+    });
+  }
+  function loadRows(subj, label) {
+    return partsFor(subj).then(function (ps) {
+      var out = [];
+      return ps.reduce(function (chain, p, i) {
+        return chain.then(function () {
+          if (label) toast('正在下载讲义文字 ' + (i + 1) + ' / ' + ps.length + '（' + p.subj + '）…');
+          return loadPart(p.id).then(function (rows) { out = out.concat(rows); })
+            .catch(function () { /* 某一块失败就跳过，别整个失败 */ });
         });
-    }).catch(function (e) { TXT_JOB = null; throw e; });
+      }, Promise.resolve()).then(function () { return out; });
+    });
+  }
+  /* 本讲义所在科目的文字（定位 / 本讲义搜索用） */
+  function loadTextSubj(subj) { return loadRows(subj || subjOf(CUR.src), true); }
+  /* 全部科目（「全部讲义」搜索用） */
+  function loadText() {
+    if (TXT && TXT.length) return Promise.resolve(TXT);
+    if (TXT_JOB) return TXT_JOB;
+    TXT_JOB = loadRows('', true).then(function (rows) { TXT = rows; return rows; })
+      .catch(function (e) { TXT_JOB = null; throw e; });
     return TXT_JOB;
   }
+
   function normText(t) {
     return String(t || '').replace(/[\s\u3000]+/g, '')
       .replace(/[，。；：、！？（）()《》【】\[\]“”"'’‘·—…\-,.;:!?\/\\|]/g, '');
@@ -522,7 +537,7 @@
     });
     return parts.join(' ');
   }
-  function search(qtext) {
+  function searchIn(TXT, qtext) {
     if (!TXT || !TXT.length) return [];
     var q = normText(qtext);
     if (q.length < 6) return [];
@@ -561,8 +576,8 @@
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
     if (el.meta) el.meta.textContent = '正在翻讲义找这一页…';
-    loadText().then(function () {
-      var hits = search(q);
+    loadTextSubj().then(function (rows) {
+      var hits = searchIn(rows, q);
       if (!hits.length) { if (el.meta) el.meta.textContent = ''; toast('没在这批讲义里找到相关内容'); return; }
       CAND = hits; CAND_I = 0;
       jumpTo(hits[0]);
@@ -630,7 +645,7 @@
     open();
   }, true);
 
-  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: search, text: loadText,
+  window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: function (src, p) { var f = fileOf(src); return f && f.pages[p]; } };
