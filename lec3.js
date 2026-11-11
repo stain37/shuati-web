@@ -262,6 +262,7 @@
         '<button class="lec-x" data-lec="close" title="关闭（Esc）">×</button></div>' +
       '<div class="lec-bar">' +
         '<button id="lecScopeBtn" class="lec-scope" data-lec="scope" title="定位范围（自动 / 指定讲义 / 指定科目）">🎯 自动</button>' +
+      '<button class="lec-scope" data-lec="ovask" title="把这个知识点在全库讲义里的内容拼成一份总览">🧩 总览</button>' +
         '<select id="lecFile" class="lec-sel" title="换一份讲义"></select>' +
         '<div class="lec-pager">' +
           '<button data-lec="prev" title="上一页（←）">‹</button>' +
@@ -296,6 +297,7 @@
       if (a === 'notes') { close(); location.hash = '#/notes'; return; }
       if (a === 'loc') return locate();
       if (a === 'scope') return openScope();
+      if (a === 'ovask') return overviewAsk();
       if (a === 'scopeok') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
       if (a === 'pin') return pinNow();
       if (a === 'unpin') return unpinNow();
@@ -1588,6 +1590,39 @@
     }).catch(function () { return []; });
   }
 
+  /* 多短语召回：每个短语单独查一次，按 RRF 融合（长句整串查会被稀释，这是「词一长就搜不到」的根因） */
+  function kbMulti(keys, per) {
+    var ids = [];
+    try { ids = (typeof kbSelected === 'function') ? (kbSelected() || []) : []; } catch (e) { ids = []; }
+    if (!ids.length || typeof kbSearch !== 'function') return Promise.resolve([]);
+    var qs = (keys || []).filter(Boolean).slice(0, 5);
+    return Promise.all(qs.map(function (k) {
+      return withTimeout(Promise.resolve(kbSearch(k, ids, per || 24)), 9000).catch(function () { return []; });
+    })).then(function (lists) {
+      var rank = {}, meta = {};
+      lists.forEach(function (hs, qi) {
+        (hs || []).forEach(function (h, ri) {
+          var f = null;
+          try { f = fileByHit(h) || fileOfName(h.file || h.doc || h.name); } catch (e) { f = null; }
+          if (!f) return;
+          var pg = (h.pdfp | 0) || (h.page | 0) || 0;
+          if (pg > (f.n || 9999)) pg = 0;
+          if (pg > 0) pg = localPage(f, pg);
+          var key = f.src + '#' + pg;
+          rank[key] = (rank[key] || 0) + (qi === 0 ? 2 : 1) / (50 + ri);
+          if (!meta[key]) meta[key] = { f: f, p: pg, buf: [], score: 0 };
+          var tx = String(h.snip || h.text || h.head || '').trim();
+          if (tx) meta[key].buf.push(tx);
+          meta[key].score = Math.max(meta[key].score, +h.score || 0);
+        });
+      });
+      return Object.keys(rank).map(function (k) {
+        var m = meta[k];
+        return { f: m.f, p: m.p, rrf: rank[k], score: m.score, text: m.buf.join(' ') };
+      }).sort(function (a, b) { return b.rrf - a.rrf; });
+    });
+  }
+
   function pageText(rows, src, p) {
     var fo = fileOf(src) || {};
     var want = normName(src);
@@ -1955,33 +1990,151 @@
 
 
   /* ===== 选中文字 → 在所有讲义里找这个知识点（右键菜单） ===== */
-  function askKeys(sel, qtext) {
-    var fallback = (function () {
-      var s0 = String(sel).replace(/\s+/g, ''), cands = [];
-      s0.split(/[，,。；;：:、\n]/).forEach(function (seg) {
-        seg = seg.trim();
-        if (seg.length < 2) return;
-        if (seg.length > 6) { cands.push(seg.slice(0, 4)); cands.push(seg.slice(0, 6)); cands.push(seg.slice(-4)); }
-        else cands.push(seg);
+  function normSel(s) {
+    return String(s || '').replace(/[\u3000\s]+/g, '').replace(/[（）()【】\[\]「」『』“”"'’]/g, '');
+  }
+
+  /* 讲义里真正的「病名/术语」：懒惰匹配，避免从句子中间切出「线达到类风湿关节炎」这种残片 */
+  var MED_LAZY = /[\u4e00-\u9fa5]{3,8}?(?:病|炎|癌|瘤|综合征|贫血|梗死|衰竭|感染|中毒|结石|溃疡|疝|期|分级)/;
+  var STOP_W = /^(疾病|分期|表现|治疗|诊断|检查|患者|症状|体征|首选|下列|以下|关于|属于|正确|错误|需要|可以|进行|出现|引起|导致|明显|主要|常见|一般|目前|可能|应该|如何|什么|哪些)$/;
+  var JUNK_RE = /岁|患者|查体|闻及|主诉|既往|入院|就诊|化验|血压|心率|体温|呼吸|脉搏|血常规|mmHg|次\/分|\d/;
+
+  /* 「线达到类风湿关节炎」→ 先按动词/系词切断，再取病名 */
+  function cutTerm(s) {
+    var parts = String(s || '').split(/达到|出现|伴有|可见|显示|提示|考虑|诊断|表现|引起|导致|伴有|存在|发生|是|为|有/);
+    s = parts[parts.length - 1] || s;
+    var m = s.match(MED_LAZY);
+    return (m && m[0].length >= 3) ? m[0] : s;
+  }
+
+  /* 把「血清铁常增高的疾病有哪些」这类长句收成「血清铁」这种能命中原词的词 */
+  function tidyKey(k) {
+    k = String(k || '').replace(/[\s（）()【】\[\]「」『』"'？?！!，,。；;：:、]/g, '');
+    if (!k) return '';
+    k = k.split(/的|有哪些|包括哪些|是什么|还有什么|分别是|可能是|最可能|以下|下列|属于|常见于|多见于/)[0];
+    k = k.replace(/(?:常增高|常降低|增高|降低|升高|减少|增多|减低|偏高|偏低|明显|显著)$/,'');
+    k = cutTerm(k);
+    if (JUNK_RE.test(k)) return '';
+    if (k.length > 8) {
+      var m2 = k.match(MED_LAZY);
+      if (m2) return m2[0];
+      return k.slice(0, 4);
+    }
+    if (k.length < 2 || STOP_W.test(k)) return '';
+    return k;
+  }
+
+  function askKeysFallback(sel) {
+    var s0 = normSel(sel), cands = [];
+    (s0.match(new RegExp(MED_LAZY.source, 'g')) || []).forEach(function (m) { cands.push(m); });
+    s0.split(/[，,。；;：:、\n]/).forEach(function (seg) {
+      seg = seg.trim();
+      if (seg.length < 2) return;
+      /* 病例段落：只从「诊断/考虑」后面取病名 */
+      if (JUNK_RE.test(seg)) {
+        var tail = (seg.match(/(?:诊断|考虑|最可能是|为)[是为]?([\u4e00-\u9fa5]{2,12})$/) || [])[1] || '';
+        if (tail) cands.push(tail);
+        return;
+      }
+      seg.split(/(?:的|是|有|伴|使|让|引起|导致|表现|可以|能够|就会|从而|并且|以及|同时|因为|所以|对于|关于)/).forEach(function (c) {
+        c = c.replace(/^[了着过]+/, '').trim();
+        if (c.length >= 2) cands.push(c);
       });
-      cands = cands.filter(function (x, i, a) { return x && x.length >= 2 && a.indexOf(x) === i; }).slice(0, 4);
-      if (!cands.length) cands = [s0.slice(0, 6)];
-      return { keys: cands, why: '' };
-    })();
+    });
+    var seen = {}, cleaned = [];
+    cands.map(tidyKey).forEach(function (x) {
+      if (!x || x.length < 2 || x.length > 10 || seen[x]) return;
+      seen[x] = 1; cleaned.push(x);
+    });
+    var hasTerm = cleaned.some(function (x) { return /(?:病|炎|癌|瘤|综合征|贫血|梗死|衰竭|感染|中毒|结石|溃疡|疝)$/.test(x); });
+    if (hasTerm) cleaned = cleaned.filter(function (x) { return x.length >= 4 || /(?:病|炎|癌|瘤|综合征|贫血|梗死|衰竭|感染|中毒|结石|溃疡|疝)$/.test(x); });
+    cands = cleaned.slice(0, 6);
+    if (!cands.length) cands = [tidyKey(s0.slice(0, 4))].filter(Boolean);
+    return { keys: cands, why: '' };
+  }
+
+  function cleanKeys(arr) {
+    var seen = {}, out = [];
+    (arr || []).forEach(function (x) {
+      var k = tidyKey(x);
+      if (!k || k.length < 2 || seen[k]) return;
+      seen[k] = 1; out.push(k);
+    });
+    return out.slice(0, 6);
+  }
+
+  function askKeys(sel, qtext) {
+    var fallback = askKeysFallback(sel);
     if (typeof window.aiChat !== 'function') return Promise.resolve(fallback);
     var msgs = [
-      { role: 'system', content: '你是医学讲义检索助手。用户选中了题目里的一句话，你要给出「在讲义里找它」用的检索短语。只输出 JSON：{"keys":["2-4个短语，用讲义术语，每个≤14字"],"why":"这段在解题里起什么作用，≤20字"}。短语要能匹配讲义原词（例如「血清铁」「转铁蛋白饱和度」），不要整句照抄。' },
-      { role: 'user', content: '整道题：' + String(qtext || '').slice(0, 500) + '\n选中的文字：' + String(sel).slice(0, 300) }
+      { role: 'system', content: '你是医学讲义检索助手。用户选中了题目里的一句话，你要把它变成能在讲义里直接命中原词的检索短语。只输出 JSON：{"keys":["短语",…],"why":"≤20字"}。要求：1) 3–6 个短语；2) 每个 2–8 个汉字，必须是名词性术语（病名、指标、机制、药物、部位、体征）；3) 长句必须拆成其中的关键术语，禁止照抄整句；4) 不要动词短语、不要带标点；5) 宁可短不要长（「血清铁」优于「血清铁常增高的疾病」）。' },
+      { role: 'user', content: '整道题：' + String(qtext || '').slice(0, 500) + '\n选中的文字：' + String(sel).slice(0, 400) }
     ];
-    return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 300 }), 9000).then(function (txt) {
+    return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 260 }), 8000).then(function (txt) {
       var s = String(txt || '').replace(/```json/gi, '').replace(/```/g, '');
       var a = s.indexOf('{'), b2 = s.lastIndexOf('}');
       if (a < 0 || b2 < a) return fallback;
-      var o = JSON.parse(s.slice(a, b2 + 1));
-      var keys = (o.keys || []).map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2 && x.length <= 20; });
+      var o;
+      try { o = JSON.parse(s.slice(a, b2 + 1)); } catch (e) { return fallback; }
+      var keys = cleanKeys(o.keys || []);
       if (!keys.length) return fallback;
-      return { keys: keys.slice(0, 4), why: String(o.why || '').slice(0, 30) };
+      return { keys: keys, why: String(o.why || '').slice(0, 30) };
     }).catch(function () { return fallback; });
+  }
+
+  /* 打开入口就先预热（讲义目录 + 知识库分片），别等点了「生成」才开始读 */
+  function ovWarm() {
+    try { if (!(FILES && FILES.length)) loadIndex().catch(function () {}); } catch (e) {}
+    var p0 = Promise.resolve();
+    try { if (typeof kbEnsureFilesLoaded === 'function') p0 = Promise.resolve(kbEnsureFilesLoaded()).catch(function () {}); } catch (e) {}
+    /* 第一次检索要唤醒本地向量模型（约 3–6 秒），先空跑一次，别让用户等 */
+    p0.then(function () {
+      try {
+        if (typeof kbSearch !== 'function') return;
+        var ids = (typeof kbSelected === 'function') ? (kbSelected() || []) : [];
+        if (!ids.length) return;
+        Promise.resolve(kbSearch('前馈', ids, 1)).catch(function () {});
+      } catch (e) {}
+    });
+  }
+
+  function overviewAsk(pre) {
+    ovWarm();
+    var m = document.createElement('div');
+    m.className = 'lec-smask'; m.id = 'lecWebMask';
+    m.innerHTML = '<div class="lec-ssheet"><div class="lec-shead"><b>🧩 知识点总览</b>'
+      + '<span>写一个知识点，我去全库讲义里把讲它的句子拼成一份，「每一句」都能点回原页</span>'
+      + '<button class="lec-sx" data-web="close" title="关闭">×</button></div>'
+      + '<div class="lec-sbody" style="padding:14px 16px 16px">'
+      + '<textarea id="lecOvQ" rows="3" placeholder="例如：前馈控制 / 血清铁常增高的疾病 / 类风湿关节炎 X 线分期" '
+      + 'style="width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(15,23,42,.18);padding:10px 12px;font:inherit;font-size:14px;line-height:1.55;resize:vertical;background:#fff;color:#141a22"></textarea>'
+      + '<div class="lec-ovchips">'
+      + '<button class="lec-schip" data-web="usestem">用当前题干</button>'
+      + '<button class="lec-schip" data-web="usesel">用选中的句子</button>'
+      + '</div>'
+      + '<div class="lec-sfoot"><span>扫最相关的 6 份讲义</span>'
+      + '<button class="lec-nsave" data-web="run">生成总览</button></div>'
+      + '</div></div>';
+    document.body.appendChild(m);
+    var ta = m.querySelector('#lecOvQ');
+    if (pre) ta.value = pre;
+    m.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-web]'); if (!b) return;
+      var a = b.getAttribute('data-web');
+      if (a === 'close') { ev.stopPropagation(); return m.remove(); }
+      if (a === 'usestem') { ta.value = String(QP.stem || '').slice(0, 200); return; }
+      if (a === 'usesel') {
+        var s = String(window.getSelection ? window.getSelection().toString() : '').replace(/\s+/g, ' ').trim();
+        if (s) ta.value = s.slice(0, 300); else toast('先在题目里选中一句话', 1600, 'warn');
+        return;
+      }
+      if (a === 'run') {
+        var q = String(ta.value || '').trim();
+        if (q.length < 2) { toast('先写一个知识点', 1600, 'warn'); return; }
+        ev.stopPropagation(); m.remove(); return overview(q);
+      }
+    });
+    setTimeout(function () { try { ta.focus(); } catch (e) {} }, 60);
   }
 
   function closeWeb() { var m = $('#lecWebMask'); if (m) m.remove(); }
@@ -2094,33 +2247,57 @@
   var OV_LAST = null;
 
   function collectSources(keys, cap) {
-    var q = keys.join(' ');
     var prep = Promise.resolve();
     try { prep = prep.then(function () { return (FILES && FILES.length) ? null : loadIndex(); }); } catch (e) {}
     try { if (typeof kbEnsureFilesLoaded === 'function') prep = prep.then(function () { return kbEnsureFilesLoaded(); }).catch(function () { return null; }); } catch (e) {}
-    return prep.then(function () { return kbRaw(q, 80); }).then(function (rows) {
+    return prep.then(function () { return kbMulti(keys, 24); }).then(function (rows) {
       var bySrc = {}, order = [];
-      (rows || []).forEach(function (r) { if (!r.src) return; if (!bySrc[r.src]) { bySrc[r.src] = 1; order.push(r.src); } });
-      var srcs = order.slice(0, 6);
+      (rows || []).forEach(function (r) {
+        var s = r.f.src;
+        if (!bySrc[s]) { bySrc[s] = []; order.push(s); }
+        bySrc[s].push(r);
+      });
+      var picked = [], keys2 = (keys || []).slice(0, 4);
+      order.slice(0, 6).forEach(function (src, fi) {
+        var per = [];
+        bySrc[src].forEach(function (r) {
+          var ss = sentsOf(lecClean(r.text), keys2);
+          ss.forEach(function (s) {
+            per.push({
+              src: src, name: String((r.f.f || '')).replace(/\.pdf$/i, ''), p: r.p,
+              t: s.t.slice(0, 90), hits: s.hits,
+              w: s.w + r.rrf * 8 + (fi === 0 ? 0.4 : 0),
+              isq: (typeof isQPage === 'function' && isQPage(r.text)) ? 1 : 0
+            });
+          });
+        });
+        per.sort(function (a, b) { return b.w - a.w; });
+        picked = picked.concat(per.filter(function (x) { return !x.isq; }).slice(0, 4));
+      });
+      picked.sort(function (a, b) { return b.w - a.w; });
+      picked = picked.slice(0, cap || 24);
+      picked.forEach(function (x, i) { x.i = i + 1; });
+      if (picked.length >= 8) return picked;
+      /* 片段太少才退回整页文字（只补 3 份，慢路径） */
+      var srcs = order.slice(0, 3);
       return Promise.all(srcs.map(function (src) {
         return textRowsFor(subjOf(src)).then(function (all) {
-          var out = [], keys2 = keys.slice(0, 4);
+          var out = [];
           (all || []).forEach(function (r) {
             if (!r.t) return;
             if (r.src !== src && normName(r.src) !== normName(src)) return;
-            var ss = sentsOf(lecClean(r.t), keys2);
-            ss.forEach(function (s) {
-              out.push({ src: src, name: String((fileOf(src) || {}).f || '').replace(/\.pdf$/i, ''), p: r.p, t: s.t, hits: s.hits, w: s.w, isq: (typeof isQPage === 'function' && isQPage(r.t)) ? 1 : 0 });
+            sentsOf(lecClean(r.t), keys2).forEach(function (s) {
+              out.push({ src: src, name: String((fileOf(src) || {}).f || '').replace(/\.pdf$/i, ''), p: r.p, t: s.t.slice(0, 90), hits: s.hits, w: s.w, isq: (typeof isQPage === 'function' && isQPage(r.t)) ? 1 : 0 });
             });
           });
           out.sort(function (a, b) { return b.w - a.w; });
           return out.filter(function (x) { return !x.isq; }).slice(0, 5);
         }).catch(function () { return []; });
       })).then(function (lists) {
-        var all = [];
+        var all = picked.slice();
         lists.forEach(function (l) { all = all.concat(l || []); });
         all.sort(function (a, b) { return b.w - a.w; });
-        all = all.slice(0, cap || 36);
+        all = all.slice(0, cap || 24);
         all.forEach(function (x, i) { x.i = i + 1; });
         return all;
       });
@@ -2131,13 +2308,13 @@
     var list = sources.map(function (x) {
       return '[' + x.i + ']（' + x.name + '·第' + x.p + '页）' + x.t;
     }).join('\n');
-    var num = mode === 'long' ? '30–40' : '12–18';
+    var num = mode === 'long' ? '24–30' : '10–14';
     var sys = '你是医学考研讲义的整理助手。给你一个知识点，和一组带编号的讲义原句。把原句合并成一份有结构的总览，只输出 JSON：'
       + '{"sections":[{"h":"一、小节标题","items":[{"t":"一句要点（≤40字）","c":[编号,…],"cov":["讲义简称"]}],"conflict":"（可选）不同讲义说法不一致之处"}],"conflict":"（可选）"}。'
       + '规则：1) 每条 item 的 c 至少 1 个编号，只能引用给定编号，禁止编造；2) 正文按主流说法合并，确有不一致时正文照主流写、同时在 conflict 里写清「A说…，B说…」；'
       + '3) 分节按医学逻辑（定义/机制/对比/例子/易错/考点）；4) 这次写 ' + num + ' 条；5) 不要开场白、不要解释。';
     var user = '知识点：' + sel + '\n讲义原句：\n' + list;
-    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null, { stream: false, temp: 0.1, maxTokens: mode === 'long' ? 2200 : 1400 }), mode === 'long' ? 45000 : 30000);
+    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null, { stream: false, temp: 0.1, maxTokens: mode === 'long' ? 2000 : 1200 }), mode === 'long' ? 45000 : 30000);
   }
 
   function parseOverview(text, sources) {
@@ -2159,9 +2336,42 @@
     return out.sections.length ? out : null;
   }
 
+  var OV_CACHE_KEY = 'qbank.lec.ov.v1';
+  function ovCacheKey(keys, mode) {
+    return mode + '|' + (keys || []).slice().sort().join('/');
+  }
+  function ovCacheGet(keys, mode) {
+    try {
+      var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}');
+      var it = db[ovCacheKey(keys, mode)];
+      if (!it || !it.ov || !it.ov.sections || !it.ov.sections.length) return null;
+      if (Date.now() - (it.ts || 0) > 3 * 24 * 3600 * 1000) return null;
+      return it.ov;
+    } catch (e) { return null; }
+  }
+  function ovCachePut(keys, mode, ov, sources) {
+    try {
+      if (!ov || !ov.sections || !ov.sections.length) return;
+      var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}');
+      var ks = Object.keys(db);
+      if (ks.length > 40) db = {};
+      db[ovCacheKey(keys, mode)] = { ts: Date.now(), ov: ov, sources: (sources || []).slice(0, 20) };
+      localStorage.setItem(OV_CACHE_KEY, JSON.stringify(db));
+    } catch (e) {}
+  }
+
   function ovHtml(st) {
     var keys = st.keys || [];
     var h = '';
+    if (st.ov && st.ov.pending) {
+      h += '<div class="lec-ovh">已从 ' + (st.sources || []).length + ' 处捞到原句，正在整理成总览…</div><div class="lec-ovbody">';
+      (st.sources || []).slice(0, 10).forEach(function (x) {
+        h += '<div class="lec-ovli lec-ovsrc">' + markSents(String(x.t || '').slice(0, 80), keys)
+          + '<button class="lec-ovcite" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">📖 ' + esc(String(x.name).slice(0, 16)) + ' · 第 ' + x.p + ' 页</button></div>';
+      });
+      h += '</div>';
+      return h;
+    }
     if (!st.ov) h += '<div class="lec-srow">还没有生成，点右下角「生成」</div>';
     else {
       st.ov.sections.forEach(function (sec) {
@@ -2192,7 +2402,7 @@
     var n = (st.ov && st.ov.sections) ? st.ov.sections.reduce(function (a, s) { return a + s.items.length; }, 0) : 0;
     mask.innerHTML = '<div class="lec-ssheet"><div class="lec-shead"><b>🧩 知识点总览</b>'
       + '<button class="lec-sx" data-web="close">×</button></div>'
-      + '<div class="lec-slaber">「' + esc(st.sel.slice(0, 46)) + '」<br>· 全库 ' + (st.sources || []).length + ' 条原句合并 · ' + n + ' 条要点</div>'
+      + '<div class="lec-slaber">「' + esc(st.sel.slice(0, 46)) + '」<br>· ' + ((st.ov && st.ov.pending) ? ('已捞到 ' + (st.sources || []).length + ' 条原句 · 整理中…') : ('全库 ' + (st.sources || []).length + ' 条原句合并 · ' + n + ' 条要点')) + '</div>'
       + '<div class="lec-sbody">' + ovHtml(st) + '</div>'
       + '<div class="lec-sfoot">'
       + '<button class="lec-ovmode' + (st.mode === 'mid' ? ' on' : '') + '" data-web="mode" data-m="mid">中版</button>'
@@ -2235,14 +2445,26 @@
   function runOverview(sel, keys, mode, keep) {
     var st = keep || { sel: sel, keys: keys, mode: mode, sources: [], ov: null };
     st.mode = mode;
-    var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, mode === 'long' ? 40 : 36);
+    if (!(st.ov && st.ov.sections && st.ov.sections.length)) {
+      var cached = ovCacheGet(keys, mode);
+      if (cached) {
+        st.ov = cached;
+        if (!st.sources || !st.sources.length) { try { var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}'); st.sources = (db[ovCacheKey(keys, mode)] || {}).sources || []; } catch (e) {} }
+        renderOverview(st);
+        return Promise.resolve(true);
+      }
+    }
+    var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, mode === 'long' ? 28 : 20);
     return p1.then(function (srcs) {
       st.sources = srcs;
       if (!srcs.length) { st.ov = { sections: [], conflict: '' }; st.sources = []; renderOverview(st); toast('全库没捞到原句', 2000, 'bad'); return; }
+      st.ov = { pending: 1 };
+      renderOverview(st);
       return ovPrompt(sel, keys, srcs, mode).then(function (txt) {
         var ov = parseOverview(txt, srcs);
-        if (!ov) { toast('AI 没给出结构化的总览', 2200, 'bad'); return; }
+        if (!ov) { st.ov = null; renderOverview(st); toast('AI 没给出结构化的总览', 2200, 'bad'); return; }
         st.ov = ov;
+        ovCachePut(keys, mode, ov, srcs);
         renderOverview(st);
       });
     }).catch(function (e) { toast('生成失败：' + (e && e.message || e), 2400, 'bad'); });
@@ -2515,7 +2737,9 @@
     }).catch(function (e) { toast('检索失败：' + (e && e.message || e), 2400, 'bad'); return false; });
   }
 
-  window.LECTURE = { fileOfName: fileOfName, open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
+  setTimeout(function () { try { ovWarm(); } catch (e) {} }, 1800);
+
+window.LECTURE = { fileOfName: fileOfName, overviewAsk: overviewAsk, kbMulti: kbMulti, askKeys: askKeys, collectSources: collectSources, open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     openHit: openHit,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
