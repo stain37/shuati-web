@@ -4208,3 +4208,28 @@ body.quiz #nbBackFab{bottom:calc(var(--quizbar-h,72px) + 96px + 46px + env(safe-
 @media (max-width:560px){
   #nbBackFab{padding:8px 12px 8px 10px}
 }
+
+
+/* ============================================================
+   web730：目录/题库详情表格 —— 圆角不再切内容，操作列常驻
+   ============================================================ */
+/* 有些皮肤把卡片圆角写成 999px（胶囊），套到表格上会把首尾行切掉 */
+.nb-details,
+html[data-style] .nb-details{
+  border-radius:14px!important;
+  max-width:100%;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+}
+/* 操作列不要贴边：给表格右侧留一点内边距，按钮不会被圆角吃掉 */
+.nb-table td.c-acts,
+.nb-table th.c-acts{padding-right:16px}
+.nb-details{padding:0 2px}
+.nb-table td.nb-dname{max-width:44vw;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:620px){
+  .nb-table th,.nb-table td{padding:7px 8px;font-size:calc(var(--fs) * .86)}
+  /* 手机上去掉信息量最低的三列，剩下的正好放得下 */
+  .nb-table th:nth-child(2),.nb-table th:nth-child(3),.nb-table th:nth-child(5){display:none}
+  .nb-table td.c-type,.nb-table td.c-at,.nb-table td.c-done{display:none}
+  .nb-table td.nb-dname{max-width:none;white-space:normal}
+}
