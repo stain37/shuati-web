@@ -57,6 +57,10 @@
   }
   function applyIdx(j) { return (j && j.s && j.e) ? parseCompact(j) : parseLegacy(j); }
 
+  /* 注意：404 也是可缓存响应。之前用 ?t=<今天日期> + force-cache，
+     站点重建那几分钟里拿到过一次 404，就会被浏览器缓存一整天 → 一直“目录没读出来”。
+     现在：版本号做 key；重试时带随机数 + no-store，绝不吃坏缓存。 */
+  var LEC_VER = '20261111h';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -65,8 +69,11 @@
         n++;
         var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
         var tid = setTimeout(function () { if (ctl) try { ctl.abort(); } catch (e) {} }, ms || 20000);
-        fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 't=' + new Date().toISOString().slice(0, 10),
-              ctl ? { signal: ctl.signal, cache: 'force-cache' } : { cache: 'force-cache' })
+        var u = url + (url.indexOf('?') < 0 ? '?' : '&') + 'v=' + LEC_VER;
+        var opt = { cache: 'force-cache' };
+        if (n > 1) { u += '&nc=' + Date.now() + Math.random().toString(36).slice(2, 7); opt = { cache: 'no-store' }; }
+        if (ctl) opt.signal = ctl.signal;
+        fetch(u, opt)
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
           .then(function (j) { clearTimeout(tid); resolve(j); })
           .catch(function (e) { clearTimeout(tid); if (n < tries) setTimeout(once, 700 * n); else reject(e); });
