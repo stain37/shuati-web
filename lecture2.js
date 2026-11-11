@@ -415,7 +415,11 @@
     if (el.sel) el.sel.value = CUR.src;
     if (el.page) el.page.value = CUR.p;
     if (el.total) el.total.textContent = '/ ' + n;
-    if (el.meta) el.meta.textContent = f.f.replace(/\.pdf$/i, '').slice(0, 28);
+    if (el.meta) {
+      el.meta.textContent = (CUR.label && CUR.labelSrc === CUR.src && CUR.labelP === CUR.p)
+        ? CUR.label
+        : f.f.replace(/\.pdf$/i, '').slice(0, 28);
+    }
     var key = keyFor(CUR.src, CUR.p);
     if (key) setImg('pdfimg/' + key + '.webp');
     else {
@@ -728,6 +732,11 @@
   function questionText() {
     var parts = [];
     QP = { stem: '', opts: [] };
+    if (window.__QTEST && window.__QTEST.stem) {
+      QP.stem = window.__QTEST.stem;
+      QP.opts = (window.__QTEST.opts || []).slice();
+      return QP.stem + ' ' + QP.opts.join(' ');
+    }
     var stem = document.querySelector('#qBody .stem, #qBody .gstem, .stem');
     if (stem) { QP.stem = (stem.textContent || '').trim(); parts.push(QP.stem); }
     Array.prototype.forEach.call(document.querySelectorAll('#qBody .opt, .opts .opt'), function (el) {
@@ -1024,8 +1033,10 @@
       test: function (t) {
         if (!/分期|分级/.test(t)) return false;
         var rom = (t.match(/[ⅠⅡⅢⅣ]/g) || []).length;
-        var lat = (t.match(/(?:^|[\s、，,；;])(I{1,3}|IV)\s*[:：]/gi) || []).length;
-        return (rom + lat) >= 2;
+        /* OCR 常把罗马数字识别成 I / l / L，后面跟冒号 */
+        var lat = (t.match(/(?:^|[\s、，,；;（）()])(I{1,4}|l{1,4}|L{1,4})\s*[:：]/g) || []).length;
+        var romAny = (t.match(/\b(I{1,3}V?|V?I{1,3})\b/g) || []).length;
+        return (rom + lat) >= 1 || romAny >= 2;
       } },
     { id: 'type', words: ['分型', '类型是', '属于哪型'], kw: ['分型', '类型'],
       test: function (t) { return /分型/.test(t) || (/型/.test(t) && (t.match(/[ⅠⅡⅢⅣ]/g) || []).length >= 2); } },
@@ -1089,6 +1100,10 @@
     if (ent.length >= 5 && t.indexOf(ent.slice(-4)) >= 0) return true;
     return false;
   }
+  function fileHasEnt(src, ask) {
+    if (!ask || !ask.ent) return false;
+    return normName(src).indexOf(ask.ent) >= 0;
+  }
   function attrTest(t, ask) {
     if (!ask || !t) return false;
     if (!entHit(t, ask.ent)) return false;
@@ -1109,9 +1124,11 @@
       if (t && t.length <= 16) clean.push(t);
     });
     var core = String(stem || '').replace(/(最可能的诊断是|下列|以下|关于|正确的是|错误的是|首选|不应|除了|哪些|包括)/g, ' ').trim();
-    if (core) need.push(core.slice(0, 24));
-    clean.forEach(function (c) { if (need.indexOf(c) < 0) need.push(c); if (diff.indexOf(c) < 0) diff.push(c); });
-    return { goal: core.slice(0, 20), need: need.slice(0, 8), diff: diff.slice(0, 6), src: 'rule' };
+    var raw = [];
+    if (core) raw.push(core.slice(0, 24));
+    clean.forEach(function (c) { if (raw.indexOf(c) < 0) raw.push(c); if (diff.indexOf(c) < 0) diff.push(c); });
+    var wneed = raw.slice(0, 8).map(function (t, i) { return { k: t, w: i === 0 ? 5 : 3 }; });
+    return { goal: core.slice(0, 20), need: wneed, diff: diff.slice(0, 6), src: 'rule' };
   }
 
   function parseKnow(txt) {
@@ -1123,9 +1140,24 @@
         return (v || []).map(function (x) { return String(x || '').replace(/\s+/g, '').slice(0, 18); })
           .filter(function (x) { return x.length >= 2; }).slice(0, 8);
       }
-      var need = arr(o.need), diff = arr(o.diff);
+      var need = [], diff = arr(o.diff);
+      (o.need || []).forEach(function (x) {
+        var k2 = '', w2 = 3;
+        if (x && typeof x === 'object') { k2 = String(x.k || x.v || '').replace(/\s+/g, ''); w2 = +x.w || 3; }
+        else k2 = String(x || '').replace(/\s+/g, '');
+        k2 = k2.slice(0, 18);
+        if (k2.length < 2) return;
+        if (w2 < 1) w2 = 1; if (w2 > 5) w2 = 5;
+        need.push({ k: k2, w: w2 });
+      });
+      need = need.slice(0, 8);
       if (!need.length && !diff.length) return null;
-      return { goal: String(o.goal || '').slice(0, 30), need: need, diff: diff, src: 'ai' };
+      return {
+        goal: String(o.goal || o.subject || '').slice(0, 40),
+        subject: String(o.subject || '').slice(0, 30),
+        ask: String(o.ask || '').slice(0, 10),
+        need: need, diff: diff, src: 'ai'
+      };
     } catch (e) { return null; }
   }
 
@@ -1136,7 +1168,7 @@
     var fb = ruleKnow(stem, opts);
     if (typeof window.aiChat !== 'function') return Promise.resolve(fb);
     var msgs = [
-      { role: 'system', content: '你是医学考研命题老师。读完题，写出解这道题必需的讲义知识点。只输出 JSON，不要解释：{"goal":"这道题要判断什么，≤20字","need":["解题必需的知识点，3-6个，每个≤14字，用讲义里的术语，不要照抄选项"],"diff":["选项之间的判别依据，2-4个，每个≤14字"]}' },
+      { role: 'system', content: '你是医学考研命题老师。按三步做题：①先判断这题考的是哪个病、哪个考点（subject）；②再拆出解题必需的知识点，并按「对本题的重要性」打权重 1-5（5=不知道就做不出来，3=需要，1=锦上添花）；③最后写选项之间的判别依据。只输出 JSON，不要解释：{"subject":"考什么：病名+考点，≤16字","ask":"题目问的落点（如 分期/分级/首选检查/诊断标准），≤8字","goal":"这道题要判断什么，≤24字","need":[{"k":"知识点，用讲义里的术语，≤14字，不要照抄选项","w":5}],"diff":["选项之间的判别依据，2-4个，每个≤14字"]}' },
       { role: 'user', content: '题干：' + String(stem || '').slice(0, 800) + '\n选项：' + (opts || []).join(' / ') + (ask ? ('\n注意：这道题问的是「' + (ask.ent ? ask.ent + '的' : '') + ask.words[0] + '」，need 里必须包含回答它的判断标准/依据（例如分期标准、各期表现）。') : '') }
     ];
     return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 420 }), 12000)
@@ -1153,7 +1185,7 @@
     if (!spec) return [];
     var out = [], seen = {};
     (spec.need || []).concat(spec.diff || []).forEach(function (x) {
-      var t = String(x || '').replace(/\s+/g, '');
+      var t = String((x && typeof x === 'object' ? (x.k || x.v) : x) || '').replace(/\s+/g, '');
       if (t.length < 2 || t.length > 20) return;
       if (seen[t]) return;
       seen[t] = 1; out.push(t);
@@ -1161,34 +1193,55 @@
     return out;
   }
 
+  /* 加权知识点：w=5 的是「不知道就做不出来」的那条 */
+  function knowWeighted(spec) {
+    var out = [], seen = {};
+    ((spec && spec.need) || []).forEach(function (x) {
+      var k2, w2;
+      if (x && typeof x === 'object') { k2 = x.k || x.v; w2 = +x.w || 3; }
+      else { k2 = x; w2 = 3; }
+      k2 = String(k2 || '').replace(/\s+/g, '');
+      if (k2.length < 2 || k2.length > 20 || seen[k2]) return;
+      seen[k2] = 1;
+      if (w2 < 1) w2 = 1; if (w2 > 5) w2 = 5;
+      out.push({ k: k2, w: w2 });
+    });
+    out.sort(function (a, b) { return b.w - a.w; });
+    return out;
+  }
+
   /* 按「这页讲到了多少解题必需的知识点」重排：相似度 0.6 + 知识覆盖 0.4 */
   function knowRerank(list, spec, ask) {
     if (!list || !list.length) return list;
-    var terms = spec ? knowTerms(spec) : [];
-    var rows = [], best = 0, anyAttr = 0;
+    var W = knowWeighted(spec);
+    var terms = W.map(function (x) { return x.k; });
+    var totW = 0;
+    W.forEach(function (x) { totW += x.w; });
+    var topK = W.length ? W[0].k : '';
+    var rows = [], bestCov = 0, anyAttr = 0;
     list.forEach(function (x) {
-      var t = lecClean(x.t), cover = 0;
-      terms.forEach(function (w) { if (t && t.indexOf(w) >= 0) cover++; });
-      var at = attrScore(t, ask);
-      if (cover > best) best = cover;
+      var t = lecClean(x.t), covW = 0, hitN = 0;
+      W.forEach(function (e) { if (t && t.indexOf(e.k) >= 0) { covW += e.w; hitN++; } });
+      var cov = totW ? (covW / totW) : 0;
+      var at = fileHasEnt(x.src, ask) ? (ask && ask.test ? attrScore(t, ask) : 0) : attrScore(t, ask);
+      var topHit = (topK && t && t.indexOf(topK) >= 0) ? 1 : 0;
+      if (cov > bestCov) bestCov = cov;
       if (at >= 1) anyAttr++;
-      rows.push({ x: x, cover: cover, at: at });
+      rows.push({ x: x, cov: cov, hitN: hitN, at: at, top: topHit });
     });
-    /* 只有「讲到 ≥2 个必需知识点」或「真有页面上写着题目问的那个落点」时才重排 */
-    if (best < 2 && !anyAttr) return list;
+    if (bestCov < 0.28 && !anyAttr) return list;
     rows.forEach(function (r) {
       var sim = r.x.score || 0;
-      var cov = terms.length ? (r.cover / terms.length) : 0;
       var s2;
       if (ask) {
-        /* 硬规则：有「题目问的那个落点」的页，永远排在没写它的页前面 */
         s2 = (r.at >= 1)
-          ? (0.55 + sim * 0.25 + cov * 0.20)
-          : (sim * 0.30 + cov * 0.15);
+          ? (0.48 + r.cov * 0.32 + r.top * 0.10 + sim * 0.10)
+          : (r.cov * 0.22 + sim * 0.18);
       } else {
-        s2 = sim * 0.50 + cov * 0.50;
+        s2 = r.cov * 0.60 + sim * 0.40;
       }
-      r.x.know = r.cover; r.x.knowN = terms.length; r.x.attr = r.at;
+      r.x.know = r.hitN; r.x.knowN = terms.length; r.x.attr = r.at;
+      r.x.kw = Math.round(r.cov * 100); r.x.topk = r.top;
       r.x.score = s2;
     });
     rows.sort(function (a, b) { return (b.x.score || 0) - (a.x.score || 0); });
@@ -1261,7 +1314,7 @@
     var top = list[0];
     var f = fileOf(top.src);
     var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
-    if (top.know) hint += ' · 知识点 ' + top.know + '/' + (top.knowN || '');
+    if (top.know) hint += ' · 知识点 ' + top.know + '/' + (top.knowN || '') + (top.kw ? ('（重点覆盖 ' + top.kw + '%）') : '');
     if (top.attr >= 1) hint += ' · 命中「问的落点」';
     jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + localPage(f, top.p) + ' 页' + hint);
     return true;
@@ -1297,6 +1350,7 @@
     if (!f) return false;
     CUR.src = src;
     CUR.p = Math.max(1, Math.min(f.n || 9999, localPage(f, (p | 0) || 1)));
+    CUR.label = label || ''; CUR.labelSrc = src; CUR.labelP = CUR.p;
     CAND = [];
     paint();
     try { remember(); } catch (e) {}
@@ -1509,147 +1563,83 @@
     }
     return '';
   }
+  /* ---------- 定位：①向量库定 PDF ②AI 定考点/关键知识点 ③每份 PDF 内按知识点排序（web762 重写） ---------- */
+  var SUBROWS = {};
+  function rowsFor(subj) {
+    if (SUBROWS[subj]) return Promise.resolve(SUBROWS[subj]);
+    return loadRows(subj, true).then(function (rows) { SUBROWS[subj] = rows || []; return SUBROWS[subj]; });
+  }
+
   function multiLocate(q, opts) {
-    var plan = diffPlan(QP.stem, opts);
-    var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
-    var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
-    var expP = expandQuery(QP.stem).catch(function () { return ''; });
-    var askBase = askedAttr(QP.stem);
-    var ask = null;
-    if (askBase) {
-      ask = { id: askBase.id, words: askBase.words, kw: askBase.kw, test: askBase.test, ent: entityOf(QP.stem, opts) };
-    }
-    var knowP = knowSpec(QP.stem, opts, ask).catch(function () { return null; });
-    return Promise.all([kbRows(q), prevP, expP, knowP]).then(function (r) {
-      var kb = r[0] || [], prev = r[1] || [];
-      var extraQ = String(r[2] || '').trim();
-      var know = r[3] || null;
-      var kws = know ? knowTerms(know).join(' ') : '';
-      var askKw = ask ? ask.kw.join(' ') : '';
-      var qEmb = q + (know && know.goal ? (' ' + know.goal) : '') + (ask ? (' ' + ask.words[0]) : '');
-      var qAll = [q, extraQ, kws, askKw].filter(Boolean).join(' ');
-      var bySrc = {};
-      function addRows(rows) {
-        (rows || []).forEach(function (x) {
-          if (!x || !x.src) return;
-          (bySrc[x.src] || (bySrc[x.src] = [])).push(x);
-        });
-      }
-      addRows(prev);
-
-      var fileScore = {}, kbPages = {};
-      function bumpFile(src, sc) { if (!fileScore[src] || sc > fileScore[src]) fileScore[src] = sc; }
-      function bumpPage(src, p, sc) {
-        var m = kbPages[src] || (kbPages[src] = {});
-        m[p] = Math.max(m[p] || 0, sc);
-      }
-      kb.forEach(function (x) {
-        var sc = x.score || 0;
-        bumpFile(x.src, sc);
-        if (x.p > 0) bumpPage(x.src, x.p, sc);
+    opts = opts || QP.opts || [];
+    var stem = q || QP.stem || '';
+    var mustIdx = (FILES && FILES.length) ? Promise.resolve() : loadIndex();
+    var kbP = mustIdx.catch(function () { return null; }).then(function () { return Promise.resolve(); })
+      .then(function () {
+        if (typeof kbEnsureFilesLoaded === 'function') return kbEnsureFilesLoaded();
+        return null;
+      })
+      .then(function () { return (typeof kbRows === 'function') ? kbRows(q) : []; })
+      .catch(function () { return []; });
+    var spP = knowSpec(stem, opts, null).catch(function () { return null; });
+    return Promise.all([kbP, spP]).then(function (rp) {
+      var hits = rp[0] || [], spec = rp[1] || {};
+      var pts = knowWeighted(spec).slice(0, 6);
+      var tp = String((spec.subject || '') + ' ' + (spec.goal || '')).replace(/\s+/g, ' ').trim();
+      var fileScore = {}, subs = {};
+      (hits || []).forEach(function (h) {
+        var f = fileByHit(h); if (!f) return;
+        fileScore[f.src] = (fileScore[f.src] || 0) + Math.max(1, Number(h.score || h.rr || 1));
+        var sb = subjOf(f.src); if (sb) subs[sb] = 1;
       });
-      function kwBump(rows) {
-        var hs = (searchIn(rows, qAll) || []).slice(0, 80);
-        hs.forEach(function (h) {
-          var rr = rows[h.i]; if (!rr || !rr.src) return;
-          var sc = Math.max(0.05, (h.score || 0) * 0.45);
-          bumpFile(rr.src, sc);
-          bumpPage(rr.src, localPage(fileOf(rr.src) || {}, rr.p), sc);
-        });
-      }
-      if (prev.length) kwBump(prev);
-
-      var files = Object.keys(fileScore)
-        .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 6);
-      if (!files.length) return [];
-
-      /* 命中文件不在当前科目的文字块里：把它所属科目的文字也读进来，才能按页比对 */
-      var needSubj = {};
-      var preFiles = Object.keys(fileScore)
-        .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 12);
-      preFiles.forEach(function (src) {
-        if (!bySrc[src] || !bySrc[src].length) { var sj = subjOf(src); if (sj) needSubj[sj] = 1; }
-      });
-      var extraP = Object.keys(needSubj).map(function (sj) {
-        return loadTextSubj(sj).then(function (rows) { return rows || []; }).catch(function () { return []; });
-      });
-      return Promise.all(extraP).then(function (ex) {
-        ex.forEach(function (rows) { if (rows.length) { addRows(rows); kwBump(rows); } });
-
-        /* 题目问「分期/分级/诊断标准」这类落点时：把真正写着这个落点的页直接抬上来（此时各科目文字块已载入） */
-        if (ask) {
-          /* 病名优先用「命中讲义文件名」里的干净病名（题干正则容易截出「该患者双手X线达到类风湿关节炎」这种） */
-          var entName = entFromNames(files.concat(Object.keys(fileScore)), QP.stem, opts);
-          if (entName) ask.ent = entName;
-          else if (ask.ent && ask.ent.length > 8) ask.ent = ask.ent.slice(-8);
-          var fmax = 0, pmax = 0;
-          Object.keys(fileScore).forEach(function (k) { if (fileScore[k] > fmax) fmax = fileScore[k]; });
-          Object.keys(kbPages).forEach(function (k) {
-            Object.keys(kbPages[k]).forEach(function (p2) { if (kbPages[k][p2] > pmax) pmax = kbPages[k][p2]; });
-          });
-          if (!fmax) fmax = 1; if (!pmax) pmax = 1;
-          Object.keys(bySrc).forEach(function (src) {
-            var rows2 = bySrc[src] || [], hitPage = 0;
-            for (var i2 = 0; i2 < rows2.length; i2++) {
-              if (attrTest(rows2[i2].t, ask)) {
-                hitPage = localPage(fileOf(src) || {}, rows2[i2].p);
-                break;
-              }
-            }
-            if (hitPage) {
-              bumpFile(src, fmax * 1.25 + 1);
-              bumpPage(src, hitPage, pmax * 1.35 + 1);
-            }
-          });
-          files = Object.keys(fileScore)
-            .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 6);
+      var cs = subjOf(CUR.src); if (cs) subs[cs] = 1;
+      var sks = Object.keys(subs);
+      return Promise.all(sks.map(function (s) { return rowsFor(s).catch(function () { return []; }); })).then(function () {
+        var files = Object.keys(fileScore).sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 8);
+        try { window.__M1 = { nh: (hits || []).length, nfs: Object.keys(fileScore).length, h0: ((hits || [])[0] || {}).file, f0: fileByHit((hits || [])[0] || {}) ? fileByHit(hits[0]).src : null, files: files.slice(0, 5), pts: pts.map(function (x) { return x.k + ':' + x.w; }) }; } catch (e9) {}
+        if (!files.length) {
+          files = (FILES || []).filter(function (f) { return subjOf(f.src) === cs; }).slice(0, 6).map(function (f) { return f.src; });
         }
-
+        var qEmb = (tp + ' ' + stem + ' ' + pts.slice(0, 4).map(function (x) { return x.k; }).join(' ')).slice(0, 400);
         var jobs = files.map(function (src) {
-          var rows = bySrc[src] || [];
-          var cand = {};
-          Object.keys(kbPages[src] || {}).forEach(function (p) { cand[p] = kbPages[src][p]; });
-          var fobj = fileOf(src) || {};
-          var hs = rows.length ? (searchIn(rows, qAll) || []).slice(0, 10) : [];
-          hs.forEach(function (h) {
-            var rr = rows[h.i]; if (!rr) return;
-            var lp = localPage(fobj, rr.p);
-            cand[lp] = Math.max(cand[lp] || 0, Math.max(0.05, (h.score || 0) * 0.4));
+          var rows = (SUBROWS[subjOf(src)] || []).filter(function (r) { return r.src === src && r.t && String(r.t).length > 20; });
+          if (!rows.length) return Promise.resolve([]);
+          var scored = rows.map(function (r) {
+            var t = lecClean(r.t), w = 0;
+            pts.forEach(function (p2) { if (p2.k && t.indexOf(p2.k) >= 0) w += p2.w; });
+            return { r: r, cov: w };
           });
-          var pages = Object.keys(cand).map(function (p) {
-            var page = +p, row = null;
-            for (var i = 0; i < rows.length; i++) { if (localPage(fobj, rows[i].p) === page) { row = rows[i]; break; } }
-            return { src: src, p: page, k: cand[p], t: row && row.t };
-          }).sort(function (a, b) { return b.k - a.k; }).slice(0, 10);
-
-          function fallback() {
-            return pages.slice(0, 3).map(function (x) { return { src: x.src, p: x.p, score: Math.min(0.99, x.k) }; });
-          }
-          var withT = pages.filter(function (x) { return x.t && x.p > 0; });
-          if (withT.length >= 2) {
-            return withTimeout(rankPages(withT, qEmb), 11000).then(function (rk) {
-              var got = (rk || []).slice(0, 3);
-              return got.length ? got : fallback();
-            }).catch(fallback);
-          }
-          return Promise.resolve(fallback());
+          var byPage = {};
+          scored.forEach(function (x) { byPage[x.r.p] = x.cov; });
+          scored.sort(function (a, b) { return b.cov - a.cov; });
+          var pick = scored.slice(0, 24).map(function (x) { return x.r; });
+          return rankPages(pick, qEmb).then(function (ranked) {
+            var out = [];
+            (ranked || []).forEach(function (x) {
+              var cov = byPage[x.p] || 0;
+              var covN = pts.length ? Math.min(1, cov / 5) : 0;
+              out.push({ src: src, p: x.p, score: Math.min(0.99, 0.62 * (x.score || 0) + 0.38 * covN), covN: covN, knowNum: pts.length });
+            });
+            out.sort(function (a, b) { return b.score - a.score; });
+            return out.slice(0, 3);
+          }).catch(function () { return []; });
         });
-
-        return Promise.all(jobs).then(function (all) {
-          var out = [];
-          all.forEach(function (arr) { (arr || []).forEach(function (x) { if (x && x.p > 0) out.push(x); }); });
-          out.forEach(function (x) {
-            if (!x.t) x.t = pageText(bySrc[x.src] || [], x.src, x.p);
-            if (isQPage(x.t)) { x.score = (x.score || 0) * Q_PENALTY; x.isq = 1; }
+        return Promise.all(jobs).then(function (lists) {
+          var all = [];
+          lists.forEach(function (l) { (l || []).forEach(function (x) { all.push(x); }); });
+          all.sort(function (a, b) { return b.score - a.score; });
+          all.forEach(function (x) {
+            var f = fileOf(x.src) || {};
+            x.f = f.f || String(x.src).split('/').pop();
+            x.n = f.n || 0;
+            x.know = tp ? ('考点 ' + tp.slice(0, 36)) : '';
           });
-          out.sort(function (a, b) { return b.score - a.score; });
-          out = knowRerank(out, know, ask);           /* 按「解题所需知识 + 题目问的落点」重排 */
-          if (plan) out = diffRerank(out, plan);      /* 再对鉴别题倾向于对照表 */
-          return out;
+          return all;
         });
       });
     });
   }
+
 
   function locate() {
     var bd = getBind();
@@ -1887,5 +1877,6 @@
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     diff: { on: diffOn, set: diffSet, plan: diffPlan, rerank: diffRerank, text: pageText },
+    multi: multiLocate, rowsFor: rowsFor, _fbh: fileByHit, _nm: normName, _kb: function (q) { return kbRows(q); }, spec: function () { return knowSpec(QP.stem, QP.opts, null); }, cont: function () { return CAND2; },
   };
 })();
