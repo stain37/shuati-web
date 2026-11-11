@@ -488,18 +488,38 @@
     return MAN_JOB;
   }
   function subjOf(src) { var p = String(src || '').split('/'); return p.length > 2 ? p[1] : ''; }
+  /* 把一块原始数据收拾成行；任何坏行都跳过（老版本缓存 / 半截下载的文件都可能混进 null） */
+  function rowsOf(arr) {
+    var out = [];
+    if (!Array.isArray(arr)) return out;
+    for (var i = 0; i < arr.length; i++) {
+      var r = arr[i];
+      if (!r) continue;
+      if (Array.isArray(r)) {
+        var src0 = String(r[2] || '');
+        out.push({ k: r[0], p: r[1], src: src0, f: src0.split('/').pop(), t: String(r[3] == null ? '' : r[3]) });
+      } else if (typeof r === 'object') {
+        var src1 = String(r.src || '');
+        out.push({ k: r.k, p: r.p, src: src1, f: r.f || src1.split('/').pop(), t: String(r.t == null ? '' : r.t) });
+      }
+    }
+    return out.filter(function (x) { return x.t; });
+  }
   function loadPart(pid) {
     if (TXT_CACHE[pid]) return Promise.resolve(TXT_CACHE[pid]);
     return idb('get', 'part:' + pid).then(function (c) {
-      if (c && c.rows) { TXT_CACHE[pid] = c.rows; return c.rows; }
+      var cached = (c && Array.isArray(c.rows)) ? c.rows.filter(Boolean) : null;
+      if (cached && cached.length) { TXT_CACHE[pid] = cached; return cached; }
       return fetchJson('pdftext/' + pid + '.json', 3, 40000).then(function (arr) {
-        var rows = (arr || []).map(function (r) {
-          var src = r[2] || '';
-          return { k: r[0], p: r[1], src: src, f: src.split('/').pop(), t: r[3] };
-        });
+        var rows = rowsOf(arr);
+        if (!rows.length) throw new Error('这一块是空的');
         TXT_CACHE[pid] = rows;
         idb('set', 'part:' + pid, { ts: Date.now(), rows: rows });
         return rows;
+      }).catch(function (e) {
+        /* 缓存或网络坏了：把这一块的缓存删掉，下次重来 */
+        idb('set', 'part:' + pid, null);
+        throw e;
       });
     });
   }
@@ -562,6 +582,7 @@
     /* 文档频率 → idf：越少见的字对越有用（题库题干的常用词自动降权） */
     var df = {}, i, j;
     for (i = 0; i < TXT.length; i++) {
+      if (!TXT[i]) continue;
       var t = TXT[i]._n || (TXT[i]._n = normText(TXT[i].t));
       for (j = 0; j < keys.length; j++) if (t.indexOf(keys[j]) >= 0) df[keys[j]] = (df[keys[j]] || 0) + 1;
     }
@@ -569,6 +590,7 @@
     keys.forEach(function (g) { idf[g] = Math.log(1 + N / (1 + (df[g] || 0))); });
     var scored = [];
     for (i = 0; i < TXT.length; i++) {
+      if (!TXT[i] || !TXT[i]._n) continue;
       var n2 = TXT[i]._n, sc = 0, hit = 0;
       for (j = 0; j < keys.length; j++) {
         if (df[keys[j]] && n2.indexOf(keys[j]) >= 0) { sc += idf[keys[j]]; hit++; }
