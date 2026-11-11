@@ -450,6 +450,8 @@
   function openPdf() {
     var f = fileOf(CUR.src); if (!f) return;
     var url = f.src + (CUR.p ? '#page=' + CUR.p : '');
+    /* 先把讲义抽屉收起来：抽屉的层级比阅读器高，不收会被盖住，看着像「PDF 打不开」 */
+    try { close(); } catch (e) {}
     try {
       if (typeof aiPdfFullscreen === 'function') { aiPdfFullscreen(f.src, f.f, f.src, String(CUR.p)); return; }
     } catch (e) {}
