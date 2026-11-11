@@ -2309,11 +2309,13 @@
   function ovSrcLine(x) { return '[' + x.i + ']（' + x.name + '·第' + x.p + '页）' + x.t; }
 
   /* 讲解式总览：让模型按知识逻辑写「一份可以直接复习的讲解」，句末挂来源编号 */
-  function ovPrompt(sel, keys, sources, mode) {
+  function ovPrompt(sel, keys, sources, mode, short) {
     var list = sources.map(ovSrcLine).join('\n');
-    var target = mode === 'chapter'
-      ? '整章版：4–6 节，每节 2–4 段，每段 2–4 句，全篇 16–22 段（约 1400–2200 字）'
-      : '标准版：3–5 节，每节 1–3 段，全篇 10–14 段（约 900–1400 字）';
+    var target = short
+      ? '精简版：3–4 节，每节 1–2 段，全篇 6–8 段（每段 ≤80 字，总计 ≤600 字）'
+      : (mode === 'chapter'
+        ? '整章版：4–6 节，每节 2–4 段，每段 2–4 句，全篇 16–22 段（约 1400–2200 字）'
+        : '标准版：3–5 节，每节 1–3 段，全篇 10–14 段（约 900–1400 字）');
     var sys = '你是医学考研讲义的撰稿人。任务：把散在各本讲义里的内容，写成一份考生可以直接拿来复习的「讲解」，'
       + '不是摘句、不是资料卡。只输出 JSON，不要任何解释或代码块标记，格式：'
       + '{"title":"这节讲什么（≤18字）","lead":"一句话导语（≤60字）",'
@@ -2328,7 +2330,7 @@
       + '6) ' + target + '；7) 不要开场白、不要总结陈词、不要 Markdown 标题符号。';
     var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号必须来自这里）：\n' + list;
     return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.2, maxTokens: mode === 'chapter' ? 3600 : 2000 }), mode === 'chapter' ? 95000 : 60000);
+      { stream: false, temp: 0.2, maxTokens: short ? 1800 : (mode === 'chapter' ? 3600 : 2000) }), short ? 45000 : (mode === 'chapter' ? 95000 : 60000));
   }
 
   function ovCleanText(t) { return String(t || '').replace(/\[\[\d+\]\]/g, '').replace(/\s+/g, ' ').trim(); }
@@ -2389,6 +2391,35 @@
       }
     }
     return null;
+  }
+
+  /* 模型有时不理 JSON，只回一段带小标题的正文 —— 按段落整理，别让用户看到空白 */
+  function ovFromProse(text, sources, sel) {
+    var s = String(text || '').replace(/```[\s\S]*?```/g, '').trim();
+    if (s.length < 60) return null;
+    var lines = s.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var secs = [], cur = { h: '', paras: [] };
+    lines.forEach(function (ln) {
+      var x = ln.replace(/^#{1,6}\s*/, '').replace(/^\*\*/, '').replace(/\*\*$/, '').trim();
+      if (!x) return;
+      var isH = (/^(?:[一二三四五六七八九十]+[、.．]|\d+[、.．]|第[一二三四五六七八九十]+[节部])/.test(x) && x.length <= 26);
+      if (isH) {
+        if (cur.h || cur.paras.length) secs.push(cur);
+        cur = { h: x, paras: [] };
+        return;
+      }
+      if (x.length < 8) return;
+      if (/^(好的|以下|下面|当然|抱歉)/.test(x) && x.length < 30) return;
+      cur.paras.push({ t: x.slice(0, 800), raw: ovCleanText(x), cites: ovCitesIn(x, sources) });
+    });
+    if (cur.h || cur.paras.length) secs.push(cur);
+    secs = secs.filter(function (sec) { return (sec.paras || []).length; });
+    if (!secs.length) return null;
+    secs.forEach(function (sec) { sec.cited = sec.paras.filter(function (p) { return p.cites.length; }).length; });
+    return {
+      title: String(sel || '').slice(0, 18), lead: '', sections: secs, conflict: '',
+      coverage: null, prose: 1
+    };
   }
 
   function parseOverview(text, sources) {
@@ -2551,13 +2582,24 @@
     var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, cap);
     return p1.then(function (srcs) {
       st.sources = srcs;
-      if (!srcs.length) { st.ov = { sections: [], conflict: '' }; renderOverview(st); toast('全库没捞到原句', 2000, 'bad'); return; }
+      if (!srcs.length) {
+        st.ov = { sections: [], conflict: '', failed: 1, raw: '全库检索没捞到原句。\n关键词：' + (keys || []).join('、') + '\n可能原因：① 知识库还没加载完（等几秒再点一次）② 这个说法在讲义里用的不是这几个词（换个说法/选中更短的一段）' };
+        renderOverview(st); toast('全库没捞到原句', 2400, 'bad'); return;
+      }
+      if (typeof window.aiChat !== 'function') {
+        st.ov = { sections: [], conflict: '', failed: 1, raw: '这个页面没加载 AI 模块（ai.js 未就绪），或浏览器把 AI 功能关掉了。刷新一次再试。' };
+        renderOverview(st); return;
+      }
       st.ov = { pending: 1 };
       renderOverview(st);
       return ovPrompt(sel, keys, srcs, mode).then(function (txt) {
-        var ov = parseOverview(txt, srcs);
+        if (!String(txt || '').trim()) return ovPrompt(sel, keys, srcs, mode, true).then(function (t2) { return t2; });
+        return txt;
+      }).then(function (txt) {
+        var ov = parseOverview(txt, srcs) || ovFromProse(txt, srcs, sel);
+        if (ov && ov.prose) toast('模型没按格式回，已按段落整理', 2600, 'info');
         if (!ov) {
-          st.ov = { sections: [], conflict: '', failed: 1, raw: String(txt || '（AI 返回空）').slice(0, 1200) };
+          st.ov = { sections: [], conflict: '', failed: 1, raw: 'AI 原文（长度 ' + String(txt || '').length + ' 字）：\n' + String(txt || '（空）').slice(0, 1200) };
           renderOverview(st);
           toast('AI 回的内容没解析出来，原文已显示在面板里', 2800, 'bad');
           return;
