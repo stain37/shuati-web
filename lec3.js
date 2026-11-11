@@ -2595,7 +2595,7 @@
       var part = st.ov.partial;
       if (part && part.sections && part.sections.length) {
         part.sections.forEach(function (sec) {
-          if (sec.h) h += '<div class="lec-ovh">' + esc(sec.h) + '</div>';
+          if (sec.h) h += '<div class="lec-ovh">' + esc(sec.h) + (sec.extract ? '<i class="lec-ovext">原文摘录</i>' : '') + '</div>';
           h += ovSecBody(sec, srcs, keys);
         });
       }
@@ -2617,7 +2617,8 @@
       }).join('') + '</div>';
     }
     secs.forEach(function (sec, si) {
-      h += '<div class="lec-ovh" id="lecOvh' + si + '">' + esc(sec.h) + '</div>' + ovSecBody(sec, srcs, keys);
+      h += '<div class="lec-ovh" id="lecOvh' + si + '">' + esc(sec.h)
+        + (sec.extract ? '<i class="lec-ovext">原文摘录</i>' : '') + '</div>' + ovSecBody(sec, srcs, keys);
       if (sec.conflict) {
         h += '<div class="lec-ovwarn lec-ovwarnc"><button data-web="conf" class="lec-ovwarnh">⚠️ 一处说法不一致</button>'
           + '<span>' + esc(sec.conflict) + '</span></div>';
@@ -2753,11 +2754,28 @@
     return once(mt, ms).then(function (t1) {
       t1 = String(t1 || '').trim();
       if (t1) return t1;
-      var L = window.__AI_LAST || {};
-      if (!(L && L.finish === 'length')) return '';
-      var m2 = Math.min(7000, Math.max(3800, mt * 3));
-      return once(m2, ms + 40000);
+      window.__OV_EMPTY = (window.__OV_EMPTY || 0) + 1;
+      /* 空正文：不管是 token 被思考吃光、还是接口静默失败，都加预算重试一次 */
+      var m2 = Math.min(8000, Math.max(4200, mt * 3));
+      return once(m2, ms + 45000).then(function (t2) {
+        t2 = String(t2 || '').trim();
+        if (t2) { window.__OV_RETRY = (window.__OV_RETRY || 0) + 1; return t2; }
+        var m3 = Math.min(9000, Math.max(6000, mt * 6));
+        if (m3 <= m2) return '';
+        return once(m3, ms + 60000);
+      });
     });
+  }
+
+  /* 最后一层兜底：模型连正文都不给，就直接把该节的原句连成段落（标明「原文摘录」） */
+  function ovExtractSec(sec, sources) {
+    var picked = [];
+    (sec.ids || []).forEach(function (n) { var s = sources[n - 1]; if (s && picked.indexOf(s) < 0) picked.push(s); });
+    if (!picked.length) picked = (sources || []).slice(0, 3);
+    picked = picked.slice(0, 4);
+    if (!picked.length) return [];
+    var txt = picked.map(function (s) { return ovCleanText(String(s.t || '')) + ' [[' + s.i + ']]'; }).join('\n');
+    return ovSplitParas(txt, sources).filter(function (p) { return p.t.length >= 8; });
   }
 
   /* 大纲兜底：模型不给大纲时按「是什么—怎么发生—有什么用」自己分节 */
@@ -2833,7 +2851,7 @@
       + '每段末尾标一次来源，写成 [[n]]（n 只能来自清单）；纯文本，不要标题。';
     var user = '知识点：' + sel + '\n本节：' + sec.h + (sec.hint ? '（' + sec.hint + '）' : '')
       + '\n\n可引用原句：\n' + list;
-    return ovAsk(sys, user, 1400, 45000);
+    return ovAsk(sys, user, 3000, 50000);
   }
 
   function ovSplitParas(txt, sources) {
@@ -2911,8 +2929,13 @@
           renderOverview(st);
           return ovWriteSec(sel, sec, srcs, mode).catch(function (e) { failNote.push('第' + (i + 1) + '节请求失败：' + (e && e.message || e)); return ''; }).then(function (txt) {
             var paras = ovSplitParas(txt, srcs).filter(function (p) { return p.t.length >= 8; });
-            if (!paras.length) failNote.push('第' + (i + 1) + '节「' + sec.h + '」AI 返回空（' + String(txt || '').length + ' 字）');
-            else out.sections.push({ h: sec.h, paras: paras, conflict: sec.conflict || '', cited: paras.filter(function (p) { return p.cites.length; }).length });
+            var ext = 0;
+            if (!paras.length) { paras = ovExtractSec(sec, srcs); ext = paras.length ? 1 : 0; }
+            if (!paras.length) failNote.push('第' + (i + 1) + '节「' + sec.h + '」没内容（AI 空、也没有原句）');
+            else {
+              if (ext) failNote.push('第' + (i + 1) + '节「' + sec.h + '」模型没写，已用原文摘录');
+              out.sections.push({ h: sec.h, paras: paras, conflict: sec.conflict || '', extract: ext, cited: paras.filter(function (p) { return p.cites.length; }).length });
+            }
             i++;
             return step();
           });
