@@ -2065,9 +2065,10 @@
 
   function askKeys(sel, qtext) {
     var fallback = askKeysFallback(sel);
+    fallback.para = [];
     if (typeof window.aiChat !== 'function') return Promise.resolve(fallback);
     var msgs = [
-      { role: 'system', content: '你是医学讲义检索助手。用户选中了题目里的一句话，你要把它变成能在讲义里直接命中原词的检索短语。只输出 JSON：{"keys":["短语",…],"why":"≤20字"}。要求：1) 3–6 个短语；2) 每个 2–8 个汉字，必须是名词性术语（病名、指标、机制、药物、部位、体征）；3) 长句必须拆成其中的关键术语，禁止照抄整句；4) 不要动词短语、不要带标点；5) 宁可短不要长（「血清铁」优于「血清铁常增高的疾病」）。' },
+      { role: 'system', content: '你是医学讲义检索助手。用户选中了题目里的一句话，你要把它变成能在讲义里直接命中原词的检索短语。只输出 JSON：{"keys":["短语",…],"para":["转述",…],"why":"≤20字"}。要求：1) keys 3–6 个短语，每个 2–8 个汉字，必须是名词性术语（病名、指标、机制、药物、部位、体征）；2) 长句必须拆成其中的关键术语，禁止照抄整句；3) 不要动词短语、不要带标点；4) 宁可短不要长（「血清铁」优于「血清铁常增高的疾病」）；5) para 是 2–3 条「转述」：把这个知识点换一种医学说法写出来（含同义词、别称、英文缩写），每条 ≤24 字，用来做语义相似度匹配，例如「嘧啶核苷酸」→「尿嘧啶/胞嘧啶核苷酸的合成与补救途径」。' },
       { role: 'user', content: '整道题：' + String(qtext || '').slice(0, 500) + '\n选中的文字：' + String(sel).slice(0, 400) }
     ];
     return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 260 }), 8000).then(function (txt) {
@@ -2078,7 +2079,8 @@
       try { o = JSON.parse(s.slice(a, b2 + 1)); } catch (e) { return fallback; }
       var keys = cleanKeys(o.keys || []);
       if (!keys.length) return fallback;
-      return { keys: keys, why: String(o.why || '').slice(0, 30) };
+      var para = (o.para || []).map(function (x) { return String(x || '').replace(/[\r\n]/g, ' ').trim(); }).filter(function (x) { return x.length >= 4 && x.length <= 60; }).slice(0, 3);
+      return { keys: keys, para: para, why: String(o.why || '').slice(0, 30) };
     }).catch(function () { return fallback; });
   }
 
@@ -2326,11 +2328,58 @@
     return b;
   }
 
-  function collectSources(keys, cap) {
+  /* 从「转述」里再拆出可检索的术语：转述常常用的是讲义里的另一种说法 */
+  function paraTerms(para, keys) {
+    var out = [], seen = {};
+    (keys || []).forEach(function (k) { seen[k] = 1; });
+    (para || []).forEach(function (p) {
+      String(p || '').split(/[，,。；;：:、\n（）()\[\]【】\/]+/).forEach(function (seg) {
+        seg = seg.trim().replace(/^(即|也就是|又称|又称作|叫做|称为|指)/, '');
+        if (seg.length < 2) return;
+        var ms = seg.match(new RegExp(MED_LAZY.source, 'g')) || [];
+        var cand = ms.length ? ms : [cutTerm(seg)];
+        cand.forEach(function (c) {
+          c = tidyKey(c);
+          if (!c || c.length < 2 || c.length > 10 || seen[c]) return;
+          seen[c] = 1; out.push(c);
+        });
+      });
+    });
+    return out.slice(0, 6);
+  }
+
+  /* 相似度重排：关键词只负责「召回」，最终先后由「与搜索词的语义相似度」决定 */
+  function ovRerankBySim(list, sel, keys) {
+    if (!list.length || typeof window.aiEmbed !== 'function') return Promise.resolve(list);
+    var q = (String(sel || '').slice(0, 120) + ' ' + (keys || []).join(' ')).trim();
+    if (!q) return Promise.resolve(list);
+    var top = list.slice(0, 72);
+    var model = 'bge-small-zh-v1.5';
+    try { var c = (typeof window.aiCfg === 'function') ? window.aiCfg() : null; if (c && c.embModel) model = c.embModel; } catch (e) {}
+    var texts = top.map(function (x) { return String(x.t).slice(0, 300); });
+    return withTimeout(window.aiEmbed([q].concat(texts), { model: model }), 12000).then(function (vs) {
+      if (!vs || vs.length !== texts.length + 1) return list;
+      var maxW = 1;
+      top.forEach(function (x) { if (x.w > maxW) maxW = x.w; });
+      top.forEach(function (x, i) {
+        var sim = cosSim(vs[0], vs[i + 1]);
+        x.sim = sim;
+        x.rank = (x.w / maxW) * 0.42 + sim * 0.58;
+      });
+      var keep = top.filter(function (x) { return (x.sim || 0) >= 0.20; });
+      if (keep.length < Math.min(12, top.length)) keep = top.slice();
+      var rest = list.slice(top.length);
+      keep.sort(function (a, b) { return (b.rank || 0) - (a.rank || 0); });
+      return keep.concat(rest);
+    }).catch(function () { return list; });
+  }
+
+  function collectSources(keys, cap, sel, para) {
+    var selQ = String(sel || '').trim();
     keys = expandKeys(cleanKeys(keys || []));
     if (!keys.length) return Promise.resolve([]);
     var kk = cleanKeys(keys || []).slice(0, 3);
-    var sx = keys.slice(0, 6);
+    var sx = keys.concat(paraTerms(para, kk)).slice(0, 8);
     var capN = cap || 24;
     var prep = Promise.resolve();
     try { prep = prep.then(function () { return (FILES && FILES.length) ? null : loadIndex(); }); } catch (e) {}
@@ -2401,8 +2450,10 @@
           per[x.src]++;
           out.push(x);
         }
-        out.forEach(function (x, i) { x.i = i + 1; });
-        return out;
+        return ovRerankBySim(out, selQ, kk).then(function (list) {
+          list.forEach(function (x, i) { x.i = i + 1; });
+          return list;
+        });
       });
     });
   }
@@ -2611,9 +2662,11 @@
     var srcs = st.sources || [];
     if (!srcs.length) return '';
     return '<div class="lec-ovsrcbox' + (st.srcsOpen ? ' on' : '') + '">'
+      + ((st.para && st.para.length) ? '<div class="lec-ovpara">转述：' + esc(st.para.join('；')) + '</div>' : '')
       + srcs.map(function (x) {
         return '<button class="lec-ovsr" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">'
-          + '<em>' + x.i + '</em><b>' + esc(x.name) + '</b><span>第 ' + x.p + ' 页</span></button>';
+          + '<em>' + x.i + '</em><b>' + esc(x.name) + '</b><span>第 ' + x.p + ' 页</span>'
+          + (typeof x.sim === 'number' ? '<s>' + x.sim.toFixed(2) + '</s>' : '') + '</button>';
       }).join('') + '</div>';
   }
 
@@ -2946,7 +2999,7 @@
       st.ov = { pending: 1, prog: '正在全库扫「' + (keys || []).join('、') + '」相关原句…' };
       renderOverview(st);
     }
-    var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, cap);
+    var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, cap, sel, st.para);
     return p1.then(function (srcs) {
       st.sources = srcs;
       if (!srcs.length) {
@@ -3029,7 +3082,8 @@
     renderLoading('正在扫全库…', '先从所有讲义里把讲这个知识点的句子捞出来');
     return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : askKeys(sel, qtext)).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
-      return runOverview(sel, keys, OV_MODE);
+      var st = { sel: sel, keys: keys, para: spec.para || [], mode: OV_MODE, sources: [], ov: null };
+      return runOverview(sel, keys, OV_MODE, st);
     });
   }
 
