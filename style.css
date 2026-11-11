@@ -4191,7 +4191,7 @@ body.dark .nb-backbar{box-shadow:0 6px 18px rgba(0,0,0,.45)}
    web725：文件夹里的悬浮「‹ 返回」
    ============================================================ */
 #nbBackFab{
-  position:fixed;left:12px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:25000;
+  position:fixed;left:12px;bottom:calc(96px + 46px + env(safe-area-inset-bottom));z-index:25000;
   display:none;align-items:center;gap:3px;
   padding:9px 14px 9px 12px;border-radius:999px;cursor:pointer;
   background:color-mix(in srgb, var(--card) 86%, transparent);
@@ -4204,7 +4204,7 @@ body.dark .nb-backbar{box-shadow:0 6px 18px rgba(0,0,0,.45)}
 #nbBackFab em{font-style:normal;font-size:13px;font-weight:600}
 #nbBackFab:active{transform:scale(.96)}
 body.dark #nbBackFab{box-shadow:0 8px 22px rgba(0,0,0,.5)}
-body.quiz #nbBackFab{bottom:calc(var(--quizbar-h,72px) + 96px + env(safe-area-inset-bottom))}
+body.quiz #nbBackFab{bottom:calc(var(--quizbar-h,72px) + 96px + 46px + env(safe-area-inset-bottom))}
 @media (max-width:560px){
   #nbBackFab{padding:8px 12px 8px 10px}
 }
