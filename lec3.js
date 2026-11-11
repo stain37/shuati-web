@@ -2585,24 +2585,24 @@
   }
 
   var OV_CACHE_KEY = 'qbank.lec.ov2.v1';
-  function ovCacheKey(keys, mode) {
-    return mode + '|' + (keys || []).slice().sort().join('/');
+  function ovCacheKey(keys, mode, sel) {
+    return mode + '|' + (keys || []).slice().sort().join('/') + '|' + String(sel || '').slice(0, 24);
   }
-  function ovCacheGet(keys, mode) {
+  function ovCacheGet(keys, mode, sel) {
     try {
       var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}');
-      var it = db[ovCacheKey(keys, mode)];
+      var it = db[ovCacheKey(keys, mode, sel)];
       if (!it || !it.ov || !it.ov.sections || !it.ov.sections.length) return null;
       if (Date.now() - (it.ts || 0) > 7 * 24 * 3600 * 1000) return null;
       return it.ov;
     } catch (e) { return null; }
   }
-  function ovCachePut(keys, mode, ov, sources) {
+  function ovCachePut(keys, mode, ov, sources, sel) {
     try {
       if (!ov || !ov.sections || !ov.sections.length) return;
       var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}');
       if (Object.keys(db).length > 30) db = {};
-      db[ovCacheKey(keys, mode)] = { ts: Date.now(), ov: ov, sources: (sources || []).slice(0, 24) };
+      db[ovCacheKey(keys, mode, sel)] = { ts: Date.now(), ov: ov, sources: (sources || []).slice(0, 24) };
       localStorage.setItem(OV_CACHE_KEY, JSON.stringify(db));
     } catch (e) {}
   }
@@ -2689,7 +2689,8 @@
     }
     mask.innerHTML = '<div class="lec-ssheet lec-ovsheet">'
       + '<div class="lec-shead"><b>📖 知识点讲解</b><button class="lec-sx" data-web="close">×</button></div>'
-      + '<div class="lec-ovmeta"><span class="lec-ovq">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
+      + '<div class="lec-ovmeta"><span class="lec-ovq" title="你输入的搜索词">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
+      + ((st.keys && st.keys.length) ? '<button class="lec-ovkeys" data-web="ask" title="点这里改词重搜">词：' + esc(st.keys.join('/')) + '</button>' : '')
       + (meta.length ? '<i>·</i>' + meta.join('<i>·</i>') : '') + '</div>'
       + ovSrcBox(st)
       + '<div class="lec-sbody">' + ovHtml(st) + '</div>'
@@ -2722,6 +2723,7 @@
         return;
       }
       if (a === 'conf') { ev.stopPropagation(); if (b.parentNode) b.parentNode.classList.toggle('on'); return; }
+      if (a === 'ask') { ev.stopPropagation(); mask.remove(); return overviewAsk(st.sel); }
       if (a === 'jumpsec') {
         ev.stopPropagation();
         var target = document.getElementById('lecOvh' + (+b.getAttribute('data-i') || 0));
@@ -2931,10 +2933,10 @@
     st.mode = mode;
     OV_STOPPED = false;
     if (!(st.ov && st.ov.sections && st.ov.sections.length)) {
-      var cached = ovCacheGet(keys, mode);
+      var cached = ovCacheGet(keys, mode, sel);
       if (cached) {
         st.ov = cached;
-        if (!st.sources || !st.sources.length) { try { var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}'); st.sources = (db[ovCacheKey(keys, mode)] || {}).sources || []; } catch (e) {} }
+        if (!st.sources || !st.sources.length) { try { var db = JSON.parse(localStorage.getItem(OV_CACHE_KEY) || '{}'); st.sources = (db[ovCacheKey(keys, mode, sel)] || {}).sources || []; } catch (e) {} }
         renderOverview(st);
         return Promise.resolve(true);
       }
@@ -3009,7 +3011,7 @@
           return;
         }
         st.ov = ov;
-        ovCachePut(keys, mode, ov, srcs);
+        ovCachePut(keys, mode, ov, srcs, sel);
         renderOverview(st);
         if (failNote.length) toast('部分小节没写出来（' + failNote.length + ' 处）', 2600, 'bad');
       }).catch(function (e) {
@@ -3019,10 +3021,11 @@
     }).catch(function (e) { toast('生成失败：' + (e && e.message || e), 2400, 'bad'); });
   }
 
-  function overview(sel, keysHint) {
+  function overview(sel, keysHint, fromQuestion) {
     sel = String(sel || '').trim().slice(0, 300);
     if (!sel) return Promise.resolve(false);
-    var qtext = ''; try { qtext = questionText(); } catch (e) {}
+    /* 只有「从笔记里点知识点总览」才把整道题喂给抽词；用户自己写的词就只用这个词，别被当前题目带偏 */
+    var qtext = ''; if (fromQuestion) { try { qtext = questionText(); } catch (e) {} }
     renderLoading('正在扫全库…', '先从所有讲义里把讲这个知识点的句子捞出来');
     return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : askKeys(sel, qtext)).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
@@ -3125,7 +3128,7 @@
     var ub = mask.querySelector('.lec-nsum2');
     if (ub && ub.getAttribute('data-web') === 'ov') ub.addEventListener('click', function (ev) {
       ev.preventDefault(); ev.stopPropagation();
-      overview(note.sel, note.keys);
+      overview(note.sel, note.keys, true);
     });
     if (ub && ub.getAttribute('data-web') !== 'ov') ub.addEventListener('click', function (ev) {
       ev.preventDefault(); ev.stopPropagation();
