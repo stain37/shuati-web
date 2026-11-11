@@ -692,6 +692,46 @@
     scored.sort(function (a, b) { return b.score - a.score || b.hit - a.hit; });
     return scored.slice(0, 8);
   }
+  function withTimeout(p, ms) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; resolve(null); } }, ms);
+      Promise.resolve(p).then(function (v) { if (!done) { done = true; clearTimeout(t); resolve(v); } },
+                              function () { if (!done) { done = true; clearTimeout(t); resolve(null); } });
+    });
+  }
+  /* ---------- 语义挑页（向量）：本地 bge 这类嵌入服务，纯本地、免费、快 ---------- */
+  function cosSim(a, b) {
+    var d = 0, na = 0, nb = 0, n = Math.min(a.length, b.length);
+    for (var i = 0; i < n; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    if (!na || !nb) return 0;
+    return d / Math.sqrt(na * nb);
+  }
+  function pickByEmbedding(q, hits) {
+    if (typeof window.aiEmbed !== 'function') return Promise.resolve(null);
+    var rows = HIT_ROWS || [];
+    hits = hits.slice(0, 6);          /* 本地 bge 偏慢：6 条够用，再多只会等更久 */
+    var texts = hits.map(function (h) {
+      var r = rows[h.i] || {};
+      return String(r.f || '') + ' ' + String(r.t || '').replace(/\s+/g, ' ').slice(0, 160);
+    });
+    var model = 'bge-small-zh-v1.5';
+    try {
+      var c = (typeof window.aiCfg === 'function') ? window.aiCfg() : null;
+      if (c && c.embModel) model = c.embModel;
+    } catch (e) {}
+    return window.aiEmbed([String(q).slice(0, 500)].concat(texts), { model: model }).then(function (vs) {
+      if (!vs || vs.length !== texts.length + 1) return null;
+      var best = -1, bi = -1;
+      for (var i = 1; i < vs.length; i++) {
+        var sc = cosSim(vs[0], vs[i]);
+        if (sc > best) { best = sc; bi = i - 1; }
+      }
+      if (bi < 0 || best < 0.2) return null;
+      return { i: bi, why: '语义相似度 ' + best.toFixed(2) };
+    }).catch(function () { return null; });
+  }
+
   /* ---------- 让 AI 从候选里挑一页（语义判断，替代人肉点「换个候选」） ----------
      候选是本地关键词粗筛出的前 8 页（带正文片段），交给模型只做一件事：
      判断哪一页最像这题的讲义依据。失败就退回关键词第一页，不影响使用。 */
@@ -739,7 +779,12 @@
       CAND = hits; CAND_I = 0;
       jumpTo(hits[0]);                       /* 先用关键词第一页垫底，AI 选完再纠正 */
       if (el.meta) el.meta.textContent = 'AI 正在看这几页，挑最像的一页…';
-      return aiPickPage(q, hits).then(function (pick) {
+      /* 先试向量（本地嵌入服务：免费、快、不需要聊天模型），不行再试聊天模型 */
+      return withTimeout(pickByEmbedding(q, hits), 15000).then(function (pv) {
+        if (pv) return pv;
+        if (el.meta) el.meta.textContent = '语义模型没及时回话，换聊天模型再试…';
+        return withTimeout(aiPickPage(q, hits), 20000);
+      }).then(function (pick) {
         if (!pick) { if (el.meta) el.meta.textContent = '定位：关键词最像的一页（没配 AI，或 AI 没回话）'; return; }
         CAND_I = pick.i;
         jumpTo(hits[pick.i]);

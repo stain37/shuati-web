@@ -11,7 +11,14 @@
   function sameOrigin(u) {
     try {
       var x = new URL(String(u), location.href);
-      return x.origin === location.origin;
+      if (x.origin === location.origin) return true;
+      /* 本机回环 / 局域网地址不算「上网」：本机的 AI 服务（127.0.0.1:11434 / :8099 等）
+         也是 localhost，端口不同本来就不同源 —— 但这种请求出不了这台电脑，
+         离线模式下**放行**，否则「用自己的本地模型」也会被误拦。 */
+      var h = String(x.hostname || '');
+      if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]') return true;
+      if (/^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+      return false;
     } catch (e) { return true; }        /* 解析不了就当同源，别误拦 */
   }
   function note(what) {
