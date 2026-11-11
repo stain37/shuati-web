@@ -1018,6 +1018,90 @@
   var KNOW_CACHE = readLS(KNOW_KEY, {}) || {};
   function knowKey(stem, opts) { return (String(stem || '').slice(0, 120) + '|' + (opts || []).join('/')).slice(0, 300); }
 
+  /* ---------- 题目「问的落点」：分期/分级/分型/诊断标准/首选检查/治疗… ---------- */
+  var ATTRS = [
+    { id: 'stage', words: ['分期', '几期', '哪一期', '第几期', '属于哪期'], kw: ['分期', '分级'],
+      test: function (t) {
+        if (!/分期|分级/.test(t)) return false;
+        var rom = (t.match(/[ⅠⅡⅢⅣ]/g) || []).length;
+        var lat = (t.match(/(?:^|[\s、，,；;])(I{1,3}|IV)\s*[:：]/gi) || []).length;
+        return (rom + lat) >= 2;
+      } },
+    { id: 'type', words: ['分型', '类型是', '属于哪型'], kw: ['分型', '类型'],
+      test: function (t) { return /分型/.test(t) || (/型/.test(t) && (t.match(/[ⅠⅡⅢⅣ]/g) || []).length >= 2); } },
+    { id: 'dx', words: ['诊断标准', '诊断依据', '标准是', '符合标准'], kw: ['诊断标准', '分类标准'],
+      test: function (t) { return /诊断标准|分类标准|诊断依据/.test(t); } },
+    { id: 'exam', words: ['首选检查', '首选辅助检查', '最有价值', '最有助于', '确诊'], kw: ['首选', '检查'],
+      test: function (t) { return /(首选|最有价值|最有助于)[^。；]{0,8}(检查|试验|化验|影像)/.test(t) || /检查首选/.test(t); } },
+    { id: 'tx', words: ['首选治疗', '治疗首选', '治疗方案', '最佳治疗'], kw: ['首选', '治疗'],
+      test: function (t) { return /(首选|最佳)[^。；]{0,8}(治疗|药物|手术)|治疗首选/.test(t); } },
+    { id: 'diff', words: ['鉴别', '鉴别诊断', '区别'], kw: ['鉴别'],
+      test: function (t) { return /鉴别诊断|鉴别/.test(t); } },
+    { id: 'patho', words: ['机制', '发病机制', '病理'], kw: ['机制'],
+      test: function (t) { return /发病机制|病理机制|机制/.test(t); } }
+  ];
+  function askedAttr(stem) {
+    var s0 = String(stem || '');
+    for (var i = 0; i < ATTRS.length; i++) {
+      var a = ATTRS[i];
+      for (var j = 0; j < a.words.length; j++) if (s0.indexOf(a.words[j]) >= 0) return a;
+    }
+    return null;
+  }
+  /* 题目在问哪个病：分期/分级必须和这个病同页，否则别的病的分期会抢答 */
+  var ENT_STOP = /患者|下列|以下|关于|最可能|诊断|治疗|检查|哪一|属于|正确的|错误的|首选/;
+  function entityOf(stem, opts) {
+    var s0 = String(stem || '') + ' ' + (opts || []).join(' ');
+    var re = /[\u4e00-\u9fa5A-Za-z]{2,14}(?:关节炎|动脉炎|血管炎|脑病|肾病|肾炎|肺炎|哮喘|贫血|白血病|淋巴瘤|骨髓瘤|综合征|梗死|衰竭|感染|肿瘤|溃疡|结石|疝|病|炎|癌|瘤)/g;
+    var m, cands = [];
+    while ((m = re.exec(s0))) {
+      var w = m[0];
+      if (w.length < 3 || ENT_STOP.test(w)) continue;
+      if (cands.indexOf(w) < 0) cands.push(w);
+    }
+    cands.sort(function (a, b) { return b.length - a.length; });
+    return cands.length ? cands[0] : '';
+  }
+  /* 从候选讲义文件名里取「干净的病名」，比从题干里正则截更可靠（文件名是人工整理的） */
+  function entFromNames(srcs, stem, opts) {
+    var q = String(stem || '') + ' ' + (opts || []).join(' ');
+    var hits = [];
+    (srcs || []).forEach(function (src) {
+      var nm = String(src || '').split('/').pop().replace(/\.pdf$/i, '')
+        .replace(/精编版|已勘误|重排版|不带导图|勘误|【[^】]*】|\([^)]*\)|（[^）]*）/g, ' ');
+      var re = /[\u4e00-\u9fa5]{3,12}(?:关节炎|动脉炎|血管炎|脑病|肾病|肾炎|肺炎|哮喘|贫血|白血病|淋巴瘤|骨髓瘤|综合征|梗死|衰竭|感染|肿瘤|溃疡|结石|疝|病|炎|癌|瘤)/g;
+      var m;
+      while ((m = re.exec(nm))) {
+        var w = m[0];
+        for (var cut = 0; cut <= 4 && w.length - cut >= 3; cut++) {
+          var ww = w.slice(cut);
+          if (q.indexOf(ww) >= 0) { hits.push(ww); break; }
+        }
+      }
+    });
+    hits.sort(function (a, b) { return b.length - a.length; });
+    return hits.length ? hits[0] : '';
+  }
+  function entHit(t, ent) {
+    if (!ent) return true;
+    if (t.indexOf(ent) >= 0) return true;
+    if (ent.length >= 6 && t.indexOf(ent.slice(0, 4)) >= 0) return true;
+    if (ent.length >= 5 && t.indexOf(ent.slice(-4)) >= 0) return true;
+    return false;
+  }
+  function attrTest(t, ask) {
+    if (!ask || !t) return false;
+    if (!entHit(t, ask.ent)) return false;
+    try { return !!ask.test(t); } catch (e) { return false; }
+  }
+  function attrScore(t, ask) {
+    if (!ask || !t) return 0;
+    if (attrTest(t, ask)) return 1;
+    if (ask.ent && !entHit(t, ask.ent)) return 0;   /* 不是这个病，别给分 */
+    for (var i = 0; i < ask.kw.length; i++) if (t.indexOf(ask.kw[i]) >= 0) return 0.45;
+    return 0;
+  }
+
   function ruleKnow(stem, opts) {
     var need = [], diff = [], clean = [];
     (opts || []).forEach(function (o) {
@@ -1045,7 +1129,7 @@
     } catch (e) { return null; }
   }
 
-  function knowSpec(stem, opts) {
+  function knowSpec(stem, opts, ask) {
     if (!knowOn()) return Promise.resolve(null);
     var k = knowKey(stem, opts), c = KNOW_CACHE[k];
     if (c && c.spec && (Date.now() - (c.ts || 0)) < 7 * 864e5) return Promise.resolve(c.spec);
@@ -1053,7 +1137,7 @@
     if (typeof window.aiChat !== 'function') return Promise.resolve(fb);
     var msgs = [
       { role: 'system', content: '你是医学考研命题老师。读完题，写出解这道题必需的讲义知识点。只输出 JSON，不要解释：{"goal":"这道题要判断什么，≤20字","need":["解题必需的知识点，3-6个，每个≤14字，用讲义里的术语，不要照抄选项"],"diff":["选项之间的判别依据，2-4个，每个≤14字"]}' },
-      { role: 'user', content: '题干：' + String(stem || '').slice(0, 800) + '\n选项：' + (opts || []).join(' / ') }
+      { role: 'user', content: '题干：' + String(stem || '').slice(0, 800) + '\n选项：' + (opts || []).join(' / ') + (ask ? ('\n注意：这道题问的是「' + (ask.ent ? ask.ent + '的' : '') + ask.words[0] + '」，need 里必须包含回答它的判断标准/依据（例如分期标准、各期表现）。') : '') }
     ];
     return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 420 }), 12000)
       .then(function (txt) {
@@ -1078,20 +1162,34 @@
   }
 
   /* 按「这页讲到了多少解题必需的知识点」重排：相似度 0.6 + 知识覆盖 0.4 */
-  function knowRerank(list, spec) {
-    var terms = knowTerms(spec);
-    if (terms.length < 2 || !list || !list.length) return list;
-    var rows = [], best = 0;
+  function knowRerank(list, spec, ask) {
+    if (!list || !list.length) return list;
+    var terms = spec ? knowTerms(spec) : [];
+    var rows = [], best = 0, anyAttr = 0;
     list.forEach(function (x) {
       var t = lecClean(x.t), cover = 0;
       terms.forEach(function (w) { if (t && t.indexOf(w) >= 0) cover++; });
+      var at = attrScore(t, ask);
       if (cover > best) best = cover;
-      rows.push({ x: x, cover: cover });
+      if (at >= 1) anyAttr++;
+      rows.push({ x: x, cover: cover, at: at });
     });
-    if (best < 2) return list;   /* 没有一页真正讲到所需知识：不动，别把好页挤掉 */
+    /* 只有「讲到 ≥2 个必需知识点」或「真有页面上写着题目问的那个落点」时才重排 */
+    if (best < 2 && !anyAttr) return list;
     rows.forEach(function (r) {
-      r.x.know = r.cover; r.x.knowN = terms.length;
-      r.x.score = (r.x.score || 0) * 0.6 + (r.cover / terms.length) * 0.4;
+      var sim = r.x.score || 0;
+      var cov = terms.length ? (r.cover / terms.length) : 0;
+      var s2;
+      if (ask) {
+        /* 硬规则：有「题目问的那个落点」的页，永远排在没写它的页前面 */
+        s2 = (r.at >= 1)
+          ? (0.55 + sim * 0.25 + cov * 0.20)
+          : (sim * 0.30 + cov * 0.15);
+      } else {
+        s2 = sim * 0.50 + cov * 0.50;
+      }
+      r.x.know = r.cover; r.x.knowN = terms.length; r.x.attr = r.at;
+      r.x.score = s2;
     });
     rows.sort(function (a, b) { return (b.x.score || 0) - (a.x.score || 0); });
     return rows.map(function (r) { return r.x; });
@@ -1164,6 +1262,7 @@
     var f = fileOf(top.src);
     var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
     if (top.know) hint += ' · 知识点 ' + top.know + '/' + (top.knowN || '');
+    if (top.attr >= 1) hint += ' · 命中「问的落点」';
     jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + localPage(f, top.p) + ' 页' + hint);
     return true;
   }
@@ -1415,14 +1514,20 @@
     var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
     var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
     var expP = expandQuery(QP.stem).catch(function () { return ''; });
-    var knowP = knowSpec(QP.stem, opts).catch(function () { return null; });
+    var askBase = askedAttr(QP.stem);
+    var ask = null;
+    if (askBase) {
+      ask = { id: askBase.id, words: askBase.words, kw: askBase.kw, test: askBase.test, ent: entityOf(QP.stem, opts) };
+    }
+    var knowP = knowSpec(QP.stem, opts, ask).catch(function () { return null; });
     return Promise.all([kbRows(q), prevP, expP, knowP]).then(function (r) {
       var kb = r[0] || [], prev = r[1] || [];
       var extraQ = String(r[2] || '').trim();
       var know = r[3] || null;
       var kws = know ? knowTerms(know).join(' ') : '';
-      var qEmb = q + (know && know.goal ? (' ' + know.goal) : '');
-      var qAll = [q, extraQ, kws].filter(Boolean).join(' ');
+      var askKw = ask ? ask.kw.join(' ') : '';
+      var qEmb = q + (know && know.goal ? (' ' + know.goal) : '') + (ask ? (' ' + ask.words[0]) : '');
+      var qAll = [q, extraQ, kws, askKw].filter(Boolean).join(' ');
       var bySrc = {};
       function addRows(rows) {
         (rows || []).forEach(function (x) {
@@ -1460,7 +1565,9 @@
 
       /* 命中文件不在当前科目的文字块里：把它所属科目的文字也读进来，才能按页比对 */
       var needSubj = {};
-      files.forEach(function (src) {
+      var preFiles = Object.keys(fileScore)
+        .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 12);
+      preFiles.forEach(function (src) {
         if (!bySrc[src] || !bySrc[src].length) { var sj = subjOf(src); if (sj) needSubj[sj] = 1; }
       });
       var extraP = Object.keys(needSubj).map(function (sj) {
@@ -1468,6 +1575,35 @@
       });
       return Promise.all(extraP).then(function (ex) {
         ex.forEach(function (rows) { if (rows.length) { addRows(rows); kwBump(rows); } });
+
+        /* 题目问「分期/分级/诊断标准」这类落点时：把真正写着这个落点的页直接抬上来（此时各科目文字块已载入） */
+        if (ask) {
+          /* 病名优先用「命中讲义文件名」里的干净病名（题干正则容易截出「该患者双手X线达到类风湿关节炎」这种） */
+          var entName = entFromNames(files.concat(Object.keys(fileScore)), QP.stem, opts);
+          if (entName) ask.ent = entName;
+          else if (ask.ent && ask.ent.length > 8) ask.ent = ask.ent.slice(-8);
+          var fmax = 0, pmax = 0;
+          Object.keys(fileScore).forEach(function (k) { if (fileScore[k] > fmax) fmax = fileScore[k]; });
+          Object.keys(kbPages).forEach(function (k) {
+            Object.keys(kbPages[k]).forEach(function (p2) { if (kbPages[k][p2] > pmax) pmax = kbPages[k][p2]; });
+          });
+          if (!fmax) fmax = 1; if (!pmax) pmax = 1;
+          Object.keys(bySrc).forEach(function (src) {
+            var rows2 = bySrc[src] || [], hitPage = 0;
+            for (var i2 = 0; i2 < rows2.length; i2++) {
+              if (attrTest(rows2[i2].t, ask)) {
+                hitPage = localPage(fileOf(src) || {}, rows2[i2].p);
+                break;
+              }
+            }
+            if (hitPage) {
+              bumpFile(src, fmax * 1.25 + 1);
+              bumpPage(src, hitPage, pmax * 1.35 + 1);
+            }
+          });
+          files = Object.keys(fileScore)
+            .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 6);
+        }
 
         var jobs = files.map(function (src) {
           var rows = bySrc[src] || [];
@@ -1507,7 +1643,7 @@
             if (isQPage(x.t)) { x.score = (x.score || 0) * Q_PENALTY; x.isq = 1; }
           });
           out.sort(function (a, b) { return b.score - a.score; });
-          if (know) out = knowRerank(out, know);      /* 先按「解题所需知识」重排 */
+          out = knowRerank(out, know, ask);           /* 按「解题所需知识 + 题目问的落点」重排 */
           if (plan) out = diffRerank(out, plan);      /* 再对鉴别题倾向于对照表 */
           return out;
         });
