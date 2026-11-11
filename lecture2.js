@@ -692,6 +692,33 @@
     scored.sort(function (a, b) { return b.score - a.score || b.hit - a.hit; });
     return scored.slice(0, 8);
   }
+  /* ---------- 让 AI 从候选里挑一页（语义判断，替代人肉点「换个候选」） ----------
+     候选是本地关键词粗筛出的前 8 页（带正文片段），交给模型只做一件事：
+     判断哪一页最像这题的讲义依据。失败就退回关键词第一页，不影响使用。 */
+  function aiPickPage(q, hits) {
+    if (typeof window.aiChat !== 'function') return Promise.resolve(null);
+    var rows = HIT_ROWS || [];
+    var lines = hits.map(function (h, n) {
+      var r = rows[h.i] || {};
+      var f = String(r.f || r.src || '').replace(/\.pdf$/i, '');
+      var t = String(r.t || '').replace(/\s+/g, ' ').slice(0, 200);
+      return (n + 1) + '. 《' + f.slice(0, 24) + '》 第 ' + r.p + ' 页：' + t;
+    }).join('\n');
+    var msgs = [
+      { role: 'system', content: '你是医学考研题库的讲义定位助手。用户给出一道题和若干候选讲义页（含文件名、页码、正文片段）。请判断哪一页最可能是这道题在讲义里的依据页（考点讲解、答案依据所在页）。只输出一行 JSON：{"i": 序号, "why": "不超过20字"}。没把握就选最相关的那页，也必须给一个序号。' },
+      { role: 'user', content: '【题目】\n' + String(q).slice(0, 700) + '\n\n【候选页】\n' + lines }
+    ];
+    return window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 80 }).then(function (txt) {
+      var m = String(txt || '').match(/\{[\s\S]*?\}/);
+      if (!m) return null;
+      var o = null;
+      try { o = JSON.parse(m[0]); } catch (e) { return null; }
+      var i = (+o.i || 0) - 1;
+      if (i < 0 || i >= hits.length) return null;
+      return { i: i, why: String(o.why || '').slice(0, 24) };
+    });
+  }
+
   function locate() {
     var bd = getBind();
     if (bd && fileOf(bd.src)) {
@@ -710,7 +737,18 @@
       var hits = searchIn(HIT_ROWS, q);
       if (!hits.length) { if (el.meta) el.meta.textContent = ''; toast('没在这批讲义里找到相关内容'); return; }
       CAND = hits; CAND_I = 0;
-      jumpTo(hits[0]);
+      jumpTo(hits[0]);                       /* 先用关键词第一页垫底，AI 选完再纠正 */
+      if (el.meta) el.meta.textContent = 'AI 正在看这几页，挑最像的一页…';
+      return aiPickPage(q, hits).then(function (pick) {
+        if (!pick) { if (el.meta) el.meta.textContent = '定位：关键词最像的一页（没配 AI，或 AI 没回话）'; return; }
+        CAND_I = pick.i;
+        jumpTo(hits[pick.i]);
+        if (el.meta) {
+          var r = HIT_ROWS[hits[pick.i].i] || {};
+          var f = fileOf(r.src);
+          el.meta.textContent = 'AI 定位：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 16) : '') + ' 第 ' + r.p + ' 页' + (pick.why ? ' · ' + pick.why : '');
+        }
+      }).catch(function () { if (el.meta) el.meta.textContent = '定位：关键词最像的一页（AI 不可用）'; });
     }).catch(function (e) {
       if (el.meta) el.meta.textContent = '';
       toast('页文字索引还没生成（' + e.message + '）');
