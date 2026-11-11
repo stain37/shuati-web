@@ -4307,3 +4307,15 @@ body.dark .lec-sopt,body.dark .lec-schip,body.dark .lec-crow{background:#1d2634;
 body.dark .srcpop-s{color:#93c5fd;background:rgba(147,197,253,.14)}
 .aisrc-act{display:flex;gap:8px;margin-top:8px}
 .aisrc-act .btn.tiny{padding:7px 12px;border-radius:10px}
+
+/* web755：候选讲义分组（多份 PDF，组内按页相关度排） */
+.lec-ssheet-wide{width:min(440px,94vw)!important;max-height:82vh;display:flex;flex-direction:column}
+.lec-ssheet-wide .lec-sbody{overflow:auto;-webkit-overflow-scrolling:touch}
+.lec-cgrp{margin:0 0 10px}
+.lec-cgrp:last-child{margin-bottom:0}
+.lec-cgh{display:flex;align-items:baseline;gap:8px;padding:6px 4px 4px}
+.lec-cgh b{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64%}
+.lec-cgh span{font-size:11px;opacity:.6;white-space:nowrap}
+.lec-cgrp .lec-crow{margin-bottom:6px}
+.lec-crow em{width:22px;height:22px;border-radius:7px;font-size:11px}
+.lec-crow div b{font-size:13.5px}

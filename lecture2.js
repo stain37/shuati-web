@@ -836,7 +836,7 @@
     return rankPages(pages, q);
   }
   function applyCands(list, tag) {
-    list = (list || []).slice(0, 8);
+    list = (list || []).slice(0, 18);
     if (!list.length) return false;
     CAND2 = list; CAND_I = 0;
     var top = list[0];
@@ -1014,6 +1014,108 @@
     }).catch(function (e) { toast('定位失败：' + (e && e.message || e)); });
   }
 
+  /* 知识库检索：多份讲义一起找（AI 解析用的就是这套）*/
+  function kbRows(q) {
+    if (typeof kbSearch !== 'function') return Promise.resolve([]);
+    function idsNow() {
+      var ids = [];
+      try { ids = (typeof kbSelected === 'function') ? (kbSelected() || []) : []; } catch (e) { ids = []; }
+      if (ids && ids.length) return Promise.resolve(ids);
+      var n = 0;
+      return new Promise(function (res) {
+        (function tick() {
+          var l = [];
+          try { l = (typeof kbList === 'function') ? (kbList() || []) : []; } catch (e) { l = []; }
+          var x = l.map(function (o) { return (o && o.id) || o; }).filter(Boolean);
+          if (x.length) return res(x);
+          if (++n > 40) return res([]);
+          setTimeout(tick, 250);
+        })();
+      });
+    }
+    return withTimeout(idsNow(), 12000).then(function (ids) {
+      if (!ids || !ids.length) return [];
+      return kbSearch(String(q).slice(0, 600), ids, 12);
+    }).then(function (hs) {
+      var out = [];
+      (hs || []).forEach(function (h) {
+        var f = null;
+        try { f = fileByHit(h); } catch (e) { f = null; }
+        if (!f) return;
+        var pg = (h.pdfp | 0) || (h.page | 0) || 1;
+        if (pg > (f.n || 9999)) pg = 1;
+        var sc = (h.rr != null ? +h.rr : +h.score) || 0;
+        out.push({ src: f.src, p: pg, score: sc, name: f.f });
+      });
+      return out;
+    }).catch(function () { return []; });
+  }
+
+  /* 多份讲义一起找：知识库命中（多份 PDF）+ 当前范围关键词，按页去重 →
+     每份取自身最高分排前 6 份 → 每份取前 3 页 → 对这十几页做一次语义重排 */
+  function multiLocate(q) {
+    var scopeRows = null;
+    try { scopeRows = loadTextSubj(SCOPE.mode === 'subj' ? SCOPE.subj : subjOf(CUR.src)); } catch (e) { scopeRows = Promise.resolve([]); }
+    return Promise.all([kbRows(q), scopeRows.catch(function () { return []; })]).then(function (r) {
+      var kb = r[0] || [], prev = r[1] || [];
+      var byKey = {};
+      function put(src, p, score) {
+        var k = src + '#' + p;
+        if (!byKey[k] || score > byKey[k].score) byKey[k] = { src: src, p: p, score: score };
+      }
+      kb.forEach(function (x) { put(x.src, x.p, (x.score || 0) * 1.2); });
+      if (prev.length) {
+        HIT_ROWS = prev;
+        var hs = (searchIn(prev, q) || []).slice(0, 60);
+        hs.forEach(function (h) {
+          var rr = prev[h.i]; if (!rr || !rr.src) return;
+          put(rr.src, rr.p, Math.max(0.12, (h.score || 0) * 0.4));
+        });
+      }
+      var list = Object.keys(byKey).map(function (k) { return byKey[k]; });
+      if (!list.length) return [];
+      var files = {};
+      list.forEach(function (x) {
+        var e = files[x.src];
+        if (!e) files[x.src] = { src: x.src, best: x.score };
+        else if (x.score > e.best) e.best = x.score;
+      });
+      var fl = Object.keys(files).map(function (k) { return files[k]; })
+        .sort(function (a, b) { return b.best - a.best; }).slice(0, 6);
+      var picked = [];
+      fl.forEach(function (f) {
+        var mine = list.filter(function (x) { return x.src === f.src; })
+          .sort(function (a, b) { return b.score - a.score; })
+          .slice(0, 3);
+        /* 这一份里命中不够 3 页：再在这份自己的正文里按关键词补几页，
+           这样「每份 PDF 各自给出候选页」才成立，不会一份只有一页 */
+        if (mine.length < 3 && prev.length) {
+          var rowsF = prev.filter(function (r) { return r && r.src === f.src && r.t; });
+          if (rowsF.length) {
+            var hsF = (searchIn(rowsF, q) || []).slice(0, 6);
+            for (var k = 0; k < hsF.length && mine.length < 3; k++) {
+              var rrF = rowsF[hsF[k].i]; if (!rrF) continue;
+              var dup = false;
+              for (var m = 0; m < mine.length; m++) { if (mine[m].p === rrF.p) { dup = true; break; } }
+              if (!dup) mine.push({ src: f.src, p: rrF.p, score: Math.max(0.08, (hsF[k].score || 0) * 0.3) });
+            }
+          }
+        }
+        mine.forEach(function (x) { picked.push(x); });
+      });
+      var textMap = {};
+      prev.forEach(function (rr) { if (rr && rr.t) textMap[rr.src + '#' + rr.p] = rr.t; });
+      var withT = picked.filter(function (x) { return textMap[x.src + '#' + x.p]; })
+        .map(function (x) { return { src: x.src, p: x.p, score: x.score, t: textMap[x.src + '#' + x.p] }; });
+      if (withT.length >= 3) {
+        return withTimeout(rankPages(withT, q), 13000).then(function (rk) {
+          return (rk && rk.length) ? rk : picked;
+        }).catch(function () { return picked; });
+      }
+      return picked;
+    });
+  }
+
   function locate() {
     var bd = getBind();
     if (bd && fileOf(bd.src)) {
@@ -1027,23 +1129,23 @@
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
     if (SCOPE.mode === 'file') return fileLocate(q);
-    if (SCOPE.mode === 'subj') return subjLocate(q);
-    if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
-    /* 一号方案：和 AI 解析共用同一套资料检索（kb.js）；不行再回旧链路 */
-    withTimeout(kbLocate(q), 25000).then(function (fd) {
-      if (!fd) { legacyLocate(q); return; }
-      /* 第一步（KB）已经定到哪一份；第二步在这份 PDF 里逐页排序 */
-      if (el.meta) el.meta.textContent = '已定到《' + fd.name.slice(0, 20) + '》，正在这份里逐页比对…';
-      return withTimeout(embedRank(fd.src, q), 14000).then(function (list) {
-        list = list || [];
-        if (!list.length) { jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页'); return; }
-        CAND2 = list.slice(0, 8).map(function (x) { return { src: x.src || fd.src, p: x.p, score: x.score }; });
-        CAND_I = 0;
-        var top = CAND2[0];
-        var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
-        jumpToSrc(fd.src, top.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + top.p + ' 页' + hint);
+    var tag = (SCOPE.mode === 'subj') ? ('📚 ' + (SCOPE.subj || '这一科')) : '📚 多份检索';
+    if (el.meta) el.meta.textContent = '正在多份讲义里一起找这一页…';
+    /* 首选：多份 PDF 一起检索（知识库命中的每一份 + 当前位置），按相似度排 */
+    withTimeout(multiLocate(q), 45000).then(function (list) {
+      if (list && list.length) { applyCands(list, tag); return null; }
+      if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
+      /* 退路：和 AI 解析共用同一套资料检索（kb.js）→ 在这份 PDF 里逐页排序 */
+      return withTimeout(kbLocate(q), 25000).then(function (fd) {
+        if (!fd) { legacyLocate(q); return null; }
+        if (el.meta) el.meta.textContent = '已定到《' + fd.name.slice(0, 20) + '》，正在这份里逐页比对…';
+        return withTimeout(embedRank(fd.src, q), 14000).then(function (l2) {
+          l2 = l2 || [];
+          if (!l2.length) { jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页'); return null; }
+          applyCands(l2.map(function (x) { return { src: x.src || fd.src, p: x.p, score: x.score }; }), '📚 资料检索');
+          return null;
+        });
       });
-      /* 没命中：走旧链路 */
     }).catch(function () { legacyLocate(q); });
   }
   /* 旧链路：当前科目关键词 → 向量/聊天选页 → 关键词第一页 */
@@ -1105,20 +1207,38 @@
     closeCands();
     if (!CAND2.length) { toast('还没有候选：先点「🔍 定位到这题」'); return; }
     var mask = ce('div', 'lec-smask'); mask.id = 'lecCandMask';
-    var sheet = ce('div', 'lec-ssheet');
-    var h = '<div class="lec-shead"><b>候选页 · ' + CAND2.length + ' 个</b><button class="lec-sx" data-cd="x" title="关闭（Esc）">×</button></div>';
-    h += '<div class="lec-sbody">';
-    for (var i = 0; i < CAND2.length; i++) {
-      var c = CAND2[i], f = fileOf(c.src) || {};
-      var nm = String(f.f || c.src || '').replace(/\.pdf$/i, '');
-      var sc = (c.score > 0 && c.score <= 1) ? c.score.toFixed(2) : '';
-      h += '<button class="lec-crow' + (i === CAND_I ? ' on' : '') + '" data-cd="go" data-i="' + i + '">' +
-        '<em>' + (i + 1) + '</em>' +
-        '<div><b>' + nm.replace(/</g, '&lt;') + '</b><span>第 ' + c.p + ' 页' + (f.n ? ' / 共 ' + f.n + ' 页' : '') + '</span></div>' +
-        (sc ? '<i class="lec-cbar"><u style="width:' + Math.round(Math.max(6, Math.min(100, c.score * 100))) + '%"></u></i><s>' + sc + '</s>' : '') +
-        '</button>';
+    var sheet = ce('div', 'lec-ssheet lec-ssheet-wide');
+    /* 按讲义分组：一组一份 PDF，组内按这页的相关度排；组与组之间按各份的最高分排 */
+    var groups = [], gi = {};
+    for (var j = 0; j < CAND2.length; j++) {
+      var c0 = CAND2[j], g0 = gi[c0.src];
+      if (!g0) { g0 = gi[c0.src] = { src: c0.src, rows: [] }; groups.push(g0); }
+      g0.rows.push({ i: j, c: c0 });
     }
-    h += '</div><div class="lec-sfoot">按相关度排序，最像的在最上面</div>';
+    groups.forEach(function (g) {
+      g.best = Math.max.apply(null, g.rows.map(function (r) { return r.c.score || 0; }));
+    });
+    groups.sort(function (a, b) { return b.best - a.best; });
+    var h = '<div class="lec-shead"><b>候选讲义 · ' + groups.length + ' 份 / ' + CAND2.length + ' 页</b>'
+      + '<button class="lec-sx" data-cd="x" title="关闭（Esc）">×</button></div>';
+    h += '<div class="lec-sbody">';
+    groups.forEach(function (g) {
+      var f = fileOf(g.src) || {};
+      var nm = String(f.f || g.src || '').replace(/\.pdf$/i, '');
+      h += '<div class="lec-cgrp"><div class="lec-cgh"><b>' + nm.replace(/</g, '&lt;') + '</b>'
+        + '<span>最像 ' + g.best.toFixed(2) + ' · ' + g.rows.length + ' 页候选</span></div>';
+      g.rows.forEach(function (r, gi2) {
+        var c = r.c, i = r.i;
+        var sc = (c.score > 0 && c.score <= 1) ? c.score.toFixed(2) : '';
+        h += '<button class="lec-crow' + (i === CAND_I ? ' on' : '') + '" data-cd="go" data-i="' + i + '">' +
+          '<em>' + (gi2 + 1) + '</em>' +
+          '<div><b>第 ' + c.p + ' 页</b></div>' +
+          (sc ? '<i class="lec-cbar"><u style="width:' + Math.round(Math.max(6, Math.min(100, c.score * 100))) + '%"></u></i><s>' + sc + '</s>' : '') +
+          '</button>';
+      });
+      h += '</div>';
+    });
+    h += '</div><div class="lec-sfoot">在全部讲义里按相似度排；点一条直接跳过去</div>';
     sheet.innerHTML = h;
     mask.appendChild(sheet);
     mask.addEventListener('click', function (ev) {
