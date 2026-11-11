@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>render bed 2 (gap pages only)</title>
+<style>body{margin:0;font:13px/1.5 system-ui;color:#334;padding:10px}canvas{display:none}</style>
+</head>
+<body>
+<div id="st">准备中…</div>
+<canvas id="cv"></canvas>
+<script src="v3/pdf.min.js"></script>
+<script>
+/* 只渲染清单里指定页：列表 [{key, f, rel, pages:[n,...]}]
+   用法：renderbed2.html?list=/pdfjs/_gap.json&w=1200&q=0.7
+   外部脚本轮询 window.__STATE，取走 cur 后把 __STATE.ack 设为 cur.i */
+window.__STATE = { i: 0, total: 0, cur: null, ack: -1, err: null, log: '', done: false };
+/* 轻量状态：只回进度，不搬图（轮询用这个） */
+window.__stat = function () {
+  var s = window.__STATE;
+  return { i: s.i, total: s.total, done: s.done, err: s.err, log: s.log,
+    curDone: !!(s.cur && s.cur.done), curI: s.cur ? s.cur.i : -1 };
+};
+/* 取当前完成的作业数据（含图片 dataURL），取完由外部 ack */
+window.__take = function () {
+  var c = window.__STATE.cur;
+  if (!c || !c.done) return null;
+  return { i: c.i, key: c.key, f: c.f, rel: c.rel, fail: c.fail, imgs: c.imgs, texts: c.texts };
+};
+(function () {
+  var q = new URLSearchParams(location.search);
+  var LIST = q.get('list') || '';
+  var W = parseInt(q.get('w') || '1200', 10);
+  var QU = parseFloat(q.get('q') || '0.7');
+  var st = document.getElementById('st');
+  var cv = document.getElementById('cv');
+  if (!LIST) { window.__STATE.err = 'no list'; return; }
+  try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'v3/pdf.worker.min.js'; } catch (e) {}
+  (async function () {
+    var jobs = [];
+    try {
+      var r = await fetch(LIST, { cache: 'no-store' });
+      jobs = await r.json();
+    } catch (e) { window.__STATE.err = 'list fail: ' + e; return; }
+    window.__STATE.total = jobs.length;
+    for (var j = 0; j < jobs.length; j++) {
+      var job = jobs[j];
+      window.__STATE.i = j;
+      var item = { i: j, key: job.key, f: job.f, rel: job.rel, imgs: {}, texts: {}, fail: null };
+      window.__STATE.cur = item;
+      window.__STATE.ack = -1;
+      try {
+        var doc = await pdfjsLib.getDocument({ url: '/' + job.rel, isEvalSupported: false }).promise;
+        for (var k = 0; k < job.pages.length; k++) {
+          var i = job.pages[k];
+          st.textContent = '（' + (j + 1) + '/' + jobs.length + '）' + job.f + ' 第 ' + i + ' 页';
+          try {
+            var p = await doc.getPage(i);
+            try {
+              var tc = await p.getTextContent();
+              item.texts[i] = (tc.items || []).map(function (it) { return it.str || ''; }).join(' ').replace(/\s+/g, ' ').trim();
+            } catch (eT) { item.texts[i] = ''; }
+            var v1 = p.getViewport({ scale: 1 });
+            var vp = p.getViewport({ scale: W / v1.width });
+            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+            var cx = cv.getContext('2d');
+            cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+            await p.render({ canvasContext: cx, viewport: vp }).promise;
+            item.imgs[i] = cv.toDataURL('image/webp', QU);
+            p.cleanup();
+          } catch (eP) { item.texts[i] = item.texts[i] || ''; }
+        }
+        doc.destroy();
+      } catch (e) {
+        item.fail = String(e && e.message || e);
+      }
+      window.__STATE.log = job.f + ' → ' + (item.fail || (job.pages.length + ' 页'));
+      item.done = true;
+      /* 等外部脚本落盘并 ack */
+      while (window.__STATE.ack !== j) { await new Promise(function (r) { setTimeout(r, 150); }); }
+      window.__STATE.cur = null;
+    }
+    window.__STATE.i = jobs.length;
+    window.__STATE.done = true;
+    st.textContent = '全部完成';
+  })();
+})();
+</script>
+</body>
+</html>

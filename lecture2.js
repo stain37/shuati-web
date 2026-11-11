@@ -25,7 +25,7 @@
      线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
      现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
            ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
-  var IDX_CACHE = 'qbank.lec.idx.v2';
+  var IDX_CACHE = 'qbank.lec.idx.v3';
   function parseCompact(j) {
     IDX = j; BYKEY = {};
     var map = {}, srcs = j.s || [];
@@ -60,7 +60,7 @@
   /* 注意：404 也是可缓存响应。之前用 ?t=<今天日期> + force-cache，
      站点重建那几分钟里拿到过一次 404，就会被浏览器缓存一整天 → 一直“目录没读出来”。
      现在：版本号做 key；重试时带随机数 + no-store，绝不吃坏缓存。 */
-  var LEC_VER = '20261111h';
+  var LEC_VER = '20261112a';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -239,6 +239,7 @@
         '<span id="lecPinState" class="lec-pinstate"></span>' +
         '<button class="lec-x" data-lec="close" title="关闭（Esc）">×</button></div>' +
       '<div class="lec-bar">' +
+        '<button id="lecScopeBtn" class="lec-scope" data-lec="scope" title="定位范围（自动 / 指定讲义 / 指定科目）">🎯 自动</button>' +
         '<select id="lecFile" class="lec-sel" title="换一份讲义"></select>' +
         '<div class="lec-pager">' +
           '<button data-lec="prev" title="上一页（←）">‹</button>' +
@@ -267,6 +268,8 @@
       var a = b.getAttribute('data-lec');
       if (a === 'close') return close();
       if (a === 'loc') return locate();
+      if (a === 'scope') return openScope();
+      if (a === 'scopeok') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
       if (a === 'pin') return pinNow();
       if (a === 'unpin') return unpinNow();
       if (a === 'alt') return nextCand();
@@ -599,18 +602,18 @@
   }
   function loadPart(pid) {
     if (TXT_CACHE[pid]) return Promise.resolve(TXT_CACHE[pid]);
-    return idb('get', 'part:' + pid).then(function (c) {
+    return idb('get', 'part:' + LEC_VER + ':' + pid).then(function (c) {
       var cached = (c && Array.isArray(c.rows)) ? c.rows.filter(Boolean) : null;
       if (cached && cached.length) { TXT_CACHE[pid] = cached; return cached; }
       return fetchAsset('pdftext/' + pid + '.json', { json: true, tries: 2, timeout: 45000 }).then(function (arr) {
         var rows = rowsOf(arr);
         if (!rows.length) throw new Error('这一块是空的');
         TXT_CACHE[pid] = rows;
-        idb('set', 'part:' + pid, { ts: Date.now(), rows: rows });
+        idb('set', 'part:' + LEC_VER + ':' + pid, { ts: Date.now(), rows: rows });
         return rows;
       }).catch(function (e) {
         /* 缓存或网络坏了：把这一块的缓存删掉，下次重来 */
-        idb('set', 'part:' + pid, null);
+        idb('set', 'part:' + LEC_VER + ':' + pid, null);
         throw e;
       });
     });
@@ -778,6 +781,59 @@
     for (i = 0; i < FILES.length; i++) { f = FILES[i]; a = normName(f.src); if (a.indexOf(want) >= 0 || want.indexOf(a) >= 0) return f; }
     return null;
   }
+  /* ---------- 定位范围：自动 / 指定讲义 / 指定科目 ---------- */
+  var SCOPE_KEY = 'qbank.lec.scope.v1';
+  var SCOPE = readLS(SCOPE_KEY, null) || { mode: 'auto' };
+  function scopeSave() { try { writeLS(SCOPE_KEY, SCOPE); } catch (e) {} }
+  function scopeLabel() {
+    if (SCOPE.mode === 'file') {
+      var f = fileOf(SCOPE.src);
+      return f ? ('📄 ' + f.f.replace(/\.pdf$/i, '').slice(0, 10)) : '📄 指定讲义';
+    }
+    if (SCOPE.mode === 'subj') return '📚 ' + (SCOPE.subj || '科目');
+    return '🎯 自动';
+  }
+  function scopePaint() {
+    var b = $('#lecScopeBtn');
+    if (!b) return;
+    b.textContent = scopeLabel();
+    b.title = '定位范围：' + (SCOPE.mode === 'auto' ? '全库（AI 资料检索）' : (SCOPE.mode === 'file' ? SCOPE.src : SCOPE.subj)) + '（点这里改）';
+    b.classList.toggle('on', SCOPE.mode !== 'auto');
+  }
+  function rankPages(pages, q) {
+    if (!pages || !pages.length) return Promise.resolve([]);
+    if (typeof window.aiEmbed !== 'function') return Promise.resolve(kwRank(pages, q));
+    var texts = pages.map(function (r) { return String(r.t || '').replace(/\s+/g, ' ').slice(0, 400); });
+    var model = 'bge-small-zh-v1.5';
+    try { var c = (typeof window.aiCfg === 'function') ? window.aiCfg() : null; if (c && c.embModel) model = c.embModel; } catch (e) {}
+    return withTimeout(window.aiEmbed([String(q).slice(0, 500)].concat(texts), { model: model }), 20000).then(function (vs) {
+      if (!vs || vs.length !== texts.length + 1) return kwRank(pages, q);
+      var out = [];
+      for (var i = 1; i < vs.length; i++) out.push({ src: pages[i - 1].src, p: pages[i - 1].p, score: cosSim(vs[0], vs[i]) });
+      out.sort(function (a, b) { return b.score - a.score; });
+      return out;
+    }).catch(function () { return kwRank(pages, q); });
+  }
+  /* 在一个科目/一组文件里逐页比语义：页数太多先做关键词粗筛 */
+  function rankScope(q, rows) {
+    var pages = (rows || []).filter(function (r) { return r && r.t; });
+    if (pages.length > 240) {
+      var hs = searchIn(pages, q) || [];
+      if (hs.length) pages = hs.slice(0, 240).map(function (h) { return pages[h.i]; });
+      else pages = pages.slice(0, 240);
+    }
+    return rankPages(pages, q);
+  }
+  function applyCands(list, tag) {
+    list = (list || []).slice(0, 8);
+    if (!list.length) return false;
+    CAND2 = list; CAND_I = 0;
+    var top = list[0];
+    var f = fileOf(top.src);
+    var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
+    jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + top.p + ' 页' + hint);
+    return true;
+  }
   var CAND2 = [];   /* 语义排序后的候选页 [{src,p,score}] */
   function altBtn(n) {
     var b = $('#lecAlt');
@@ -811,17 +867,7 @@
     return loadTextSubj().then(function (rows) {
       var pages = (rows || []).filter(function (r) { return r && r.src === src && r.t; });
       if (!pages.length) return [];
-      if (typeof window.aiEmbed !== 'function') return kwRank(pages, q);
-      var texts = pages.map(function (r) { return String(r.t).replace(/\s+/g, ' ').slice(0, 400); });
-      var model = 'bge-small-zh-v1.5';
-      try { var c = (typeof window.aiCfg === 'function') ? window.aiCfg() : null; if (c && c.embModel) model = c.embModel; } catch (e) {}
-      return withTimeout(window.aiEmbed([String(q).slice(0, 500)].concat(texts), { model: model }), 12000).then(function (vs) {
-        if (!vs || vs.length !== texts.length + 1) return kwRank(pages, q);
-        var out = [];
-        for (var i = 1; i < vs.length; i++) out.push({ p: pages[i - 1].p, score: cosSim(vs[0], vs[i]) });
-        out.sort(function (a, b) { return b.score - a.score; });
-        return out;
-      }).catch(function () { return kwRank(pages, q); });
+      return rankPages(pages, q);
     });
   }
   function kbLocate(q) {
@@ -888,6 +934,76 @@
     }).catch(function () { return null; });
   }
 
+  /* ---------- 范围选择弹层 ---------- */
+  function openScope() {
+    var old = document.getElementById('lecScopeMask');
+    if (old) old.parentNode.removeChild(old);
+    var mask = ce('div', 'lec-smask'); mask.id = 'lecScopeMask';
+    var sheet = ce('div', 'lec-ssheet');
+    var subs = {};
+    try { subs = subjects() || {}; } catch (e) { subs = {}; }
+    var names = Object.keys(subs).filter(function (k) { return (subs[k] || []).length; });
+    var curName = (CUR.src && (fileOf(CUR.src) || {}).f) || '当前这份';
+    var h = '<div class="lec-shead"><b>定位范围</b><button class="lec-sx" data-sc="x">×</button></div><div class="lec-sbody">';
+    h += '<button class="lec-sopt' + (SCOPE.mode === 'auto' ? ' on' : '') + '" data-sc="pick" data-v="auto"><b>🎯 自动（推荐）</b><span>先在 AI 解析的资料库里找是哪一份讲义，再进去逐页比语义</span></button>';
+    h += '<button class="lec-sopt' + (SCOPE.mode === 'file' ? ' on' : '') + '" data-sc="pick" data-v="file" data-src="' + String(CUR.src || '').replace(/"/g, '&quot;') + '"><b>📄 只在这份里找</b><span>' + String(curName).replace(/</g, '&lt;') + '</span></button>';
+    h += '<div class="lec-slabel">按科目找（只用这个科目的讲义）</div><div class="lec-schips">';
+    for (var i = 0; i < names.length; i++) {
+      var nm = names[i];
+      var on = (SCOPE.mode === 'subj' && SCOPE.subj === nm) ? ' on' : '';
+      h += '<button class="lec-schip' + on + '" data-sc="pick" data-v="subj" data-subj="' + nm + '">' + nm + '（' + subs[nm].length + '）</button>';
+    }
+    h += '</div></div>';
+    sheet.innerHTML = h;
+    var mask2 = ce('div', ''); mask2.style.cssText = 'position:fixed;inset:0;background:rgba(8,12,24,.55);backdrop-filter:blur(3px);z-index:26000';
+    mask2.id = 'lecScopeMask';
+    mask2.appendChild(sheet);
+    sheet.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,92vw);max-height:80vh;overflow:auto;background:var(--card,#fff);color:var(--text,#111);border:1px solid var(--line,rgba(0,0,0,.12));border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:12px 14px;font:14px/1.5 system-ui;z-index:26001';
+    mask2.addEventListener('click', function (ev) {
+      if (ev.target === mask2) return closeScope();
+      var b = ev.target.closest('[data-sc]'); if (!b) return;
+      var a = b.getAttribute('data-sc');
+      if (a === 'x') return closeScope();
+      if (a === 'pick') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
+    });
+    document.body.appendChild(mask2);
+    window.__closeLecScope = function () { try { mask2.parentNode.removeChild(mask2); } catch (e) {} };
+  }
+  function closeScope() { if (window.__closeLecScope) window.__closeLecScope(); }
+  function pickScope(v, subj, src) {
+    if (v === 'auto') SCOPE = { mode: 'auto' };
+    else if (v === 'file') {
+      if (!src) { toast('先在上面选一份讲义'); return; }
+      SCOPE = { mode: 'file', src: src };
+    } else if (v === 'subj') { SCOPE = { mode: 'subj', subj: subj }; }
+    scopeSave(); scopePaint(); closeScope();
+    toast('定位范围：' + scopeLabel());
+  }
+  /* 只在一份讲义里找 */
+  function fileLocate(q) {
+    var src = SCOPE.src, f = fileOf(src);
+    if (!f) { toast('这份讲义不在目录里了，换成「自动」再试'); SCOPE = { mode: 'auto' }; scopeSave(); return; }
+    if (el.meta) el.meta.textContent = '只在这份《' + f.f.replace(/\.pdf$/i, '').slice(0, 16) + '》里逐页比对…';
+    withTimeout(embedRank(src, q), 20000).then(function (list) {
+      if (!applyCands(list, '📄 这份讲义')) {
+        if (el.meta) el.meta.textContent = '这份讲义里没找到相关页';
+        toast('这份讲义里没找到相关页');
+      }
+    }).catch(function () { if (el.meta) el.meta.textContent = '比对失败，换个范围试试'; });
+  }
+  /* 在某个科目里找 */
+  function subjLocate(q) {
+    var sb = SCOPE.subj;
+    if (el.meta) el.meta.textContent = '在「' + sb + '」的讲义里逐页比对…';
+    loadTextSubj(sb).then(function (rows) {
+      var inScope = (rows || []).filter(function (r) { return r && subjOf(r.src) === sb; });
+      if (!inScope.length) { if (el.meta) el.meta.textContent = '这个科目还没有文字索引：' + sb; toast('这个科目还没有文字索引'); return; }
+      return withTimeout(rankScope(q, inScope), 25000).then(function (list) {
+        if (!applyCands(list, '📚 ' + sb)) { if (el.meta) el.meta.textContent = '这个科目里没找到相关页'; }
+      });
+    }).catch(function (e) { toast('定位失败：' + (e && e.message || e)); });
+  }
+
   function locate() {
     var bd = getBind();
     if (bd && fileOf(bd.src)) {
@@ -900,6 +1016,8 @@
     }
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
+    if (SCOPE.mode === 'file') return fileLocate(q);
+    if (SCOPE.mode === 'subj') return subjLocate(q);
     if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
     /* 一号方案：和 AI 解析共用同一套资料检索（kb.js）；不行再回旧链路 */
     withTimeout(kbLocate(q), 25000).then(function (fd) {
@@ -909,7 +1027,7 @@
       return withTimeout(embedRank(fd.src, q), 14000).then(function (list) {
         list = list || [];
         if (!list.length) { jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页'); return; }
-        CAND2 = list.slice(0, 6).map(function (x) { return { src: fd.src, p: x.p, score: x.score }; });
+        CAND2 = list.slice(0, 8).map(function (x) { return { src: x.src || fd.src, p: x.p, score: x.score }; });
         CAND_I = 0;
         var top = CAND2[0];
         var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
@@ -993,7 +1111,7 @@
     try { jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })); } catch (e) {}
     try { jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })); } catch (e) {}
     Promise.all(jobs).catch(function () {}).then(function () {
-      try { localStorage.removeItem('qbank.lec.idx.v2'); } catch (e) {}
+      try { localStorage.removeItem('qbank.lec.idx.v3'); localStorage.removeItem('qbank.lec.idx.v2'); } catch (e) {}
       location.reload();
     });
   }
@@ -1001,7 +1119,7 @@
   function ensureIndex(force) {
     if (el.meta) el.meta.textContent = force ? '重新读讲义目录…' : '正在读讲义目录…';
     return loadIndex(force).then(function () {
-      restore(); fillSelect(); paint(); applyBind();
+      restore(); fillSelect(); paint(); applyBind(); try { scopePaint(); } catch (e) {}
     }).catch(function (e) {
       window.__lecLastErr = e || null;
       if (el.meta) {
@@ -1019,7 +1137,7 @@
     el.mask.classList.add('on'); el.sheet.classList.add('on');
     if (!FILES) { ensureIndex(false); return; }
     if (!CUR.src) restore();
-    fillSelect(); paint(); applyBind();
+    fillSelect(); paint(); applyBind(); try { scopePaint(); } catch (e) {}
   }
 
   function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
@@ -1040,5 +1158,5 @@
     files: function () { return FILES; }, pageKey: keyFor,
     /* 调试用：直接看 KB 检索返回什么 */
     kb: function () { return kbLocate(questionText()); }, q: questionText,
-    rank: function (src) { return embedRank(src, questionText()); }, cand2: function () { return CAND2.length; } };
+    cand2: function () { return CAND2.length; } };
 })();
