@@ -778,17 +778,51 @@
     for (i = 0; i < FILES.length; i++) { f = FILES[i]; a = normName(f.src); if (a.indexOf(want) >= 0 || want.indexOf(a) >= 0) return f; }
     return null;
   }
+  var CAND2 = [];   /* 语义排序后的候选页 [{src,p,score}] */
+  function altBtn(n) {
+    var b = $('#lecAlt');
+    if (!b) {
+      b = ce('button', 'lec-alt'); b.id = 'lecAlt'; b.setAttribute('data-lec', 'alt');
+      b.title = '这不是那页？看下一个可能的页'; b.textContent = '换个候选';
+      var bar = $('.lec-bar'); if (bar) bar.appendChild(b);
+    }
+    if (n > 1) { b.style.display = ''; b.textContent = '换个候选 1/' + n; }
+    else b.style.display = 'none';
+  }
   function jumpToSrc(src, p, label) {
     var f = fileOf(src);
     if (!f) return false;
     CUR.src = src;
     CUR.p = Math.max(1, Math.min(f.n || 9999, (p | 0) || 1));
     CAND = [];
-    var alt = $('#lecAlt'); if (alt) alt.style.display = 'none';
     paint();
     try { remember(); } catch (e) {}
     if (el.meta) el.meta.textContent = label;
+    altBtn(CAND2.length);
     return true;
+  }
+
+  /* ---------- 第二步：在这份 PDF 里逐页算语义相似度，排序 ---------- */
+  function kwRank(pages, q) {
+    var hits = searchIn(pages, q) || [];
+    return hits.map(function (h) { var r = pages[h.i] || {}; return { p: r.p, score: h.score || 0 }; });
+  }
+  function embedRank(src, q) {
+    return loadTextSubj().then(function (rows) {
+      var pages = (rows || []).filter(function (r) { return r && r.src === src && r.t; });
+      if (!pages.length) return [];
+      if (typeof window.aiEmbed !== 'function') return kwRank(pages, q);
+      var texts = pages.map(function (r) { return String(r.t).replace(/\s+/g, ' ').slice(0, 400); });
+      var model = 'bge-small-zh-v1.5';
+      try { var c = (typeof window.aiCfg === 'function') ? window.aiCfg() : null; if (c && c.embModel) model = c.embModel; } catch (e) {}
+      return withTimeout(window.aiEmbed([String(q).slice(0, 500)].concat(texts), { model: model }), 12000).then(function (vs) {
+        if (!vs || vs.length !== texts.length + 1) return kwRank(pages, q);
+        var out = [];
+        for (var i = 1; i < vs.length; i++) out.push({ p: pages[i - 1].p, score: cosSim(vs[0], vs[i]) });
+        out.sort(function (a, b) { return b.score - a.score; });
+        return out;
+      }).catch(function () { return kwRank(pages, q); });
+    });
   }
   function kbLocate(q) {
     if (typeof kbSearch !== 'function') return Promise.resolve(null);
@@ -869,8 +903,19 @@
     if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
     /* 一号方案：和 AI 解析共用同一套资料检索（kb.js）；不行再回旧链路 */
     withTimeout(kbLocate(q), 25000).then(function (fd) {
-      if (fd && jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页')) return;
-      legacyLocate(q);
+      if (!fd) { legacyLocate(q); return; }
+      /* 第一步（KB）已经定到哪一份；第二步在这份 PDF 里逐页排序 */
+      if (el.meta) el.meta.textContent = '已定到《' + fd.name.slice(0, 20) + '》，正在这份里逐页比对…';
+      return withTimeout(embedRank(fd.src, q), 14000).then(function (list) {
+        list = list || [];
+        if (!list.length) { jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页'); return; }
+        CAND2 = list.slice(0, 6).map(function (x) { return { src: fd.src, p: x.p, score: x.score }; });
+        CAND_I = 0;
+        var top = CAND2[0];
+        var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
+        jumpToSrc(fd.src, top.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + top.p + ' 页' + hint);
+      });
+      /* 没命中：走旧链路 */
     }).catch(function () { legacyLocate(q); });
   }
   /* 旧链路：当前科目关键词 → 向量/聊天选页 → 关键词第一页 */
@@ -928,6 +973,14 @@
     }
   }
   function nextCand() {
+    if (CAND2.length) {
+      CAND_I = (CAND_I + 1) % CAND2.length;
+      var c = CAND2[CAND_I];
+      jumpToSrc(c.src, c.p, '📚 资料检索：第 ' + c.p + ' 页（候选 ' + (CAND_I + 1) + '/' + CAND2.length + '）');
+      var b = $('#lecAlt'); if (b) b.textContent = '换个候选 ' + (CAND_I + 1) + '/' + CAND2.length;
+      toast('换到第 ' + c.p + ' 页（相似度 ' + (c.score <= 1 ? c.score.toFixed(2) : c.score) + '）');
+      return;
+    }
     if (!CAND.length) return;
     CAND_I = (CAND_I + 1) % CAND.length;
     jumpTo(CAND[CAND_I]);
@@ -986,5 +1039,6 @@
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     /* 调试用：直接看 KB 检索返回什么 */
-    kb: function () { return kbLocate(questionText()); }, q: questionText };
+    kb: function () { return kbLocate(questionText()); }, q: questionText,
+    rank: function (src) { return embedRank(src, questionText()); }, cand2: function () { return CAND2.length; } };
 })();
