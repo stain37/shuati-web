@@ -99,11 +99,17 @@
         } catch (e) {}
       }
     }
-    return fetchJson('pdfimg/idx.json', 3, 25000).then(function (j) {
-      applyIdx(j);
-      try { writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) }); } catch (e) {}
-      return IDX;
-    });
+    /* 同一个文件多放几个位置：某些网络对 pdfimg/ 这种大目录会 404 / 被中间层拦掉 */
+    var urls = ['pdfimg/idx.json', 'data/lec-idx.json'], i = 0;
+    function tryNext(lastErr) {
+      if (i >= urls.length) return Promise.reject(lastErr || new Error('no url'));
+      return fetchJson(urls[i++], 2, 25000).then(function (j) {
+        applyIdx(j);
+        try { writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) }); } catch (e) {}
+        return IDX;
+      }).catch(tryNext);
+    }
+    return tryNext(null);
   }
 
   function subjects() {
@@ -208,6 +214,7 @@
       if (a === 'find') return doFind();
       if (a === 'imgretry') { IMG_TRIED = {}; return paint(); }
       if (a === 'retry') return ensureIndex(true);
+      if (a === 'hardreset') return hardReset();
       if (a === 'hit') return goHit(b.getAttribute('data-i'));
     });
     zoom.addEventListener('click', function (ev) { if (ev.target.closest('[data-lec="unzoom"]') || ev.target === zoom) unzoom(); });
@@ -621,13 +628,29 @@
     toast('候选 ' + (CAND_I + 1) + '/' + CAND.length + '：' + (CAND[CAND_I].hit || 0) + ' 处命中');
   }
 
+  function hardReset() {
+    if (!window.confirm('清掉本站缓存并重新载入？题库和作答记录不受影响。')) return;
+    var jobs = [];
+    try { jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })); } catch (e) {}
+    try { jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })); } catch (e) {}
+    Promise.all(jobs).catch(function () {}).then(function () {
+      try { localStorage.removeItem('qbank.lec.idx.v2'); } catch (e) {}
+      location.reload();
+    });
+  }
+
   function ensureIndex(force) {
     if (el.meta) el.meta.textContent = force ? '重新读讲义目录…' : '正在读讲义目录…';
     return loadIndex(force).then(function () {
       restore(); fillSelect(); paint(); applyBind();
-    }).catch(function () {
-      if (el.meta) el.meta.innerHTML = '目录没读出来（网络慢，或站点正在更新）' +
-        '<button class="lec-retry" data-lec="retry">重试</button>';
+    }).catch(function (e) {
+      window.__lecLastErr = e || null;
+      if (el.meta) {
+        var why = (window.__lecLastErr && window.__lecLastErr.message) || '';
+        el.meta.innerHTML = '目录没读出来' + (why ? '（' + why + '）' : '（网络慢，或站点正在更新）') +
+          '<button class="lec-retry" data-lec="retry">重试</button>' +
+          '<button class="lec-retry" data-lec="hardreset" title="清掉本站缓存再重新加载（修一切“改了没生效 / 一直失败”）">清缓存重载</button>';
+      }
     });
   }
 
