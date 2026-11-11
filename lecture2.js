@@ -842,7 +842,7 @@
     var top = list[0];
     var f = fileOf(top.src);
     var hint = (top.score > 0 && top.score <= 1) ? ' · 相似度 ' + top.score.toFixed(2) : '';
-    jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + top.p + ' 页' + hint);
+    jumpToSrc(top.src, top.p, tag + '：' + (f ? f.f.replace(/\.pdf$/i, '').slice(0, 18) : '') + ' 第 ' + localPage(f, top.p) + ' 页' + hint);
     return true;
   }
   var CAND2 = [];   /* 语义排序后的候选页 [{src,p,score}] */
@@ -856,11 +856,26 @@
     if (n > 1) { b.style.display = ''; b.textContent = '候选 ' + (CAND_I + 1) + '/' + n + ' ▾'; }
     else b.style.display = 'none';
   }
+  /* 单章 PDF 是从大书里切出来的：文字层里的页码是「原书页码」（如 189），
+     PDF 自己的页只有 3 页 → 显示/跳转前要减回去。文件名末尾就有 "_189-191" */
+  function pageRange(f) {
+    var m = String((f && f.f) || '').match(/_(\d+)\s*[-–—]\s*(\d+)\.pdf$/i);
+    return m ? { a: +m[1], b: +m[2] } : null;
+  }
+  function localPage(f, p) {
+    var r = pageRange(f), n = (f && f.n) || 0;
+    var v = p;
+    if (r && p >= r.a && (!r.b || p <= r.b)) v = p - r.a + 1;
+    if (v < 1) v = 1;
+    if (n && v > n) v = n;
+    return v;
+  }
+
   function jumpToSrc(src, p, label) {
     var f = fileOf(src);
     if (!f) return false;
     CUR.src = src;
-    CUR.p = Math.max(1, Math.min(f.n || 9999, (p | 0) || 1));
+    CUR.p = Math.max(1, Math.min(f.n || 9999, localPage(f, (p | 0) || 1)));
     CAND = [];
     paint();
     try { remember(); } catch (e) {}
@@ -1042,8 +1057,9 @@
         var f = null;
         try { f = fileByHit(h); } catch (e) { f = null; }
         if (!f) return;
-        var pg = (h.pdfp | 0) || (h.page | 0) || 1;
-        if (pg > (f.n || 9999)) pg = 1;
+        var pg = (h.pdfp | 0) || (h.page | 0) || 0;
+        if (pg > (f.n || 9999)) pg = 0;   /* 页码不可信就别当第 1 页用，交给「在这份里找页」 */
+        if (pg > 0) pg = localPage(f, pg);   /* 原书页码 → 这份 PDF 自己的页码 */
         var sc = (h.rr != null ? +h.rr : +h.score) || 0;
         out.push({ src: f.src, p: pg, score: sc, name: f.f });
       });
@@ -1051,68 +1067,99 @@
     }).catch(function () { return []; });
   }
 
-  /* 多份讲义一起找：知识库命中（多份 PDF）+ 当前范围关键词，按页去重 →
-     每份取自身最高分排前 6 份 → 每份取前 3 页 → 对这十几页做一次语义重排 */
+  /* 多份讲义一起找：
+     ① 知识库命中给出「哪几份 PDF」+「可能哪页」（可能只给到文件，没页码）
+     ② 每一份都在这份自己的正文里按关键词补候选页
+     ③ 每份内部用语义相似度排，取前 3 页
+     ④ 全部页按相似度排，再按这份的最高分排「份」 */
   function multiLocate(q) {
-    var scopeRows = null;
-    try { scopeRows = loadTextSubj(SCOPE.mode === 'subj' ? SCOPE.subj : subjOf(CUR.src)); } catch (e) { scopeRows = Promise.resolve([]); }
-    return Promise.all([kbRows(q), scopeRows.catch(function () { return []; })]).then(function (r) {
+    var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
+    var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
+    return Promise.all([kbRows(q), prevP]).then(function (r) {
       var kb = r[0] || [], prev = r[1] || [];
-      var byKey = {};
-      function put(src, p, score) {
-        var k = src + '#' + p;
-        if (!byKey[k] || score > byKey[k].score) byKey[k] = { src: src, p: p, score: score };
-      }
-      kb.forEach(function (x) { put(x.src, x.p, (x.score || 0) * 1.2); });
-      if (prev.length) {
-        HIT_ROWS = prev;
-        var hs = (searchIn(prev, q) || []).slice(0, 60);
-        hs.forEach(function (h) {
-          var rr = prev[h.i]; if (!rr || !rr.src) return;
-          put(rr.src, rr.p, Math.max(0.12, (h.score || 0) * 0.4));
+      var bySrc = {};
+      function addRows(rows) {
+        (rows || []).forEach(function (x) {
+          if (!x || !x.src) return;
+          (bySrc[x.src] || (bySrc[x.src] = [])).push(x);
         });
       }
-      var list = Object.keys(byKey).map(function (k) { return byKey[k]; });
-      if (!list.length) return [];
-      var files = {};
-      list.forEach(function (x) {
-        var e = files[x.src];
-        if (!e) files[x.src] = { src: x.src, best: x.score };
-        else if (x.score > e.best) e.best = x.score;
-      });
-      var fl = Object.keys(files).map(function (k) { return files[k]; })
-        .sort(function (a, b) { return b.best - a.best; }).slice(0, 6);
-      var picked = [];
-      fl.forEach(function (f) {
-        var mine = list.filter(function (x) { return x.src === f.src; })
-          .sort(function (a, b) { return b.score - a.score; })
-          .slice(0, 3);
-        /* 这一份里命中不够 3 页：再在这份自己的正文里按关键词补几页，
-           这样「每份 PDF 各自给出候选页」才成立，不会一份只有一页 */
-        if (mine.length < 3 && prev.length) {
-          var rowsF = prev.filter(function (r) { return r && r.src === f.src && r.t; });
-          if (rowsF.length) {
-            var hsF = (searchIn(rowsF, q) || []).slice(0, 6);
-            for (var k = 0; k < hsF.length && mine.length < 3; k++) {
-              var rrF = rowsF[hsF[k].i]; if (!rrF) continue;
-              var dup = false;
-              for (var m = 0; m < mine.length; m++) { if (mine[m].p === rrF.p) { dup = true; break; } }
-              if (!dup) mine.push({ src: f.src, p: rrF.p, score: Math.max(0.08, (hsF[k].score || 0) * 0.3) });
-            }
-          }
-        }
-        mine.forEach(function (x) { picked.push(x); });
-      });
-      var textMap = {};
-      prev.forEach(function (rr) { if (rr && rr.t) textMap[rr.src + '#' + rr.p] = rr.t; });
-      var withT = picked.filter(function (x) { return textMap[x.src + '#' + x.p]; })
-        .map(function (x) { return { src: x.src, p: x.p, score: x.score, t: textMap[x.src + '#' + x.p] }; });
-      if (withT.length >= 3) {
-        return withTimeout(rankPages(withT, q), 13000).then(function (rk) {
-          return (rk && rk.length) ? rk : picked;
-        }).catch(function () { return picked; });
+      addRows(prev);
+
+      var fileScore = {}, kbPages = {};
+      function bumpFile(src, sc) { if (!fileScore[src] || sc > fileScore[src]) fileScore[src] = sc; }
+      function bumpPage(src, p, sc) {
+        var m = kbPages[src] || (kbPages[src] = {});
+        m[p] = Math.max(m[p] || 0, sc);
       }
-      return picked;
+      kb.forEach(function (x) {
+        var sc = x.score || 0;
+        bumpFile(x.src, sc);
+        if (x.p > 0) bumpPage(x.src, x.p, sc);
+      });
+      function kwBump(rows) {
+        var hs = (searchIn(rows, q) || []).slice(0, 80);
+        hs.forEach(function (h) {
+          var rr = rows[h.i]; if (!rr || !rr.src) return;
+          var sc = Math.max(0.05, (h.score || 0) * 0.45);
+          bumpFile(rr.src, sc);
+          bumpPage(rr.src, localPage(fileOf(rr.src) || {}, rr.p), sc);
+        });
+      }
+      if (prev.length) kwBump(prev);
+
+      var files = Object.keys(fileScore)
+        .sort(function (a, b) { return fileScore[b] - fileScore[a]; }).slice(0, 6);
+      if (!files.length) return [];
+
+      /* 命中文件不在当前科目的文字块里：把它所属科目的文字也读进来，才能按页比对 */
+      var needSubj = {};
+      files.forEach(function (src) {
+        if (!bySrc[src] || !bySrc[src].length) { var sj = subjOf(src); if (sj) needSubj[sj] = 1; }
+      });
+      var extraP = Object.keys(needSubj).map(function (sj) {
+        return loadTextSubj(sj).then(function (rows) { return rows || []; }).catch(function () { return []; });
+      });
+      return Promise.all(extraP).then(function (ex) {
+        ex.forEach(function (rows) { if (rows.length) { addRows(rows); kwBump(rows); } });
+
+        var jobs = files.map(function (src) {
+          var rows = bySrc[src] || [];
+          var cand = {};
+          Object.keys(kbPages[src] || {}).forEach(function (p) { cand[p] = kbPages[src][p]; });
+          var fobj = fileOf(src) || {};
+          var hs = rows.length ? (searchIn(rows, q) || []).slice(0, 10) : [];
+          hs.forEach(function (h) {
+            var rr = rows[h.i]; if (!rr) return;
+            var lp = localPage(fobj, rr.p);
+            cand[lp] = Math.max(cand[lp] || 0, Math.max(0.05, (h.score || 0) * 0.4));
+          });
+          var pages = Object.keys(cand).map(function (p) {
+            var page = +p, row = null;
+            for (var i = 0; i < rows.length; i++) { if (localPage(fobj, rows[i].p) === page) { row = rows[i]; break; } }
+            return { src: src, p: page, k: cand[p], t: row && row.t };
+          }).sort(function (a, b) { return b.k - a.k; }).slice(0, 10);
+
+          function fallback() {
+            return pages.slice(0, 3).map(function (x) { return { src: x.src, p: x.p, score: Math.min(0.99, x.k) }; });
+          }
+          var withT = pages.filter(function (x) { return x.t && x.p > 0; });
+          if (withT.length >= 2) {
+            return withTimeout(rankPages(withT, q), 11000).then(function (rk) {
+              var got = (rk || []).slice(0, 3);
+              return got.length ? got : fallback();
+            }).catch(fallback);
+          }
+          return Promise.resolve(fallback());
+        });
+
+        return Promise.all(jobs).then(function (all) {
+          var out = [];
+          all.forEach(function (arr) { (arr || []).forEach(function (x) { if (x && x.p > 0) out.push(x); }); });
+          out.sort(function (a, b) { return b.score - a.score; });
+          return out;
+        });
+      });
     });
   }
 
@@ -1232,7 +1279,7 @@
         var sc = (c.score > 0 && c.score <= 1) ? c.score.toFixed(2) : '';
         h += '<button class="lec-crow' + (i === CAND_I ? ' on' : '') + '" data-cd="go" data-i="' + i + '">' +
           '<em>' + (gi2 + 1) + '</em>' +
-          '<div><b>第 ' + c.p + ' 页</b></div>' +
+          '<div><b>第 ' + localPage(f, c.p) + ' 页</b></div>' +
           (sc ? '<i class="lec-cbar"><u style="width:' + Math.round(Math.max(6, Math.min(100, c.score * 100))) + '%"></u></i><s>' + sc + '</s>' : '') +
           '</button>';
       });
@@ -1249,7 +1296,7 @@
       var c = CAND2[i]; if (!c) return;
       CAND_I = i;
       closeCands();
-      jumpToSrc(c.src, c.p, '📚 候选 ' + (i + 1) + '/' + CAND2.length + '：第 ' + c.p + ' 页' + (c.score <= 1 ? ' · 相似度 ' + c.score.toFixed(2) : ''));
+      jumpToSrc(c.src, c.p, '📚 候选 ' + (i + 1) + '/' + CAND2.length + '：第 ' + localPage(fileOf(c.src) || {}, c.p) + ' 页' + (c.score <= 1 ? ' · 相似度 ' + c.score.toFixed(2) : ''));
     });
     document.body.appendChild(mask);
     window.__closeLecCands = function () { try { mask.parentNode.removeChild(mask); } catch (e) {} };

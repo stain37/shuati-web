@@ -264,7 +264,6 @@
 
     var wrap = document.createElement('div');
     wrap.innerHTML =
-      '<button id="dzFab" title="主题设计器：逐块调颜色/透明/圆角/模糊">🎨</button>' +
       '<div class="dz" id="dzPanel">' +
       '<div class="dz-head"><b>🎨 主题设计器</b><span class="dz-sub">点开一块，拖就生效；改动自动存本机</span>' +
       '<button class="dz-x" data-dz="close">×</button></div>' +
@@ -393,8 +392,6 @@
   function boot() {
     buildPanel();
     apply();
-    var fab = document.getElementById('dzFab');
-    if (fab) fab.style.display = '';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

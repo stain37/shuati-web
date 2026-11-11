@@ -4319,3 +4319,5 @@ body.dark .srcpop-s{color:#93c5fd;background:rgba(147,197,253,.14)}
 .lec-cgrp .lec-crow{margin-bottom:6px}
 .lec-crow em{width:22px;height:22px;border-radius:7px;font-size:11px}
 .lec-crow div b{font-size:13.5px}
+/* web756：右下角调色板悬浮球去掉了（改从「设置 → 🎨 主题设计器」进） */
+#dzFab{display:none!important}
