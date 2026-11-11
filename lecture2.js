@@ -896,6 +896,64 @@
     return res;
   }
   /* 判断是不是「多个并列概念」的鉴别/多选型题目；是则返回重排方案 */
+  /* ---------- 真题页识别 + 病例题扩写 ---------- */
+  var Q_PENALTY = 0.30;   /* 定位到「印着原题的页」时，相关度直接砍到三成 */
+
+  /* 讲义里每节末尾都有「真题解析」，把原题+选项+答案一字不差印出来。
+     这种页对「查知识点」几乎没用，命中它要重罚。 */
+  function isQPage(t) {
+    var x = lecClean(t);
+    if (!x) return false;
+    var sec = /真题解析[·：]/.test(x);
+    var nopt = (x.match(/[A-F][．.]/g) || []).length;
+    var ans = /(答案|参考答案)/.test(x);
+    var stem = /(下列|以下|关于|正确的是|错误的是|首选|最可能|不应|除了)/.test(x);
+    if (sec && (nopt >= 2 || ans)) return true;
+    if (nopt >= 3 && ans && stem) return true;
+    return false;
+  }
+
+  function caseLike(stem) {
+    var s0 = String(stem || '');
+    if (s0.length < 24) return false;
+    var hit = /患者|(?:男|女)[，,]\s*\d+\s*岁|\d+\s*岁|主诉|查体|既往\S{0,4}史|入院|就诊|化验|实验室检查|血压\s*\d|心率\s*\d/.test(s0);
+    return hit && !/^(?:下列|以下|关于)/.test(s0);
+  }
+
+  /* AI 不可用时的兜底：抠疾病名 + 最后一句问什么 */
+  function ruleExpand(stem) {
+    var t = String(stem || '');
+    var segs = t.split(/[，,。；;！？\n]/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var NARR = /(\d+\s*岁|患者|主诉|查体|既往|入院|就诊|化验|血压|心率|发热|咳嗽|咳痰|疼痛|乏力|体检|实验室)/;
+    var keep = segs.filter(function (x) { return !NARR.test(x) && x.length >= 4; });
+    var tail = keep.length ? keep.slice(-2).join('、') : segs.slice(-1)[0];
+    var names = (t.match(/[\u4e00-\u9fa5]{2,8}(?:病|癌|炎|综合征|贫血|梗死|衰竭|感染|肿瘤|障碍|中毒|结石|溃疡|疝)/g) || []);
+    var uniq = [];
+    names.forEach(function (n) {
+      if (/的|是|考虑|诊断|可能|最|查体|表现|患者|病史|发热/.test(n)) return;
+      if (uniq.indexOf(n) < 0 && uniq.length < 6) uniq.push(n);
+    });
+    return (String(tail || '').slice(0, 60) + ' ' + uniq.join('、')).replace(/\s+/g, ' ').trim().slice(0, 140);
+  }
+
+  /* 病例题：先把「病例故事」扩写成知识点（疾病/机制/鉴别/检查/治疗），再拿去检索。
+     搜讲义是搜知识点，不是搜病历原文——病历里的「男，58 岁，发热三天」对讲义毫无意义。 */
+  function expandQuery(stem) {
+    var s0 = String(stem || '');
+    if (!caseLike(s0)) return Promise.resolve('');
+    if (typeof window.aiChat !== 'function') return Promise.resolve(ruleExpand(s0));
+    var msgs = [
+      { role: 'system', content: '你是医学考研讲义检索助手。用户给出一道病例题，请把它改写成用于在讲义里查找「知识点」的关键词：涉及的疾病名、病理机制、典型表现、鉴别诊断要点、关键检查、治疗原则。只输出一行，用中文顿号分隔，不要解释、不要编号、不要重复题目原文，不超过 70 字。' },
+      { role: 'user', content: s0.slice(0, 900) }
+    ];
+    return withTimeout(window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 300 }), 9000)
+      .then(function (txt) {
+        var t = String(txt || '').replace(/[\r\n]+/g, ' ').replace(/^[：:、\s]+/, '').trim();
+        return (t.length >= 6 ? t.slice(0, 160) : ruleExpand(s0));
+      })
+      .catch(function () { return ruleExpand(s0); });
+  }
+
   function diffPlan(stem, opts) {
     if (!diffOn() || !opts || opts.length < 3) return null;
     var clean = [];
@@ -1207,8 +1265,11 @@
     var plan = diffPlan(QP.stem, opts);
     var scopeSubj = (SCOPE.mode === 'subj') ? SCOPE.subj : subjOf(CUR.src);
     var prevP = loadTextSubj(scopeSubj).catch(function () { return []; });
-    return Promise.all([kbRows(q), prevP]).then(function (r) {
+    var expP = expandQuery(QP.stem).catch(function () { return ''; });
+    return Promise.all([kbRows(q), prevP, expP]).then(function (r) {
       var kb = r[0] || [], prev = r[1] || [];
+      var extraQ = String(r[2] || '').trim();
+      var qAll = extraQ ? (q + ' ' + extraQ) : q;
       var bySrc = {};
       function addRows(rows) {
         (rows || []).forEach(function (x) {
@@ -1230,7 +1291,7 @@
         if (x.p > 0) bumpPage(x.src, x.p, sc);
       });
       function kwBump(rows) {
-        var hs = (searchIn(rows, q) || []).slice(0, 80);
+        var hs = (searchIn(rows, qAll) || []).slice(0, 80);
         hs.forEach(function (h) {
           var rr = rows[h.i]; if (!rr || !rr.src) return;
           var sc = Math.max(0.05, (h.score || 0) * 0.45);
@@ -1260,7 +1321,7 @@
           var cand = {};
           Object.keys(kbPages[src] || {}).forEach(function (p) { cand[p] = kbPages[src][p]; });
           var fobj = fileOf(src) || {};
-          var hs = rows.length ? (searchIn(rows, q) || []).slice(0, 10) : [];
+          var hs = rows.length ? (searchIn(rows, qAll) || []).slice(0, 10) : [];
           hs.forEach(function (h) {
             var rr = rows[h.i]; if (!rr) return;
             var lp = localPage(fobj, rr.p);
@@ -1277,7 +1338,7 @@
           }
           var withT = pages.filter(function (x) { return x.t && x.p > 0; });
           if (withT.length >= 2) {
-            return withTimeout(rankPages(withT, q), 11000).then(function (rk) {
+            return withTimeout(rankPages(withT, qAll), 11000).then(function (rk) {
               var got = (rk || []).slice(0, 3);
               return got.length ? got : fallback();
             }).catch(fallback);
@@ -1288,11 +1349,12 @@
         return Promise.all(jobs).then(function (all) {
           var out = [];
           all.forEach(function (arr) { (arr || []).forEach(function (x) { if (x && x.p > 0) out.push(x); }); });
+          out.forEach(function (x) {
+            if (!x.t) x.t = pageText(bySrc[x.src] || [], x.src, x.p);
+            if (isQPage(x.t)) { x.score = (x.score || 0) * Q_PENALTY; x.isq = 1; }
+          });
           out.sort(function (a, b) { return b.score - a.score; });
-          if (plan) {
-            out.forEach(function (x) { if (!x.t) x.t = pageText(bySrc[x.src] || [], x.src, x.p); });
-            out = diffRerank(out, plan);
-          }
+          if (plan) out = diffRerank(out, plan);
           return out;
         });
       });
