@@ -34,6 +34,11 @@
   }
   function del(id) { var d = read(); d.list = d.list.filter(function (x) { return x.id !== id; }); write(d); }
   function rename(id, t) { var d = read(); d.list.forEach(function (x) { if (x.id === id) x.sel = t; }); write(d); }
+  function keyOf(st) {
+    return (st.keys || []).map(function (x) { return String(x).toLowerCase(); }).join('/');
+  }
+
+  /* 同一知识点再存一次：更新原来那条，旧版本压进 hist（最多 5 个） */
   function saveOverview(st) {
     var o = st.ov || {}, items = [];
     (o.sections || []).forEach(function (sec) {
@@ -55,6 +60,22 @@
       keys: st.keys || [], q: '', ts: Date.now(), items: items,
       ov: st.ov, mode: st.mode, sources: (st.sources || []).slice(0, 40)
     };
+    var d = read(), k = keyOf(st), found = null;
+    if (k) {
+      for (var i = 0; i < d.list.length; i++) {
+        if (keyOf(d.list[i]) === k) { found = d.list[i]; break; }
+      }
+    }
+    if (found) {
+      var hist = (found.hist || []).slice();
+      hist.unshift({ ts: found.ts, ov: found.ov, mode: found.mode, items: found.items, sources: found.sources, edit: found.edit || '' });
+      note.id = found.id;
+      note.hist = hist.slice(0, 5);
+      var idx = d.list.indexOf(found);
+      d.list[idx] = note;
+      write(d);
+      return { ok: true, id: note.id, updated: true };
+    }
     return save(note);
   }
 
@@ -79,8 +100,8 @@
   var EDIT = {};
 
   /* 正文里的 [[n]] → 可点的上标出处 */
-  function chapPara(t, sources, hits, id) {
-    var s0 = String(t || ''), out = '', re = /\[\[(\d+)\]\]/g, last = 0, m;
+  function chapInline(s0, sources, hits, id) {
+    var out = '', re = /\[\[(\d+)\]\]/g, last = 0, m;
     while ((m = re.exec(s0))) {
       if (m.index > last) out += mark(s0.slice(last, m.index), hits);
       var n2 = +m[1], c = (sources || [])[n2 - 1];
@@ -90,6 +111,14 @@
     }
     if (last < s0.length) out += mark(s0.slice(last), hits);
     return out;
+  }
+
+  /* 首句当结论句加粗 */
+  function chapPara(t, sources, hits, id) {
+    var s0 = String(t || '');
+    var m = /^([\s\S]{8,52}?[。；])/.exec(s0);
+    if (!m || m[1].length >= s0.length) return chapInline(s0, sources, hits, id);
+    return '<b class="nt-ovld">' + chapInline(m[1], sources, hits, id) + '</b>' + chapInline(s0.slice(m[1].length), sources, hits, id);
   }
 
   function parseEdited(raw) {
@@ -127,11 +156,12 @@
     if (!ed) {
       if (o.title) h += '<div class="nt-ovtitle">' + esc(o.title) + '</div>';
       if (o.lead) h += '<div class="nt-ovlead">' + esc(o.lead) + '</div>';
-      if (o.coverage) {
-        h += '<div class="nt-ovcover">全库 ' + (o.coverage.total || (n.items || []).length) + ' 份讲义讲到它 · 覆盖 ' + (o.coverage.hit || 0) + ' 份'
-          + ((o.coverage.missing && o.coverage.missing.length) ? ' · 未覆盖 ' + o.coverage.missing.map(function (x) { return '<i>' + esc(x) + '</i>'; }).join('') : '')
-          + '</div>';
-      }
+      var nsec3 = (o.sections || []).length;
+      var ncite = 0;
+      (o.sections || []).forEach(function (sec) { (sec.paras || []).forEach(function (pp) { ncite += (pp.cites || []).length; }); });
+      h += '<div class="nt-ovmeta">' + nsec3 + ' 节 · ' + ncite + ' 处出处'
+        + (o.coverage ? (' · 覆盖 ' + (o.coverage.hit || 0) + '/' + (o.coverage.total || 0) + ' 份讲义') : '')
+        + '</div>';
     } else {
       h += '<div class="nt-ovedit">✏️ 已编辑（出处仍可点）</div>';
       if (ed._title) h += '<div class="nt-ovtitle">' + esc(ed._title) + '</div>';
@@ -170,6 +200,7 @@
           h += chapHtml(n);
           h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="edit" data-id="' + n.id + '">✏️ 编辑</button>'
             + (n.edit ? '<button class="btn tiny" data-nt-act="editReset" data-id="' + n.id + '">↺ 还原 AI 原文</button>' : '')
+            + ((n.hist && n.hist.length) ? '<button class="btn tiny" data-nt-act="restore" data-id="' + n.id + '">🕘 上一版（' + n.hist.length + '）</button>' : '')
             + '<button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
             + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
         }
@@ -330,6 +361,17 @@
           note.editTs = Date.now();
           save(note, true); delete EDIT[id]; render();
           if (window.toast) toast('已保存修改', 1400, 'ok');
+          return;
+        }
+        if (act === 'restore') {
+          if (!note.hist || !note.hist.length) return;
+          var prev = note.hist.shift();
+          note.ov = prev.ov; note.mode = prev.mode;
+          if (prev.items) note.items = prev.items;
+          if (prev.sources) note.sources = prev.sources;
+          if (prev.edit) note.edit = prev.edit; else delete note.edit;
+          save(note, true); render();
+          if (window.toast) toast('已回到上一版（再点可继续往前）', 1600, 'ok');
           return;
         }
         if (act === 'editReset') {

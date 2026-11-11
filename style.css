@@ -4512,3 +4512,50 @@ body.dark .lec-ovfail{background:#2a1d20;border-color:#4a2b2f}
 body.dark .lec-ovfail b{color:#ff8b90}
 body.dark .lec-ovfail span{color:#c7a9ad}
 body.dark .lec-ovfail pre{background:#1d1416;border-color:#3d2529;color:#c3a3a7}
+
+/* ===== web778：知识点讲解排版收敛（顶部信息 / 出处合并 / 目录 / 折叠冲突 / 历史版本） ===== */
+.lec-ovsheet .lec-ovmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#5b6472;margin:2px 2px 8px}
+.lec-ovmeta .lec-ovq{color:#141a22;font-weight:600;max-width:72%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lec-ovmeta i{font-style:normal;opacity:.42}
+.lec-ovsrcb{border:0;background:rgba(10,132,255,.10);color:#0a63c8;font-size:12px;padding:2px 8px;border-radius:999px;cursor:pointer}
+.lec-ovsrcbox{display:none;max-height:210px;overflow:auto;margin:0 0 10px;padding:8px;border-radius:12px;background:rgba(15,23,42,.04)}
+.lec-ovsrcbox.on{display:block}
+.lec-ovsr{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;padding:7px 8px;border-radius:9px;text-align:left;cursor:pointer;font-size:12.5px;color:#141a22}
+.lec-ovsr:hover{background:rgba(10,132,255,.08)}
+.lec-ovsr em{font-style:normal;width:18px;text-align:center;color:#0a63c8;font-weight:700}
+.lec-ovsr b{flex:1;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lec-ovsr span{color:#7a8394;font-size:11.5px;white-space:nowrap}
+.lec-ovprog{font-size:12.5px;color:#2b5b93;background:rgba(10,132,255,.07);border-radius:10px;padding:8px 10px;margin:4px 0}
+.lec-ovtoc{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.lec-ovtoc button{border:0;background:rgba(15,23,42,.06);color:#3b4658;font-size:12px;padding:5px 10px;border-radius:999px;cursor:pointer}
+.lec-ovld{font-weight:700;color:#0f172a}
+.lec-citebox{display:none;margin:2px 0 8px;padding:8px;border-radius:10px;background:rgba(10,132,255,.06);border:1px solid rgba(10,132,255,.16)}
+.lec-citebox.on{display:block}
+.lec-citebox button{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;padding:6px;border-radius:8px;text-align:left;font-size:12.5px;color:#141a22;cursor:pointer}
+.lec-citebox button:hover{background:rgba(10,132,255,.10)}
+.lec-citebox em{font-style:normal;color:#0a63c8;font-weight:700;width:16px}
+.lec-csupm{background:#0a84ff;color:#fff;border-radius:6px;padding:0 4px;font-size:10px}
+.lec-ovwarnc{padding:8px 10px}
+.lec-ovwarnc .lec-ovwarnh{border:0;background:none;padding:0;color:#8a5a12;font-size:12.5px;font-weight:600;cursor:pointer}
+.lec-ovwarnc span{display:none;margin-top:6px;font-size:12.5px;line-height:1.6;color:#7a5a2a}
+.lec-ovwarnc.on span{display:block}
+.lec-ovtech{margin-top:8px;border:0;background:rgba(0,0,0,.05);color:#6b5560;font-size:12px;padding:4px 9px;border-radius:8px;cursor:pointer}
+.lec-ovpre{display:none;margin-top:8px}
+.lec-ovpre.on{display:block}
+.lec-ovmodes{display:flex;gap:4px;margin-right:auto}
+.nt-ovld{font-weight:700;color:#0f172a}
+.nt-ovmeta{font-size:12px;color:#5b6472;margin:4px 0 8px}
+body.dark .lec-ovmeta{color:#93a0b4}
+body.dark .lec-ovmeta .lec-ovq{color:#e9eef6}
+body.dark .lec-ovsrcb{background:rgba(10,132,255,.2);color:#8fc2ff}
+body.dark .lec-ovsrcbox{background:rgba(255,255,255,.06)}
+body.dark .lec-ovsr{color:#e9eef6}
+body.dark .lec-ovsr:hover{background:rgba(10,132,255,.18)}
+body.dark .lec-ovtoc button{background:rgba(255,255,255,.08);color:#cfd8e6}
+body.dark .lec-ovld,body.dark .nt-ovld{color:#f2f6fc}
+body.dark .lec-citebox{background:rgba(10,132,255,.12);border-color:rgba(10,132,255,.28)}
+body.dark .lec-citebox button{color:#e9eef6}
+body.dark .lec-ovwarnc .lec-ovwarnh{color:#e9c27a}
+body.dark .lec-ovwarnc span{color:#d8bb8a}
+body.dark .lec-ovtech{background:rgba(255,255,255,.08);color:#cdb6ba}
+body.dark .nt-ovmeta{color:#93a0b4}

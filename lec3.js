@@ -2243,6 +2243,7 @@
 
   /* ===== 知识点总览：全库合并成一份，每条挂「哪份讲义第几页」 ===== */
   var OV_MODE = 'chapter';
+  var OV_STOPPED = false;
   var OV_ST = null;
   var OV_LAST = null;
 
@@ -2344,18 +2345,50 @@
     return out;
   }
 
-  /* 正文里的 [[n]] → 可点的上标小胶囊（点它直接开讲义那一页） */
+  /* 句末出处：多个编号合并成一个上标（如 3·7），点它展开这几个来源 */
+  function ovCiteSup(nums, sources) {
+    nums = (nums || []).filter(function (n) { return sources[n - 1]; });
+    if (!nums.length) return '';
+    var one = sources[nums[0] - 1];
+    var tip = nums.map(function (n) { return sources[n - 1].name + ' · 第 ' + sources[n - 1].p + ' 页'; }).join('\n');
+    if (nums.length === 1) {
+      return '<sup class="lec-csup" data-web="go" data-src="' + esc(one.src) + '" data-p="' + one.p
+        + '" title="' + esc(tip) + '">' + nums[0] + '</sup>';
+    }
+    return '<sup class="lec-csup lec-csupm" data-web="cites" data-n="' + nums.join(',') + '" title="' + esc(tip) + '">'
+      + nums.join('·') + '</sup>';
+  }
+
   function ovParaHtml(t, sources, keys) {
-    var s0 = String(t || ''), out = '', re = /\[\[(\d+)\]\]/g, last = 0, m;
+    var s0 = String(t || ''), out = '', re = /(?:\s*\[\[(\d+)\]\]\s*)+/g, last = 0, m;
     while ((m = re.exec(s0))) {
       if (m.index > last) out += markSents(s0.slice(last, m.index), keys);
-      var n = +m[1], s = sources[n - 1];
-      if (s) out += '<sup class="lec-csup" data-web="go" data-src="' + esc(s.src) + '" data-p="' + s.p
-        + '" title="' + esc(s.name + ' · 第 ' + s.p + ' 页') + '">' + n + '</sup>';
+      var nums = (m[0].match(/\d+/g) || []).map(Number)
+        .filter(function (n) { return n >= 1 && n <= sources.length; })
+        .filter(function (n, i, arr) { return arr.indexOf(n) === i; });
+      out += ovCiteSup(nums, sources);
       last = m.index + m[0].length;
     }
     if (last < s0.length) out += markSents(s0.slice(last), keys);
     return out;
+  }
+
+  /* 每段第一句当「结论句」加粗，方便扫读 */
+  function ovParaBold(t, sources, keys) {
+    var s0 = String(t || '');
+    var m = /^([\s\S]{8,52}?[。；])/.exec(s0);
+    if (!m) return ovParaHtml(s0, sources, keys);
+    return '<b class="lec-ovld">' + ovParaHtml(m[1], sources, keys) + '</b>' + ovParaHtml(s0.slice(m[1].length), sources, keys);
+  }
+
+  /* 失败时先给一句人话，技术细节折叠 */
+  function ovHuman(raw) {
+    var s = String(raw || '');
+    if (/长度 0 字|（空）/.test(s)) return '模型这次没有输出正文（多半是思考把 token 用完了），再点一次「重新生成」就好。';
+    if (/没捞到原句/.test(s)) return '没在讲义里找到这个说法的原句，换个更短的词，或直接选一句讲义原文再试。';
+    if (/没加载 AI|ai\.js/.test(s)) return '这页没加载 AI 模块，刷新一次再试。';
+    if (/超时|timeout/i.test(s)) return '这次请求超时了，再试一次（整章版时间会长一些）。';
+    return '生成中断了，点「重新生成」再试一次。';
   }
 
   function ovClosers(t) {
@@ -2473,76 +2506,98 @@
     } catch (e) {}
   }
 
+  function ovSrcBox(st) {
+    var srcs = st.sources || [];
+    if (!srcs.length) return '';
+    return '<div class="lec-ovsrcbox' + (st.srcsOpen ? ' on' : '') + '">'
+      + srcs.map(function (x) {
+        return '<button class="lec-ovsr" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">'
+          + '<em>' + x.i + '</em><b>' + esc(x.name) + '</b><span>第 ' + x.p + ' 页</span></button>';
+      }).join('') + '</div>';
+  }
+
+  function ovSecBody(sec, srcs, keys) {
+    var h = '<div class="lec-ovbody">';
+    (sec.paras || []).forEach(function (p) {
+      h += '<p class="lec-ovp' + (p.cites && p.cites.length ? '' : ' lec-ovpnc') + '">' + ovParaBold(p.t, srcs, keys) + '</p>';
+    });
+    return h + '</div>';
+  }
+
   function ovHtml(st) {
-    var keys = st.keys || [], h = '';
+    var keys = st.keys || [], srcs = st.sources || [], h = '';
+    if (st.ov && st.ov.stopped && !(st.ov.sections && st.ov.sections.length)) {
+      return '<div class="lec-ovprog">已停止生成。已写好的小节会保留在这里，点「↻ 重新生成」可以接着做。</div>';
+    }
     if (st.ov && st.ov.pending) {
-      h += '<div class="lec-ovh">' + esc(st.ov.prog || ('已从 ' + (st.sources || []).length + ' 处捞到原句，正在写成讲解…')) + '</div>';
+      h += '<div class="lec-ovprog">' + esc(st.ov.prog || ('已捞到 ' + srcs.length + ' 条原句，正在写…')) + '</div>';
       var part = st.ov.partial;
       if (part && part.sections && part.sections.length) {
-        if (part.title) h += '<div class="lec-ovtitle">' + esc(part.title) + '</div>';
-        if (part.lead) h += '<div class="lec-ovlead">' + markSents(part.lead, keys) + '</div>';
         part.sections.forEach(function (sec) {
           if (sec.h) h += '<div class="lec-ovh">' + esc(sec.h) + '</div>';
-          (sec.paras || []).forEach(function (p) {
-            h += '<p class="lec-ovp">' + ovParaHtml(p.t, st.sources || [], keys) + '</p>';
-          });
+          h += ovSecBody(sec, srcs, keys);
         });
-      } else {
-        h += '<div class="lec-ovbody">';
-        (st.sources || []).slice(0, 8).forEach(function (x) {
-          h += '<div class="lec-ovli lec-ovsrc">' + markSents(String(x.t || '').slice(0, 80), keys)
-            + '<button class="lec-ovcite" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">📖 ' + esc(String(x.name).slice(0, 16)) + ' · 第 ' + x.p + ' 页</button></div>';
-        });
-        h += '</div>';
       }
       return h;
     }
     if (!st.ov) return '<div class="lec-srow">还没有生成，点下面「生成」</div>';
     if (st.ov.failed) {
-      return '<div class="lec-ovfail"><b>这次没生成出来</b>'
-        + '<span>AI 回了内容，但格式不对或被截断。点下面「重新生成」再试一次；整章版比较长，可以先切「标准」版。</span>'
-        + '<pre>' + esc(String(st.ov.raw || '').slice(0, 1200)) + '</pre></div>';
+      return '<div class="lec-ovfail"><b>这次没生成出来</b><span>' + esc(ovHuman(st.ov.raw)) + '</span>'
+        + '<button class="lec-ovtech" data-web="tech">技术细节 ▾</button>'
+        + '<pre class="lec-ovpre">' + esc(String(st.ov.raw || '').slice(0, 1200)) + '</pre></div>';
     }
-    var o = st.ov;
+    var o = st.ov, secs = o.sections || [];
     if (o.title) h += '<div class="lec-ovtitle">' + esc(o.title) + '</div>';
     if (o.lead) h += '<div class="lec-ovlead">' + markSents(o.lead, keys) + '</div>';
-    if (o.coverage) {
-      h += '<div class="lec-ovcover">全库 ' + (o.coverage.total || (st.sources || []).length) + ' 份讲义讲到它 · 这份覆盖 ' + (o.coverage.hit || 0) + ' 份'
-        + (o.coverage.missing && o.coverage.missing.length ? ' · 未覆盖 ' + o.coverage.missing.map(function (x) { return '<i>' + esc(x) + '</i>'; }).join('') : '')
-        + '</div>';
+    if (secs.length > 2) {
+      h += '<div class="lec-ovtoc">' + secs.map(function (s, i) {
+        return '<button data-web="jumpsec" data-i="' + i + '">'
+          + esc(String(s.h || '').replace(/^[一二三四五六七八九十]+、/, '') || ('第' + (i + 1) + '节')) + '</button>';
+      }).join('') + '</div>';
     }
-    o.sections.forEach(function (sec) {
-      h += '<div class="lec-ovh">' + esc(sec.h) + '</div><div class="lec-ovbody">';
-      sec.paras.forEach(function (p) {
-        h += '<p class="lec-ovp' + (p.cites.length ? '' : ' lec-ovpnc') + '">' + ovParaHtml(p.t, st.sources || [], keys) + '</p>';
-      });
-      h += '</div>';
-      if (sec.conflict) h += '<div class="lec-ovwarn">⚠️ ' + esc(sec.conflict) + '</div>';
+    secs.forEach(function (sec, si) {
+      h += '<div class="lec-ovh" id="lecOvh' + si + '">' + esc(sec.h) + '</div>' + ovSecBody(sec, srcs, keys);
+      if (sec.conflict) {
+        h += '<div class="lec-ovwarn lec-ovwarnc"><button data-web="conf" class="lec-ovwarnh">⚠️ 一处说法不一致</button>'
+          + '<span>' + esc(sec.conflict) + '</span></div>';
+      }
     });
-    if (o.conflict) h += '<div class="lec-ovwarn">⚠️ 说法不一致：' + esc(o.conflict) + '</div>';
+    if (o.conflict) {
+      h += '<div class="lec-ovwarn lec-ovwarnc"><button data-web="conf" class="lec-ovwarnh">⚠️ 整体说法不一致</button>'
+        + '<span>' + esc(o.conflict) + '</span></div>';
+    }
     return h;
   }
 
   function renderOverview(st) {
     OV_ST = st;
-    var old = document.getElementById('lecWebMask'); if (old) old.remove();
     OV_LAST = st;
+    var old = document.getElementById('lecWebMask'); if (old) old.remove();
     var mask = document.createElement('div');
     mask.className = 'lec-smask';
     mask.id = 'lecWebMask';
-    var nsec = (st.ov && st.ov.sections) ? st.ov.sections.length : 0;
-    var npar = (st.ov && st.ov.sections) ? st.ov.sections.reduce(function (a, s) { return a + (s.paras || []).length; }, 0) : 0;
-    mask.innerHTML = '<div class="lec-ssheet"><div class="lec-shead"><b>📖 知识点讲解</b>'
-      + '<button class="lec-sx" data-web="close">×</button></div>'
-      + '<div class="lec-slaber">「' + esc(st.sel.slice(0, 46)) + '」<br>· '
-      + ((st.ov && st.ov.pending) ? ('已捞到 ' + (st.sources || []).length + ' 条原句 · 正在写…')
-        : (nsec ? (nsec + ' 节 / ' + npar + ' 段 · 出处挂在句末，点数字看原页') : ('全库 ' + (st.sources || []).length + ' 条原句')))
-      + '</div>'
+    var ov = st.ov || {}, secs = ov.sections || [];
+    var npar = secs.reduce(function (a, s) { return a + (s.paras || []).length; }, 0);
+    var pend = !!(ov && ov.pending);
+    var meta = [];
+    if (pend) meta.push('正在写…');
+    else if (secs.length) meta.push(secs.length + ' 节 · ' + npar + ' 段');
+    if (st.sources && st.sources.length) {
+      meta.push('<button class="lec-ovsrcb" data-web="srcs">依据 ' + st.sources.length + ' 条 ▾</button>');
+    }
+    mask.innerHTML = '<div class="lec-ssheet lec-ovsheet">'
+      + '<div class="lec-shead"><b>📖 知识点讲解</b><button class="lec-sx" data-web="close">×</button></div>'
+      + '<div class="lec-ovmeta"><span class="lec-ovq">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
+      + (meta.length ? '<i>·</i>' + meta.join('<i>·</i>') : '') + '</div>'
+      + ovSrcBox(st)
       + '<div class="lec-sbody">' + ovHtml(st) + '</div>'
       + '<div class="lec-sfoot">'
+      + '<span class="lec-ovmodes">'
       + '<button class="lec-ovmode' + (st.mode !== 'chapter' ? ' on' : '') + '" data-web="mode" data-m="mid">标准</button>'
-      + '<button class="lec-ovmode' + (st.mode === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter">整章</button>'
-      + '<button class="lec-nsum2" data-web="gen">' + (st.ov ? '↻ 重新生成' : '✨ 生成') + '</button>'
+      + '<button class="lec-ovmode' + (st.mode === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter">整章</button></span>'
+      + (pend
+        ? '<button class="lec-nsum2" data-web="stop">■ 停止</button>'
+        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? '↻ 重新生成' : '✨ 生成') + '</button>')
       + '<button class="lec-nsave" data-web="saveov">💾 存成笔记</button></div></div>';
     document.body.appendChild(mask);
     mask.addEventListener('click', function (ev) {
@@ -2550,6 +2605,47 @@
       if (!b) return;
       var a = b.getAttribute('data-web');
       if (a === 'close') { ev.stopPropagation(); return mask.remove(); }
+      if (a === 'srcs') {
+        ev.stopPropagation();
+        st.srcsOpen = !st.srcsOpen;
+        var box = mask.querySelector('.lec-ovsrcbox');
+        if (box) box.classList.toggle('on', !!st.srcsOpen);
+        return;
+      }
+      if (a === 'tech') {
+        ev.stopPropagation();
+        var pre = mask.querySelector('.lec-ovpre');
+        if (pre) pre.classList.toggle('on');
+        b.textContent = (pre && pre.classList.contains('on')) ? '技术细节 ▴' : '技术细节 ▾';
+        return;
+      }
+      if (a === 'conf') { ev.stopPropagation(); if (b.parentNode) b.parentNode.classList.toggle('on'); return; }
+      if (a === 'jumpsec') {
+        ev.stopPropagation();
+        var target = document.getElementById('lecOvh' + (+b.getAttribute('data-i') || 0));
+        if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      if (a === 'cites') {
+        ev.stopPropagation();
+        var host = b.closest('.lec-ovp') || b.parentNode;
+        var has = host.querySelector ? host.querySelector('.lec-citebox') : null;
+        if (has) { has.remove(); return; }
+        var nums = String(b.getAttribute('data-n') || '').split(',').map(Number);
+        var list = '<div class="lec-citebox">' + nums.map(function (n) {
+          var s = (st.sources || [])[n - 1];
+          if (!s) return '';
+          return '<button data-web="go" data-src="' + esc(s.src) + '" data-p="' + s.p + '"><em>' + n + '</em>'
+            + esc(s.name) + ' · 第 ' + s.p + ' 页</button>';
+        }).join('') + '</div>';
+        if (host.insertAdjacentHTML) {
+          host.insertAdjacentHTML('afterend', list);
+          var nb = host.nextElementSibling;
+          if (nb && nb.classList) nb.classList.add('on');
+        }
+        return;
+      }
+      if (a === 'stop') { ev.stopPropagation(); OV_STOPPED = true; toast('已停止，写好的部分保留', 1800); return; }
       if (a === 'mode') {
         ev.stopPropagation();
         st.mode = b.getAttribute('data-m'); OV_MODE = st.mode;
@@ -2559,7 +2655,7 @@
       if (a === 'gen') {
         ev.stopPropagation();
         renderLoading('正在重新生成…', '重扫全库原句');
-        st.ov = null; st.sources = [];
+        st.ov = null; st.sources = []; st.srcsOpen = false;
         try { localStorage.removeItem('qbank.lec.ov2.v1'); } catch (e) {}
         return runOverview(st.sel, st.keys, st.mode, st);
       }
@@ -2567,13 +2663,12 @@
         ev.stopPropagation();
         if (!window.LECNOTES || !window.LECNOTES.saveOverview) { toast('笔记模块没加载', 1600, 'bad'); return; }
         var r = window.LECNOTES.saveOverview(st);
-        toast(r && r.dup ? '这份已经存过了' : '已存进「📚 知识点笔记」', 1800, 'ok');
+        toast(r && r.updated ? '已更新这条知识点笔记（旧版留在「历史」里）' : '已存进「📚 知识点笔记」', 2000, 'ok');
         return;
       }
       if (a === 'go') {
         ev.stopPropagation();
-        var src = b.getAttribute('data-src'), pg = +b.getAttribute('data-p') || 1;
-        jumpFromNote({ sel: st.sel, items: [] }, src, pg);
+        jumpFromNote({ sel: st.sel, items: [] }, b.getAttribute('data-src'), +b.getAttribute('data-p') || 1);
         return;
       }
     });
@@ -2587,20 +2682,16 @@
   }
 
   function ovOutline(sel, keys, sources, mode) {
-    var list = sources.map(ovSrcBrief).join('\n');
+    var pool = sources.slice(0, 12);                 /* 大纲只看 12 条代表句，避免一口气塞太多 */
+    var list = pool.map(ovSrcBrief).join('\n');
     var nsec = mode === 'chapter' ? '5–7 节' : '3–5 节';
-    var sys = '你是医学考研讲义的撰稿人。第一步：只出「讲解大纲」，不写正文。'
-      + '只输出 JSON，不要解释或代码块标记，格式：'
-      + '{"title":"这节讲什么（≤18字）","lead":"一句话导语（≤50字）",'
-      + '"secs":[{"h":"一、定义","hint":"这一节要讲清什么（≤30字）","ids":[1,3,7],"conflict":"（可选）"}],'
-      + '"coverage":{"hit":2,"total":5,"missing":["章节名"]}}。'
-      + '规则：1) 按医学逻辑分 ' + nsec + '（定义/机制/与别的概念的区别/典型例子/易错点/考点），不要按讲义顺序；'
-      + '2) 每节 ids 只从给定编号里挑 2–8 条最相关的原句，必须真的能支撑这一节；'
-      + '3) coverage.hit = 这些原句覆盖了几份讲义，total = 一共几份，missing = 没覆盖到的章节（不知道就空数组）；'
-      + '4) 不要写正文、不要开场白。';
-    var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号只能来自这里）：\n' + list;
+    var sys = '你是医学考研讲义撰稿人。第一步只出讲解大纲，不写正文。只输出 JSON：'
+      + '{"title":"≤18字","lead":"≤50字","secs":[{"h":"一、定义","hint":"≤30字","ids":[1,3],"conflict":"可选"}],'
+      + '"coverage":{"hit":2,"total":5,"missing":[]}}。'
+      + '规则：按医学逻辑分 ' + nsec + '；每节 ids 从给定编号里挑 2–5 条最相关的；不要正文、不要开场白。';
+    var user = '知识点：' + sel + '\n\n编号原句（' + pool.length + ' 条）：\n' + list;
     return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.2, maxTokens: 1200 }), 45000).then(function (txt) { return ovParseOutline(txt, sources, sel); });
+      { stream: false, temp: 0.2, maxTokens: 1100 }), 45000).then(function (txt) { return ovParseOutline(txt, sources, sel); });
   }
 
   function ovParseOutline(txt, sources, sel) {
@@ -2611,6 +2702,7 @@
       title: String(o.title || sel || '').slice(0, 20),
       lead: String(o.lead || '').slice(0, 120),
       secs: [],
+      conflict: String(o.conflict || '').slice(0, 400),
       coverage: o.coverage && typeof o.coverage === 'object'
         ? { hit: +o.coverage.hit || 0, total: +o.coverage.total || 0, missing: (o.coverage.missing || []).slice(0, 6).map(String) }
         : null
@@ -2625,14 +2717,11 @@
 
   function ovWriteSec(sel, sec, sources, mode) {
     var picked = [];
-    sec.ids.forEach(function (n) { var s = sources[n - 1]; if (s) picked.push(s); });
+    (sec.ids || []).slice(0, 5).forEach(function (n) { var s = sources[n - 1]; if (s) picked.push(s); });
     var list = picked.map(ovSrcBrief).join('\n');
-    var sys = '你是医学考研讲义的撰稿人，现在只写「这一节」的讲解正文，不要标题、不要开场白、不要总结陈词。'
-      + '规则：1) 写 2–4 段，每段 2–4 句、不超过 120 字，段落之间空一行；'
-      + '2) 写成连贯讲解，可以改写合并概括，但禁止出现「讲义指出」「原文写道」「第N页」，也不要罗列原句；'
-      + '3) 每个讲事实的句子，句末标来源编号 [[n]]，编号只能来自给定清单，可以多个 [[2]][[5]]；找不到来源的断言不要写；'
-      + '4) 同一说法在多份讲义里都出现时只写一次，句末并列标注；'
-      + '5) 纯文本输出，不要 JSON，不要 Markdown 符号。';
+    var sys = '你是医学考研讲义撰稿人。只写这一节正文：2–4 段，每段 2–4 句、≤120 字，段落之间空一行。'
+      + '写成连贯讲解（可改写合并概括），禁止「讲义指出」「第N页」，禁止罗列原句；'
+      + '每段最多标 1 组来源 [[n]]，编号只能来自清单；纯文本，不要标题、不要 Markdown。';
     var user = '知识点：' + sel + '\n本节：' + sec.h + (sec.hint ? '（' + sec.hint + '）' : '')
       + '\n\n可引用原句：\n' + list;
     return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
@@ -2661,6 +2750,7 @@
   function runOverview(sel, keys, mode, keep) {
     var st = keep || { sel: sel, keys: keys, mode: mode, sources: [], ov: null };
     st.mode = mode;
+    OV_STOPPED = false;
     if (!(st.ov && st.ov.sections && st.ov.sections.length)) {
       var cached = ovCacheGet(keys, mode);
       if (cached) {
@@ -2698,6 +2788,7 @@
         var out = { title: ol.title, lead: ol.lead, sections: [], conflict: '', coverage: ol.coverage, staged: 1 };
         var i = 0;
         function step() {
+          if (OV_STOPPED) { out.stopped = 1; return Promise.resolve(out.sections.length ? out : null); }
           if (i >= ol.secs.length) return Promise.resolve(out.sections.length ? out : null);
           var sec = ol.secs[i];
           st.ov = { pending: 1, prog: '大纲 ' + ol.secs.length + ' 节 · 正在写第 ' + (i + 1) + ' 节：' + sec.h, partial: out };
@@ -2713,6 +2804,12 @@
         return step();
       }).then(function (ov) {
         if (!ov) {
+          if (OV_STOPPED) {
+            st.ov = { sections: [], conflict: '', stopped: 1 };
+            renderOverview(st);
+            toast('已停止，写好的部分保留', 2000, '');
+            return;
+          }
           st.ov = { sections: [], conflict: '', failed: 1, raw: (failNote.join('\n') || '没拿到内容') + ovAiDiag() + '\n\n（AI 返回空正文多半是推理模型的思考把 max_tokens 用完了；可以点「重新生成」，或切「标准」版）' };
           renderOverview(st);
           return;
