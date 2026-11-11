@@ -2035,58 +2035,68 @@
     return body || '<div class="lec-srow">这段在各份讲义里没找到成句的表述</div>';
   }
 
-  /* 一键总结：把已截到的句子交给模型压成 3–5 条要点，每条挂回一页，点它能跳 */
-  function parseSum(text, note) {
-    var out = [];
-    String(text || '').split(/\n+/).forEach(function (ln) {
-      ln = ln.replace(/^\s*[-*·•\d.、)）]+\s*/, '').trim();
-      if (!ln || ln.length < 6) return;
-      var m = ln.match(/第\s*(\d+)\s*页/);
-      var pg = m ? +m[1] : 0;
-      var hit = null;
-      (note.items || []).forEach(function (x) { if (!hit && pg && x.p === pg) hit = x; });
-      if (!hit) {
-        var best = 0;
-        (note.items || []).forEach(function (x) {
-          var sc = 0;
-          (note.keys || []).forEach(function (k) { if (k && ln.indexOf(k) >= 0 && x.sents && x.sents.some(function (s) { return s.t.indexOf(k) >= 0; })) sc += 1; });
-          if (sc > best) { best = sc; hit = x; }
-        });
-      }
-      if (!hit) hit = (note.items || [])[0];
-      out.push({ t: ln.replace(/[【(（]?\s*第\s*\d+\s*页\s*[】)）]?/g, '').replace(/【\s*】/g, '').trim(), src: hit ? hit.src : '', p: hit ? hit.p : 1, name: hit ? hit.name : '' });
-    });
+  /* 一键总结（接地版）：模型只看带编号的原句，输出要点必须指回某一条原句，
+     这样每条要点都能点开对应讲义页，而不是凭空写一段话 */
+  function parseSum(text, note, L) {
+    var out = [], s = String(text || '').trim(), arr = null;
+    var m = s.match(/\[[\s\S]*\]/);
+    if (m) { try { arr = JSON.parse(m[0]); } catch (e) {} }
+    if (!arr) { try { var o = JSON.parse(s); if (o && o.sum) arr = o.sum; } catch (e) {} }
+    if (Array.isArray(arr)) {
+      arr.forEach(function (x) {
+        if (!x) return;
+        var tt = String(x.t || x.text || '').trim();
+        if (tt.length < 3) return;
+        var i = Math.max(1, Math.min(L.length, parseInt(x.i, 10) || 1));
+        var it = L[i - 1];
+        out.push({ t: tt, q: String(x.q || '').slice(0, 90), src: it.src, p: it.p, name: it.name });
+      });
+    }
+    if (!out.length) {
+      String(text || '').split(/\n+/).forEach(function (ln) {
+        ln = ln.replace(/^\s*[-*·•\d.、)）]+\s*/, '').trim();
+        if (!ln || ln.length < 6) return;
+        var mm = ln.match(/第\s*(\d+)\s*页/);
+        var pg = mm ? +mm[1] : 0;
+        var hit = null;
+        L.forEach(function (x) { if (!hit && pg && x.p === pg) hit = x; });
+        if (!hit) hit = L[0];
+        out.push({ t: ln.replace(/[【(（]?\s*第\s*\d+\s*页\s*[】)）]?/g, '').replace(/【\s*】/g, '').trim(), q: '', src: hit.src, p: hit.p, name: hit.name });
+      });
+    }
     return out.slice(0, 6);
   }
 
   function summarize(note) {
     if (!window.aiChat) return Promise.reject(new Error('没配 AI'));
-    var lines = [];
-    var n = 0;
+    var L = [];
     (note.items || []).forEach(function (x) {
       (x.sents || []).forEach(function (s) {
-        if (n >= 12) return;
-        n++;
-        lines.push('【第' + x.p + '页】' + s.t);
+        if (L.length >= 14) return;
+        L.push({ src: x.src, p: x.p, name: x.name, t: String(s.t || '').slice(0, 180) });
       });
     });
-    if (!lines.length) return Promise.reject(new Error('没有可总结的句子'));
+    if (!L.length) return Promise.reject(new Error('没有可总结的句子'));
+    var lines = L.map(function (x, i) { return '[' + (i + 1) + ']（第' + x.p + '页）' + x.t; }).join('\n');
     var msgs = [
-      { role: 'system', content: '你是医学考研讲义的整理助手。根据给出的句子片段，写出 3–5 条要点，帮助考生回忆这个知识点。每条单独一行，以「- 」开头；每条结尾用【第N页】标注它主要来自哪一页，页码只能用给定片段里出现过的。不要编造片段里没有的内容，不要写开场白和结语。' },
-      { role: 'user', content: '知识点：' + note.sel + '\n' + (note.why ? ('说明：' + note.why + '\n') : '') + '片段：\n' + lines.join('\n') }
+      { role: 'system', content: '你是医学考研讲义的整理助手。用户给出带编号的原句，请写 3–5 条要点帮考生回忆这个知识点。只输出 JSON，不要任何解释或代码块标记，格式：{"sum":[{"t":"要点，不超过30字","i":原句编号,"q":"支撑这条要点的原句片段，不超过40字，尽量原样摘录"}]}。i 必须是给定编号中的一个；不要编造片段里没有的内容；要点之间不要重复。' },
+      { role: 'user', content: '知识点：' + note.sel + '\n' + (note.why ? ('说明：' + note.why + '\n') : '') + '原句：\n' + lines }
     ];
-    return withTimeout(aiChat(msgs, null, null, { stream: false, temp: 0.1, maxTokens: 700 }), 18000).then(function (txt) {
-      var s = String(txt || '');
-      return parseSum(s, note);
+    return withTimeout(aiChat(msgs, null, null, { stream: false, temp: 0.1, maxTokens: 800 }), 20000).then(function (txt) {
+      var r = parseSum(String(txt || ''), note, L);
+      if (!r.length) throw new Error('模型没给出可用的要点');
+      return r;
     });
   }
 
   function sumHtml(note) {
     if (!note.sum || !note.sum.length) return '';
-    var h = '<div class="lec-nsum"><b>✨ 总结</b>';
+    var h = '<div class="lec-nsum"><b>✨ 总结 <i class="lec-nsum-h">点一条跳到原句那页</i></b>';
     note.sum.forEach(function (x) {
       h += '<button class="lec-nsum-item" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">'
-        + '<i>' + markSents(x.t, note.keys || []) + '</i><u>' + esc(String(x.name || '').slice(0, 14)) + ' · 第 ' + x.p + ' 页</u></button>';
+        + '<em>' + markSents(x.t, note.keys || []) + '</em>'
+        + (x.q ? '<q>' + markSents(x.q, note.keys || []) + '</q>' : '')
+        + '<u>' + esc(String(x.name || '').slice(0, 12)) + ' · 第 ' + x.p + ' 页</u></button>';
     });
     return h + '</div>';
   }
@@ -2126,6 +2136,12 @@
     document.body.appendChild(mask);
   }
 
+  function reuseHtml(note) {
+    if (!note.__reuse) return '';
+    return '<div class="lec-reuse">♻️ 已命中存过的同类汇总（相似 ' + note.__reuse.sim + '%）'
+      + '<button data-web="refetch">重新检索</button></div>';
+  }
+
   function renderNote(note, reuse) {
     var ob = document.getElementById('lecBackRes'); if (ob) ob.remove();
     var old = document.getElementById('lecWebMask');
@@ -2138,7 +2154,7 @@
       + '<button class="lec-sx" data-web="close">×</button></div>'
       + '<div class="lec-slaber">「' + esc(note.sel.slice(0, 46)) + (note.sel.length > 46 ? '…' : '') + '」'
       + (note.why ? ('<br>· ' + esc(note.why)) : '') + '</div>'
-      + '<div class="lec-sbody">' + sumHtml(note) + noteHtml(note) + '</div>'
+      + '<div class="lec-sbody">' + reuseHtml(note) + sumHtml(note) + noteHtml(note) + '</div>'
       + '<div class="lec-sfoot"><span>' + Object.keys(note.items.reduce(function (o, x) { o[x.src] = 1; return o; }, {})).length + ' 份讲义 / ' + note.items.length + ' 句</span>'
       + (note.sum && note.sum.length ? '<button class="lec-nsum2" data-web="sum">↻ 重新总结</button>' : '<button class="lec-nsum2" data-web="sum">✨ AI 一键总结</button>')
       + '<button class="lec-nsave" data-web="save">💾 存成笔记</button></div></div>';
@@ -2171,6 +2187,7 @@
       if (!t2) { return; }
       var a = t2.getAttribute('data-web');
       if (a === 'close') { ev.stopPropagation(); return mask.parentNode.removeChild(mask); }
+      if (a === 'refetch') { ev.stopPropagation(); var rs = note.__reuse ? note.__reuse.sel : note.sel; try { delete note.__reuse; } catch (e) {} renderLoading('正在重新检索…', '忽略已有汇总，这次去知识库里重新找'); return searchWeb(rs, { force: true }); }
       if (a === 'save') {
         ev.stopPropagation();
         if (!window.LECNOTES || !window.LECNOTES.save) { toast('笔记模块没加载', 1600, 'bad'); return; }
@@ -2217,7 +2234,33 @@
     document.body.appendChild(b);
   }
 
-  function searchWeb(sel) {
+  /* ---------- 相似知识点复用：以前存过的同类汇总直接唤起，省一次检索 ---------- */
+  var K_SIM = 0.6;
+  function nk(s) { return String(s || '').toLowerCase().replace(/[\s、，,。；;：:（）()【】]/g, ''); }
+  function keyOverlap(a, b) {
+    var A = (a || []).map(nk).filter(Boolean), B = (b || []).map(nk).filter(Boolean);
+    if (!A.length || !B.length) return 0;
+    var hit = 0;
+    A.forEach(function (x) {
+      if (B.some(function (y) { return y.indexOf(x) >= 0 || x.indexOf(y) >= 0; })) hit++;
+    });
+    return hit / Math.max(A.length, B.length);
+  }
+  function findSimilarNote(keys) {
+    try {
+      var list = (window.LECNOTES && window.LECNOTES.list) ? window.LECNOTES.list() : [];
+      var best = null;
+      list.forEach(function (n) {
+        if (!n || !n.items || !n.items.length) return;
+        var sim = keyOverlap(keys, n.keys);
+        if (!best || sim > best.sim) best = { note: n, sim: sim };
+      });
+      if (best && best.sim >= K_SIM) return best;
+    } catch (e) {}
+    return null;
+  }
+
+  function searchWeb(sel, opts) {
     sel = String(sel || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (!sel) return Promise.resolve(false);
     var qtext = '';
@@ -2229,6 +2272,13 @@
     }).then(function () { return askKeys(sel, qtext); }).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
       var query = keys.join(' ').slice(0, 240);
+      var simHit = (typeof opts === 'undefined' || !opts || !opts.force) ? findSimilarNote(keys) : null;
+      if (simHit) {
+        simHit.note.__reuse = { sim: Math.round(simHit.sim * 100), sel: sel };
+        renderNote(simHit.note, true);
+        toast('命中已有汇总（相似 ' + Math.round(simHit.sim * 100) + '%）', 1600, 'ok');
+        return false;
+      }
       renderLoading('正在全讲义里找这个知识点…', '先定位相关讲义，再把命中句逐条排出来');
       return kbRaw(query, 48).then(function (rows) {
         if (!rows.length) { toast('讲义库里没搜到这句', 2000, 'bad'); return false; }

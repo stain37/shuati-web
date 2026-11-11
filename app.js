@@ -3837,6 +3837,7 @@ function renderHome() {
       <button class="btn primary" id="toImport">＋ 导入 / 新建题库</button>
       ${dueN ? `<button class="btn primary" id="toReview">今日复习 ${srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN} 题</button>` : ''}
       <button class="btn" id="toRand">随机抽 30 题</button>
+      <button class="btn" id="toNotes" title="你在讲义里标记过的知识点汇总，可搜索 / 筛选 / 批量管理">📚 知识点笔记</button>
       <button class="btn" id="toUpload" title="上传题库文件（.json / 纯文本），也可以直接粘贴题目">⬆ 上传题库</button>
     </div>
     <div class="toolbar sub">
@@ -3869,6 +3870,7 @@ function renderHome() {
   on('toFav', () => go('#/fav'));
   on('toSearch', () => go('#/search'));
   on('toRand', () => randomPaper(baseBanks(), 30));
+  on('toNotes', () => go('#/notes'));
   on('toStats', () => go('#/stats'));
   on('toHelp', showHelp);
   on('toReview', () => startReview(60));

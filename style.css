@@ -4433,3 +4433,12 @@ body.dark .lec-loadsheet span{color:#9fb0c4}
 .nt-ghead span{font-size:11px;opacity:.6}
 .nt-pick{margin-right:8px;width:18px;height:18px}
 body.dark .nt-selbar{background:rgba(255,255,255,.06)}
+
+/* === web771 知识点总结（接地版）=== */
+.lec-nsum-h{font-style:normal;font-weight:500;font-size:11px;opacity:.6;margin-left:6px}
+.lec-nsum-item em{display:block;font-style:normal;font-weight:600;color:#141a22;font-size:13px;line-height:1.5}
+.lec-nsum-item q{display:block;quotes:none;margin-top:4px;font-size:12px;line-height:1.55;color:#465268;background:rgba(255,214,64,.22);border-left:3px solid #f2b705;border-radius:0 6px 6px 0;padding:5px 8px}
+.lec-nsum-item u{display:block;margin-top:5px;text-decoration:none;font-size:11px;color:#6b7484;text-align:right}
+body.dark .lec-nsum-item em{color:#e9eef6}
+body.dark .lec-nsum-item q{color:#c3cddd;background:rgba(242,183,5,.16)}
+body.dark .lec-nsum-item u{color:#94a1b5}

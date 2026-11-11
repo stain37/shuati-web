@@ -1138,6 +1138,7 @@
       + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button>'
       + (dueN ? '<button class="btn primary" id="toReview" data-act="review" data-n="' + (srsCap && dueN > srsCap ? srsCap : dueN) + '">今日复习 ' + (srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN) + ' 题</button>' : '')
       + '<button class="btn" id="toRand" data-act="randall">随机抽 30 题</button>'
+      + '<button class="btn" id="toNotes" data-act="go" data-hash="#/notes" title="讲义里标记过的知识点汇总：可搜索 / 筛选 / 批量管理">📚 知识点笔记</button>'
       + '</div>'
       + '<div class="toolbar sub">'
       + '<button class="btn" id="toWrong" data-act="go" data-hash="#/wrong">错题本' + (wrongN ? '（' + wrongN + (dueN ? ' · 待复习' + dueN : '') + '）' : '') + '</button>'
