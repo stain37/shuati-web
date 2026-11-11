@@ -2247,65 +2247,102 @@
   var OV_ST = null;
   var OV_LAST = null;
 
+  var SUBJ_ALL = ['病理', '内科', '生化', '生理', '外科'];
+
+  /* 宽泛名词兜底：单个词时补常见搭配，否则「核苷酸」只能命中零散几句 */
+  function expandKeys(keys, sel) {
+    keys = (keys || []).slice();
+    var src = String(sel || '').replace(/\s+/g, '');
+    if (keys.length !== 1) return keys;
+    var k = keys[0];
+    if (!k || k.length > 8 || src.length > 14) return keys;
+    var pairs = ['代谢', '合成', '分解', '循环', '途径', '结构'];
+    pairs.forEach(function (suf) {
+      var v = k + suf;
+      if (keys.indexOf(v) < 0) keys.push(v);
+    });
+    return keys.slice(0, 6);
+  }
+
+  /* 全库知识点检索：KB 片段先给方向，真正出处以讲义正文为准（web779） */
   function collectSources(keys, cap) {
+    keys = expandKeys(cleanKeys(keys || []));
+    if (!keys.length) return Promise.resolve([]);
+    var kk = keys.slice(0, 4);
+    var capN = cap || 24;
     var prep = Promise.resolve();
     try { prep = prep.then(function () { return (FILES && FILES.length) ? null : loadIndex(); }); } catch (e) {}
     try { if (typeof kbEnsureFilesLoaded === 'function') prep = prep.then(function () { return kbEnsureFilesLoaded(); }).catch(function () { return null; }); } catch (e) {}
-    return prep.then(function () { return kbMulti(keys, 24); }).then(function (rows) {
-      var bySrc = {}, order = [];
+    return prep.then(function () { return kbMulti(kk, 30).catch(function () { return []; }); }).then(function (rows) {
+      var quick = [], order = [], seen = {}, seenTxt = {};
       (rows || []).forEach(function (r) {
-        if (!r || !r.f || !(Number(r.p) >= 1)) return;   /* 没有页号的命中无法给出处，直接丢 */
-        var s = r.f.src;
-        if (!bySrc[s]) { bySrc[s] = []; order.push(s); }
-        bySrc[s].push(r);
+        if (!r || !r.f || !(Number(r.p) >= 1)) return;
+        var src = r.f.src;
+        if (!seen[src]) { seen[src] = 1; order.push(src); }
+        sentsOf(lecClean(r.text), kk).forEach(function (s) {
+          quick.push({
+            src: src, name: String(r.f.f || '').replace(/\.pdf$/i, ''), p: r.p,
+            t: s.t, hits: s.hits, w: s.w + Math.min(0.5, (r.rrf || 0) * 3),
+            isq: (typeof isQPage === 'function' && isQPage(r.text)) ? 1 : 0
+          });
+        });
       });
-      var picked = [], keys2 = (keys || []).slice(0, 4);
-      order.slice(0, 6).forEach(function (src, fi) {
-        var per = [];
-        bySrc[src].forEach(function (r) {
-          var ss = sentsOf(lecClean(r.text), keys2);
-          ss.forEach(function (s) {
-            per.push({
-              src: src, name: String((r.f.f || '')).replace(/\.pdf$/i, ''), p: r.p,
-              t: s.t.slice(0, 90), hits: s.hits,
-              w: s.w + r.rrf * 8 + (fi === 0 ? 0.4 : 0),
-              isq: (typeof isQPage === 'function' && isQPage(r.text)) ? 1 : 0
+      /* 要扫哪些科目的正文：KB 命中过的科目 + （片段太少时）全库 */
+      var subs = [];
+      function addSub(sj) { if (sj && SUBJ_ALL.indexOf(sj) >= 0 && subs.indexOf(sj) < 0) subs.push(sj); }
+      order.slice(0, 12).forEach(function (s) { try { addSub(subjOf(s)); } catch (e) {} });
+      var liveQuick = quick.filter(function (x) { return !x.isq; });
+      if (liveQuick.length < 14) SUBJ_ALL.forEach(addSub);
+      return Promise.all(subs.map(function (sj) {
+        return textRowsFor(sj).catch(function () { return []; });
+      })).then(function (bags) {
+        var all = quick.slice(), pageK = {};
+        bags.forEach(function (bag, bi) {
+          var sj = subs[bi];
+          (bag || []).forEach(function (r) {
+            if (!r || !r.t) return;
+            var pg = Number(r.p) || 0;
+            if (!(pg >= 1)) return;
+            var txt = lecClean(r.t);
+            var ss = sentsOf(txt, kk);
+            if (!ss.length) return;
+            var pk = normName(r.src) + '#' + pg;
+            pageK[pk] = (pageK[pk] || 0) + 1;
+            ss.forEach(function (s) {
+              var ded = normName(s.t).slice(0, 30);
+              if (seenTxt[ded]) return;
+              seenTxt[ded] = 1;
+              all.push({
+                src: r.src, name: String(r.src || '').replace(/^pdf\//, '').replace(/\.[^.]+$/, ''),
+                p: pg, t: s.t, hits: s.hits, w: s.w + 1.0,
+                isq: (typeof isQPage === 'function' && isQPage(txt)) ? 1 : 0
+              });
             });
           });
         });
-        per.sort(function (a, b) { return b.w - a.w; });
-        picked = picked.concat(per.filter(function (x) { return !x.isq; }).slice(0, 4));
-      });
-      picked.sort(function (a, b) { return b.w - a.w; });
-      picked = picked.slice(0, cap || 24);
-      picked.forEach(function (x, i) { x.i = i + 1; });
-      if (picked.length >= 8) return picked;
-      /* 片段太少才退回整页文字（只补 3 份，慢路径） */
-      var srcs = order.slice(0, 3);
-      return Promise.all(srcs.map(function (src) {
-        return textRowsFor(subjOf(src)).then(function (all) {
-          var out = [];
-          (all || []).forEach(function (r) {
-            if (!r.t) return;
-            if (r.src !== src && normName(r.src) !== normName(src)) return;
-            if (!(Number(r.p) >= 1)) return;
-            sentsOf(lecClean(r.t), keys2).forEach(function (s) {
-              out.push({ src: src, name: String((fileOf(src) || {}).f || '').replace(/\.pdf$/i, ''), p: r.p, t: s.t.slice(0, 90), hits: s.hits, w: s.w, isq: (typeof isQPage === 'function' && isQPage(r.t)) ? 1 : 0 });
-            });
-          });
-          out.sort(function (a, b) { return b.w - a.w; });
-          return out.filter(function (x) { return !x.isq; }).slice(0, 5);
-        }).catch(function () { return []; });
-      })).then(function (lists) {
-        var all = picked.slice();
-        lists.forEach(function (l) { all = all.concat(l || []); });
+        /* 同一页命中多句的再加一点分 */
+        all.forEach(function (x) {
+          var pk = normName(x.src) + '#' + x.p;
+          if ((pageK[pk] || 0) >= 2) x.w += 0.6;
+        });
+        all = all.filter(function (x) { return !x.isq; });
         all.sort(function (a, b) { return b.w - a.w; });
-        all = all.slice(0, cap || 24);
-        all.forEach(function (x, i) { x.i = i + 1; });
-        return all;
+        /* 每份讲义最多 5 句，总量 cap */
+        var per = {}, out = [];
+        for (var i = 0; i < all.length && out.length < capN; i++) {
+          var x = all[i];
+          per[x.src] = per[x.src] || 0;
+          if (per[x.src] >= 5) continue;
+          per[x.src]++;
+          out.push(x);
+        }
+        out.forEach(function (x, i) { x.i = i + 1; });
+        return out;
       });
     });
   }
+
+
 
   function ovSrcLine(x) { return '[' + x.i + ']（' + x.name + '·第' + x.p + '页）' + x.t; }
 
@@ -2330,8 +2367,7 @@
       + '5) coverage.hit = 这些来源覆盖了几份讲义，total = 命中的讲义总数，missing 列没覆盖到的章节（不知道就留空数组）；'
       + '6) ' + target + '；7) 不要开场白、不要总结陈词、不要 Markdown 标题符号。';
     var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号必须来自这里）：\n' + list;
-    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.2, maxTokens: short ? 1800 : (mode === 'chapter' ? 3600 : 2000) }), short ? 45000 : (mode === 'chapter' ? 95000 : 60000));
+    return ovAsk(sys, user, short ? 2000 : (mode === 'chapter' ? 3600 : 2400), short ? 45000 : (mode === 'chapter' ? 95000 : 60000));
   }
 
   function ovCleanText(t) { return String(t || '').replace(/\[\[\d+\]\]/g, '').replace(/\s+/g, ' ').trim(); }
@@ -2681,6 +2717,55 @@
     return '[' + s.i + ']（' + String(s.name || '').slice(0, 18) + '·第' + s.p + '页）' + String(s.t || '').slice(0, 70);
   }
 
+  /* 推理模型会把 max_tokens 全用在思考上：正文为空且 finish=length 时自动加预算重试一次 */
+  function ovAsk(sys, user, mt, ms) {
+    var msgs = [{ role: 'system', content: sys }, { role: 'user', content: user }];
+    function once(m, t) {
+      return withTimeout(Promise.resolve().then(function () {
+        return aiChat(msgs, null, null, { stream: false, temp: 0.2, maxTokens: m });
+      }), t).catch(function () { return ''; });
+    }
+    return once(mt, ms).then(function (t1) {
+      t1 = String(t1 || '').trim();
+      if (t1) return t1;
+      var L = window.__AI_LAST || {};
+      if (!(L && L.finish === 'length')) return '';
+      var m2 = Math.min(7000, Math.max(3800, mt * 3));
+      return once(m2, ms + 40000);
+    });
+  }
+
+  /* 大纲兜底：模型不给大纲时按「是什么—怎么发生—有什么用」自己分节 */
+  function outlineFromSources(sel, sources, mode) {
+    var bins = { def: [], mech: [], use: [], warn: [] };
+    (sources || []).forEach(function (s) {
+      var x = String(s.t || '');
+      if (/注意|易错|区别|不要|鉴别|误/.test(x)) bins.warn.push(s.i);
+      else if (/是|称为|叫作|指|定义|概念|包括|分为/.test(x)) bins.def.push(s.i);
+      else if (/催化|反应|合成|分解|代谢|生成|转化|途径|步骤|过程/.test(x)) bins.mech.push(s.i);
+      else bins.use.push(s.i);
+    });
+    function take(a, n) { return a.slice(0, n); }
+    var secs = [];
+    var d = take(bins.def, 5), m = take(bins.mech, 5), u = take(bins.use, 5);
+    if (!d.length && !m.length) d = (sources || []).slice(0, 5).map(function (x) { return x.i; });
+    if (d.length) secs.push({ h: '一、定义与基本概念', hint: '它是什么、包括哪些', ids: d });
+    if (m.length) secs.push({ h: '二、过程与机制', hint: '怎么发生、关键步骤', ids: m });
+    if (u.length) secs.push({ h: '三、调节、临床与考点', hint: '有什么用、考什么', ids: u });
+    if (mode === 'chapter' && bins.warn.length) secs.push({ h: '四、易错与交叉提醒', hint: '容易混的点', ids: take(bins.warn, 4) });
+    if (!secs.length) return null;
+    var names = {};
+    (sources || []).forEach(function (s) { names[s.name] = 1; });
+    return {
+      title: String(sel || '').slice(0, 18),
+      lead: '下面按「是什么 → 怎么发生 → 有什么用」把讲义里关于它的讲解合并成一篇。',
+      secs: secs,
+      conflict: '',
+      coverage: { hit: Object.keys(names).length, total: Object.keys(names).length, missing: [] },
+      auto: 1
+    };
+  }
+
   function ovOutline(sel, keys, sources, mode) {
     var pool = sources.slice(0, 12);                 /* 大纲只看 12 条代表句，避免一口气塞太多 */
     var list = pool.map(ovSrcBrief).join('\n');
@@ -2690,8 +2775,7 @@
       + '"coverage":{"hit":2,"total":5,"missing":[]}}。'
       + '规则：按医学逻辑分 ' + nsec + '；每节 ids 从给定编号里挑 2–5 条最相关的；不要正文、不要开场白。';
     var user = '知识点：' + sel + '\n\n编号原句（' + pool.length + ' 条）：\n' + list;
-    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.2, maxTokens: 1100 }), 45000).then(function (txt) { return ovParseOutline(txt, sources, sel); });
+    return ovAsk(sys, user, 1600, 45000).then(function (txt) { return ovParseOutline(txt, sources, sel); });
   }
 
   function ovParseOutline(txt, sources, sel) {
@@ -2719,13 +2803,12 @@
     var picked = [];
     (sec.ids || []).slice(0, 5).forEach(function (n) { var s = sources[n - 1]; if (s) picked.push(s); });
     var list = picked.map(ovSrcBrief).join('\n');
-    var sys = '你是医学考研讲义撰稿人。只写这一节正文：2–4 段，每段 2–4 句、≤120 字，段落之间空一行。'
-      + '写成连贯讲解（可改写合并概括），禁止「讲义指出」「第N页」，禁止罗列原句；'
-      + '每段最多标 1 组来源 [[n]]，编号只能来自清单；纯文本，不要标题、不要 Markdown。';
+    var sys = '把下面几条讲义原文合并改写成通顺讲解：2–3 段，每段 2–3 句、≤110 字，段落间空一行。'
+      + '只做合并、改写、概括，不要推理、不要补充原文没有的事实，不要写「讲义指出」「第N页」，不要罗列原句。'
+      + '每段末尾标一次来源，写成 [[n]]（n 只能来自清单）；纯文本，不要标题。';
     var user = '知识点：' + sel + '\n本节：' + sec.h + (sec.hint ? '（' + sec.hint + '）' : '')
       + '\n\n可引用原句：\n' + list;
-    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.3, maxTokens: 900 }), 45000);
+    return ovAsk(sys, user, 1400, 45000);
   }
 
   function ovSplitParas(txt, sources) {
@@ -2761,6 +2844,10 @@
       }
     }
     var cap = mode === 'chapter' ? 56 : 32;
+    if (st.sel) {
+      st.ov = { pending: 1, prog: '正在全库扫「' + (keys || []).join('、') + '」相关原句…' };
+      renderOverview(st);
+    }
     var p1 = st.sources && st.sources.length ? Promise.resolve(st.sources) : collectSources(keys, cap);
     return p1.then(function (srcs) {
       st.sources = srcs;
@@ -2777,7 +2864,10 @@
       var failNote = [];
       return ovOutline(sel, keys, srcs, mode).catch(function (e) { failNote.push('大纲请求失败：' + (e && e.message || e)); return null; }).then(function (ol) {
         if (!ol) {
-          /* 大纲都没出来：退回一次性生成，再退回纯文本整理 */
+          /* 大纲没出来：先用规则给一个「是什么/怎么发生/有什么用」的骨架，再逐节写 */
+          ol = outlineFromSources(sel, srcs, mode);
+          if (ol) { failNote.push('大纲由规则生成（模型没给大纲）'); return runSections(ol); }
+          /* 连骨架都没有：退回一次性生成，再退回纯文本整理 */
           return ovPrompt(sel, keys, srcs, mode, true).then(function (txt) {
             var ov = parseOverview(txt, srcs) || ovFromProse(txt, srcs, sel);
             if (ov) return ov;
@@ -2785,6 +2875,7 @@
             return null;
           });
         }
+        function runSections(ol) {
         var out = { title: ol.title, lead: ol.lead, sections: [], conflict: '', coverage: ol.coverage, staged: 1 };
         var i = 0;
         function step() {
@@ -2802,6 +2893,8 @@
           });
         }
         return step();
+        }
+        return runSections(ol);
       }).then(function (ov) {
         if (!ov) {
           if (OV_STOPPED) {
