@@ -748,7 +748,7 @@
       { role: 'system', content: '你是医学考研题库的讲义定位助手。用户给出一道题和若干候选讲义页（含文件名、页码、正文片段）。请判断哪一页最可能是这道题在讲义里的依据页（考点讲解、答案依据所在页）。只输出一行 JSON：{"i": 序号, "why": "不超过20字"}。没把握就选最相关的那页，也必须给一个序号。' },
       { role: 'user', content: '【题目】\n' + String(q).slice(0, 700) + '\n\n【候选页】\n' + lines }
     ];
-    return window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 80 }).then(function (txt) {
+    return window.aiChat(msgs, null, null, { stream: false, temp: 0, maxTokens: 420 }   /* deepseek-flash 是推理模型：思考也占 token，80 太少会拿到空内容 */).then(function (txt) {
       var m = String(txt || '').match(/\{[\s\S]*?\}/);
       if (!m) return null;
       var o = null;
@@ -757,6 +757,101 @@
       if (i < 0 || i >= hits.length) return null;
       return { i: i, why: String(o.why || '').slice(0, 24) };
     });
+  }
+
+  /* ---------- 复用「AI 解析」的资料检索（kb.js）----------
+     用户在 m25065 明确要求：讲义定位就用 AI 解析里找参考资料那套，别再自己拿关键词拼。
+     同一套管道 = 知识库（讲义按页切好的 docs）→ BM25 + 向量 + kbRerank 重排，
+     命中的每一条都带 file / pdfp（PDF 内页码），直接拿来跳页。 */
+  function normName(x) {
+    return String(x || '').replace(/\\/g, '/').split('/').pop()
+      .replace(/\.pdf$/i, '').replace(/[\s\u3000]+/g, '')
+      .replace(/\uff08/g, '(').replace(/\uff09/g, ')')
+      .replace(/\u3010/g, '[').replace(/\u3011/g, ']')
+      .toLowerCase();
+  }
+  function fileByHit(h) {
+    var want = normName(h.file || h.doc || '');
+    if (!want) return null;
+    var i, f, a;
+    for (i = 0; i < FILES.length; i++) { f = FILES[i]; if (normName(f.src) === want || normName(f.f) === want) return f; }
+    for (i = 0; i < FILES.length; i++) { f = FILES[i]; a = normName(f.src); if (a.indexOf(want) >= 0 || want.indexOf(a) >= 0) return f; }
+    return null;
+  }
+  function jumpToSrc(src, p, label) {
+    var f = fileOf(src);
+    if (!f) return false;
+    CUR.src = src;
+    CUR.p = Math.max(1, Math.min(f.n || 9999, (p | 0) || 1));
+    CAND = [];
+    var alt = $('#lecAlt'); if (alt) alt.style.display = 'none';
+    paint();
+    try { remember(); } catch (e) {}
+    if (el.meta) el.meta.textContent = label;
+    return true;
+  }
+  function kbLocate(q) {
+    if (typeof kbSearch !== 'function') return Promise.resolve(null);
+    /* 知识库的文件是 4MB 级分片，第一次打开要下载+解压；这期间 kbSelected() 可能是空的，
+       所以先等它挂上（最多 6 秒），实在没有就从目录 kbList() 兜底。 */
+    function idsNow() {
+      var ids = [];
+      try { ids = (typeof kbSelected === 'function') ? (kbSelected() || []) : []; } catch (e) { ids = []; }
+      if (ids && ids.length) return ids;
+      try {
+        var l = (typeof kbList === 'function') ? (kbList() || []) : [];
+        ids = l.map(function (x) { return (x && x.id) || x; }).filter(Boolean);
+      } catch (e) {}
+      return ids || [];
+    }
+    function use(hs) {
+      var first = null;
+      for (var i = 0; i < hs.length; i++) {
+        var h = hs[i] || {};
+        var f = fileByHit(h);
+        if (!f) continue;
+        var pg = +(h.pdfp || h.page || 0);
+        var nm = String(h.file || f.f).replace(/\.pdf$/i, '');
+        if (pg && (!f.n || pg <= f.n)) return Promise.resolve({ src: f.src, p: pg, name: nm });
+        if (!first) first = { f: f, name: nm };
+      }
+      if (!first) return Promise.resolve(null);
+      /* 这条没带页码（整份讲义切块常见）：在这份文件里用关键词选页 */
+      return loadTextSubj().then(function (rows) {
+        var sub = (rows || []).filter(function (r) { return r && r.src === first.f.src; });
+        var hs2 = searchIn(sub, q);
+        var pg2 = hs2.length ? ((sub[hs2[0].i] || {}).p || 1) : 1;
+        return { src: first.f.src, p: pg2, name: first.name };
+      }).catch(function () { return { src: first.f.src, p: 1, name: first.name }; });
+    }
+    function start() {
+      var ids = idsNow();
+      if (!ids.length) return Promise.resolve(null);
+      return kbSearch(String(q).slice(0, 600), ids, 8).then(function (hits) {
+        hits = hits || [];
+        if (typeof kbRerank === 'function' && hits.length > 1) {
+          try {
+            var r = kbRerank(String(q).slice(0, 600), hits, 6);
+            if (r && typeof r.then === 'function') return Promise.resolve(r).then(use, function () { return use(hits); });
+            if (r && r.length) return use(r);
+          } catch (e) {}
+        }
+        return use(hits);
+      });
+    }
+    var pre = (typeof kbEnsureFilesLoaded === 'function')
+      ? Promise.resolve(kbEnsureFilesLoaded()).catch(function () {}) : Promise.resolve();
+    return pre.then(function () {
+      if (idsNow().length) return start();
+      return new Promise(function (res) {
+        var n = 0;
+        (function tick() {
+          if (idsNow().length) return res(start());
+          if (++n > 75) return res(null);
+          setTimeout(tick, 200);
+        })();
+      });
+    }).catch(function () { return null; });
   }
 
   function locate() {
@@ -771,6 +866,15 @@
     }
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
+    if (el.meta) el.meta.textContent = '正在用「AI 解析」的资料检索找这一页…';
+    /* 一号方案：和 AI 解析共用同一套资料检索（kb.js）；不行再回旧链路 */
+    withTimeout(kbLocate(q), 25000).then(function (fd) {
+      if (fd && jumpToSrc(fd.src, fd.p, '📚 资料检索：' + fd.name.slice(0, 20) + ' 第 ' + fd.p + ' 页')) return;
+      legacyLocate(q);
+    }).catch(function () { legacyLocate(q); });
+  }
+  /* 旧链路：当前科目关键词 → 向量/聊天选页 → 关键词第一页 */
+  function legacyLocate(q) {
     if (el.meta) el.meta.textContent = '正在翻讲义找这一页…';
     loadTextSubj().then(function (rows) {
       HIT_ROWS = rows || [];
@@ -880,5 +984,7 @@
   window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
-    files: function () { return FILES; }, pageKey: keyFor };
+    files: function () { return FILES; }, pageKey: keyFor,
+    /* 调试用：直接看 KB 检索返回什么 */
+    kb: function () { return kbLocate(questionText()); }, q: questionText };
 })();
