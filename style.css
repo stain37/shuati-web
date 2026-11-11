@@ -4501,3 +4501,14 @@ body.dark .nt-ovcover { color:#9cc8ff; background:rgba(10,132,255,.16); }
 body.dark .nt-ovcover i { background:#0f1620; }
 body.dark .nt-edit { background:#0f1620; color:#e9eef6; border-color:rgba(255,255,255,.16); }
 body.dark .nt-edbar span { color:#9aa7b8; }
+
+
+/* web775 · 总览生成失败时的诊断块 */
+.lec-ovfail{margin:10px 0;padding:12px 14px;border-radius:12px;background:#fff3f3;border:1px solid #f3c9c9}
+.lec-ovfail b{display:block;font-size:14px;color:#b4232a;margin-bottom:6px}
+.lec-ovfail span{display:block;font-size:12.5px;line-height:1.6;color:#6b5560}
+.lec-ovfail pre{margin:8px 0 0;padding:10px;border-radius:8px;background:#fff;border:1px solid #f0dede;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-size:11.5px;line-height:1.55;color:#8a5b5b}
+body.dark .lec-ovfail{background:#2a1d20;border-color:#4a2b2f}
+body.dark .lec-ovfail b{color:#ff8b90}
+body.dark .lec-ovfail span{color:#c7a9ad}
+body.dark .lec-ovfail pre{background:#1d1416;border-color:#3d2529;color:#c3a3a7}

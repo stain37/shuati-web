@@ -2312,8 +2312,8 @@
   function ovPrompt(sel, keys, sources, mode) {
     var list = sources.map(ovSrcLine).join('\n');
     var target = mode === 'chapter'
-      ? '整章版：4–8 节，每节 2–5 段，每段 2–5 句，全篇 24–36 段（约 2200–3800 字）'
-      : '标准版：3–6 节，每节 1–3 段，全篇 12–16 段（约 1200–1800 字）';
+      ? '整章版：4–6 节，每节 2–4 段，每段 2–4 句，全篇 16–22 段（约 1400–2200 字）'
+      : '标准版：3–5 节，每节 1–3 段，全篇 10–14 段（约 900–1400 字）';
     var sys = '你是医学考研讲义的撰稿人。任务：把散在各本讲义里的内容，写成一份考生可以直接拿来复习的「讲解」，'
       + '不是摘句、不是资料卡。只输出 JSON，不要任何解释或代码块标记，格式：'
       + '{"title":"这节讲什么（≤18字）","lead":"一句话导语（≤60字）",'
@@ -2328,7 +2328,7 @@
       + '6) ' + target + '；7) 不要开场白、不要总结陈词、不要 Markdown 标题符号。';
     var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号必须来自这里）：\n' + list;
     return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
-      { stream: false, temp: 0.2, maxTokens: mode === 'chapter' ? 5200 : 2600 }), mode === 'chapter' ? 95000 : 60000);
+      { stream: false, temp: 0.2, maxTokens: mode === 'chapter' ? 3600 : 2000 }), mode === 'chapter' ? 95000 : 60000);
   }
 
   function ovCleanText(t) { return String(t || '').replace(/\[\[\d+\]\]/g, '').replace(/\s+/g, ' ').trim(); }
@@ -2356,12 +2356,44 @@
     return out;
   }
 
+  function ovClosers(t) {
+    var st = [], inStr = false, escd = false, c;
+    for (var i = 0; i < t.length; i++) {
+      c = t[i];
+      if (inStr) { if (escd) escd = false; else if (c === '\\') escd = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{' || c === '[') st.push(c);
+      else if (c === '}' || c === ']') st.pop();
+    }
+    var out = inStr ? '"' : '';
+    for (var j = st.length - 1; j >= 0; j--) out += (st[j] === '{' ? '}' : ']');
+    return out;
+  }
+  /* AI 有时会在 JSON 前后加话、被 maxTokens 截断、或留尾逗号 —— 尽量救回来 */
+  function ovJsonLoose(text) {
+    var s = String(text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+    var a = s.indexOf('{');
+    if (a < 0) return null;
+    var body = s.slice(a);
+    var cands = [body.slice(0, body.lastIndexOf('}') + 1), body];
+    for (var i = 0; i < cands.length; i++) {
+      var b = cands[i];
+      if (!b) continue;
+      var variants = [b, b.replace(/,\s*([}\]])/g, '$1')];
+      for (var j = 0; j < variants.length; j++) {
+        var v = variants[j];
+        try { return JSON.parse(v); } catch (e) {}
+        var fixed = v + ovClosers(v);
+        try { return JSON.parse(fixed); } catch (e) {}
+        try { return JSON.parse(fixed.replace(/,\s*([}\]])/g, '$1')); } catch (e) {}
+      }
+    }
+    return null;
+  }
+
   function parseOverview(text, sources) {
-    var s = String(text || '').replace(/```json/gi, '').replace(/```/g, '');
-    var a = s.indexOf('{'), b = s.lastIndexOf('}');
-    if (a < 0 || b <= a) return null;
-    var o;
-    try { o = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+    var o = ovJsonLoose(text);
+    if (!o) { try { console.warn('[ov] JSON 解析失败，原文前 600 字：', String(text || '').slice(0, 600)); } catch (e) {} return null; }
     var out = {
       title: String(o.title || '').slice(0, 40),
       lead: String(o.lead || '').slice(0, 200),
@@ -2422,6 +2454,11 @@
       return h;
     }
     if (!st.ov) return '<div class="lec-srow">还没有生成，点下面「生成」</div>';
+    if (st.ov.failed) {
+      return '<div class="lec-ovfail"><b>这次没生成出来</b>'
+        + '<span>AI 回了内容，但格式不对或被截断。点下面「重新生成」再试一次；整章版比较长，可以先切「标准」版。</span>'
+        + '<pre>' + esc(String(st.ov.raw || '').slice(0, 1200)) + '</pre></div>';
+    }
     var o = st.ov;
     if (o.title) h += '<div class="lec-ovtitle">' + esc(o.title) + '</div>';
     if (o.lead) h += '<div class="lec-ovlead">' + markSents(o.lead, keys) + '</div>';
@@ -2519,9 +2556,17 @@
       renderOverview(st);
       return ovPrompt(sel, keys, srcs, mode).then(function (txt) {
         var ov = parseOverview(txt, srcs);
-        if (!ov) { st.ov = null; renderOverview(st); toast('AI 没给出结构化讲解', 2400, 'bad'); return; }
+        if (!ov) {
+          st.ov = { sections: [], conflict: '', failed: 1, raw: String(txt || '（AI 返回空）').slice(0, 1200) };
+          renderOverview(st);
+          toast('AI 回的内容没解析出来，原文已显示在面板里', 2800, 'bad');
+          return;
+        }
         st.ov = ov;
         ovCachePut(keys, mode, ov, srcs);
+        renderOverview(st);
+      }).catch(function (e) {
+        st.ov = { sections: [], conflict: '', failed: 1, raw: '请求失败：' + (e && e.message || e) };
         renderOverview(st);
       });
     }).catch(function (e) { toast('生成失败：' + (e && e.message || e), 2400, 'bad'); });
