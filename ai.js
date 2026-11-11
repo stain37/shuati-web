@@ -1381,6 +1381,14 @@ document.addEventListener('click', function (e) {
 
 /* ⛶ 全屏看原页：站内覆盖一整屏的阅读器（不想看小窗时用；Esc / 点遮罩 / 关闭 都能退） */
 function aiPdfFullscreen(pdf, title, rel, anchor, img) {
+  /* 传进来的常常是**相对路径**（pdf/内科/xxx.pdf）。以前直接塞进 iframe → 走 github.io 本站，
+     慢到十几秒不出来；现在如果是相对路径，就换成阅读器地址（内部按线路解析成 COS 绝对地址）。 */
+  try {
+    if (!img && pdf && !/^https?:/i.test(pdf)) {
+      const r = rel || pdf;
+      pdf = aiPdfLiteFirst() ? aiPdfLiteUrl(r, anchor) : aiPdfViewerUrl(r, anchor);
+    }
+  } catch (e) {}
   const old = document.getElementById('pdfFs');
   if (old) old.remove();
   const box = document.createElement('div');
