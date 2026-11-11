@@ -2265,6 +2265,29 @@
   }
 
   /* 全库知识点检索：KB 片段先给方向，真正出处以讲义正文为准（web779） */
+  /* 单句打分：术语密度 / 是否句首出现 / 文件名是否就是这个主题 / 乱码与水印惩罚 */
+  function ovSentBoost(t, keys, name) {
+    var txt = String(t || ''), nm = String(name || '').toLowerCase(), b = 0, occ = 0;
+    (keys || []).forEach(function (k) {
+      if (!k) return;
+      var m = txt.split(k).length - 1;
+      occ += m;
+    });
+    if (occ >= 2) b += Math.min(0.6, 0.25 * (occ - 1));
+    var first = (keys && keys[0]) ? txt.indexOf(keys[0]) : -1;
+    if (first >= 0 && first <= 10) b += 0.35;
+    for (var i = 0; i < (keys || []).length; i++) {
+      if (keys[i] && keys[i].length >= 2 && nm.indexOf(String(keys[i]).toLowerCase()) >= 0) { b += 1.1; break; }
+    }
+    if (/公众号|小凯|仅供|内部资料/.test(txt)) b -= 1.5;
+    var cjk = (txt.match(/[\u4e00-\u9fa5]/g) || []).length;
+    var vis = txt.replace(/\s/g, '').length || 1;
+    if (cjk / vis < 0.55) b -= 1.0;
+    if (txt.length < 14) b -= 0.5;
+    if (!/[。；！？]/.test(txt)) b -= 0.15;
+    return b;
+  }
+
   function collectSources(keys, cap) {
     keys = expandKeys(cleanKeys(keys || []));
     if (!keys.length) return Promise.resolve([]);
@@ -2279,10 +2302,11 @@
         if (!r || !r.f || !(Number(r.p) >= 1)) return;
         var src = r.f.src;
         if (!seen[src]) { seen[src] = 1; order.push(src); }
+        var nm0 = String(r.f.f || '').replace(/\.pdf$/i, '');
         sentsOf(lecClean(r.text), kk).forEach(function (s) {
           quick.push({
-            src: src, name: String(r.f.f || '').replace(/\.pdf$/i, ''), p: r.p,
-            t: s.t, hits: s.hits, w: s.w + Math.min(0.5, (r.rrf || 0) * 3),
+            src: src, name: nm0, p: r.p,
+            t: s.t, hits: s.hits, w: s.w + Math.min(0.5, (r.rrf || 0) * 3) + ovSentBoost(s.t, kk, nm0),
             isq: (typeof isQPage === 'function' && isQPage(r.text)) ? 1 : 0
           });
         });
@@ -2312,9 +2336,10 @@
               var ded = normName(s.t).slice(0, 30);
               if (seenTxt[ded]) return;
               seenTxt[ded] = 1;
+              var nm1 = String(r.src || '').replace(/^pdf\//, '').replace(/\.[^.]+$/, '');
               all.push({
-                src: r.src, name: String(r.src || '').replace(/^pdf\//, '').replace(/\.[^.]+$/, ''),
-                p: pg, t: s.t, hits: s.hits, w: s.w + 1.0,
+                src: r.src, name: nm1,
+                p: pg, t: s.t, hits: s.hits, w: s.w + 1.0 + ovSentBoost(s.t, kk, nm1),
                 isq: (typeof isQPage === 'function' && isQPage(txt)) ? 1 : 0
               });
             });
