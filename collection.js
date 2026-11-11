@@ -3093,6 +3093,9 @@ function bindItem(node, mode, it) {
         render();
       }
     }
+    else if (act === 'srsadd') {
+      if (typeof srsAddOne === 'function' && srsAddOne(k)) render();
+    }
     else if (act === 'fav') { toggleFav(k, btn); }
     else if (act === 'unfav') { delete FAV[k]; tombAdd('fav', k); saveFav(); st.sel.delete(k); toast('已取消收藏'); render(); }
     else if (act === 'drop') {

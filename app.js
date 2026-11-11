@@ -2207,6 +2207,7 @@ const answered = k => { const a = ANS[k]; return !!a && !a.redo; };
 function inSrs(k) {
   const a = ANS[k];
   if (!a) return false;
+  if (a.srsAdd) return true;                     /* 手动「加进复习」的题：一次做对也进队列（2026-11-11） */
   if ((a.wrong || 0) > 0) return true;
   return a.grade === '模糊' || a.grade === '忘记';
 }
@@ -2266,14 +2267,21 @@ function revLine(k, withBtn) {
   const info = revInfo(k);
   if (!info.known) return '';
   const last = info.last ? ('上次复习 ' + revAgoText(info.last)) : '还没复习过';
-  const next = revNextText(info);
-  const late = (info.days != null && info.days < 0) || !!(info.pulled);
-  const canPull = withBtn && info.has && !info.pulled && info.days != null && info.days > 0;
+  const inQ = !!info.has;                        /* 在不在复习队列：只看这个，别看 days 的正负 */
+  const next = inQ ? revNextText(info) : '已答对 · 不参与复习';
+  const late = inQ && ((info.days != null && info.days < 0) || !!(info.pulled));
+  const canPull = withBtn && inQ && !info.pulled && info.days != null && info.days > 0;
+  const addBtn = (withBtn && !inQ)
+    ? '<button class="btn tiny rev-add" data-act="srsadd" title="这道题一次就做对了，原本不进复习队列；点一下把它加进去（加进去后按现有间隔排期）">＋ 加进复习</button>'
+    : '';
   return '<span class="revline' + (late ? ' late' : '') + '" data-rev="' + String(k).replace(/"/g, '') + '" title="' +
-    (info.due ? ('上次复习：' + (info.last ? fmtTime(info.last) : '—') + '　下次复习：' + fmtTime(info.due)) : '还没排复习') + '">' +
+    (inQ
+      ? (info.due ? ('上次复习：' + (info.last ? fmtTime(info.last) : '—') + '　下次复习：' + fmtTime(info.due)) : '还没排复习')
+      : '这条只是一次作答记录：一次就做对、也没标过「模糊 / 忘记」，所以不参与复习；点「＋ 加进复习」可以手动加进来') + '">' +
     '<i>' + last + '</i>' +
     (next ? ('<span class="revdot">·</span><b>' + next + '</b>') : '') +
     (canPull ? '<button class="btn tiny rev-pull" data-act="pull" title="不等了，把这道题提前加进今天的复习">提前复习</button>' : '') +
+    addBtn +
     '</span>';
 }
 /* 单题提前复习：把它拉到今天的队列里（和「提前复习 X 天」用的是同一个 pulled 标记） */
@@ -2289,6 +2297,38 @@ function pullOne(k) {
   try { if (typeof uiPaintBadge === 'function') uiPaintBadge(); } catch (e) {}
   toast('已加到今天的复习：错题本 · 待复习里能看到它', 2600);
   return true;
+}
+/* 「＋ 加进复习」：一次就做对、本来不进复习队列的题，用户手动把它加进来。
+   只落一个标记（a.srsAdd），不动间隔/易度；下一档仍按现有 ivl 走。 */
+function srsAddOne(k) {
+  const a = ANS[k];
+  if (!a) { toast('这道题还没做过，没有复习排期'); return false; }
+  if (inSrs(k)) { toast('这道题已经在复习队列里了'); return false; }
+  a.srsAdd = 1;
+  a.upd = Date.now();
+  if (a.due == null) a.due = a.ts || Date.now();
+  saveAns();
+  try { if (LIVE_PAPER && LIVE_PAPER.kind === 'review') LIVE_PAPER.day = null; } catch (e) {}
+  try { if (typeof uiPaintBadge === 'function') uiPaintBadge(); } catch (e) {}
+  toast('已加进复习队列：它到期时会出现在「今日复习」里', 2600);
+  return true;
+}
+/* 复习行里的两个小按钮（＋ 加进复习 / 提前复习）：答题页的复习行不是列表渲染、没有 per-item 绑定，
+   统一用文档级捕获兜底；列表页（collection.js）里也有绑定，这里先 stopPropagation，只走一条路。 */
+if (!window.__revDelegated) {
+  window.__revDelegated = 1;
+  document.addEventListener('click', function (ev) {
+    const t = ev.target;
+    const b = (t && t.closest) ? t.closest('.rev-add,.rev-pull') : null;
+    if (!b) return;
+    const line = b.closest('.revline');
+    const k = line ? line.getAttribute('data-rev') : '';
+    if (!k) return;
+    ev.preventDefault(); ev.stopPropagation();
+    if (b.classList.contains('rev-add')) srsAddOne(k);
+    else if (typeof pullOne === 'function') pullOne(k);
+    try { render(); } catch (e) {}
+  }, true);
 }
 function explainOf(k, q) { const n = NOTES[k]; return (n && n.text) ? n.text : (q.explain || ''); }
 
@@ -5719,6 +5759,8 @@ function commitAnswer(k, sel, answer) {
     ivl: (prev.ivl == null ? 0 : prev.ivl),
     /* 今天已经判过一次的题，别当成「今天第一次」再算一遍长期间隔 */
     gday: prev.gday,
+    /* 手动「加进复习」的标记要跟着作答记录走，别答一次就丢 */
+    srsAdd: (prev.srsAdd || 0),
     /* 订正标记：答对时保留（错题集里继续隐身），这次答错就清掉——又错了，重新进错题本 */
     fixed: ok ? (prev.fixed || 0) : 0,
     /* 当天重入次数要跟着走，否则「同一天最多再来一次」会被下一次作答清掉 */
