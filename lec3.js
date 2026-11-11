@@ -2476,12 +2476,25 @@
   function ovHtml(st) {
     var keys = st.keys || [], h = '';
     if (st.ov && st.ov.pending) {
-      h += '<div class="lec-ovh">已从 ' + (st.sources || []).length + ' 处捞到原句，正在写成讲解…</div><div class="lec-ovbody">';
-      (st.sources || []).slice(0, 10).forEach(function (x) {
-        h += '<div class="lec-ovli lec-ovsrc">' + markSents(String(x.t || '').slice(0, 80), keys)
-          + '<button class="lec-ovcite" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">📖 ' + esc(String(x.name).slice(0, 16)) + ' · 第 ' + x.p + ' 页</button></div>';
-      });
-      h += '</div>';
+      h += '<div class="lec-ovh">' + esc(st.ov.prog || ('已从 ' + (st.sources || []).length + ' 处捞到原句，正在写成讲解…')) + '</div>';
+      var part = st.ov.partial;
+      if (part && part.sections && part.sections.length) {
+        if (part.title) h += '<div class="lec-ovtitle">' + esc(part.title) + '</div>';
+        if (part.lead) h += '<div class="lec-ovlead">' + markSents(part.lead, keys) + '</div>';
+        part.sections.forEach(function (sec) {
+          if (sec.h) h += '<div class="lec-ovh">' + esc(sec.h) + '</div>';
+          (sec.paras || []).forEach(function (p) {
+            h += '<p class="lec-ovp">' + ovParaHtml(p.t, st.sources || [], keys) + '</p>';
+          });
+        });
+      } else {
+        h += '<div class="lec-ovbody">';
+        (st.sources || []).slice(0, 8).forEach(function (x) {
+          h += '<div class="lec-ovli lec-ovsrc">' + markSents(String(x.t || '').slice(0, 80), keys)
+            + '<button class="lec-ovcite" data-web="go" data-src="' + esc(x.src) + '" data-p="' + x.p + '">📖 ' + esc(String(x.name).slice(0, 16)) + ' · 第 ' + x.p + ' 页</button></div>';
+        });
+        h += '</div>';
+      }
       return h;
     }
     if (!st.ov) return '<div class="lec-srow">还没有生成，点下面「生成」</div>';
@@ -2566,6 +2579,85 @@
     });
   }
 
+  /* ===== 分段生成：先出大纲（小 JSON），再逐节写正文（每节几百字）=====
+     一次性要 2000+ 字的 JSON，推理模型常把 token 花在思考上，正文直接空；
+     拆成 1 次大纲 + N 次小节，每次输出都短，稳定得多。 */
+  function ovSrcBrief(s) {
+    return '[' + s.i + ']（' + String(s.name || '').slice(0, 18) + '·第' + s.p + '页）' + String(s.t || '').slice(0, 70);
+  }
+
+  function ovOutline(sel, keys, sources, mode) {
+    var list = sources.map(ovSrcBrief).join('\n');
+    var nsec = mode === 'chapter' ? '5–7 节' : '3–5 节';
+    var sys = '你是医学考研讲义的撰稿人。第一步：只出「讲解大纲」，不写正文。'
+      + '只输出 JSON，不要解释或代码块标记，格式：'
+      + '{"title":"这节讲什么（≤18字）","lead":"一句话导语（≤50字）",'
+      + '"secs":[{"h":"一、定义","hint":"这一节要讲清什么（≤30字）","ids":[1,3,7],"conflict":"（可选）"}],'
+      + '"coverage":{"hit":2,"total":5,"missing":["章节名"]}}。'
+      + '规则：1) 按医学逻辑分 ' + nsec + '（定义/机制/与别的概念的区别/典型例子/易错点/考点），不要按讲义顺序；'
+      + '2) 每节 ids 只从给定编号里挑 2–8 条最相关的原句，必须真的能支撑这一节；'
+      + '3) coverage.hit = 这些原句覆盖了几份讲义，total = 一共几份，missing = 没覆盖到的章节（不知道就空数组）；'
+      + '4) 不要写正文、不要开场白。';
+    var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号只能来自这里）：\n' + list;
+    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
+      { stream: false, temp: 0.2, maxTokens: 1200 }), 45000).then(function (txt) { return ovParseOutline(txt, sources, sel); });
+  }
+
+  function ovParseOutline(txt, sources, sel) {
+    var o = ovJsonLoose(txt);
+    if (!o) return null;
+    var secs = o.secs || o.sections || [];
+    var out = {
+      title: String(o.title || sel || '').slice(0, 20),
+      lead: String(o.lead || '').slice(0, 120),
+      secs: [],
+      coverage: o.coverage && typeof o.coverage === 'object'
+        ? { hit: +o.coverage.hit || 0, total: +o.coverage.total || 0, missing: (o.coverage.missing || []).slice(0, 6).map(String) }
+        : null
+    };
+    secs.forEach(function (s) {
+      var ids = (s.ids || s.c || []).map(function (x) { return +x || 0; }).filter(function (n) { return n >= 1 && n <= sources.length; });
+      if (!ids.length) ids = sources.slice(0, 3).map(function (x) { return x.i; });   /* 编号越界时给最靠前的几条兜底，别整节丢掉 */
+      out.secs.push({ h: String(s.h || '').slice(0, 30), hint: String(s.hint || '').slice(0, 60), ids: ids.slice(0, 8), conflict: String(s.conflict || '').slice(0, 300) });
+    });
+    return out.secs.length ? out : null;
+  }
+
+  function ovWriteSec(sel, sec, sources, mode) {
+    var picked = [];
+    sec.ids.forEach(function (n) { var s = sources[n - 1]; if (s) picked.push(s); });
+    var list = picked.map(ovSrcBrief).join('\n');
+    var sys = '你是医学考研讲义的撰稿人，现在只写「这一节」的讲解正文，不要标题、不要开场白、不要总结陈词。'
+      + '规则：1) 写 2–4 段，每段 2–4 句、不超过 120 字，段落之间空一行；'
+      + '2) 写成连贯讲解，可以改写合并概括，但禁止出现「讲义指出」「原文写道」「第N页」，也不要罗列原句；'
+      + '3) 每个讲事实的句子，句末标来源编号 [[n]]，编号只能来自给定清单，可以多个 [[2]][[5]]；找不到来源的断言不要写；'
+      + '4) 同一说法在多份讲义里都出现时只写一次，句末并列标注；'
+      + '5) 纯文本输出，不要 JSON，不要 Markdown 符号。';
+    var user = '知识点：' + sel + '\n本节：' + sec.h + (sec.hint ? '（' + sec.hint + '）' : '')
+      + '\n\n可引用原句：\n' + list;
+    return withTimeout(aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }], null, null,
+      { stream: false, temp: 0.3, maxTokens: 900 }), 45000);
+  }
+
+  function ovSplitParas(txt, sources) {
+    return String(txt || '').replace(/```[a-z]*/gi, '').replace(/```/g, '')
+      .split(/\n{1,}/).map(function (x) { return x.trim(); })
+      .filter(function (x) { return x.length >= 8 && !/^(好的|以下是|下面是|当然|本节|这一节)/.test(x); })
+      .slice(0, 4)
+      .map(function (x) { return { t: x.slice(0, 700), raw: ovCleanText(x), cites: ovCitesIn(x, sources) }; });
+  }
+
+  function ovAiDiag() {
+    try {
+      var a = window.__AI_LAST;
+      if (!a) return '';
+      return '\n\n上次请求：模型 ' + a.model + ' · finish=' + (a.finish || '?')
+        + ' · 正文 ' + a.contentLen + ' 字 · 思考 ' + a.reasoningLen + ' 字'
+        + ' · max_tokens=' + (a.maxTokens || '默认') + ' · ' + a.ms + 'ms'
+        + (a.usage ? ' · tokens ' + JSON.stringify(a.usage) : '');
+    } catch (e) { return ''; }
+  }
+
   function runOverview(sel, keys, mode, keep) {
     var st = keep || { sel: sel, keys: keys, mode: mode, sources: [], ov: null };
     st.mode = mode;
@@ -2590,25 +2682,47 @@
         st.ov = { sections: [], conflict: '', failed: 1, raw: '这个页面没加载 AI 模块（ai.js 未就绪），或浏览器把 AI 功能关掉了。刷新一次再试。' };
         renderOverview(st); return;
       }
-      st.ov = { pending: 1 };
+      st.ov = { pending: 1, prog: '已从 ' + srcs.length + ' 处捞到原句，正在列讲解大纲…' };
       renderOverview(st);
-      return ovPrompt(sel, keys, srcs, mode).then(function (txt) {
-        if (!String(txt || '').trim()) return ovPrompt(sel, keys, srcs, mode, true).then(function (t2) { return t2; });
-        return txt;
-      }).then(function (txt) {
-        var ov = parseOverview(txt, srcs) || ovFromProse(txt, srcs, sel);
-        if (ov && ov.prose) toast('模型没按格式回，已按段落整理', 2600, 'info');
-        if (!ov) {
-          st.ov = { sections: [], conflict: '', failed: 1, raw: 'AI 原文（长度 ' + String(txt || '').length + ' 字）：\n' + String(txt || '（空）').slice(0, 1200) };
+      var failNote = [];
+      return ovOutline(sel, keys, srcs, mode).catch(function (e) { failNote.push('大纲请求失败：' + (e && e.message || e)); return null; }).then(function (ol) {
+        if (!ol) {
+          /* 大纲都没出来：退回一次性生成，再退回纯文本整理 */
+          return ovPrompt(sel, keys, srcs, mode, true).then(function (txt) {
+            var ov = parseOverview(txt, srcs) || ovFromProse(txt, srcs, sel);
+            if (ov) return ov;
+            failNote.push('单次生成也失败，AI 原文（' + String(txt || '').length + ' 字）：' + String(txt || '（空）').slice(0, 300));
+            return null;
+          });
+        }
+        var out = { title: ol.title, lead: ol.lead, sections: [], conflict: '', coverage: ol.coverage, staged: 1 };
+        var i = 0;
+        function step() {
+          if (i >= ol.secs.length) return Promise.resolve(out.sections.length ? out : null);
+          var sec = ol.secs[i];
+          st.ov = { pending: 1, prog: '大纲 ' + ol.secs.length + ' 节 · 正在写第 ' + (i + 1) + ' 节：' + sec.h, partial: out };
           renderOverview(st);
-          toast('AI 回的内容没解析出来，原文已显示在面板里', 2800, 'bad');
+          return ovWriteSec(sel, sec, srcs, mode).catch(function (e) { failNote.push('第' + (i + 1) + '节请求失败：' + (e && e.message || e)); return ''; }).then(function (txt) {
+            var paras = ovSplitParas(txt, srcs).filter(function (p) { return p.t.length >= 8; });
+            if (!paras.length) failNote.push('第' + (i + 1) + '节「' + sec.h + '」AI 返回空（' + String(txt || '').length + ' 字）');
+            else out.sections.push({ h: sec.h, paras: paras, conflict: sec.conflict || '', cited: paras.filter(function (p) { return p.cites.length; }).length });
+            i++;
+            return step();
+          });
+        }
+        return step();
+      }).then(function (ov) {
+        if (!ov) {
+          st.ov = { sections: [], conflict: '', failed: 1, raw: (failNote.join('\n') || '没拿到内容') + ovAiDiag() + '\n\n（AI 返回空正文多半是推理模型的思考把 max_tokens 用完了；可以点「重新生成」，或切「标准」版）' };
+          renderOverview(st);
           return;
         }
         st.ov = ov;
         ovCachePut(keys, mode, ov, srcs);
         renderOverview(st);
+        if (failNote.length) toast('部分小节没写出来（' + failNote.length + ' 处）', 2600, 'bad');
       }).catch(function (e) {
-        st.ov = { sections: [], conflict: '', failed: 1, raw: '请求失败：' + (e && e.message || e) };
+        st.ov = { sections: [], conflict: '', failed: 1, raw: '请求失败：' + (e && e.message || e) + ovAiDiag() };
         renderOverview(st);
       });
     }).catch(function (e) { toast('生成失败：' + (e && e.message || e), 2400, 'bad'); });

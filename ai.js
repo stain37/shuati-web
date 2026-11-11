@@ -121,6 +121,7 @@ async function aiModels() {
   return arr.map(x => x.id || x.name || x.model).filter(Boolean);
 }
 async function aiChat(messages, onDelta, signal, opts) {
+  const t0 = Date.now();
   const cfg = aiCfg();
   const url = aiBase(cfg) + '/chat/completions';
   const o = opts || {};
@@ -157,6 +158,11 @@ async function aiChat(messages, onDelta, signal, opts) {
     const j = await res.json();
     const c0 = (j.choices && j.choices[0]) || {};
     const c = (c0.message && c0.message.content) || c0.text || '';
+    try {
+      window.__AI_LAST = { model: body.model, finish: c0.finish_reason || '', usage: j.usage || null,
+        reasoningLen: String((c0.message && c0.message.reasoning_content) || '').length,
+        contentLen: c.length, ms: Date.now() - t0, maxTokens: body.max_tokens || null, stream: false };
+    } catch (e) {}
     if (onDelta) onDelta(c);
     return c;
   }
@@ -172,7 +178,10 @@ async function aiChat(messages, onDelta, signal, opts) {
       buf = buf.slice(i + 1);
       if (!line || line.charAt(0) === ':' || line.indexOf('data:') !== 0) continue;
       const d = line.slice(5).trim();
-      if (d === '[DONE]') { if (onDelta) onDelta(full); return full; }
+      if (d === '[DONE]') {
+        try { window.__AI_LAST = { model: body.model, finish: 'stop', usage: null, reasoningLen: reas.length, contentLen: full.length, ms: Date.now() - t0, maxTokens: body.max_tokens || null, stream: true }; } catch (e) {}
+        if (onDelta) onDelta(full); return full;
+      }
       try {
         const j = JSON.parse(d);
         if (j && j.error) {            /* 有的服务商把报错塞在 200 的流里（限速/额度用完最常见） */
@@ -194,6 +203,7 @@ async function aiChat(messages, onDelta, signal, opts) {
       }
     }
   }
+  try { window.__AI_LAST = { model: body.model, finish: 'end', usage: null, reasoningLen: reas.length, contentLen: full.length, ms: Date.now() - t0, maxTokens: body.max_tokens || null, stream: true }; } catch (e) {}
   if (onDelta) onDelta(full);
   return full;
 }
