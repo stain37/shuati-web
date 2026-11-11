@@ -1594,12 +1594,18 @@ let AI_SRC_PANEL = null;function aiSrcPanel(anchor) {
   if (AI_SRC_PANEL) { close(); return; }
   const hits = AI_SRC_HITS || [];
   if (!hits.length) return;
+  /* 面板里按相关度排（重排分 rr 优先，其次检索分 score）；编号仍是它在提示词里的原编号，
+     所以排完也不会让 [1][2] 跟模型引用的编号对不上 */
+  const rel = h => (h && h.rr != null ? +h.rr : (h && h.score != null ? +h.score : 0));
+  const order = hits.map((h, i) => ({ h: h, i: i })).sort((a, b) => rel(b.h) - rel(a.h));
   const box = document.createElement('div');
   box.className = 'srcpop';
-  box.innerHTML = '<div class="srcpop-h">参考资料 · ' + hits.length + ' 条<span class="srcpop-x" title="关掉">✕</span></div>'
-    + hits.map(function (h, i) {
+  box.innerHTML = '<div class="srcpop-h">参考资料 · ' + hits.length + ' 条 · 按相关度<span class="srcpop-x" title="关掉">✕</span></div>'
+    + order.map(function (o) {
+      const h = o.h, i = o.i, sc = rel(h);
       return '<button type="button" class="srcpop-i" data-i="' + i + '">'
         + '<b>[' + (i + 1) + '] ' + esc(aiSrcName(h)) + (h.page ? ' 第 ' + h.page + ' 页' : '') + '</b>'
+        + (sc ? '<em class="srcpop-s">' + sc.toFixed(2) + '</em>' : '')
         + '<span>' + esc(String(h.head || h.snip || '').slice(0, 90)) + '</span></button>';
     }).join('');
   document.body.appendChild(box);
@@ -1689,9 +1695,14 @@ function aiPaintSrc(host, ctx) {
     d.innerHTML = '<div class="small muted" style="margin:0 0 6px">《' + esc(aiSrcName(h)) + '》'
       + (h.page ? '第 ' + h.page + ' 页' + (h.pages ? '（共 ' + h.pages + ' 页）' : '') : '')
       + (h.head ? '　·　' + esc(h.head) : '') + '</div>'
-      + aiPdfBlockHtml(h, full);
+      + aiPdfBlockHtml(h, full)
+      + '<div class="aisrc-act"><button type="button" class="btn tiny aisrc-lec">📖 在讲义里看这页</button></div>';
     box.appendChild(d);
     aiBindPdfInline(d);
+    const lb = d.querySelector('.aisrc-lec');
+    if (lb) lb.onclick = function () {
+      try { if (window.LECTURE && LECTURE.openHit) LECTURE.openHit(h); } catch (e) {}
+    };
     if (el) el.classList.add('on');
     AI_SRC_OPEN[sig] = i;                      /* 记下来：万一页面重画（云同步等），自动展开回去 */
   };

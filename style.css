@@ -4299,3 +4299,11 @@ body.dark .lec-sopt,body.dark .lec-schip,body.dark .lec-crow{background:#1d2634;
 .lec-cbar{flex:none;width:52px;height:6px;border-radius:99px;background:rgba(127,127,127,.2);overflow:hidden}
 .lec-cbar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#5b8cff,#2f6df6)}
 .lec-crow s{flex:none;width:34px;text-align:right;font-size:11px;opacity:.66;text-decoration:none}
+
+/* web754：参考资料来源面板 —— 相关度排序 + 「在讲义里看这页」 */
+.srcpop-i{position:relative;padding-right:54px!important}
+.srcpop-s{position:absolute;right:10px;top:10px;font-style:normal;font-size:11px;font-weight:700;
+  color:#2563eb;background:rgba(37,99,235,.10);border-radius:8px;padding:2px 6px}
+body.dark .srcpop-s{color:#93c5fd;background:rgba(147,197,253,.14)}
+.aisrc-act{display:flex;gap:8px;margin-top:8px}
+.aisrc-act .btn.tiny{padding:7px 12px;border-radius:10px}

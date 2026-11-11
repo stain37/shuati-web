@@ -1186,7 +1186,29 @@
 
   function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
 
-  function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
+  /* AI 解析的「参考资料」里点「📖 在讲义里看这页」：按知识库命中的文件名找到讲义 →
+     直接跳到那一页（找不到就明说，不要静默什么都不做） */
+  function openHit(h) {
+    if (!h) return false;
+    var go = function () {
+      var f = null;
+      try { f = fileByHit(h); } catch (e) { f = null; }
+      if (!f) { toast('这份讲义不在讲义库里：' + String(h.doc || h.file || '')); return; }
+      var pg = (h.pdfp | 0) || (h.page | 0) || 1;
+      pg = Math.max(1, Math.min(f.n || 9999, pg));
+      CAND2 = [];
+      jumpToSrc(f.src, pg, '📖 ' + (h.doc || f.name || '资料原文') + ' 第 ' + pg + ' 页');
+    };
+    var n = 0;
+    var wait = function () {
+      if (FILES && FILES.length) go();
+      else if (++n < 40) setTimeout(wait, 120);
+      else toast('讲义目录还没读出来，等它加载完再点一次');
+    };
+    open();
+    setTimeout(wait, 80);
+    return true;
+  }
 
   /* 答题页的「📖 讲义」按钮：委托点击，不依赖 app.js 重新绑 */
   document.addEventListener('click', function (ev) {
@@ -1198,6 +1220,7 @@
 
   window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
+    openHit: openHit,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     /* 调试用：直接看 KB 检索返回什么 */
