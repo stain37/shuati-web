@@ -280,7 +280,24 @@
     el.img.src = u;
   }
 
+  /* 取「某份讲义第 N 页」对应的页图 key。
+     个别旧缓存里的 FILES 项可能没有 pages 表（pages === null），
+     以前这里直接 f.pages[p] 会抛 "Cannot read properties of null (reading '509')"，
+     整个「定位到这题」就废了。现在无论如何都兜得住。 */
+  function keyFor(src, p) {
+    p = p | 0;
+    var f = null;
+    try { f = fileOf(src); } catch (e) { f = null; }
+    if (f && f.pages && f.pages[p]) return f.pages[p];
+    for (var k in BYKEY) {
+      var o = BYKEY[k];
+      if (o && o.src === src && (o.p | 0) === p) return k;
+    }
+    return null;
+  }
+
   function paint() {
+   try {
     var f = fileOf(CUR.src);
     if (!f) { if (el.img) el.img.removeAttribute('src'); return; }
     var n = f.n || 1;
@@ -289,7 +306,7 @@
     if (el.page) el.page.value = CUR.p;
     if (el.total) el.total.textContent = '/ ' + n;
     if (el.meta) el.meta.textContent = f.f.replace(/\.pdf$/i, '').slice(0, 28);
-    var key = f.pages[CUR.p];
+    var key = keyFor(CUR.src, CUR.p);
     if (key) setImg('pdfimg/' + key + '.webp');
     else {
       el.img.removeAttribute('src');
@@ -298,6 +315,7 @@
     }
     remember();
     paintPin();
+   } catch (e) { try { toast('这页没显示出来：' + (e && e.message ? e.message : e)); } catch (e2) {} }
   }
 
   function paintPin() {
@@ -460,7 +478,7 @@
 
 
   /* ---------- ② 按题干自动定位到最可能的讲义页 ---------- */
-  var TXT = null, TXT_JOB = null, CAND = [], CAND_I = 0;
+  var TXT = null, TXT_JOB = null, CAND = [], CAND_I = 0, HIT_ROWS = null;
   var TXT_CACHE = {}, MAN = null, MAN_JOB = null;
   var IDB_NAME = 'qbank-lec', IDB_STORE = 'kv';
   function idb(kind, k, v) {
@@ -616,7 +634,8 @@
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
     if (el.meta) el.meta.textContent = '正在翻讲义找这一页…';
     loadTextSubj().then(function (rows) {
-      var hits = searchIn(rows, q);
+      HIT_ROWS = rows || [];
+      var hits = searchIn(HIT_ROWS, q);
       if (!hits.length) { if (el.meta) el.meta.textContent = ''; toast('没在这批讲义里找到相关内容'); return; }
       CAND = hits; CAND_I = 0;
       jumpTo(hits[0]);
@@ -626,8 +645,11 @@
     });
   }
   function jumpTo(hit) {
-    var rec = TXT[hit.i];
-    if (!rec) return;
+    /* 以前这里读全局 TXT，但 TXT 只有「全部讲义」搜索时才会填充；
+       用「当前讲义 / 当前科目」搜索时它是 null → TXT[509] 抛
+       "Cannot read properties of null (reading '509')"，整个定位就废了。 */
+    var rec = (HIT_ROWS && HIT_ROWS[hit.i]) || (TXT && TXT[hit.i]);
+    if (!rec) { toast('这一页的文字没读到，换一页试试'); return; }
     if (fileOf(rec.src)) {
       CUR.src = rec.src; CUR.p = rec.p; paint();
       var f = fileOf(CUR.src);
@@ -703,5 +725,5 @@
   window.LECTURE = { open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
-    files: function () { return FILES; }, pageKey: function (src, p) { var f = fileOf(src); return f && f.pages[p]; } };
+    files: function () { return FILES; }, pageKey: keyFor };
 })();
