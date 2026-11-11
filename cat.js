@@ -1082,7 +1082,7 @@
       }
       var det = TAGDIR ? qDetailsHtml(bsorted) : detailsHtml(pdirs, pbanks, false, grouped);
       var agg = CUR ? subStat(CUR) : null;
-      body = (CUR ? backBarHtml() : '') + '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
+      body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
         + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
         + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
@@ -1132,6 +1132,7 @@
         + '</div>'
         + '</div>'
         : '')   /* 平时不显示面包屑卡片；只有拖动 / 移动模式才出现（那时需要「放到这里」） */
+      + (CUR ? backBarHtml() : '')
       + '<div class="toolbar main">'
       + (CUR ? '<button class="btn" data-act="up">↑ 上一级</button>' : '')
       + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button>'
@@ -1145,7 +1146,7 @@
       + '<button class="btn" id="toStats" data-act="go" data-hash="#/stats">学习统计</button>'
       + '<button class="btn" id="toHelp" data-act="help">快捷键<span class="kbd">?</span></button>'
       + '</div>'
-      + '<div id="chatHome"></div>'   /* AI 对话（chat.js 往这里画）：下面就是题库列表，拖上来就能分析 */
+      + chatHomeHtml()   /* AI 对话（chat.js 往这里画）：默认折叠，点开才展开 */
       + body
       + paperSec
       + '<div id="bfBoot"></div>'
@@ -1658,6 +1659,26 @@
     return '<div class="nb-icons nb-icons-' + iconSize() + '">' + iconHtml + '</div>';
   }
 
+  /* ---------- 主页 AI 对话：默认折叠，点标题展开（状态存在本机） ---------- */
+  var CHATOPEN_KEY = 'qbank.chatopen.v1';
+  function chatOpen() {
+    try { return localStorage.getItem(CHATOPEN_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setChatOpen(v) {
+    try { localStorage.setItem(CHATOPEN_KEY, v ? '1' : '0'); } catch (e) {}
+  }
+  function chatHomeHtml() {
+    var on = chatOpen();
+    return '<div class="chat-home' + (on ? ' on' : '') + '" id="chatHomeWrap">'
+      + '<button class="chat-home-head" data-act="chatToggle" aria-expanded="' + (on ? 'true' : 'false') + '">'
+      + '<span class="chh-ic">\ud83d\udcac</span>'
+      + '<b>AI 对话</b>'
+      + '<span class="chh-sub">问知识点 / 出题 / 分析题库</span>'
+      + '<span class="chh-chev">' + (on ? '\u25be' : '\u25b8') + '</span>'
+      + '</button>'
+      + '<div class="chat-home-body"><div id="chatHome"></div></div>'
+      + '</div>';
+  }
   /* 进到文件夹里以后常驻在顶部的返回条：不用再滚回上面点「↑ 上一级」 */
   function hEscape(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2031,26 +2052,53 @@
     QUERY = '';
     HOME_PAGE = 1;
     try { localStorage.setItem(CUR_KEY, JSON.stringify({ id: CUR, ts: Date.now() })); } catch (e) {}
+    /* 记下滚动位置：重画后原样还原。以前这里会 scrollTo/scrollIntoView，
+       手机上就是「点一下就瞬移」的元凶 —— 现在一律不动。 */
+    var y0 = 0;
+    try { y0 = window.scrollY || window.pageYOffset || 0; } catch (eY) {}
+    if (from === 'tree') TREE_OPEN = false;   /* 点进文件夹后把目录树收起来，省得占着半屏 */
     repaint();
-    /* 点完树里那一行，按钮节点已经没了；不主动 blur 的话焦点掉到 body 上，
-       手机上一按空格 / 一滑就整页乱跑（用户报的「失焦后上下滑动」）。 */
+    try { syncBackFab(); } catch (eF2) {}
+    /* 点完树里那一行，按钮节点已经没了；不 blur 的话焦点掉到 body 上，
+       手机上一按空格 / 一滑就整页乱跑 */
     try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (eB) {}
-    if (from === 'tree') {
-      /* 从目录树里点进来：树保持展开（方便连着点几个），但把「返回条」顶上来，
-         让人马上看到这个文件夹的内容；瞬时、不平滑。 */
-      TREE_OPEN = true;
-    }
-    /* 进入目录：只把「返回条」滚到视口顶部，瞬时到位，不做平滑动画 */
-    var bb = document.querySelector('.nb-backbar') || document.querySelector('.sechead');
-    if (bb) {
-      var top = Math.max(0, bb.getBoundingClientRect().top + (window.scrollY || 0) - 8);
-      try { window.scrollTo({ top: top, behavior: 'auto' }); } catch (e3) { window.scrollTo(0, top); }
-    }
+    try {
+      requestAnimationFrame(function () {
+        var max = Math.max(0, (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0));
+        window.scrollTo(0, Math.min(y0, max));
+      });
+    } catch (eS) {}
   }
 
   /* 内部重画：调 app.js 的全局 render 重画首页（不能叫 render，否则同名自我递归） */
   function repaint() {
     try { if (typeof window.render === 'function') window.render(); } catch (e) {}
+    try { syncBackFab(); } catch (eF) {}
+  }
+
+  /* 左下角悬浮「‹ 返回」：在文件夹里一直看得见（sticky 在这个站里会被祖先的 transform 打断），
+     点一下回上一层，不滚动页面。 */
+  function syncBackFab() {
+    var el = document.getElementById('nbBackFab');
+    if (!el) {
+      el = document.createElement('button');
+      el.id = 'nbBackFab';
+      el.type = 'button';
+      el.className = 'nb-backfab';
+      el.setAttribute('title', '回到上一层文件夹');
+      el.innerHTML = '<span aria-hidden="true">\u2039</span><em>返回</em>';
+      el.addEventListener('click', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        openDir(byId(CUR) ? byId(CUR).parent : null);
+      });
+      document.body.appendChild(el);
+    }
+    var show = !!CUR;
+    el.style.display = show ? 'inline-flex' : 'none';
+    if (show) {
+      var c = byId(CUR), nm = c ? TITLE(c) : '';
+      el.setAttribute('title', nm ? '回到「' + nm + '」的上一层' : '回到上一层文件夹');
+    }
   }
 
   /* ---------- 菜单与动作 ---------- */
@@ -2109,6 +2157,24 @@
       case 'dategroup': setDateGroup(!dateGroupOn()); HOME_PAGE = 1; repaint(); break;
       case 'up': openDir(byId(CUR) ? byId(CUR).parent : null); break;
       case 'homeup': openDir(null); break;
+      case 'chatToggle':
+        var onNow = !chatOpen();
+        setChatOpen(onNow);
+        var wr = document.getElementById('chatHomeWrap');
+        if (wr) {
+          wr.classList.toggle('on', onNow);
+          var hd = wr.querySelector('.chat-home-head');
+          if (hd) {
+            hd.setAttribute('aria-expanded', onNow ? 'true' : 'false');
+            var ch = hd.querySelector('.chh-chev'); if (ch) ch.textContent = onNow ? '\u25be' : '\u25b8';
+          }
+          if (onNow) {
+            try { if (window.CHAT && CHAT.mountHome) CHAT.mountHome(wr); } catch (eC) {}
+            var lg = document.getElementById('chatLog');
+            if (lg) setTimeout(function () { lg.scrollTop = lg.scrollHeight; }, 60);
+          }
+        }
+        break;
       case 'newcat': askNewCat(); break;
       case 'newbank': if (typeof go === 'function') go('#/import'); break;
       case 'start': startBankWrapped(id); break;
@@ -2178,11 +2244,7 @@
           t.style.display = open ? 'block' : 'none';
           if (open) {
             if (!t.innerHTML) t.innerHTML = treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>';
-            /* 只在它整个跑到视口外时才拉回来，瞬时（平滑滚动会让人以为页面自己乱滑） */
-            try {
-              var r = t.getBoundingClientRect();
-              if (r.bottom < 80 || r.top > innerHeight - 80) t.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-            } catch (e) { try { t.scrollIntoView(false); } catch (e2) {} }
+            /* 打开目录树也不滚页面（原来 scrollIntoView 会自己滑一段） */
           }
           try { if (host && host.blur) host.blur(); } catch (e3) {}
         }
