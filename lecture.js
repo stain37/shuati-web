@@ -21,24 +21,82 @@
     clearTimeout(d._t); d._t = setTimeout(function () { d.classList.remove('on'); }, 2400);
   }
 
-  function loadIndex() {
-    if (IDX) return Promise.resolve(IDX);
-    return fetch('pdfimg/index.json?t=' + new Date().toISOString().slice(0, 10), { cache: 'force-cache' })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) {
-        IDX = j; BYKEY = {};
-        var map = {};
-        Object.keys(j).forEach(function (k) {
-          var o = j[k] || {}; if (!o.src) return;
-          BYKEY[k] = o;
-          var g = map[o.src] || (map[o.src] = { src: o.src, f: o.f, n: 0, pages: {} });
-          g.n = Math.max(g.n || 0, o.n || 0, o.p || 0);
-          g.pages[o.p] = k;
-          if ((o.n || 0) > g.n) g.n = o.n;
-        });
-        FILES = Object.keys(map).sort(function (a, b) { return a.localeCompare(b, 'zh'); }).map(function (k) { return map[k]; });
-        return IDX;
-      });
+  /* ---------- 讲义目录 ----------
+     线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
+     现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
+           ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
+  var IDX_CACHE = 'qbank.lec.idx.v2';
+  function parseCompact(j) {
+    IDX = j; BYKEY = {};
+    var map = {}, srcs = j.s || [];
+    (j.e || []).forEach(function (r) {
+      var key = r && r[0], src = srcs[(r && r[1]) | 0], p = (r && r[2]) | 0, n = (r && r[3]) | 0;
+      if (!key || !src || !p) return;
+      var f = String(src).split('/').pop();
+      BYKEY[key] = { src: src, p: p, n: n, f: f };
+      var g = map[src] || (map[src] = { src: src, f: f, n: 0, pages: {} });
+      g.n = Math.max(g.n || 0, n || 0, p);
+      g.pages[p] = key;
+    });
+    FILES = Object.keys(map).sort(function (a, b) { return a.localeCompare(b, 'zh'); }).map(function (k) { return map[k]; });
+    return IDX;
+  }
+  function parseLegacy(j) {
+    IDX = j; BYKEY = {};
+    var map = {};
+    Object.keys(j).forEach(function (k) {
+      var o = j[k] || {}; if (!o.src) return;
+      BYKEY[k] = o;
+      var g = map[o.src] || (map[o.src] = { src: o.src, f: o.f, n: 0, pages: {} });
+      g.n = Math.max(g.n || 0, o.n || 0, o.p || 0);
+      g.pages[o.p] = k;
+      if ((o.n || 0) > g.n) g.n = o.n;
+    });
+    FILES = Object.keys(map).sort(function (a, b) { return a.localeCompare(b, 'zh'); }).map(function (k) { return map[k]; });
+    return IDX;
+  }
+  function applyIdx(j) { return (j && j.s && j.e) ? parseCompact(j) : parseLegacy(j); }
+
+  function fetchJson(url, tries, ms) {
+    tries = tries || 1;
+    return new Promise(function (resolve, reject) {
+      var n = 0;
+      function once() {
+        n++;
+        var ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+        var tid = setTimeout(function () { if (ctl) try { ctl.abort(); } catch (e) {} }, ms || 20000);
+        fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 't=' + new Date().toISOString().slice(0, 10),
+              ctl ? { signal: ctl.signal, cache: 'force-cache' } : { cache: 'force-cache' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function (j) { clearTimeout(tid); resolve(j); })
+          .catch(function (e) { clearTimeout(tid); if (n < tries) setTimeout(once, 700 * n); else reject(e); });
+      }
+      once();
+    });
+  }
+
+  function loadIndex(force) {
+    if (IDX && !force) return Promise.resolve(IDX);
+    if (!force) {
+      var c = readLS(IDX_CACHE, null);
+      if (c && c.raw) {
+        try {
+          applyIdx(JSON.parse(c.raw));
+          /* 本机缓存 12 小时内直接用；更老的先用着，后台再刷 */
+          if (Date.now() - (c.ts || 0) < 12 * 3600e3) return Promise.resolve(IDX);
+          fetchJson('pdfimg/idx.json', 1, 25000).then(function (j) {
+            writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) });
+            applyIdx(j); if (FILES && el.sel) { fillSelect(); paint(); }
+          }).catch(function () {});
+          return Promise.resolve(IDX);
+        } catch (e) {}
+      }
+    }
+    return fetchJson('pdfimg/idx.json', 3, 25000).then(function (j) {
+      applyIdx(j);
+      try { writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) }); } catch (e) {}
+      return IDX;
+    });
   }
 
   function subjects() {
@@ -141,6 +199,8 @@
       if (a === 'unzoom') return unzoom();
       if (a === 'pdf') return openPdf();
       if (a === 'find') return doFind();
+      if (a === 'imgretry') { IMG_TRIED = {}; return paint(); }
+      if (a === 'retry') return ensureIndex(true);
       if (a === 'hit') return goHit(b.getAttribute('data-i'));
     });
     zoom.addEventListener('click', function (ev) { if (ev.target.closest('[data-lec="unzoom"]') || ev.target === zoom) unzoom(); });
@@ -180,6 +240,31 @@
     el.sel.innerHTML = html;
   }
 
+  var IMG_TRIED = {};
+  function showEmpty(html) {
+    if (!el.empty) return;
+    el.empty.innerHTML = html;
+    el.empty.style.display = '';
+  }
+  function setImg(u) {
+    if (!el.img) return;
+    if (el.empty) el.empty.style.display = 'none';
+    el.img.style.display = '';
+    el.img.onload = function () { if (el.empty) el.empty.style.display = 'none'; };
+    el.img.onerror = function () {
+      /* 线上带宽只有 ~20KB/s，一张 110KB 的图经常半路断；先带 ?r= 重试一次 */
+      if (!IMG_TRIED[u]) {
+        IMG_TRIED[u] = 1;
+        el.img.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'r=' + Date.now();
+        return;
+      }
+      el.img.style.display = 'none';
+      showEmpty('这张页图没下来（网络慢或站点正在更新）。' +
+        '<button class="btn tiny" data-lec="imgretry">重试</button>');
+    };
+    el.img.src = u;
+  }
+
   function paint() {
     var f = fileOf(CUR.src);
     if (!f) { if (el.img) el.img.removeAttribute('src'); return; }
@@ -190,14 +275,11 @@
     if (el.total) el.total.textContent = '/ ' + n;
     if (el.meta) el.meta.textContent = f.f.replace(/\.pdf$/i, '').slice(0, 28);
     var key = f.pages[CUR.p];
-    if (key) {
-      el.img.src = 'pdfimg/' + key + '.webp';
-      el.img.style.display = '';
-      if (el.empty) el.empty.style.display = 'none';
-    } else {
+    if (key) setImg('pdfimg/' + key + '.webp');
+    else {
       el.img.removeAttribute('src');
       el.img.style.display = 'none';
-      if (el.empty) el.empty.style.display = '';
+      showEmpty('这份讲义还没有页图，点右下角「看整本 PDF」。');
     }
     remember();
     paintPin();
@@ -362,13 +444,63 @@
 
   /* ---------- ② 按题干自动定位到最可能的讲义页 ---------- */
   var TXT = null, TXT_JOB = null, CAND = [], CAND_I = 0;
+  var IDB_NAME = 'qbank-lec', IDB_STORE = 'kv';
+  function idb(kind, k, v) {
+    return new Promise(function (resolve) {
+      var rq;
+      try { rq = indexedDB.open(IDB_NAME, 1); } catch (e) { return resolve(null); }
+      rq.onupgradeneeded = function () { try { rq.result.createObjectStore(IDB_STORE); } catch (e) {} };
+      rq.onerror = function () { resolve(null); };
+      rq.onsuccess = function () {
+        var db = rq.result;
+        try {
+          var st = db.transaction(IDB_STORE, kind === 'get' ? 'readonly' : 'readwrite').objectStore(IDB_STORE);
+          var q = (kind === 'get') ? st.get(k) : st.put(v, k);
+          q.onsuccess = function () { resolve((kind === 'get') ? (q.result || null) : true); };
+          q.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      };
+    });
+  }
+  function readWithProgress(r) {
+    if (!r.body || !r.body.getReader) return r.text();
+    var reader = r.body.getReader(), chunks = [], got = 0, last = 0;
+    var total = +(r.headers.get('content-length') || 0);
+    return new Promise(function (resolve, reject) {
+      (function pump() {
+        reader.read().then(function (res) {
+          if (res.done) {
+            var all = new Uint8Array(got), off = 0;
+            chunks.forEach(function (c) { all.set(c, off); off += c.length; });
+            return resolve(new TextDecoder('utf-8').decode(all));
+          }
+          chunks.push(res.value); got += res.value.length;
+          if (got - last > 1200000) {
+            last = got;
+            toast('正在下载讲义文字索引… ' + (got / 1048576).toFixed(1) +
+              (total ? ' / ' + (total / 1048576).toFixed(1) : '') + ' MB');
+          }
+          pump();
+        }).catch(reject);
+      })();
+    });
+  }
+  /* all.json 有 8MB 多，线上要下很久：下完就存进 IndexedDB，之后定位/搜索都是秒出 */
   function loadText() {
     if (TXT) return Promise.resolve(TXT);
     if (TXT_JOB) return TXT_JOB;
-    TXT_JOB = fetch('pdftext/all.json?t=' + new Date().toISOString().slice(0, 10))
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) { TXT = j || []; return TXT; })
-      .catch(function (e) { TXT_JOB = null; throw e; });
+    TXT_JOB = idb('get', 'text').then(function (cached) {
+      if (cached && cached.rows && cached.rows.length) { TXT = cached.rows; return TXT; }
+      toast('第一次要下载讲义文字索引（约 8 MB），网络慢会等一会儿；下完就存在本机了');
+      return fetch('pdftext/all.json?t=' + new Date().toISOString().slice(0, 10))
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return readWithProgress(r); })
+        .then(function (txt) {
+          var rows = JSON.parse(txt) || [];
+          TXT = rows;
+          idb('set', 'text', { ts: Date.now(), rows: rows });
+          return TXT;
+        });
+    }).catch(function (e) { TXT_JOB = null; throw e; });
     return TXT_JOB;
   }
   function normText(t) {
@@ -467,19 +599,26 @@
     toast('候选 ' + (CAND_I + 1) + '/' + CAND.length + '：' + (CAND[CAND_I].hit || 0) + ' 处命中');
   }
 
+  function ensureIndex(force) {
+    if (el.meta) el.meta.textContent = force ? '重新读讲义目录…' : '正在读讲义目录…';
+    return loadIndex(force).then(function () {
+      restore(); fillSelect(); paint(); applyBind();
+    }).catch(function () {
+      if (el.meta) el.meta.innerHTML = '目录没读出来（网络慢，或站点正在更新）' +
+        '<button class="lec-retry" data-lec="retry">重试</button>';
+    });
+  }
+
   function open() {
     build();
     if (!el.sheet) return;
     el.mask.classList.add('on'); el.sheet.classList.add('on');
-    if (!FILES) {
-      if (el.meta) el.meta.textContent = '正在读讲义目录…';
-      loadIndex().then(function () { restore(); fillSelect(); paint(); applyBind(); })
-        .catch(function (e) { if (el.meta) el.meta.textContent = '讲义目录没读出来：' + e; });
-      return;
-    }
+    if (!FILES) { ensureIndex(false); return; }
     if (!CUR.src) restore();
     fillSelect(); paint(); applyBind();
   }
+
+  function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
 
   function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
 
