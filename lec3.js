@@ -277,6 +277,7 @@
       '<div class="lec-foot">' +
         '<button class="btn" data-lec="zoom">⤢ 放大看</button>' +
         '<button class="btn" data-lec="pdf">📄 看整本 PDF</button>' +
+        '<button class="btn" data-lec="notes" title="打开知识点笔记">📚 我的笔记</button>' +
         '<button class="btn lec-hard" data-lec="hardreset" title="讲义一直加载不出来时点这个：清掉本站缓存再重载（题库/作答不受影响）">🧹 清缓存重载</button>' +
       '</div>';
     var zoom = ce('div', 'lec-zoom'); zoom.id = 'lecZoom';
@@ -287,11 +288,12 @@
     el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom,
       hits: $('#lecHits'), find: $('#lecFind'), findAll: $('#lecFindAll') };
 
-    mask.addEventListener('click', close);
+    /* 背景点击不关闭：避免误触退出（只认右上角 × 和 Esc） */
     sheet.addEventListener('click', function (ev) {
       var b = ev.target.closest('[data-lec]'); if (!b) return;
       var a = b.getAttribute('data-lec');
-      if (a === 'close') return close();
+      if (a === 'close') { REOPEN_ON_CLOSE = true; return close(); }
+      if (a === 'notes') { close(); location.hash = '#/notes'; return; }
       if (a === 'loc') return locate();
       if (a === 'scope') return openScope();
       if (a === 'scopeok') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
@@ -1892,7 +1894,17 @@
     fillSelect(); paint(); applyBind(); try { scopePaint(); } catch (e) {}
   }
 
-  function close() { unzoom(); if (el.mask) el.mask.classList.remove('on'); if (el.sheet) el.sheet.classList.remove('on'); }
+  var REOPEN_ON_CLOSE = false;
+  function close() {
+    unzoom();
+    if (el.mask) el.mask.classList.remove('on');
+    if (el.sheet) el.sheet.classList.remove('on');
+    if (REOPEN_ON_CLOSE) {
+      REOPEN_ON_CLOSE = false;
+      var nb = NOTE_LAST || window.__LEC_LASTNOTE;
+      if (nb) setTimeout(function () { renderNote(nb, true); }, 80);
+    }
+  }
 
   /* AI 解析的「参考资料」里点「📖 在讲义里看这页」：按知识库命中的文件名找到讲义 →
      直接跳到那一页（找不到就明说，不要静默什么都不做） */
@@ -2100,7 +2112,22 @@
     }, true);
   }
 
+  /* 加载动画面板（检索/逐页比对期间显示，避免空白等待） */
+  function renderLoading(title, sub) {
+    var old = document.getElementById('lecWebMask');
+    if (old) old.parentNode.removeChild(old);
+    var mask = document.createElement('div');
+    mask.className = 'lec-smask';
+    mask.id = 'lecWebMask';
+    mask.innerHTML = '<div class="lec-ssheet lec-loadsheet">'
+      + '<div class="lec-load"><i></i><i></i><i></i></div>'
+      + '<b>' + esc(title || '正在检索…') + '</b>'
+      + '<span>' + esc(sub || '') + '</span></div>';
+    document.body.appendChild(mask);
+  }
+
   function renderNote(note, reuse) {
+    var ob = document.getElementById('lecBackRes'); if (ob) ob.remove();
     var old = document.getElementById('lecWebMask');
     if (old) old.parentNode.removeChild(old);
     NOTE_LAST = note;
@@ -2141,7 +2168,7 @@
     });
     mask.addEventListener('click', function (ev) {
       var t2 = ev.target.closest('[data-web]');
-      if (!t2) { if (ev.target === mask) mask.parentNode.removeChild(mask); return; }
+      if (!t2) { return; }
       var a = t2.getAttribute('data-web');
       if (a === 'close') { ev.stopPropagation(); return mask.parentNode.removeChild(mask); }
       if (a === 'save') {
@@ -2161,6 +2188,7 @@
 
   /* 跳走之后仍能回来：记住当前笔记，抽屉里放一个「‹ 返回汇总」 */
   function jumpFromNote(note, src, pg) {
+    NOTE_LAST = note; window.__LEC_LASTNOTE = note;
     var m = document.getElementById('lecWebMask');
     if (m) m.parentNode.removeChild(m);
     var ready = (FILES && FILES.length) ? Promise.resolve() : loadIndex();
@@ -2201,6 +2229,7 @@
     }).then(function () { return askKeys(sel, qtext); }).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
       var query = keys.join(' ').slice(0, 240);
+      renderLoading('正在全讲义里找这个知识点…', '先定位相关讲义，再把命中句逐条排出来');
       return kbRaw(query, 48).then(function (rows) {
         if (!rows.length) { toast('讲义库里没搜到这句', 2000, 'bad'); return false; }
         var bySrc = {};

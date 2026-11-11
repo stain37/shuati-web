@@ -4410,3 +4410,26 @@ body.dark .nt-sum{background:rgba(120,90,20,.26);border-color:rgba(255,214,102,.
 body.dark .nt-sum>b{color:#ffe08a}
 body.dark .nt-sumitem{background:rgba(255,255,255,.06);border-color:rgba(255,214,102,.2);color:#f3ecd5}
 body.dark .nt-sumitem u{color:#ffe08a}
+/* web770：检索加载动画 */
+.lec-loadsheet{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:210px;padding:26px 20px}
+.lec-loadsheet b{font-size:14px;color:#141a22}
+.lec-loadsheet span{font-size:12px;color:#5b6472;line-height:1.5;text-align:center;max-width:250px}
+.lec-load{position:relative;width:46px;height:46px}
+.lec-load i{position:absolute;inset:0;border:3px solid transparent;border-top-color:#0a84ff;border-radius:50%;animation:lecSpin 1s linear infinite}
+.lec-load i:nth-child(2){inset:7px;border-top-color:#5ac8fa;animation-duration:.8s;animation-direction:reverse}
+.lec-load i:nth-child(3){inset:14px;border-top-color:#34c759;animation-duration:.6s}
+@keyframes lecSpin{to{transform:rotate(360deg)}}
+body.dark .lec-loadsheet b{color:#e9eef6}
+body.dark .lec-loadsheet span{color:#9fb0c4}
+/* web770：知识点笔记工具条 */
+.nt-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 6px}
+.nt-search{flex:1;min-width:180px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font-size:13px}
+.nt-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.nt-chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--text);font-size:12px;cursor:pointer}
+.nt-chip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.nt-selbar{display:flex;gap:8px;align-items:center;padding:8px 10px;margin-bottom:8px;border-radius:10px;background:rgba(15,23,42,.05);font-size:12px}
+.nt-ghead{display:flex;align-items:baseline;gap:8px;margin:14px 2px 6px}
+.nt-ghead b{font-size:13px}
+.nt-ghead span{font-size:11px;opacity:.6}
+.nt-pick{margin-right:8px;width:18px;height:18px}
+body.dark .nt-selbar{background:rgba(255,255,255,.06)}
