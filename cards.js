@@ -113,6 +113,84 @@
   }
   function markOf(item) { var m = markers()[item.key]; return m == null ? 0 : m; }
 
+  /* ---------- 整库批量写结论 ---------- */
+  var GEN = { on: false, stop: false, done: 0, total: 0 };
+  function missGen(items) {
+    var g = genMap();
+    return (items || []).filter(function (it) { return !(g[it.key] && g[it.key].t); });
+  }
+  function askOne(it) {
+    var q = it.q || {};
+    var sys = '你是医学考研辅导老师。把这道题考的考点，写成一句可以直接背的结论（不超过 40 字），'
+      + '要求：必须能从题干或解析推出，不要补充题外知识；再给 2-4 个关键词（用于标黄）。只输出 JSON：'
+      + '{"t":"结论句","k":["关键词1","关键词2"]}';
+    var usr = '考点：' + it.tag + '\n题干：' + String(q.stem || '').slice(0, 400)
+      + '\n答案：' + (q.answer || []).join('')
+      + '\n解析：' + tidyOne(q.explain || q.exp || '').slice(0, 500);
+    function call(mt) {
+      return Promise.resolve(window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }],
+        null, null, { stream: false, temp: 0.2, maxTokens: mt }));
+    }
+    var ok = (typeof window.aiChat === 'function');
+    return (ok ? call(700).then(function (t0) {
+      return String(t0 || '').trim() ? t0 : call(2600);
+    }) : Promise.reject(new Error('AI 模块没加载')))
+      .then(function (txt) {
+        var m = String(txt || '').match(/\{[\s\S]*\}/), o = null;
+        try { o = JSON.parse(m ? m[0] : txt); } catch (e) { o = null; }
+        if (!o || !o.t) throw new Error('没解析出结论');
+        return { t: String(o.t).slice(0, 60), k: (o.k || []).slice(0, 5), ts: Date.now() };
+      })
+      .catch(function () {
+        /* AI 没写出来：先用解析首句 / 题干顶上，保证这一张不是空的，之后可以单张重写 */
+        var fb = tidyOne(q.explain || q.exp || '').split(/[。；;\n]/)[0];
+        if (fb && fb.length >= 6) return { t: fb.slice(0, 60), k: [], ts: Date.now(), auto: 1 };
+        return { t: fallbackOne(it), k: [], ts: Date.now(), auto: 2 };
+      });
+  }
+  function paintGen() {
+    var b = document.getElementById('cdGenAll');
+    if (b) {
+      b.textContent = GEN.on ? ('■ 停止（' + GEN.done + '/' + GEN.total + '）') : '✨ 一键写完全部结论';
+      b.classList.toggle('on', !!GEN.on);
+    }
+    var p = document.getElementById('cdGenProg');
+    if (p) p.style.width = (GEN.total ? Math.round(GEN.done * 100 / GEN.total) : 0) + '%';
+    var g = document.getElementById('cdGnum');
+    if (g) g.textContent = GEN.total ? (GEN.done + ' / ' + GEN.total) : '';
+  }
+  function genAll(force) {
+    if (GEN.on) { GEN.stop = true; toast('停下来…', 1200); return; }
+    var bank = bankOf(ST.bankId);
+    if (!bank) return;
+    var items = itemsOf(bank);
+    var g = genMap();
+    var todo = items.filter(function (it) { return force || !(g[it.key] && g[it.key].t); });
+    if (!todo.length) { toast('这个题库都已经有结论了', 1400); return; }
+    GEN = { on: true, stop: false, done: 0, total: todo.length };
+    renderPreview();
+    paintGen();
+    var i = 0, stopped = false;
+    (function next() {
+      if (GEN.stop) { stopped = true; return finish(); }
+      if (i >= todo.length) return finish();
+      var it = todo[i++];
+      Promise.resolve(askOne(it)).then(function (res) {
+        var g2 = genMap(); g2[it.key] = res; writeLS(GEN_KEY, g2);
+      }).catch(function () {}).then(function () {
+        GEN.done++; paintGen();
+        setTimeout(next, 100);
+      });
+    })();
+    function finish() {
+      var done = GEN.done, tot = GEN.total;
+      GEN.on = false; GEN.stop = false;
+      renderPreview();
+      toast((stopped ? '已停下，写好 ' : '写完了 ') + done + ' / ' + tot + ' 张', 2200, stopped ? null : 'ok');
+    }
+  }
+
+
   /* ---------- 组装某个题库的考点条目 ---------- */
   function shortStem(q) {
     var s = String((q && q.stem) || '').replace(/\s+/g, '');
@@ -278,7 +356,7 @@
       + '<span>共 ' + (bank.questions || []).length + ' 题 · ' + ST.items.length + ' 个考点</span></div>'
       + '<div class="cd-hnum">' + p.done + '/' + p.total + '<i>已背</i></div></div>'
       + '<div class="cd-progline"><i style="width:' + (p.total ? Math.round(p.done * 100 / p.total) : 0) + '%"></i></div>'
-      + '<div class="cd-note">点任一行从那个考点开始背诵；也可以直接点「开始背诵卡片」从头来。</div>'
+      + '<div class="cd-note">点任一行从那个考点开始背；底部「开始背诵」从头来（结论写完才可用）。</div>'
       + '<div class="cd-srch"><input id="cdQ" class="cd-q" placeholder="搜考点 / 题干关键字…" value="' + esc(ST.q || '') + '">'
       + '<button class="cd-shuf' + (ST.shuf ? ' on' : '') + '" data-act="shuf" title="打乱顺序（背第二遍时用）">' + (ST.shuf ? '🎲 打乱中' : '🎲 打乱') + '</button></div>'
       + '<div class="cd-flt">'
@@ -287,6 +365,7 @@
       + '<button class="cd-fbtn' + (ST.filter === 'yes' ? ' on' : '') + '" data-act="flt" data-f="yes">已会 ' + cnt.yes + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'no' ? ' on' : '') + '" data-act="flt" data-f="no">还不会 ' + cnt.no + '</button>'
       + '</div>'
+      + '<div class="cd-tools"><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
       + '</div>';
 
     groups.forEach(function (g) {
@@ -296,11 +375,14 @@
         var v = markOf(it);
         var mark = v === 1 ? '<u class="cd-ok">已会</u>' : (v === -1 ? '<u class="cd-no">还不会</u>' : '');
         var n = idx + 1;
-        h += '<button class="cd-row" data-act="card" data-i="' + idx + '">'
+        var noGen = !(genMap()[it.key] && genMap()[it.key].t);
+        h += '<button class="cd-row' + (noGen ? ' cd-row-todo' : '') + '" data-act="card" data-i="' + idx + '">'
           + '<em>' + n + '</em>'
           + '<div><b>' + esc(it.tag) + '</b><span>' + (it.qs.length > 1 ? it.qs.length + ' 道题都考这里 · ' : '')
           + '第 ' + it.qs.slice(0, 6).join('、') + ' 题</span></div>'
-          + mark + '</button>';
+          + mark
+          + (noGen ? '<u class="cd-todo">待写</u>' : '')
+          + '</button>';
       });
       h += '</div>';
     });
@@ -311,10 +393,23 @@
       h += '<div class="card"><div class="empty">这个筛选下没有卡片。点「全部」看看。</div></div>';
     }
     h += '<div class="cd-gap"></div>';
-    h += '<div class="cd-bar">'
-      + '<button class="btn primary" data-act="cards">🃏 开始背诵卡片</button>'
-      + '<button class="btn" data-act="quiz" data-id="' + esc(bank.id) + '">开始刷题</button>'
-      + '</div>';
+    var miss = missGen(ST.items);
+    if (miss.length) {
+      h += '<div class="cd-bar cd-bar-gen">'
+        + (GEN.on ? '<div class="cd-gtop"><span>正在写结论</span><i id="cdGnum">' + GEN.done + ' / ' + GEN.total + '</i></div>'
+          + '<div class="cd-gprog"><i id="cdGenProg" style="width:' + (GEN.total ? Math.round(GEN.done * 100 / GEN.total) : 0) + '%"></i></div>' : '')
+        + '<div class="cd-grow">'
+        + '<button class="btn primary cd-genall' + (GEN.on ? ' on' : '') + '" id="cdGenAll" data-act="genall">'
+        + (GEN.on ? ('■ 停止（' + GEN.done + '/' + GEN.total + '）') : ('✨ 一键写完结论 · 还差 ' + miss.length + ' 张')) + '</button>'
+        + '<button class="btn" data-act="cards" disabled title="先把结论写完">🃏 开始背诵</button>'
+        + '</div></div>';
+    } else {
+      h += '<div class="cd-bar">'
+        + '<button class="btn primary" data-act="cards">🃏 开始背诵卡片</button>'
+        + '<button class="btn" data-act="quiz" data-id="' + esc(bank.id) + '">开始刷题</button>'
+        + '</div>';
+    }
+
     $('#view').innerHTML = h;
   }
 
@@ -399,8 +494,8 @@
       + '<div class="cc-title">' + esc(it.tag) + '</div>'
       + '<div class="cc-one' + (one.ai ? '' : ' auto') + '">' + hilite(one.t, kws) + '</div>'
       + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<span>' + esc(w) + '</span>'; }).join('') + '</div>' : '')
-      + '<button class="cc-stembtn" data-act="stem">收起题目 ▴</button>'
-      + '<div class="cc-stem on" id="cdStem"><b>' + esc(q.stem || '') + '</b>'
+      + '<button class="cc-stembtn" data-act="stem">看这道题 ▾</button>'
+      + '<div class="cc-stem" id="cdStem"><b>' + esc(q.stem || '') + '</b>'
       + (explain ? '<p>' + hilite(explain, kws) + '</p>' : '')
       + '<u>答案：' + esc(ans || '—') + '</u></div>'
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
@@ -557,7 +652,15 @@
       paintCard();
       return;
     }
+    if (a === 'genall') { genAll(false); return; }
+    if (a === 'regenall') {
+      if (!confirm('整个题库重新总结？会覆盖现在这 ' + ST.items.length + ' 张的结论。')) return;
+      genAll(true);
+      return;
+    }
     if (a === 'cards') {
+      var miss2 = missGen(ST.items);
+      if (miss2.length) { toast('还有 ' + miss2.length + ' 张没写结论，先点「一键写完结论」', 2400, 'bad'); return; }
       ST.i = 0;
       paintCard();
       return;

@@ -4867,3 +4867,115 @@ body.dark .nt-ovp a[href*="#/lec/"], body.dark .nt-mdblock a[href*="#/lec/"]{ ba
 body.dark .nt-inp{ border-color:rgba(255,255,255,.18); }
 body.dark .nt-inp:focus{ border-color:#4b8cff; box-shadow:0 0 0 3px rgba(75,140,255,.18); }
 body.dark .nt-new{ border-color:#4b8cff !important; color:#4b8cff !important; }
+
+
+/* ===== web829：卡片默认只看结论 + 整库批量写结论 ===== */
+.cd-bar-gen .btn[disabled]{opacity:.5}
+.cd-genall.on{background:#b42318 !important;border-color:#b42318 !important;color:#fff !important}
+.cd-genprog{position:fixed;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom));height:3px;background:rgba(0,0,0,.08);z-index:901}
+.cd-genprog i{display:block;height:100%;width:0;background:#2f6fed;transition:width .25s}
+.cd-ghint{position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:901;
+  padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.94);color:#5b6777;
+  font-size:12px;line-height:1.6;box-shadow:0 6px 18px rgba(20,26,34,.10)}
+.cd-ghint b{color:#b42318}
+.cd-regen{display:flex;justify-content:center;padding:16px 0 calc(84px + env(safe-area-inset-bottom))}
+body.dark .cd-ghint{background:rgba(17,23,33,.94);color:#9aa8ba}
+body.dark .cd-genprog{background:rgba(255,255,255,.10)}
+
+
+/* ===== web830：考点卡 UI 收拾 —— 门槛条合并、待写标记、卡片呼吸感 ===== */
+.cd-bar.cd-bar-gen{flex-direction:column;align-items:stretch;gap:8px;padding-top:9px}
+.cd-gtop{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#5b6777}
+.cd-gtop b{color:#c2410c;font-weight:700;margin:0 1px}
+.cd-gtop i{font-style:normal;font-size:11.5px;color:#8895a6;letter-spacing:.4px}
+.cd-gprog{height:3px;border-radius:99px;background:rgba(20,26,34,.08);overflow:hidden}
+.cd-gprog i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#5b9dff,#2f6fed);transition:width .25s}
+.cd-grow{display:flex;gap:8px}
+.cd-grow .btn{flex:1}
+.cd-grow .btn[disabled]{opacity:.55}
+.cd-genall.on{background:#b42318 !important;border-color:#b42318 !important;color:#fff !important}
+.cd-todo{align-self:center;font-style:normal;text-decoration:none;font-size:10.5px;padding:2px 7px;border-radius:99px;
+  background:rgba(234,88,12,.12);color:#c2410c;white-space:nowrap}
+.cd-row-todo em{background:#94a3b8}
+body.dark .cd-gtop{color:#93a0b1}
+body.dark .cd-gtop i{color:#7d8a9b}
+body.dark .cd-gprog{background:rgba(255,255,255,.10)}
+body.dark .cd-todo{background:rgba(251,146,60,.16);color:#fdba74}
+body.dark .cd-row-todo em{background:#4a5568}
+/* 卡片：结论当主角 */
+.cc-card{padding:22px 20px 14px}
+.cc-one{font-size:17.5px;line-height:1.75;letter-spacing:.2px}
+.cc-kws{margin-top:10px}
+.cc-foot{margin-top:14px;padding-top:12px;border-top:1px solid rgba(20,26,34,.06)}
+body.dark .cc-foot{border-top-color:rgba(255,255,255,.08)}
+.cd-progline{height:5px}
+
+
+/* ===== web831：底栏更整、整库重总结收进头部 ===== */
+.cd-bar.cd-bar-gen{padding:10px 12px calc(12px + env(safe-area-inset-bottom))}
+.cd-gtop{margin-bottom:1px;font-size:12.5px}
+.cd-grow .btn{height:42px;display:flex;align-items:center;justify-content:center}
+.cd-tools{margin-top:10px;text-align:right}
+.cd-link{border:0;background:transparent;padding:2px 0;color:#8191a4;font-size:12px;cursor:pointer;
+  text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.cd-link:hover{color:#2f66c9}
+body.dark .cd-link{color:#8b98a9}
+body.dark .cd-link:hover{color:#7fb0ff}
+.cd-gap{height:112px}
+
+
+/* ===== web832：底栏对比度小修 ===== */
+.cd-bar.cd-bar-gen{border-top:1px solid rgba(63,126,240,.28);box-shadow:0 -12px 28px rgba(0,0,0,.22)}
+.cd-gtop{color:#93a0b1}
+.cd-gtop b{color:#ff9d6b}
+.cd-gprog{background:rgba(255,255,255,.12)}
+.cd-grow .btn[disabled]{opacity:.42}
+body.light .cd-bar.cd-bar-gen{border-top-color:rgba(20,26,34,.10);box-shadow:0 -8px 20px rgba(24,44,80,.10)}
+body.light .cd-gtop{color:#5b6777}
+body.light .cd-gtop b{color:#c2410c}
+body.light .cd-gprog{background:rgba(20,26,34,.08)}
+
+
+/* ===== web833：底栏做出「一块面板」的感觉 ===== */
+.cd-bar.cd-bar-gen{background:rgba(23,30,42,.98);border-top:1px solid rgba(255,255,255,.12);
+  box-shadow:0 -14px 30px rgba(0,0,0,.30);border-radius:16px 16px 0 0}
+.cd-gtop{font-size:12.5px;color:#c3cedd;letter-spacing:.2px}
+.cd-gtop b{color:#ffab7a;font-size:13px}
+.cd-gtop i{color:#8fa0b4}
+.cd-gprog{background:rgba(255,255,255,.14);height:4px}
+body.light .cd-bar.cd-bar-gen{background:rgba(255,255,255,.97);border-top-color:rgba(20,26,34,.10);
+  box-shadow:0 -10px 24px rgba(24,44,80,.10)}
+body.light .cd-gtop{color:#5b6777}
+body.light .cd-gtop b{color:#c2410c}
+body.light .cd-gtop i{color:#8895a6}
+body.light .cd-gprog{background:rgba(20,26,34,.08)}
+
+
+/* ===== web834：底栏面板（提高优先级，压过 body.dark .cd-bar） ===== */
+body.dark .cd-bar.cd-bar-gen{background:rgba(23,30,42,.98) !important;
+  border-top:1px solid rgba(255,255,255,.12) !important;border-radius:16px 16px 0 0;
+  box-shadow:0 -14px 30px rgba(0,0,0,.30)}
+body.dark .cd-bar-gen .cd-gtop{color:#c3cedd}
+body.dark .cd-bar-gen .cd-gtop b{color:#ffab7a}
+body.dark .cd-bar-gen .cd-gtop i{color:#8fa0b4}
+body.dark .cd-bar-gen .cd-gprog{background:rgba(255,255,255,.14);height:4px}
+body:not(.dark) .cd-bar.cd-bar-gen{background:rgba(255,255,255,.97) !important;
+  border-top:1px solid rgba(20,26,34,.10) !important;border-radius:16px 16px 0 0;
+  box-shadow:0 -10px 24px rgba(24,44,80,.10)}
+body:not(.dark) .cd-bar-gen .cd-gtop{color:#5b6777}
+body:not(.dark) .cd-bar-gen .cd-gtop b{color:#c2410c}
+
+
+/* ===== web835：门槛栏回到「一行两个按钮」，进度只在跑的时候出现 ===== */
+body.dark .cd-bar.cd-bar-gen{background:rgba(23,30,42,.985) !important;border-top:1px solid rgba(255,255,255,.10) !important;
+  border-radius:16px 16px 0 0;box-shadow:0 -12px 26px rgba(0,0,0,.28)}
+body.dark .cd-bar-gen .cd-gtop{color:#c3cedd;font-size:12px;margin-bottom:2px}
+body.dark .cd-bar-gen .cd-gtop i{color:#8fa0b4;font-style:normal}
+body.dark .cd-bar-gen .cd-gprog{background:rgba(255,255,255,.14);height:3px;border-radius:99px;overflow:hidden;margin-bottom:6px}
+body.dark .cd-bar-gen .cd-gprog i{display:block;height:100%;background:linear-gradient(90deg,#5b9dff,#2f6fed)}
+body:not(.dark) .cd-bar.cd-bar-gen{background:rgba(255,255,255,.98) !important;border-top:1px solid rgba(20,26,34,.10) !important;
+  border-radius:16px 16px 0 0;box-shadow:0 -10px 24px rgba(24,44,80,.10)}
+body:not(.dark) .cd-bar-gen .cd-gprog{background:rgba(20,26,34,.08);height:3px;border-radius:99px;overflow:hidden;margin-bottom:6px}
+body:not(.dark) .cd-bar-gen .cd-gprog i{display:block;height:100%;background:linear-gradient(90deg,#5b9dff,#2f6fed)}
+.cd-bar.cd-bar-gen .cd-gtop{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#8fa0b4}
+.cd-grow .btn{height:44px;font-size:14px}
