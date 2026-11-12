@@ -1139,7 +1139,7 @@
       + '<span class="fh-go">开始 →</span></button>'
       + '<button class="fh-card" id="toNotes" data-act="go" data-hash="#/notes">'
       + '<span class="fh-ico">📚</span><span class="fh-t">知识点笔记</span>'
-      + '<span class="fh-s">在讲义里找过的知识点会存到这里，可搜索、筛选、批量管理</span>'
+      + '<span class="fh-s">' + (function(){try{var n=(window.LECNOTES&&window.LECNOTES.list)?window.LECNOTES.list().length:0;return n?(n+' 条已存 · 可搜索、筛选、批量管理'):'在讲义里找过的知识点会存到这里，可搜索、筛选、批量管理';}catch(e){return '在讲义里找过的知识点会存到这里';}})() + '</span>'
       + '<span class="fh-go">打开 →</span></button>'
       + '</div>'
       + '<div class="home-links">'
