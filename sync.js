@@ -21,7 +21,7 @@ try { window.SYNC_DEBUG = { cards: function (g, m) { return syncMergeCards(g, m)
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
-  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false, lec: true, cards: true, lecnotes: true, kp: true },
+  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false, lec: true, cards: true, lecnotes: true, kp: true, kptree: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -46,7 +46,8 @@ const SYNC_SCOPES = [
   { k: 'tag', label: '考点标签', tip: '你导入 / AI 生成的那份考点词表，以及 AI 给每道题贴的标签（统计页「按考点」用的就是它）；删词 / 批量清除也会跟着走' },
   { k: 'cards', label: '考点卡（结论 · 会了/还不会）', tip: '考点卡每张卡那句「可背诵结论」，以及「会了 / 还不会」的进度；结论按时间戳新的为准' },
   { k: 'lecnotes', label: '知识点笔记', tip: '「知识点笔记」里存下来的整篇讲解、以及你自己改过的正文（含 Markdown 表格、图片），按更新时间合并' },
-  { k: 'kp', label: '考点总结（脑图里手写的）', tip: '相似题脑图 → 点考点 → 手写的那份总结。合并时只补本机没有的，不会覆盖你后来改过的' },
+  { k: 'kp', label: '考点总结（脑图里手写的）', tip: '相似题脑图 → 点考点 → 手写的那份总结。合并时只补本机没有的，不会覆盖你后来改过的' },  { k: 'kp', label: '考点总结（脑图里手写的）', tip: '相似题脑图 → 点考点 → 手写的那份总结。合并时只补本机没有的，不会覆盖你后来改过的' },
+  { k: 'kptree', label: '知识点树', tip: '#/kp 里的那棵树：知识点、标签、导入批次（合并按 updated_at 新的赢）' },
   { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' },
   { k: 'board', label: '空白板手稿（30 张上限）', tip: '答题页「白板」画完存下来的手稿，是图片级的笔迹数据，勾上会让同步文件大几 MB；默认不勾' }
@@ -377,6 +378,12 @@ async function syncPayload() {
   if (s.kp && window.MAPQ && typeof MAPQ.kpExport === 'function') {
     try { const kp = MAPQ.kpExport(); if (kp && Object.keys(kp).length) d.kpMd = kp; } catch (e) {}
   }
+  if (s.kptree && window.KP && typeof KP.dump === 'function') {
+    try {
+      const t = await KP.dump();
+      if (t && ((t.kp || []).length || (t.tags || []).length)) d.kpTree = t;
+    } catch (e) {}
+  }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   /* 侧栏星标：只拿 star 这一项，搜索词 / 展开状态 / 多选状态都是每台设备自己的偏好 */
   if (s.star) {
@@ -435,6 +442,15 @@ function syncMergeCloud(cloud) {
   if (s.lecnotes && d.lecNotes) {
     try { notesAdded = syncMergeLecNotes(d.lecNotes); added += notesAdded; }
     catch (e) { syncLog('知识点笔记合并失败：' + (e.message || e), true); }
+  }
+  if (s.kptree && d.kpTree && window.KP && typeof KP.merge === 'function') {
+    try {
+      KP.merge(d.kpTree).then(function (r) {
+        const n = (r.kp || 0) + (r.tags || 0);
+        if (n) syncLog('知识点树补进：' + (r.kp || 0) + ' 个知识点 · ' + (r.tags || 0) + ' 个标签');
+        if (location.hash.indexOf('#/kp') === 0 && window.KPUI) { try { KPUI.render(); } catch (e2) {} }
+      }).catch(function (e) { syncLog('知识点树合并失败：' + (e.message || e), true); });
+    } catch (e) {}
   }
   if (cardsAdded || notesAdded) syncLog('补进：考点卡 ' + cardsAdded + ' 条 · 知识点笔记 ' + notesAdded + ' 篇');
   if (s.kp && d.kpMd && window.MAPQ && typeof MAPQ.kpImport === 'function') { try { added += MAPQ.kpImport(d.kpMd); } catch (e) { syncLog('考点总结合并失败：' + (e.message || e), true); } }

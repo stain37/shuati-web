@@ -435,19 +435,33 @@
     var h = '<div class="card cd-head">'
       + '<div class="cd-htop"><div><b>' + esc(bank.title || bank.id) + '</b>'
       + '<span>共 ' + (bank.questions || []).length + ' 题 · ' + ST.items.length + ' 个考点</span></div>'
-      + '<div class="cd-hnum">' + p.done + '/' + p.total + '<i>已背</i></div></div>'
+      + (function () {
+          var done = doneToday();
+          var dueLeft = (ST.items || []).filter(function (it) { return isReady(stateOf(it)); }).length;
+          var goal = done + dueLeft;
+          var frac = goal ? Math.min(1, done / goal) : 0;
+          var off = (2 * Math.PI * 15.5 * (1 - frac)).toFixed(1);
+          return '<div class="cd-hnum cd-hnum-ring">'
+            + '<svg class="cd-ring" viewBox="0 0 36 36" aria-hidden="true">'
+            + '<circle class="cd-ring-bg" cx="18" cy="18" r="15.5"></circle>'
+            + '<circle class="cd-ring-fg" cx="18" cy="18" r="15.5" style="stroke-dasharray:97.4;stroke-dashoffset:' + off + '"></circle>'
+            + '</svg>'
+            + '<div class="cd-hnt"><b>' + done + '</b><i>今日</i></div></div>';
+        })()
+      + '</div>'
       + '<div class="cd-progline"><i style="width:' + (p.total ? Math.round(p.done * 100 / p.total) : 0) + '%"></i></div>'
       + '<div class="cd-note">今天到期 <b>' + cnt.due + '</b> 张（其中新卡 ' + cnt.newc + ' 张）· 点任一行开始背；四档评分按 Anki 的间隔走。</div>'
       + '<div class="cd-srch"><input id="cdQ" class="cd-q" placeholder="搜考点 / 题干关键字…" value="' + esc(ST.q || '') + '">'
       + '<button class="cd-shuf' + (ST.shuf ? ' on' : '') + '" data-act="shuf" title="打乱顺序（背第二遍时用）">' + (ST.shuf ? '🎲 打乱中' : '🎲 打乱') + '</button></div>'
-      + '<div class="cd-flt">'
+      + '<div class="cd-flt"><i class="cd-ind" id="cdInd"></i>'
       + '<button class="cd-fbtn' + (ST.filter === 'due' ? ' on' : '') + '" data-act="flt" data-f="due">今天要背 ' + cnt.due + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'all' ? ' on' : '') + '" data-act="flt" data-f="all">全部 ' + cnt.all + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'newc' ? ' on' : '') + '" data-act="flt" data-f="newc">新卡 ' + cnt.newc + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'learn' ? ' on' : '') + '" data-act="flt" data-f="learn">学习中 ' + cnt.learn + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'review' ? ' on' : '') + '" data-act="flt" data-f="review">复习中 ' + cnt.review + '</button>'
       + '</div>'
-      + '<div class="cd-tools"><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
+      + '<div class="cd-tools"><button class="cd-link" data-act="kpall">🧩 整库挂到知识点（' + ST.items.length + '）</button><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
+      + '<div class="cd-kphint">挂好的考点会进「知识点管理」（首页底部入口），可再分层、加编码和标签。</div>'
       + '</div>';
 
     groups.forEach(function (g) {
@@ -494,6 +508,7 @@
     }
 
     $('#view').innerHTML = h;
+    requestAnimationFrame(function () { try { moveFltInd(); } catch (e0) {} });
   }
 
   /* ---------- 卡片模式 ---------- */
@@ -607,6 +622,18 @@
       if (a === 'no') return mark(-1);
       if (a === 'rate') return rate(Number(b.getAttribute('data-r')) || 3);
       if (a === 'ai') return genOne();
+      if (a === 'kp') {
+        var itk = filterItems()[ST.i];
+        if (!itk) return;
+        if (!window.KP || !window.KP.attachCard) { toast('知识点模块没加载，刷新一次再试', 2000); return; }
+        var nm1 = cardName(itk);
+        toast('正在挂到知识点…', 1000);
+        window.KP.attachCard({ key: itk.key, name: nm1, subj: ST.bankTitle || '' }).then(function (node) {
+          toast('已挂到「' + node.name + '」', 1800);
+          paintCard();
+        }).catch(function (e2) { toast('挂不上：' + (e2 && e2.message || e2), 2400); });
+        return;
+      }
       if (a === 'kw') return kwMenuShow(b, b.getAttribute('data-kw') || b.textContent || '');
       if (a === 'stem') {
         var s = $('#cdStem');
@@ -647,7 +674,7 @@
     var p = oneParts(t);
     var h = '<div class="cc-one">' + hilite(p.head, kws, hide) + '</div>';
     if (p.pts.length) {
-      h += '<ul class="cc-pts">' + p.pts.map(function (x) { return '<li>' + hilite(x, kws, hide) + '</li>'; }).join('') + '</ul>';
+      h += '<ul class="cc-pts">' + p.pts.map(function (x, i) { return '<li style="--i:' + i + '">' + hilite(x, kws, hide) + '</li>'; }).join('') + '</ul>';
     }
     return h;
   }
@@ -655,6 +682,24 @@
   var REVEALED = false;   // 这一张是否已经点开看答案（不落盘，换卡重置）
   function MASK_ON() { try { return localStorage.getItem(MASK_KEY) === '1'; } catch (e) { return false; } }
   function MASK_SET(v) { try { localStorage.setItem(MASK_KEY, v ? '1' : '0'); } catch (e) {} }
+
+  /* 挂到知识点时用考点名（卡片标题），别用 AI 写的正文——正文第一行经常是「重写」「结论」这种词 */
+  /* 筛选条：滑动指示条跟着选中项走 */
+  function moveFltInd() {
+    var box = document.querySelector('.cd-flt');
+    var ind = document.getElementById('cdInd');
+    if (!box || !ind) return;
+    var on = box.querySelector('.cd-fbtn.on');
+    if (!on) { ind.style.opacity = '0'; return; }
+    var r = on.getBoundingClientRect(), b = box.getBoundingClientRect();
+    ind.style.opacity = '1';
+    ind.style.width = Math.round(r.width) + 'px';
+    ind.style.transform = 'translateX(' + Math.round(r.left - b.left) + 'px)';
+  }
+
+  function cardName(it) {
+    return String((it && (it.tag || it.name)) || '').trim() || ('第 ' + ((it && it.qno) || '?') + ' 题');
+  }
 
   function paintCard() {
     ensureMask();
@@ -691,6 +736,14 @@
       + '<button class="cc-goq" data-act="quizone">去做这道题 →</button></div>'
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
       + ' · <span class="cc-srs">背过 ' + ((stateOf(it).reps || 0)) + ' 次 · 下次 ' + dueText(stateOf(it)) + '</span></div>'
+      + '<div class="cc-kpline">'
+      + (function () {
+          var e = (window.KP && KP.cardEntry) ? KP.cardEntry(it.key) : null;
+          return e
+            ? '<u class="cc-kptag">🧩 已挂：' + esc(e.name || '知识点') + '</u><button class="cc-kpbtn ghost" data-act="kp">换一个</button>'
+            : '<button class="cc-kpbtn" data-act="kp">🧩 挂到知识点</button>';
+        })()
+      + '</div>'
       + '</div>'
       + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
@@ -707,6 +760,61 @@
     ST.i = (ST.i + d + list.length) % list.length;
     paintCard();
   }
+  var PARTY_KEY = 'qbank.cards.party.v1';
+
+  /* 今天点过评分的张数（用于「今日进度环」） */
+  function doneToday() {
+    var map = schedMap(), today = dayNo(), n = 0;
+    Object.keys(map).forEach(function (k) {
+      var st = map[k];
+      if (st && st.ts && dayNo(st.ts) === today) n++;
+    });
+    return n;
+  }
+
+  function bankPartyMap() {
+    try { return JSON.parse(localStorage.getItem(PARTY_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+
+  /* 今天第一次把这个题库的到期卡清空时，来一次轻量庆祝 */
+  function maybeParty() {
+    var left = (ST.items || []).filter(function (it) { return isReady(stateOf(it)); }).length;
+    if (left) return;
+    var m = bankPartyMap();
+    if (m[ST.bankId] === dayNo()) return;
+    m[ST.bankId] = dayNo();
+    try { localStorage.setItem(PARTY_KEY, JSON.stringify(m)); } catch (e) {}
+    party();
+  }
+
+  function party() {
+    var n = doneToday();
+    var tried = 0, wrong = 0;
+    var map = schedMap();
+    (ST.items || []).forEach(function (it) {
+      var st = map[it.key];
+      if (st && st.ts && dayNo(st.ts) === dayNo()) { tried++; }
+    });
+    var box = document.createElement('div');
+    box.className = 'cd-party';
+    box.setAttribute('aria-live', 'polite');
+    box.innerHTML = '<div class="cd-party-card">'
+      + '<div class="cd-party-ico">🎉</div>'
+      + '<b>今天这个题库背完了</b>'
+      + '<span>' + n + ' 张 · 已过一遍，明天再来</span>'
+      + '<div class="cd-confetti" aria-hidden="true">'
+      + [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (i) {
+          return '<i style="--i:' + i + '"></i>';
+        }).join('')
+      + '</div></div>';
+    document.body.appendChild(box);
+    requestAnimationFrame(function () { box.classList.add('on'); });
+    setTimeout(function () {
+      box.classList.remove('on');
+      setTimeout(function () { box.remove(); }, 320);
+    }, 2400);
+  }
+
   function rate(r) {
     var list = filterItems();
     var it = list[ST.i];
@@ -735,6 +843,7 @@
     try { renderPreview(); } catch (e0) {}   /* 背后的列表/计数跟着更新（到期数、学习中、复习中） */
     paintCard();
     toast('记下：' + RATE_NAME[r] + ' · 下次 ' + dueText(next || st), 1300);
+    try { maybeParty(); } catch (e1) {}
   }
 
   function mark(v) {
@@ -859,6 +968,28 @@
       genAll(true);
       return;
     }
+    if (a === 'kpall') {
+        var allItems = filterItems();
+        var seen = {}, todo = [];
+        allItems.forEach(function (x) {
+          var nm = cardName(x);
+          if (!nm || seen[x.key]) return;
+          seen[x.key] = 1;
+          todo.push({ key: x.key, name: nm, subj: ST.bankTitle || '' });
+        });
+        if (!todo.length) { toast('这个题库还没有考点', 1600); return; }
+        if (!window.KP || !window.KP.attachCard) { toast('知识点模块没加载，刷新一次再试', 2000); return; }
+        toast('正在挂 ' + todo.length + ' 个考点到知识点…', 1500);
+        var okN = 0, badN = 0;
+        todo.reduce(function (p, x) {
+          return p.then(function () {
+            return window.KP.attachCard(x).then(function () { okN++; }).catch(function () { badN++; });
+          });
+        }, Promise.resolve()).then(function () {
+          toast('已挂 ' + okN + ' 个知识点' + (badN ? ('，失败 ' + badN + ' 个') : ''), 2600);
+        });
+        return;
+      }
     if (a === 'cards') {
       var miss2 = missGen(ST.items);
       if (miss2.length) { toast('还有 ' + miss2.length + ' 张没写结论，先点「一键写完结论」', 2400, 'bad'); return; }

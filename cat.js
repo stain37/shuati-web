@@ -976,6 +976,7 @@
         + '<i class="hm-c" data-l="3"></i><i class="hm-c" data-l="4"></i>'
         + '<span class="small muted">多</span></div>'
         + '</div>'
+        + '<div class="vb-card span2" id="homeExtra"></div>'
         + '</div>';
     })();
 
@@ -1143,6 +1144,7 @@
       + '<span class="fh-go">打开 →</span></button>'
       + '</div>'
       + '<div class="home-links">'
+      + '<a class="hlink" href="#/kp" data-kp-link>🗂 知识点管理</a>'
       + '<button class="hlink" onclick="window.LECTURE && LECTURE.overviewAsk()">🧩 知识点总览</button>'
       + '<button class="hlink" data-act="go" data-hash="#/stats">📊 学习统计</button>'
       + '<button class="hlink" data-act="help">⌨ 快捷键</button>'

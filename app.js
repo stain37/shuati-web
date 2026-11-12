@@ -2585,6 +2585,16 @@ function optText(t, K) {
 }
 /* 气泡提示：kind = ok / bad / 空（普通）。放底部，手机上不会被手指挡住。
    action = { label, fn }：给这个气泡挂一个按钮（「撤销」那种），点完就消失 */
+function toastStack() {
+  let box = document.getElementById('toastStack');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'toastStack';
+    box.className = 'toast-stack';
+    document.body.appendChild(box);
+  }
+  return box;
+}
 function toast(msg, ms, kind, action) {
   const d = document.createElement('div');
   d.className = 'toast' + (kind === 'ok' ? ' ok' : kind === 'bad' ? ' bad' : '') + (action ? ' has-act' : '');
@@ -2595,7 +2605,7 @@ function toast(msg, ms, kind, action) {
   tx.textContent = msg;
   d.appendChild(ic); d.appendChild(tx);
   let timer = null, gone = false;
-  const kill = () => { if (gone) return; gone = true; clearTimeout(timer); d.classList.remove('show'); setTimeout(() => d.remove(), 260); };
+  const kill = () => { if (gone) return; gone = true; clearTimeout(timer); d.classList.remove('show'); d.classList.add('hide'); setTimeout(() => d.remove(), 240); };
   if (action && action.label) {
     const b = document.createElement('button');
     b.className = 'btn tiny toast-act';
@@ -2603,7 +2613,10 @@ function toast(msg, ms, kind, action) {
     b.onclick = () => { try { action.fn && action.fn(); } catch (e) {} kill(); };
     d.appendChild(b);
   }
-  document.body.appendChild(d);
+  const box = toastStack();
+  const alive = [...box.querySelectorAll('.toast:not(.hide)')];
+  if (alive.length >= 3) { try { alive[0].classList.add('hide'); setTimeout(() => alive[0].remove(), 220); } catch (e) {} }
+  box.appendChild(d);
   requestAnimationFrame(() => d.classList.add('show'));
   timer = setTimeout(kill, ms || (action ? 5200 : 1700));
   return d;
@@ -3236,7 +3249,8 @@ function route() {
   if (parts[0] === 'review') return { name: 'wrong' };   // 复习入口已并入错题本
   if (parts[0] === 'search') return { name: 'search' };
   if (parts[0] === 'kb') return { name: 'kb' };
-  if (parts[0] === 'sync') return { name: 'sync' };   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
+  if (parts[0] === 'sync') return { name: 'sync' };
+  if (parts[0] === 'kp') return { name: 'kp' };   /* 知识点管理器 */   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
   if (parts[0] === 'stats') return { name: 'stats' };
   if (parts[0] === 'mastery') return { name: 'mastery' };   /* 掌握度复盘（mastery.js，web258） */
   if (parts[0] === 'cal') return { name: 'cal' };             /* 复习日历（web184）：按月翻页看哪天到期 */
@@ -3597,6 +3611,7 @@ function renderInner() {
   else if (r.name === 'report') { if (typeof renderReport === 'function') renderReport(); }
   else if (r.name === 'kb') { if (typeof renderKb === 'function') renderKb(); }
   else if (r.name === 'sync') { if (typeof renderSync === 'function') renderSync(); }
+  else if (r.name === 'kp') { if (window.KPUI) KPUI.render(); else $('view').innerHTML = '<div class="card"><div class="empty">知识点模块没加载（kp.js）。</div></div>'; }
   else if (r.name === 'exam') { if (typeof renderExam === 'function') renderExam(r.bankId); }
   else if (r.name === 'qlist') { if (window.CAT && CAT.qlistRender) CAT.qlistRender(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">题目管理模块没加载（cat.js）。</div></div>'; }
   else if (r.name === 'chat') { if (window.CHAT && CHAT.render) CHAT.render(); else $('view').innerHTML = '<div class="card"><div class="empty">AI 对话模块没加载（chat.js）。</div></div>'; }
@@ -3605,6 +3620,10 @@ function renderInner() {
   else if (r.name === 'lec') { renderLecPage(r.key); }
   else renderQuiz(r.bankId);
   markTop(r.name);
+    try {
+      const v = document.getElementById('view');
+      if (v) { v.classList.remove('view-in'); void v.offsetWidth; v.classList.add('view-in'); }
+    } catch (e) {}
   try { uiPaintBadge(); } catch (e) {}
   viewEnter(r);
 }
