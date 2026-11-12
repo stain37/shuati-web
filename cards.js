@@ -521,9 +521,11 @@
       + '<span class="cd-nav"><button class="cd-step" data-act="prev" title="上一张">‹</button>'
       + '<b id="cdCnt">1 / 1</b>'
       + '<button class="cd-step" data-act="next" title="下一张">›</button></span>'
+      + '<button class="cd-qbtn cd-maskbtn' + (MASK_ON() ? ' on' : '') + '" data-act="mask" title="把结论和要点遮住，先自己回想">遮挡重点</button>'
       + '<button class="cd-qbtn" data-act="quizone">看原题</button>'
       + '</div>'
       + '<div class="cd-stage" id="cdStage"></div>'
+      + '<div class="cd-loadline" id="cdLoad"><i></i></div>'
       + '<div class="cd-acts">'
       + '<button class="cd-no" data-act="no">还不会</button>'
       + '<button class="cd-yes" data-act="yes">会了</button>'
@@ -536,6 +538,18 @@
       var a = b.getAttribute('data-act');
       if (a === 'close') return closeCard();
       if (a === 'quizone') return quizOne();
+      if (a === 'mask') {
+        var on = !MASK_ON();
+        MASK_SET(on);
+        paintCard();
+        toast(on ? '已遮住重点：先自己回想，点一下正文就揭开' : '已显示重点', 1600);
+        return;
+      }
+      if (a === 'reveal') {
+        var kk = document.querySelector('#cdStage .cc-key');
+        if (kk) { kk.classList.remove('masked'); kk.removeAttribute('data-act'); var tip = kk.querySelector('.cc-reveal-t'); if (tip) tip.remove(); }
+        return;
+      }
       if (a === 'prev') return step(-1);
       if (a === 'next') return step(1);
       if (a === 'yes') return mark(1);
@@ -585,6 +599,10 @@
     }
     return h;
   }
+  var MASK_KEY = 'qbank.cards.mask.v1';
+  function MASK_ON() { try { return localStorage.getItem(MASK_KEY) === '1'; } catch (e) { return false; } }
+  function MASK_SET(v) { try { localStorage.setItem(MASK_KEY, v ? '1' : '0'); } catch (e) {} }
+
   function paintCard() {
     ensureMask();
     var list = filterItems();
@@ -605,12 +623,16 @@
     var html = '<div class="cc-wrap"><div class="cc-card' + (v === 1 ? ' ok' : (v === -1 ? ' no' : '')) + '">'
       + '<div class="cc-tag">' + esc(it.subj) + '</div>'
       + '<div class="cc-title">' + esc(it.tag) + '</div>'
+      + '<div class="cc-key' + (MASK_ON() ? ' masked' : '') + '" data-act="' + (MASK_ON() ? 'reveal' : '') + '">'
       + oneHtml(one.t, kws)
+      + '</div>'
+      + (MASK_ON() ? '<div class="cc-reveal-hint">点一下正文看答案</div>' : '')
       + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<button class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</button>'; }).join('') + '</div>' : '')
       + '<button class="cc-stembtn" data-act="stem">看这道题 ▾</button>'
-      + '<div class="cc-stem" id="cdStem"><b>' + esc(q.stem || '') + '</b>'
+      + '<div class="cc-stem" id="cdStem"><b data-act="quizone" title="点这里去做这道题">' + esc(q.stem || '') + '</b>'
       + (explain ? '<p>' + hilite(explain, kws) + '</p>' : '')
-      + '<u>答案：' + esc(ans || '—') + '</u></div>'
+      + '<u>答案：' + esc(ans || '—') + '</u>'
+      + '<button class="cc-goq" data-act="quizone">去做这道题 →</button></div>'
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
       + (v === 1 ? ' · 已标记会' : (v === -1 ? ' · 已标记还不会' : '')) + '</div>'
       + '</div>'
@@ -689,6 +711,11 @@
   }
   window.addEventListener('hashchange', function () {
     if (location.hash.indexOf('#/cards') === 0) dropChip();
+    else if (location.hash.indexOf('#/bank/') === 0) {
+      var b0 = null;
+      try { b0 = JSON.parse(sessionStorage.getItem(BACK_KEY) || 'null'); } catch (e) {}
+      if (b0 && Date.now() - (b0.ts || 0) < 1800000) setTimeout(backChip, 60);
+    }
   }, false);
 
   function genOne() {
@@ -697,14 +724,18 @@
     if (!it) return;
     if (typeof window.aiChat !== 'function') { toast('AI 模块没加载', 1600); return; }
     var b = $('[data-act="ai"]');
-    if (b) { b.disabled = true; b.textContent = '正在写…'; }
+    if (b) { b.disabled = true; b.innerHTML = '<span class="cc-spin"></span> 正在写这张卡…'; }
+    var mk = $('#cdMask'); if (mk) mk.classList.add('busy');
+    var fin = function () { var m2 = $('#cdMask'); if (m2) m2.classList.remove('busy'); };
     askOne(it).then(function (res) {
       var g = genMap();
       g[it.key] = res;
       writeLS(GEN_KEY, g);
+      fin();
       paintCard();
       toast(res.auto ? 'AI 没回正文，先用解析里的句子顶上；可以再点一次重写' : '这张卡写好了，下次这个考点直接用', 2200);
     }).catch(function (e) {
+      fin();
       if (b) { b.disabled = false; b.textContent = '✨ 再试一次'; }
       toast('没写成：' + ((e && e.message) || e), 2400, 'bad');
     });
@@ -776,7 +807,7 @@
     if (bankId) {
       var st0 = null;
       try { st0 = JSON.parse(sessionStorage.getItem(BACK_KEY) || 'null'); } catch (e) {}
-      if (st0 && st0.bankId === bankId && Date.now() - (st0.ts || 0) < 120000) {
+      if (st0 && st0.bankId === bankId && Date.now() - (st0.ts || 0) < 1800000) {
         try { sessionStorage.removeItem(BACK_KEY); } catch (e) {}
         var f0 = st0.f || 'all';
         setTimeout(function () { openCard(bankId, st0.i || 0, f0); }, 80);
@@ -837,5 +868,11 @@
     ST.card = true;
     paintCard();
   }
+  try {
+    if (location.hash.indexOf('#/bank/') === 0) {
+      var b1 = JSON.parse(sessionStorage.getItem(BACK_KEY) || 'null');
+      if (b1 && Date.now() - (b1.ts || 0) < 1800000) setTimeout(backChip, 300);
+    }
+  } catch (e0) {}
   window.CARDS = { render: render, itemsOf: itemsOf, groupsOf: groupsOf, open: openCard };
 })();
