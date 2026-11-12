@@ -761,6 +761,8 @@
     var d = $('#cdMask');
     if (d) d.classList.remove('on');
     ST.card = false;
+    /* 关卡片时把背后的列表重画一次：到期 / 学习中 / 复习中 的数字跟着评分开 */
+    try { if (location.hash.indexOf('#/cards/') === 0) renderPreview(); } catch (e) {}
   }
   function quizOne() {
     var list = filterItems();
