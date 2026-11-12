@@ -4559,9 +4559,6 @@ function renderQuiz(bankId) {
         <button class="btn sim-btn" id="btnSim" title="相似题：在这一题库里找你容易混淆/考同一考点的题，可让 AI 再挑一遍">🔍 相似题</button>
         <button class="btn map-btn" id="btnMap" title="脑图：把这道题、最像的几道题、它的考点摊成一张图，点图上的题直接跳过去">🗺 脑图</button>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
-        <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
-        <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
-        <button class="btn" id="doExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
         </span>
       </div>
       <div class="vstrip" id="vStrip"></div>
@@ -4594,6 +4591,10 @@ function renderQuiz(bankId) {
             <button class="btn" id="doWrongToggle" title="手动把这道题放进 / 移出错题本（不影响作答记录里的对错次数）">${(ANS[fk] && ANS[fk].wrong) ? '↩ 移出错题本' : '＋ 加入错题本'}</button>
             ${bank.virtualTag ? '<button class="btn" id="doTagOff" title="只把「' + esc(bank.virtualTag) + '」这个标签从这道题上摘掉：题目还在原题库里，别的分类不受影响">🏷 只在「' + esc(bank.virtualTag) + '」里移除</button>' : ''}
             ${delT ? '<button class="btn danger" id="doDelQ" title="' + (bank.virtualTag ? '从原题库里永久删掉这道题（所有分类里都会消失）' : '把这道题从题库里永久删掉（它的作答记录 / 收藏 / 解析会一起清）') + '">' + (bank.virtualTag ? '🗑 删除这道题' : '🗑 删除本题') + '</button>' : ''}
+            <div class="qsheet-sub">整个题库</div>
+            <button class="btn" id="btnBoard" title="空白板：一张干净的白纸，可以随手写/画，成品存进手稿历史">▦ 白板</button>
+            <button class="btn" id="doRedoBank" title="重做这道题库（整库或只重做错题，作答记录与错次都保留）">↻ 重做</button>
+            <button class="btn" id="doExport" title="导出题目：挑题、排序、导出 HTML 或打印成 PDF（可带批注）">⇩ 导出</button>
           </div>
           <button class="btn" data-qsheet="0">取消</button>
         </div>

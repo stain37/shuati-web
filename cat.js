@@ -976,12 +976,6 @@
         + '<i class="hm-c" data-l="3"></i><i class="hm-c" data-l="4"></i>'
         + '<span class="small muted">多</span></div>'
         + '</div>'
-        + '<div class="vb-card span2 vb-quick">'
-        + '<button class="vb-q" data-act="go" data-hash="#/search"><span class="vb-q-i">⌕</span>搜索全部</button>'
-        + '<button class="vb-q" data-act="go" data-hash="#/stats"><span class="vb-q-i">▤</span>学习统计</button>'
-        + '<button class="vb-q" data-act="go" data-hash="#/wrong"><span class="vb-q-i">✗</span>错题本</button>'
-        + '<button class="vb-q" data-act="go" data-hash="#/fav"><span class="vb-q-i">★</span>收藏</button>'
-        + '</div>'
         + '</div>';
     })();
 
@@ -1133,21 +1127,25 @@
         + '</div>'
         : '')   /* 平时不显示面包屑卡片；只有拖动 / 移动模式才出现（那时需要「放到这里」） */
       + (CUR ? backBarHtml() : '')
-      + '<div class="toolbar main">'
-      + (CUR ? '<button class="btn" data-act="up">↑ 上一级</button>' : '')
+      + '<div class="toolbar main home-acts">'
       + '<button class="btn primary" data-act="newbank">＋ 新建 / 导入题库</button>'
       + (dueN ? '<button class="btn primary" id="toReview" data-act="review" data-n="' + (srsCap && dueN > srsCap ? srsCap : dueN) + '">今日复习 ' + (srsCap && dueN > srsCap ? srsCap + ' / ' + dueN : dueN) + ' 题</button>' : '')
       + '<button class="btn" id="toRand" data-act="randall">随机抽 30 题</button>'
-      + '<button class="btn" id="toNotes" data-act="go" data-hash="#/notes" title="讲义里标记过的知识点汇总：可搜索 / 筛选 / 批量管理">📚 知识点笔记</button>'
-      + '<button class="btn primary" id="toOv" onclick="window.LECTURE && LECTURE.overviewAsk()" title="写一个知识点，把全库讲义里讲它的句子拼成一份总览（每句可点回原页）">🧩 知识点总览</button>'
       + '</div>'
-      + '<div class="toolbar sub">'
-      + '<button class="btn" id="toCards" data-act="go" data-hash="#/cards" title="按考点看一遍题库：考点预览 + 背诵卡片">🧠 考点卡</button>'
-      + '<button class="btn" id="toWrong" data-act="go" data-hash="#/wrong">错题本' + (wrongN ? '（' + wrongN + (dueN ? ' · 待复习' + dueN : '') + '）' : '') + '</button>'
-      + '<button class="btn" id="toFav" data-act="go" data-hash="#/fav">收藏' + (favN ? '（' + favN + '）' : '') + '</button>'
-      + '<button class="btn" id="toSearch" data-act="go" data-hash="#/search">搜索全部<span class="kbd">/</span></button>'
-      + '<button class="btn" id="toStats" data-act="go" data-hash="#/stats">学习统计</button>'
-      + '<button class="btn" id="toHelp" data-act="help">快捷键<span class="kbd">?</span></button>'
+      + '<div class="fh-cards">'
+      + '<button class="fh-card" id="toCards" data-act="go" data-hash="#/cards">'
+      + '<span class="fh-ico">🧠</span><span class="fh-t">考点卡</span>'
+      + '<span class="fh-s">按考点把题库过一遍，再逐张背；可筛选、搜索、打乱</span>'
+      + '<span class="fh-go">开始 →</span></button>'
+      + '<button class="fh-card" id="toNotes" data-act="go" data-hash="#/notes">'
+      + '<span class="fh-ico">📚</span><span class="fh-t">知识点笔记</span>'
+      + '<span class="fh-s">在讲义里找过的知识点会存到这里，可搜索、筛选、批量管理</span>'
+      + '<span class="fh-go">打开 →</span></button>'
+      + '</div>'
+      + '<div class="home-links">'
+      + '<button class="hlink" onclick="window.LECTURE && LECTURE.overviewAsk()">🧩 知识点总览</button>'
+      + '<button class="hlink" data-act="go" data-hash="#/stats">📊 学习统计</button>'
+      + '<button class="hlink" data-act="help">⌨ 快捷键</button>'
       + '</div>'
       + chatHomeHtml()   /* AI 对话（chat.js 往这里画）：默认折叠，点开才展开 */
       + body
