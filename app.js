@@ -3243,7 +3243,8 @@ function route() {
   if (parts[0] === 'report') return { name: 'report' };       /* AI 学情诊断（report.js） */
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
   if (parts[0] === 'chat') return { name: 'chat' };
-  if (parts[0] === 'notes') return { name: 'notes' };   /* 知识点笔记（notes.js） */                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
+  if (parts[0] === 'notes') return { name: 'notes' };
+  if (parts[0] === 'cards') return { name: 'cards', bankId: parts[1] };   /* 考点卡（cards.js） */   /* 知识点笔记（notes.js） */                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
   return { name: 'home' };
 }
 function go(hash) {
@@ -3358,7 +3359,7 @@ function showFatal(err) {
    ============================================================ */
 var TR = (function () {
   var NAV_ORDER = { home: 0, wrong: 1, fav: 2, search: 3, kb: 4, stats: 6, sync: 7, setting: 8 };
-  var SUB = { quiz: 1, exam: 1, mastery: 1, qlist: 1, chat: 1, report: 1, cal: 1, import: 1, bank: 1 };
+  var SUB = { quiz: 1, exam: 1, mastery: 1, qlist: 1, chat: 1, report: 1, cal: 1, import: 1, bank: 1, cards: 1, notes: 1 };
   var ptr = null;
   document.addEventListener('pointerdown', function (ev) {
     var t = ev.target;
@@ -3563,6 +3564,7 @@ function renderInner() {
   else if (r.name === 'qlist') { if (window.CAT && CAT.qlistRender) CAT.qlistRender(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">题目管理模块没加载（cat.js）。</div></div>'; }
   else if (r.name === 'chat') { if (window.CHAT && CHAT.render) CHAT.render(); else $('view').innerHTML = '<div class="card"><div class="empty">AI 对话模块没加载（chat.js）。</div></div>'; }
   else if (r.name === 'notes') { if (window.LECNOTES && window.LECNOTES.render) window.LECNOTES.render(); else $('view').innerHTML = '<div class="card"><div class="empty">笔记模块没加载（notes.js）。</div></div>'; }
+  else if (r.name === 'cards') { if (window.CARDS && CARDS.render) CARDS.render(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">考点卡模块没加载（cards.js）。</div></div>'; }
   else renderQuiz(r.bankId);
   markTop(r.name);
   try { uiPaintBadge(); } catch (e) {}

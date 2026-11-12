@@ -1142,6 +1142,7 @@
       + '<button class="btn primary" id="toOv" onclick="window.LECTURE && LECTURE.overviewAsk()" title="写一个知识点，把全库讲义里讲它的句子拼成一份总览（每句可点回原页）">🧩 知识点总览</button>'
       + '</div>'
       + '<div class="toolbar sub">'
+      + '<button class="btn" id="toCards" data-act="go" data-hash="#/cards" title="按考点看一遍题库：考点预览 + 背诵卡片">🧠 考点卡</button>'
       + '<button class="btn" id="toWrong" data-act="go" data-hash="#/wrong">错题本' + (wrongN ? '（' + wrongN + (dueN ? ' · 待复习' + dueN : '') + '）' : '') + '</button>'
       + '<button class="btn" id="toFav" data-act="go" data-hash="#/fav">收藏' + (favN ? '（' + favN + '）' : '') + '</button>'
       + '<button class="btn" id="toSearch" data-act="go" data-hash="#/search">搜索全部<span class="kbd">/</span></button>'

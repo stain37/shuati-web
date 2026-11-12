@@ -2466,10 +2466,12 @@
   function ovPrompt(sel, keys, sources, mode, short) {
     var list = sources.map(ovSrcLine).join('\n');
     var target = short
-      ? '精简版：3–4 节，每节 1–2 段，全篇 6–8 段（每段 ≤80 字，总计 ≤600 字）'
+      ? '精简版：2–3 节，每节 1–2 段，全篇 4–6 段（每段 ≤90 字，总计 ≤700 字）'
       : (mode === 'chapter'
-        ? '整章版：4–6 节，每节 2–4 段，每段 2–4 句，全篇 16–22 段（约 1400–2200 字）'
-        : '标准版：3–5 节，每节 1–3 段，全篇 10–14 段（约 900–1400 字）');
+        ? '整章版：5–7 节，每节 2–4 段，每段 2–4 句，全篇 18–26 段（约 1600–2400 字）'
+        : (mode === 'short'
+          ? '简短版：2–3 节，每节 1–2 段，全篇 5–7 段（约 400–700 字）'
+          : '标准版：3–5 节，每节 1–3 段，全篇 10–14 段（约 900–1400 字）'));
     var sys = '你是医学考研讲义的撰稿人。任务：把散在各本讲义里的内容，写成一份考生可以直接拿来复习的「讲解」，'
       + '不是摘句、不是资料卡。只输出 JSON，不要任何解释或代码块标记，格式：'
       + '{"title":"这节讲什么（≤18字）","lead":"一句话导语（≤60字）",'
@@ -2483,7 +2485,8 @@
       + '5) coverage.hit = 这些来源覆盖了几份讲义，total = 命中的讲义总数，missing 列没覆盖到的章节（不知道就留空数组）；'
       + '6) ' + target + '；7) 不要开场白、不要总结陈词、不要 Markdown 标题符号。';
     var user = '知识点：' + sel + '\n\n可引用的讲义原句（共 ' + sources.length + ' 条，编号必须来自这里）：\n' + list;
-    return ovAsk(sys, user, short ? 2000 : (mode === 'chapter' ? 3600 : 2400), short ? 45000 : (mode === 'chapter' ? 95000 : 60000));
+    return ovAsk(sys, user, short ? 1800 : (mode === 'chapter' ? 3600 : (mode === 'short' ? 1400 : 2400)),
+      short ? 45000 : (mode === 'chapter' ? 95000 : 60000));
   }
 
   function ovCleanText(t) { return String(t || '').replace(/\[\[\d+\]\]/g, '').replace(/\s+/g, ' ').trim(); }
@@ -2743,8 +2746,9 @@
     mask.innerHTML = '<div class="lec-ssheet lec-ovsheet">'
       + '<div class="lec-shead"><b>📖 知识点讲解</b>'
       + '<span class="lec-ovmh">'
-      + '<button class="lec-ovmode' + (st.mode !== 'chapter' ? ' on' : '') + '" data-web="mode" data-m="mid" title="标准版：12–16 段，快">标准</button>'
-      + '<button class="lec-ovmode' + (st.mode === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter" title="整篇版：30–50 段，长">整篇</button>'
+      + '<button class="lec-ovmode' + (st.mode === 'short' ? ' on' : '') + '" data-web="mode" data-m="short" title="简短版：5–7 段，一分钟看完">简短</button>'
+      + '<button class="lec-ovmode' + ((st.mode || 'chapter') === 'mid' ? ' on' : '') + '" data-web="mode" data-m="mid" title="标准版：12–16 段">标准</button>'
+      + '<button class="lec-ovmode' + ((st.mode || 'chapter') === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter" title="整章版：18–26 段，可替代翻讲义">整章</button>'
       + '</span><button class="lec-sx" data-web="close">×</button></div>'
       + '<div class="lec-ovmeta"><span class="lec-ovq" title="你输入的搜索词">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
       + ((st.keys && st.keys.length) ? '<button class="lec-ovkeys" data-web="ask" title="点这里改词重搜">词：' + esc(st.keys.join('/')) + '</button>' : '')
@@ -2810,8 +2814,9 @@
         if (m === st.mode && st.ov && st.ov.sections && st.ov.sections.length) return;
         st.mode = m; OV_MODE = st.mode;
         Array.prototype.forEach.call(mask.querySelectorAll('.lec-ovmode'), function (x) { x.classList.toggle('on', x.getAttribute('data-m') === st.mode); });
-        toast(st.mode === 'chapter' ? '整篇版：要重写 30–50 段，慢一点' : '标准版：12–16 段，快', 1600);
-        renderLoading('正在写' + (st.mode === 'chapter' ? '整章' : '标准') + '版讲解…', '把全库原句按知识逻辑写成讲解');
+        var mname = st.mode === 'chapter' ? '整章' : (st.mode === 'short' ? '简短' : '标准');
+        toast(mname + '版：' + (st.mode === 'chapter' ? '18–26 段，慢一点' : (st.mode === 'short' ? '5–7 段，很快' : '10–14 段')), 1600);
+        renderLoading('正在写' + mname + '版讲解…', '把全库原句按知识逻辑写成讲解');
         return runOverview(st.sel, st.keys, st.mode, st);
       }
       if (a === 'gen') {
@@ -2925,7 +2930,7 @@
   function ovOutline(sel, keys, sources, mode) {
     var pool = ovSpread(sources, 18);                /* 大纲看 18 条、按讲义铺开，别只堆在同一份里 */
     var list = pool.map(ovSrcBrief).join('\n');
-    var nsec = mode === 'chapter' ? '5–7 节' : '3–5 节';
+    var nsec = mode === 'chapter' ? '5–7 节' : (mode === 'short' ? '2–3 节' : '3–5 节');
     var sys = '你是医学考研讲义撰稿人。第一步只出讲解大纲，不写正文。只输出 JSON：'
       + '{"title":"≤18字","lead":"≤50字","secs":[{"h":"一、定义","hint":"≤30字","ids":[1,3],"conflict":"可选"}],'
       + '"coverage":{"hit":2,"total":5,"missing":[]}}。'
@@ -2999,7 +3004,7 @@
         return Promise.resolve(true);
       }
     }
-    var cap = mode === 'chapter' ? 72 : 48;
+    var cap = mode === 'chapter' ? 72 : (mode === 'short' ? 28 : 48);
     if (st.sel) {
       st.ov = { pending: 1, prog: '正在全库扫「' + (keys || []).join('、') + '」相关原句…' };
       renderOverview(st);
