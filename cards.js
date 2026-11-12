@@ -131,12 +131,13 @@
       var tag = pts[0] || grp || shortStem(q);
       var key = pts.length ? ('t:' + tag) : (grp ? ('g:' + subj + '|' + grp) : ('q:' + k));
       if (!seen[key]) {
-        seen[key] = { key: key, tag: tag, subj: subj, q: q, k: k, qno: qi + 1, qs: [], kw: [] };
+        seen[key] = { key: key, tag: tag, subj: subj, q: q, k: k, qno: qi + 1, qs: [], kw: [], stems: [] };
         out.push(seen[key]);
       }
       var it = seen[key];
       if (it.subj === '未分科' && subj !== '未分科') it.subj = subj;   /* 同一考点跨题补科目 */
       it.qs.push(qi + 1);
+      it.stems.push(String(q.stem || q.gstem || '').slice(0, 80));
       pts.forEach(function (p) { if (p !== tag && it.kw.indexOf(p) < 0 && it.kw.length < 5) it.kw.push(p); });
     });
     var order = basicList().concat(['未分科']);
@@ -188,14 +189,38 @@
   }
 
   /* ---------- 状态 ---------- */
-  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [] };
+  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false };
+  var POS_KEY = 'qbank.cards.pos.v1';
 
   function filterItems() {
     var m = markers();
-    if (ST.filter === 'todo') return ST.items.filter(function (it) { return m[it.key] !== 1; });
-    if (ST.filter === 'yes') return ST.items.filter(function (it) { return m[it.key] === 1; });
-    if (ST.filter === 'no') return ST.items.filter(function (it) { return m[it.key] === -1; });
-    return ST.items;
+    var list = ST.items;
+    if (ST.filter === 'todo') list = list.filter(function (it) { return m[it.key] !== 1; });
+    else if (ST.filter === 'yes') list = list.filter(function (it) { return m[it.key] === 1; });
+    else if (ST.filter === 'no') list = list.filter(function (it) { return m[it.key] === -1; });
+    var q = String(ST.q || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter(function (it) {
+        var hay = String(it.tag || '') + ' ' + (it.subj || '') + ' ' + (it.stems || []).join(' ');
+        return hay.toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    return list;
+  }
+
+  function shuffleArr(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function posMap() { return readLS(POS_KEY, {}); }
+  function savePos(i) {
+    if (!ST.bankId) return;
+    var m = posMap();
+    m[ST.bankId] = { i: i, ts: Date.now() };
+    writeLS(POS_KEY, m);
   }
 
   /* ---------- 页面一：题库列表 ---------- */
@@ -237,6 +262,7 @@
     var bank = bankOf(ST.bankId);
     if (!bank) { location.hash = '#/cards'; return; }
     ST.items = itemsOf(bank);
+    if (ST.shuf) ST.items = shuffleArr(ST.items.slice());
     var p = progressOf(ST.items);
     var list = filterItems();
     var groups = groupsOf(list);
@@ -253,6 +279,8 @@
       + '<div class="cd-hnum">' + p.done + '/' + p.total + '<i>已背</i></div></div>'
       + '<div class="cd-progline"><i style="width:' + (p.total ? Math.round(p.done * 100 / p.total) : 0) + '%"></i></div>'
       + '<div class="cd-note">点任一行从那个考点开始背诵；也可以直接点「开始背诵卡片」从头来。</div>'
+      + '<div class="cd-srch"><input id="cdQ" class="cd-q" placeholder="搜考点 / 题干关键字…" value="' + esc(ST.q || '') + '">'
+      + '<button class="cd-shuf' + (ST.shuf ? ' on' : '') + '" data-act="shuf" title="打乱顺序（背第二遍时用）">' + (ST.shuf ? '🎲 打乱中' : '🎲 打乱') + '</button></div>'
       + '<div class="cd-flt">'
       + '<button class="cd-fbtn' + (ST.filter === 'all' ? ' on' : '') + '" data-act="flt" data-f="all">全部 ' + cnt.all + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'todo' ? ' on' : '') + '" data-act="flt" data-f="todo">没背过 ' + cnt.todo + '</button>'
@@ -383,6 +411,7 @@
     $('#cdCnt').textContent = (ST.i + 1) + ' / ' + list.length;
     $('#cdProg').style.width = Math.round((ST.i + 1) * 100 / list.length) + '%';
     $('#cdMask').classList.add('on');
+    savePos(ST.i);
   }
 
   function step(d) {
@@ -398,12 +427,18 @@
     var m = markers();
     m[it.key] = v;
     writeLS(MARK_KEY, m);
-    /* 标记后如果当前筛选不再包含这张卡，就停在原位看下一张 */
     var after = filterItems();
     if (!after.length) { closeCard(); toast('都过完了 🎉', 1800); return; }
-    ST.i = Math.min(ST.i, after.length - 1);
-    paintCard();
-    toast(v === 1 ? '记下：会了' : '记下：还不会', 900);
+    if (v === 1) {
+      /* 会了：自动翻下一张（筛选里被移除时，同一位置就是下一张） */
+      ST.i = ST.filter === 'all' ? (ST.i + 1) % after.length : Math.min(ST.i, after.length - 1);
+      paintCard();
+      toast('记下：会了 · 下一张', 800);
+    } else {
+      ST.i = Math.min(ST.i, after.length - 1);
+      paintCard();
+      toast('记下：还不会 · 这张会留着', 1000);
+    }
   }
   function closeCard() {
     var d = $('#cdMask');
@@ -533,6 +568,13 @@
       renderPreview();
       return;
     }
+    if (a === 'shuf') {
+      ST.shuf = !ST.shuf;
+      ST.i = 0;
+      renderPreview();
+      toast(ST.shuf ? '已打乱顺序，背第二遍用' : '恢复按题号顺序', 1400);
+      return;
+    }
   }
 
   function keyHandler(e) {
@@ -583,7 +625,19 @@
       renderBankList();
     }
     var v = $('#view');
-    if (v && !v.__cdBound) { v.__cdBound = 1; v.addEventListener('click', onViewClick); }
+    if (v && !v.__cdBound) {
+      v.__cdBound = 1;
+      v.addEventListener('click', onViewClick);
+      v.addEventListener('input', function (e) {
+        if (e.target && e.target.id === 'cdQ') {
+          ST.q = e.target.value || '';
+          var caret = e.target.selectionStart;
+          renderPreview();
+          var q = $('#cdQ');
+          if (q) { q.focus(); try { q.setSelectionRange(caret, caret); } catch (er) {} }
+        }
+      });
+    }
     if (!window.__cdKeyBound) { document.addEventListener('keydown', keyHandler, true); window.__cdKeyBound = 1; }
   }
 
@@ -593,7 +647,8 @@
     ST.bankTitle = bk ? (bk.title || bk.id) : '';
     ST.items = bk ? itemsOf(bk) : [];
     ST.filter = f || 'all';
-    ST.i = i || 0;
+    var pv = posMap()[bankId];
+    ST.i = (i == null && pv && typeof pv.i === 'number') ? pv.i : (i || 0);
     ST.card = true;
     paintCard();
   }
