@@ -3306,6 +3306,12 @@ function readLast() {
 
 function renderSearch() {
   const st = LP.search;
+  /* 从别处（考点卡的关键词）跳过来时带一个词：直接填进搜索框跑一次 */
+  if (window.__qbSearchPrefill) {
+    st.kw = String(window.__qbSearchPrefill);
+    window.__qbSearchPrefill = '';
+    st.touched = true;
+  }
   /* 这一轮第一次进搜索页：把上次的关键词和范围带回来 */
   if (!st.touched) {
     st.touched = true;

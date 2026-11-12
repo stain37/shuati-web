@@ -567,7 +567,8 @@
     } else location.hash = '#/lec/' + key;
   }, true);
 
-  window.LECNOTES = { save: save, saveOverview: saveOverview, del: del, rename: rename, list: list, render: render, KEY: KEY };
+  window.LECNOTES = { save: save, saveOverview: saveOverview, del: del, rename: rename, list: list, render: render, KEY: KEY,
+    search: function (q) { U.q = String(q || ''); U.flt = 'all'; U.group = false; render(); var box = document.getElementById('ntQ'); if (box) box.value = U.q; try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {} } };
 })();
 
 try { window.NOTES = window.LECNOTES; } catch (e) {}

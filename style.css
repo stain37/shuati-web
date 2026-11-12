@@ -5013,3 +5013,33 @@ body.dark .cd-fbtn.on{background:#3f7ef0;color:#fff;box-shadow:0 2px 10px rgba(6
 body.dark .cc-pts li{ color:#c9d3e1; }
 .cc-card{ max-height:min(76vh, 640px); overflow:auto; }
 @media (max-width:560px){ .cc-card{ max-height:74vh; } }
+
+
+/* ===== web841：关键词点开三处站内搜索 + 要点排版跟首行一致 ===== */
+.cc-kws button{ font:inherit; font-size:11.5px; padding:3px 8px; border:0; border-radius:99px;
+  background:rgba(20,26,34,.05); color:#516072; cursor:pointer; transition:background .15s,color .15s; }
+.cc-kws button:hover{ background:rgba(63,126,240,.14); color:#2f66c9; }
+body.dark .cc-kws button{ background:rgba(255,255,255,.06); color:#9aa8ba; }
+body.dark .cc-kws button:hover{ background:rgba(91,157,255,.18); color:#dbe7f7; }
+b.cc-kw{ cursor:pointer; border-bottom:1px dashed rgba(232,137,43,.5); }
+b.cc-kw:hover{ border-bottom-color:#e8892b; }
+
+/* 要点：字号 / 颜色 / 行高跟第一句一致 */
+.cc-pts li{ font-size:17.5px; line-height:1.75; color:#1d2735; }
+body.dark .cc-pts li{ color:#e9eef6; }
+.cc-pts li::before{ color:#e8892b; font-size:20px; top:-2px; }
+
+/* 搜索菜单 */
+#ccKwMenu{ position:fixed; z-index:99999; display:none; min-width:214px; padding:6px;
+  border-radius:12px; background:#fff; border:1px solid rgba(20,26,34,.06);
+  box-shadow:0 14px 36px rgba(20,26,34,.22); }
+#ccKwMenu.on{ display:block; }
+#ccKwMenu .cc-kwm-t{ padding:6px 10px 4px; font-size:11.5px; color:#8895a6;
+  max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#ccKwMenu button{ display:flex; align-items:center; gap:8px; width:100%; border:0; background:transparent;
+  padding:9px 10px; border-radius:9px; font:inherit; font-size:13.5px; color:#1d2735; text-align:left; cursor:pointer; }
+#ccKwMenu button:hover{ background:rgba(63,126,240,.10); }
+body.dark #ccKwMenu{ background:#1b2431; border-color:rgba(255,255,255,.08); box-shadow:0 16px 40px rgba(0,0,0,.55); }
+body.dark #ccKwMenu .cc-kwm-t{ color:#8fa0b4; }
+body.dark #ccKwMenu button{ color:#e9eef6; }
+body.dark #ccKwMenu button:hover{ background:rgba(255,255,255,.08); }

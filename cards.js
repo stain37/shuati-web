@@ -119,12 +119,27 @@
     var g = genMap();
     return (items || []).filter(function (it) { return !(g[it.key] && g[it.key].t); });
   }
+  /* 卡片正文只讲知识点：把「本题/答案是/正确选项」这类做题腔清掉 */
+  function cleanCard(t) {
+    var lines = String(t || '').split(/\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var out = [];
+    lines.forEach(function (ln) {
+      var body = ln.replace(/^[·•\-*]\s*/, '');
+      if (/^(本题|这题|该题|题干|答案|正确答案|正确选项|选项)/.test(body)) return;
+      body = body.replace(/[，,；;]?\s*(所以|因此)?\s*(本题|这题|该题)?\s*(答案|正确答案)?\s*(应?选|是)\s*[A-H]{1,4}\s*[）)]?\s*$/i, '');
+      body = body.replace(/[（(]\s*[A-H]{1,4}\s*(对|正确)[）)]/g, '').trim();
+      if (!body) return;
+      out.push(/^[·•]/.test(ln) ? '· ' + body : body);
+    });
+    return out.join('\n').slice(0, 420);
+  }
   function askOne(it) {
     var q = it.q || {};
-    var sys = '你是医学考研辅导老师。把这道题考的考点整理成一张能直接背的卡片，不要太短：\n'
-      + '第 1 行：一句话结论（≤40 字，点明这题考什么、答案是什么）。\n'
-      + '第 2 行起：2–5 条要点，每条以「· 」开头，把这道题涉及的知识点讲全——机制/原理、典型表现、鉴别点、易错点、关键数值或分型，有哪条写哪条。\n'
-      + '要求：只能用题干和解析里出现的内容，不要补充题外知识，不要编数字；总长 ≤220 字。'
+    var sys = '你是医学考研辅导老师，正在给学生写背诵卡（不是写答案解析）。\n'
+      + '第 1 行：一句话结论（≤40 字，直接陈述知识点本身，例如「骨骼肌强直收缩时钙离子主要来自肌浆网」）。\n'
+      + '第 2 行起：2–5 条要点，每条以「· 」开头，把这题牵涉的知识点讲全——定义/机制、典型表现、鉴别点、关键数值或分型、易错点。\n'
+      + '禁止出现做题口吻：不要写「本题」「这题」「该题」「答案是」「正确选项」「故选」「A/B/C/D」，也不要复述题干；只陈述医学结论。\n'
+      + '要求：只能用题干和解析里出现的内容，不补充题外知识，不编数字；总长 ≤220 字。'
       + '再给 3-6 个关键词（用于标黄，别和考点名重复）。只输出 JSON：'
       + '{"t":"第1行\n· 要点1\n· 要点2","k":["关键词1","关键词2"]}';
     var usr = '考点：' + it.tag + '\n题干：' + String(q.stem || '').slice(0, 400)
@@ -143,24 +158,25 @@
         var m = String(txt || '').match(/\{[\s\S]*\}/), o = null;
         try { o = JSON.parse(m ? m[0] : txt); } catch (e) { o = null; }
         if (!o || !o.t) throw new Error('没解析出结论');
-        return { t: String(o.t).replace(/\\n{3,}/g, '\n\n').slice(0, 420), k: (o.k || []).slice(0, 6), ts: Date.now() };
+        var head = cleanCard(String(o.t).replace(/^\s*(单张重写|重新生成|卡片)[:：]\s*/, ''));
+        if (!head) throw new Error('只写了做题分析，没有知识点');
+        return { t: head, k: (o.k || []).slice(0, 6), ts: Date.now() };
       })
       .catch(function () {
         /* AI 没写出来：先用解析首句 / 题干顶上，保证这一张不是空的，之后可以单张重写 */
         var sents = tidyOne(q.explain || q.exp || '').split(/[。；;\n]/).map(function (x) { return String(x || '').trim(); })
-          .filter(function (x) { return x.length >= 6; });
+          .filter(function (x) { return x.length >= 6 && !/本题|这题|该题|答案|选项|故选|正确项|错误项/.test(x); });
         if (sents.length) {
           var txt = sents[0].slice(0, 60);
           sents.slice(1, 4).forEach(function (x) { txt += '\n· ' + x.slice(0, 60); });
           if (txt.indexOf('\n') < 0) {
-            /* 解析只有一句时，补一条「答案 + 正确项原文」，别让卡片空成一句话 */
+            /* 解析只有一句时，用正确选项的原文补一条「要点」，仍然只讲知识点、不写「答案选 X」 */
             var opts = q.options || [];
-            var head = (q.answer || []).join('');
             var pick = (q.answer || []).map(function (a) {
               var i = String(a).charCodeAt(0) - 65;
-              return opts[i] ? String(opts[i]).replace(/^[A-H][\s.、．]?/, '').slice(0, 40) : '';
+              return opts[i] ? String(opts[i]).replace(/^[A-H][\s.、．]?/, '').slice(0, 50) : '';
             }).filter(Boolean).join(' / ');
-            if (head) txt += '\n· 正确答案 ' + head + (pick ? '：' + pick : '');
+            if (pick) txt += '\n· ' + pick;
           }
           return { t: txt, k: [], ts: Date.now(), auto: 1 };
         }
@@ -280,7 +296,7 @@
     var html = esc(text);
     kws.forEach(function (w) {
       var re = new RegExp(esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      html = html.replace(re, '<b class="cc-kw">' + esc(w) + '</b>');
+      html = html.replace(re, '<b class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</b>');
     });
     return html;
   }
@@ -433,6 +449,68 @@
   }
 
   /* ---------- 卡片模式 ---------- */
+  /* ---------- 关键词 → 站内三处搜索（题目 / 讲义 / 知识点笔记） ---------- */
+  var KWM = { kw: '' };
+  function kwMenuEl() {
+    var m = document.getElementById('ccKwMenu');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'ccKwMenu';
+    m.innerHTML = '<div class="cc-kwm-t" id="ccKwTitle"></div>'
+      + '<button data-kwdo="q">🔍 搜题目（题干 / 选项 / 解析）</button>'
+      + '<button data-kwdo="lec">📖 搜讲义知识点</button>'
+      + '<button data-kwdo="note">📝 搜知识点笔记</button>';
+    document.body.appendChild(m);
+    m.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-kwdo]');
+      if (!b) return;
+      var kind = b.getAttribute('data-kwdo'), kw = KWM.kw;
+      kwMenuHide();
+      if (kind === 'q') {
+        try { window.__qbSearchPrefill = kw; } catch (e0) {}
+        closeCard();
+        location.hash = '#/search';
+      } else if (kind === 'lec') {
+        closeCard();
+        setTimeout(function () {
+          try {
+            if (!window.LECTURE) return toast('讲义模块没加载', 1600);
+            window.LECTURE.open();
+            setTimeout(function () { try { window.LECTURE.find(kw); } catch (e1) {} }, 380);
+          } catch (e2) {}
+        }, 80);
+      } else if (kind === 'note') {
+        closeCard();
+        location.hash = '#/notes';
+        setTimeout(function () {
+          try { if (window.LECNOTES && LECNOTES.search) LECNOTES.search(kw); } catch (e3) {}
+        }, 240);
+      }
+    });
+    return m;
+  }
+  function kwMenuShow(btn, kw) {
+    var m = kwMenuEl();
+    KWM.kw = kw || '';
+    var t = document.getElementById('ccKwTitle');
+    if (t) t.textContent = '「' + (kw || '') + '」在站内搜：';
+    m.classList.add('on');
+    var r = btn.getBoundingClientRect();
+    var w = m.offsetWidth || 214, h = m.offsetHeight || 150;
+    var left = Math.min(Math.max(8, r.left), (window.innerWidth || 360) - w - 8);
+    var top = r.bottom + 6;
+    if (top + h > (window.innerHeight || 640) - 8) top = Math.max(8, r.top - h - 6);
+    m.style.left = left + 'px';
+    m.style.top = top + 'px';
+  }
+  function kwMenuHide() { var m = document.getElementById('ccKwMenu'); if (m) m.classList.remove('on'); }
+  document.addEventListener('pointerdown', function (e) {
+    var m = document.getElementById('ccKwMenu');
+    if (!m || !m.classList.contains('on')) return;
+    if (e.target.closest('#ccKwMenu') || e.target.closest('[data-act="kw"]')) return;
+    kwMenuHide();
+  }, true);
+
   function ensureMask() {
     if ($('#cdMask')) return;
     var d = document.createElement('div');
@@ -463,6 +541,7 @@
       if (a === 'yes') return mark(1);
       if (a === 'no') return mark(-1);
       if (a === 'ai') return genOne();
+      if (a === 'kw') return kwMenuShow(b, b.getAttribute('data-kw') || b.textContent || '');
       if (a === 'stem') {
         var s = $('#cdStem');
         if (s) {
@@ -527,7 +606,7 @@
       + '<div class="cc-tag">' + esc(it.subj) + '</div>'
       + '<div class="cc-title">' + esc(it.tag) + '</div>'
       + oneHtml(one.t, kws)
-      + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<span>' + esc(w) + '</span>'; }).join('') + '</div>' : '')
+      + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<button class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</button>'; }).join('') + '</div>' : '')
       + '<button class="cc-stembtn" data-act="stem">看这道题 ▾</button>'
       + '<div class="cc-stem" id="cdStem"><b>' + esc(q.stem || '') + '</b>'
       + (explain ? '<p>' + hilite(explain, kws) + '</p>' : '')
@@ -537,6 +616,7 @@
       + '</div>'
       + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
+    try { kwMenuHide(); } catch (e0) {}
     $('#cdCnt').textContent = (ST.i + 1) + ' / ' + list.length;
     $('#cdProg').style.width = Math.round((ST.i + 1) * 100 / list.length) + '%';
     $('#cdMask').classList.add('on');
