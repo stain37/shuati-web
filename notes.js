@@ -193,6 +193,7 @@
   }
 
   function chapEditSrc(n) {
+    if (n.edit) return n.edit;            /* 改过的笔记：编辑器里放改动后的正文，别拿 AI 原文覆盖 */
     var o = n.ov || {}, out = [];
     if (o.title) out.push('# ' + o.title);
     if (o.lead) out.push(o.lead);
