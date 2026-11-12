@@ -24,7 +24,7 @@
         d.list[i] = note; write(d);
         return { ok: true, id: x.id };
       }
-      if (x.sel === note.sel && Math.abs((x.ts || 0) - (note.ts || 0)) < 120000) return { dup: true, id: x.id };
+      if (!note.manual && x.sel === note.sel && Math.abs((x.ts || 0) - (note.ts || 0)) < 120000) return { dup: true, id: x.id };
     }
     d.list.unshift(note);
     if (d.list.length > 300) d.list.length = 300;
@@ -231,36 +231,56 @@
     return h;
   }
 
+  /* 编辑区：标题 / 说明 / 标签 始终可改；正文只对「有正文」的笔记开放 */
+  function edWrap(n, canBody) {
+    var id = n.id;
+    var h = '<div class="nt-edwrap" data-nt-wrap="' + id + '">'
+      + '<div class="nt-edhead">'
+      + '<label class="nt-fl"><span>标题</span><input class="nt-inp nt-inp-t" data-nt-title="' + id + '" value="' + esc(n.sel || '') + '" placeholder="这条笔记叫什么（列表里显示的就是它）"></label>'
+      + '<label class="nt-fl"><span>说明</span><input class="nt-inp" data-nt-why="' + id + '" value="' + esc(n.why || '') + '" placeholder="一句话备注，比如「讲义 + 笔记整理」"></label>'
+      + '<label class="nt-fl"><span>标签</span><input class="nt-inp" data-nt-keys="' + id + '" value="' + esc((n.keys || []).join('，')) + '" placeholder="用逗号分隔，会按第一个标签归组"></label>'
+      + '</div>';
+    if (canBody) {
+      h += '<div class="nt-edtools">'
+        + '<button class="btn tiny" data-nt-act="edImg" data-id="' + id + '">🖼 插入图片</button>'
+        + '<button class="btn tiny" data-nt-act="edTable" data-id="' + id + '">▦ 插入表格</button>'
+        + '<button class="btn tiny" data-nt-act="edPrev" data-id="' + id + '">👁 预览</button>'
+        + '<input type="file" accept="image/*" class="nt-edfile" data-nt-file="' + id + '" hidden>'
+        + '</div>'
+        + '<textarea class="nt-edit" data-nt-ed="' + id + '" placeholder="# 标题\n\n导语一句话。\n\n## 一、小节\n正文一段。（空行分段，表格/图片可用上面的按钮插入）">' + esc(chapEditSrc(n)) + '</textarea>'
+        + '<div class="nt-edprev" data-nt-prev="' + id + '" hidden></div>';
+    } else {
+      h += '<div class="nt-ednote">这是从讲义摘句存下的笔记，正文由那些句子组成，不能直接改字。'
+        + '要自己写，点下面的「✍ 写成正文」，原摘句会保留在卡片里。</div>';
+    }
+    h += '<div class="nt-edbar"><span>'
+      + (canBody ? '「## 小节标题」开新节，空行分段；表格/图片都是 Markdown，[[n]] 是出处编号' : '标题、说明、标签随时可改')
+      + '</span>'
+      + (canBody ? '' : '<button class="btn tiny" data-nt-act="toChap" data-id="' + id + '">✍ 写成正文</button>')
+      + '<button class="btn tiny nt-save" data-nt-act="editSave" data-id="' + id + '">保存</button>'
+      + '<button class="btn tiny" data-nt-act="editCancel" data-id="' + id + '">取消</button></div></div>';
+    return h;
+  }
+
   function cardHtml(n) {
     var open = !!OPEN[n.id];
     var h = '<div class="nt-card' + (open ? ' on' : '') + '" data-nt="' + n.id + '">'
       + '<div class="nt-head" data-nt-act="toggle" data-id="' + n.id + '">'
       + ((typeof U !== 'undefined' && U.sel) ? ('<button class="nt-pick" data-nt-pick="' + n.id + '">' + (U.picked[n.id] ? '☑' : '☐') + '</button>') : '')
       + '<b>' + esc(String(n.sel || '').slice(0, 46)) + (String(n.sel || '').length > 46 ? '…' : '') + '</b>'
-      + '<span>' + fmt(n.ts) + ' · ' + filesOf(n) + ' 份讲义 · ' + (n.items || []).length + ' 句</span>'
+      + '<span>' + fmt(n.ts) + ' · ' + (n.manual ? ('手写' + ((n.edit || '').replace(/\s/g, '').length ? ' · ' + (n.edit || '').replace(/\s/g, '').length + ' 字' : '')) : (filesOf(n) + ' 份讲义 · ' + (n.items || []).length + ' 句')) + '</span>'
       + '<i>' + (open ? '▾' : '▸') + '</i></div>';
     if (n.q) h += '<div class="nt-q">出自：' + esc(n.q) + '</div>';
     if (n.why) h += '<div class="nt-why">💡 ' + esc(n.why) + '</div>';
     if (open) {
-      var isChap = !!(n.ov && n.ov.sections && n.ov.sections.length && n.ov.sections[0].paras);
-      if (isChap) {
-        if (EDIT[n.id]) {
-          h += '<div class="nt-edwrap" data-nt-wrap="' + n.id + '">'
-            + '<div class="nt-edtools">'
-            + '<button class="btn tiny" data-nt-act="edImg" data-id="' + n.id + '">🖼 插入图片</button>'
-            + '<button class="btn tiny" data-nt-act="edTable" data-id="' + n.id + '">▦ 插入表格</button>'
-            + '<button class="btn tiny" data-nt-act="edPrev" data-id="' + n.id + '">👁 预览</button>'
-            + '<input type="file" accept="image/*" class="nt-edfile" data-nt-file="' + n.id + '" hidden>'
-            + '</div>'
-            + '<textarea class="nt-edit" data-nt-ed="' + n.id + '">' + esc(chapEditSrc(n)) + '</textarea>'
-            + '<div class="nt-edprev" data-nt-prev="' + n.id + '" hidden></div>'
-            + '<div class="nt-edbar"><span>「## 小节标题」开新节，空行分段；表格/图片都是 Markdown（工具条能插，图片建议 900 宽以内），[[n]] 是出处编号</span>'
-            + '<button class="btn tiny" data-nt-act="editSave" data-id="' + n.id + '">保存</button>'
-            + '<button class="btn tiny" data-nt-act="editCancel" data-id="' + n.id + '">取消</button></div></div>';
-        } else {
+      var isChap = !!(n.manual || (n.ov && n.ov.sections && n.ov.sections.length && n.ov.sections[0].paras));
+      if (EDIT[n.id]) {
+        h += edWrap(n, isChap);
+      } else if (isChap) {
+        {
           h += chapHtml(n);
           h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="edit" data-id="' + n.id + '">✏️ 编辑</button>'
-            + (n.edit ? '<button class="btn tiny" data-nt-act="editReset" data-id="' + n.id + '">↺ 还原 AI 原文</button>' : '')
+            + (n.edit && !n.manual ? '<button class="btn tiny" data-nt-act="editReset" data-id="' + n.id + '">↺ 还原 AI 原文</button>' : '')
             + ((n.hist && n.hist.length) ? '<button class="btn tiny" data-nt-act="restore" data-id="' + n.id + '">🕘 上一版（' + n.hist.length + '）</button>' : '')
             + '<button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
             + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
@@ -301,7 +321,9 @@
           });
         });
       });
-        h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
+        h += '<div class="nt-acts"><button class="btn tiny" data-nt-act="edit" data-id="' + n.id + '">✏️ 改标题</button>'
+          + '<button class="btn tiny" data-nt-act="toChap" data-id="' + n.id + '">✍ 写成正文</button>'
+          + '<button class="btn tiny" data-nt-act="del" data-id="' + n.id + '">🗑 删除</button>'
           + '<button class="btn tiny" data-nt-act="copy" data-id="' + n.id + '">⧉ 复制</button></div>';
       }
     }
@@ -341,6 +363,7 @@
     /* 工具条：搜索 + 筛选 + 归组 + 批量 */
     h += '<div class="nt-bar">'
       + '<input class="nt-search" id="ntQ" placeholder="搜笔记：知识点 / 题干 / 讲义句子…" value="' + esc(U.q) + '">'
+      + '<button class="btn tiny nt-new" id="ntNew">＋ 新建笔记</button>'
       + '<button class="btn tiny" id="ntGroup" title="把同一知识点的笔记归成一组">🧩 按知识点归组</button>'
       + '<button class="btn tiny" id="ntSel">' + (U.sel ? '✓ 退出选择' : '☑ 批量管理') + '</button>'
       + '</div>';
@@ -358,7 +381,7 @@
     }
 
     if (!arr.length) {
-      h += '<div class="empty">' + (all.length ? '没有匹配的笔记，换个关键词或筛选。' : '还没有笔记。<br>做题时选中题干/选项/解析里的任意一句，右键选「📚 在所有讲义里找这个知识点」，结果面板底部点「💾 存成笔记」。') + '</div>';
+      h += '<div class="empty">' + (all.length ? '没有匹配的笔记，换个关键词或筛选。' : '还没有笔记。<br>做题时选中题干/选项/解析里的任意一句，右键选「📚 在所有讲义里找这个知识点」，结果面板底部点「💾 存成笔记」；<br>也可以直接点上面的「＋ 新建笔记」自己写。') + '</div>';
     } else if (U.group) {
       var g = {}, go = [];
       arr.forEach(function (n) {
@@ -378,6 +401,22 @@
 
     var q = document.getElementById('ntQ');
     if (q) q.addEventListener('input', function () { U.q = q.value; var pos = q.selectionStart; render(); var q2 = document.getElementById('ntQ'); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } });
+    var nb = document.getElementById('ntNew');
+    if (nb) nb.addEventListener('click', function () {
+      var id = 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      var note = {
+        v: 1, id: id, sel: '新笔记', why: '手动创建', keys: [], q: '', ts: Date.now(),
+        manual: 1, items: [], sources: [], hist: [],
+        ov: { title: '新笔记', lead: '', sections: [] }
+      };
+      save(note, true);
+      U.group = false; U.flt = 'all'; U.q = '';
+      OPEN[id] = 1; EDIT[id] = 1;
+      render();
+      var ta = document.querySelector('[data-nt-ed="' + id + '"]');
+      if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }
+      if (window.toast) toast('新笔记：先写标题和正文，写完点「保存」', 2200, 'ok');
+    });
     var gb = document.getElementById('ntGroup');
     if (gb) gb.addEventListener('click', function () { U.group = !U.group; render(); });
     var sb = document.getElementById('ntSel');
@@ -455,10 +494,26 @@
         if (act === 'editCancel') { delete EDIT[id]; render(); return; }
         if (act === 'editSave') {
           var ta = v.querySelector('[data-nt-ed="' + id + '"]');
-          note.edit = ta ? ta.value : '';
-          note.editTs = Date.now();
-          save(note, true); delete EDIT[id]; render();
-          if (window.toast) toast('已保存修改', 1400, 'ok');
+          var ti = v.querySelector('[data-nt-title="' + id + '"]');
+          var wh = v.querySelector('[data-nt-why="' + id + '"]');
+          var ky = v.querySelector('[data-nt-keys="' + id + '"]');
+          var ttl = ti ? String(ti.value || '').replace(/^\s+|\s+$/g, '') : '';
+          if (ttl) { note.sel = ttl; note.ov = note.ov || {}; note.ov.title = ttl; }
+          if (wh) note.why = String(wh.value || '');
+          if (ky) note.keys = String(ky.value || '').split(/[，,\s]+/).filter(Boolean).slice(0, 12);
+          if (ta) { note.edit = ta.value; note.editTs = Date.now(); }
+          if (note.manual && !note.edit) { note.edit = '# ' + (note.sel || '新笔记') + '\n'; }
+          save(note, true); delete EDIT[id]; OPEN[id] = 1; render();
+          if (window.toast) toast('已保存', 1400, 'ok');
+          return;
+        }
+        if (act === 'toChap') {
+          note.manual = 1;
+          note.ov = note.ov || { title: note.sel || '', lead: '', sections: [] };
+          note.ov.title = note.ov.title || note.sel || '';
+          if (!note.ov.sections) note.ov.sections = [];
+          save(note, true); EDIT[id] = 1; OPEN[id] = 1; render();
+          if (window.toast) toast('已切成可编辑正文（原来的摘句还在，往下看）', 2200, 'ok');
           return;
         }
         if (act === 'restore') {

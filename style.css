@@ -4850,3 +4850,20 @@ body.dark .nt-mdblock a[href*="#/lec/"], body.dark .md-preview a[href*="#/lec/"]
 }
 .nt-ovp a[href*="#/lec/"]:hover, .nt-mdblock a[href*="#/lec/"]:hover{ background:#1c56c9; }
 body.dark .nt-ovp a[href*="#/lec/"], body.dark .nt-mdblock a[href*="#/lec/"]{ background:#4b8cff; }
+
+
+/* ===== web824：笔记可全编辑（新建 / 改标题 / 说明 / 标签） ===== */
+.nt-new{ border-color:#2f6fed !important; color:#2f6fed !important; font-weight:600; }
+.nt-edhead{ display:flex; flex-direction:column; gap:8px; margin:0 0 10px; }
+.nt-fl{ display:flex; align-items:center; gap:8px; }
+.nt-fl > span{ flex:0 0 34px; font-size:12px; opacity:.62; }
+.nt-inp{ flex:1 1 auto; min-width:0; height:32px; padding:0 10px; border-radius:8px;
+  border:1px solid rgba(120,130,150,.28); background:transparent; color:inherit; font-size:13.5px; }
+.nt-inp:focus{ outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.14); }
+.nt-inp-t{ font-weight:600; font-size:15px; height:36px; }
+.nt-ednote{ padding:10px 12px; border-radius:8px; background:rgba(126,138,158,.10);
+  border:1px dashed rgba(126,138,158,.35); font-size:12.5px; line-height:1.7; opacity:.9; }
+.nt-save{ background:#2f6fed !important; border-color:#2f6fed !important; color:#fff !important; font-weight:600; }
+body.dark .nt-inp{ border-color:rgba(255,255,255,.18); }
+body.dark .nt-inp:focus{ border-color:#4b8cff; box-shadow:0 0 0 3px rgba(75,140,255,.18); }
+body.dark .nt-new{ border-color:#4b8cff !important; color:#4b8cff !important; }
