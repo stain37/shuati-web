@@ -1935,20 +1935,47 @@
     });
   }
 
-  /* 站内深链 #/lec/<key>：直接打开某份讲义的某一页（key 形如 e57147e02afb_p1） */
+  /* 站内深链 #/lec/<key>：直接打开某份讲义的某一页（key 形如 e57147e02afb_p1）
+     先查内存索引 BYKEY；查不到（站点用的是紧凑索引、只收每份讲义首尾页）就去拉完整
+     pdfimg/index.json，按「文件名 + 页码」找到那份讲义再跳。 */
+  var FULLIDX = null;
+  function fullIdx() {
+    if (FULLIDX) return Promise.resolve(FULLIDX);
+    return fetchJson('pdfimg/index.json', 2, 25000).then(function (j) {
+      var m = {};
+      if (j && typeof j === 'object') {
+        for (var k in j) {
+          var v = j[k] || {};
+          if (v && v.p) m[k] = { f: v.f || '', p: v.p | 0, src: v.src || '' };
+        }
+      }
+      FULLIDX = m;
+      return m;
+    }).catch(function () { return {}; });
+  }
   function openKey(key) {
     var k = String(key || '').trim();
     if (!k) return Promise.resolve(false);
-    return loadIndex().then(function () {
-      var o = BYKEY[k];
-      if (!o) { toast('讲义索引里没有这一页：' + k); return false; }
+    function go(src, p) {
       open();
       return new Promise(function (r) { setTimeout(r, 120); }).then(function () {
-        var p = o.p | 0;
-        jumpToSrc(o.src, p, '📖 讲义 · 第 ' + p + ' 页');
+        if (!jumpToSrc(src, p, '📖 讲义 · 第 ' + p + ' 页')) throw new Error('这份讲义不在讲义库里：' + src);
         return true;
       });
-    }).catch(function (e) { toast('讲义索引没读出来：' + ((e && e.message) || e)); return false; });
+    }
+    return loadIndex().then(function () {
+      var o = BYKEY[k];
+      if (o) return go(o.src, o.p | 0);
+      return fullIdx().then(function (m) {
+        var e = m[k];
+        if (!e) { toast('讲义索引里没有这一页：' + k); return false; }
+        var f = null;
+        try { f = fileOfName(e.f); } catch (x) { f = null; }
+        if (!f && e.src) f = fileOf(e.src);
+        if (!f) { toast('这份讲义不在讲义库里：' + (e.f || e.src)); return false; }
+        return go(f.src, e.p | 0);
+      });
+    }).catch(function (e) { toast('打开讲义失败：' + ((e && e.message) || e)); return false; });
   }
 
   function open() {
