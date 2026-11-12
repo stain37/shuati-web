@@ -4979,3 +4979,28 @@ body:not(.dark) .cd-bar-gen .cd-gprog{background:rgba(20,26,34,.08);height:3px;b
 body:not(.dark) .cd-bar-gen .cd-gprog i{display:block;height:100%;background:linear-gradient(90deg,#5b9dff,#2f6fed)}
 .cd-bar.cd-bar-gen .cd-gtop{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#8fa0b4}
 .cd-grow .btn{height:44px;font-size:14px}
+
+
+/* ===== web836：筛选条 / 搜索框 / 打乱按钮 补样式（原来没写，才是灰块） ===== */
+.cd-srch{display:flex;gap:8px;margin-top:12px}
+.cd-q{flex:1;min-width:0;height:40px;border-radius:11px;border:1px solid rgba(20,26,34,.12);
+  background:#fff;color:#1d2735;padding:0 12px;font-size:13px;outline:none}
+.cd-q:focus{border-color:#3f7ef0;box-shadow:0 0 0 3px rgba(63,126,240,.14)}
+.cd-shuf{flex:0 0 auto;height:40px;padding:0 13px;border-radius:11px;font-size:12.5px;cursor:pointer;
+  border:1px solid rgba(63,126,240,.30);background:transparent;color:#4a5a6f;transition:.15s}
+.cd-shuf:hover{border-color:#3f7ef0;color:#2f66c9}
+.cd-shuf.on{background:#2f6fed;border-color:#2f6fed;color:#fff;font-weight:600}
+.cd-flt{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.cd-fbtn{border:0;padding:6px 12px;border-radius:99px;font-size:12.5px;line-height:1.2;cursor:pointer;
+  background:rgba(20,26,34,.05);color:#5b6777;transition:background .15s,color .15s,transform .1s}
+.cd-fbtn:hover{background:rgba(20,26,34,.09)}
+.cd-fbtn:active{transform:scale(.97)}
+.cd-fbtn.on{background:#2f6fed;color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(47,111,237,.26)}
+body.dark .cd-q{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:#e9eef6}
+body.dark .cd-q::placeholder{color:#7d8a9b}
+body.dark .cd-shuf{border-color:rgba(91,157,255,.35);color:#b7c6d8}
+body.dark .cd-shuf:hover{border-color:#5b9dff;color:#e9eef6}
+body.dark .cd-shuf.on{background:#3f7ef0;border-color:#3f7ef0;color:#fff}
+body.dark .cd-fbtn{background:rgba(255,255,255,.07);color:#a9b6c7}
+body.dark .cd-fbtn:hover{background:rgba(255,255,255,.12)}
+body.dark .cd-fbtn.on{background:#3f7ef0;color:#fff;box-shadow:0 2px 10px rgba(63,126,240,.35)}
