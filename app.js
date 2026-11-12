@@ -3512,6 +3512,27 @@ function renderLecPage(key) {
   }).catch(function (e) { if (s) s.textContent = '打开失败：' + ((e && e.message) || e); });
 }
 
+
+/* 站内 Markdown 里的讲义角标：[¹](https://stain37.github.io/shuati-web/#/lec/<key>)
+   或者 [¹](#/lec/<key>)。不要让浏览器开新标签（冷启动十几秒），直接在当前页切 hash。 */
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a[href*="#/lec/"]') : null;
+  if (!a) return;
+  var h = a.getAttribute('href') || '';
+  var i = h.indexOf('#/lec/');
+  if (i < 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  var hash = h.slice(i);
+  /* 优先就地开讲义面板：笔记页点角标不用跳走，关掉还在原页 */
+  var key = decodeURIComponent(hash.slice('#/lec/'.length)).split(/[?#]/)[0];
+  if (key && window.LECTURE && window.LECTURE.openKey) {
+    try { window.LECTURE.openKey(key); return; } catch (err) {}
+  }
+  if (location.hash === hash) { window.dispatchEvent(new HashChangeEvent('hashchange')); }
+  else location.hash = hash;
+}, true);
+
 function renderInner() {
   const r = route();
   document.querySelectorAll('.mask').forEach(m => m.classList.remove('show'));

@@ -4829,3 +4829,24 @@ body.dark .nt-edprev th,body.dark .nt-edprev td,body.dark .nt-mdblock th,body.da
 .lec-dl-k{font-family:ui-monospace,Consolas,monospace;font-size:12px;opacity:.62;margin-bottom:10px;word-break:break-all}
 .lec-dl-s{font-size:13px;opacity:.8;margin-bottom:14px}
 .lec-dl-b{display:flex;gap:8px}
+
+
+/* ===== web820：正文里的讲义出处角标（站内可点） ===== */
+.nt-mdblock a[href*="#/lec/"], .lec-ovbody a[href*="#/lec/"], .md-preview a[href*="#/lec/"]{
+  display:inline-block; padding:0 5px; margin-left:2px; border-radius:6px;
+  font-size:.72em; line-height:1.5; vertical-align:super; text-decoration:none;
+  background:#e8f0fe; color:#1a73e8; font-weight:600;
+}
+.nt-mdblock a[href*="#/lec/"]:hover, .md-preview a[href*="#/lec/"]:hover{ background:#d2e3fc; }
+body.dark .nt-mdblock a[href*="#/lec/"], body.dark .md-preview a[href*="#/lec/"]{ background:rgba(90,150,255,.18); color:#8ab4f8; }
+
+
+/* ===== web821：笔记里的讲义角标链接，做成小蓝标 ===== */
+.nt-ovp a[href*="#/lec/"], .nt-mdblock a[href*="#/lec/"]{
+  display:inline-block; min-width:15px; padding:0 4px; margin:0 2px;
+  border-radius:999px; background:#2f6fed; color:#fff !important;
+  font-size:10.5px; line-height:15px; text-align:center; text-decoration:none !important;
+  vertical-align:super; letter-spacing:0;
+}
+.nt-ovp a[href*="#/lec/"]:hover, .nt-mdblock a[href*="#/lec/"]:hover{ background:#1c56c9; }
+body.dark .nt-ovp a[href*="#/lec/"], body.dark .nt-mdblock a[href*="#/lec/"]{ background:#4b8cff; }

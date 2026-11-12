@@ -110,13 +110,22 @@
       last = m.index + m[0].length;
     }
     if (last < s0.length) out += mark(s0.slice(last), hits);
-    return out;
+    return ntLinkify(out);
+  }
+
+  /* 把 [¹](url) / [文字](url) 变成可点的链接（讲义角标、外链都走这里） */
+  function ntLinkify(s0) {
+    return String(s0 || '').replace(/\[([^\]<]{1,48})\]\((https?:\/\/[^)\s<>]+|#[^)\s<>]+)\)/g,
+      function (m, txt, url) {
+        return '<a class="nt-a" href="' + url.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          + '" target="_blank" rel="noopener">' + txt + '</a>';
+      });
   }
 
   /* 首句当结论句加粗 */
   function chapPara(t, sources, hits, id) {
     var s0 = String(t || '');
-    if (/\n/.test(s0) || /!\[/.test(s0)) {
+    if (/\n/.test(s0) || /!\[/.test(s0) || /\]\(/.test(s0)) {   /* 含 Markdown 链接（讲义角标）也走 md 渲染 */
       var md = ntMdBlock(s0, sources, hits, id);
       if (md) return md;
     }
@@ -159,7 +168,7 @@
     html = html.replace(/\[\[(\d+)\]\]/g, function (m, n) {
       return '<sup class="nt-csup" data-nt-act="go" data-i="' + n + '">' + n + '</sup>';
     });
-    return '<div class="nt-mdblock">' + html + '</div>';
+    return '<div class="nt-mdblock">' + ntLinkify(html) + '</div>';
   }
 
   function ntCaretInsert(ta, text) {
@@ -488,6 +497,19 @@
     if (b) { location.hash = '#/notes'; }
   });
   window.__ntOpenBound = 1;
+
+  /* 站内深链：笔记里点 #/lec/<key> 直接开讲义面板，不切页面 */
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="#/lec/"]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    var h = a.getAttribute('href') || '';
+    var key = decodeURIComponent(h.split('#/lec/')[1] || '').split(/[?#]/)[0];
+    if (!key) return;
+    if (window.LECTURE && window.LECTURE.openKey) {
+      try { window.LECTURE.openKey(key); } catch (e) { location.hash = '#/lec/' + key; }
+    } else location.hash = '#/lec/' + key;
+  }, true);
 
   window.LECNOTES = { save: save, saveOverview: saveOverview, del: del, rename: rename, list: list, render: render, KEY: KEY };
 })();
