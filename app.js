@@ -3244,7 +3244,8 @@ function route() {
   if (parts[0] === 'qlist' && parts[1]) return { name: 'qlist', bankId: parts[1] };   /* 题目管理（cat.js）：一张张读题 / 批量删题 */
   if (parts[0] === 'chat') return { name: 'chat' };
   if (parts[0] === 'notes') return { name: 'notes' };
-  if (parts[0] === 'cards') return { name: 'cards', bankId: parts[1] };   /* 考点卡（cards.js） */   /* 知识点笔记（notes.js） */                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
+  if (parts[0] === 'cards') return { name: 'cards', bankId: parts[1] };
+  if (parts[0] === 'lec') return { name: 'lec', key: parts[1] || '' };   /* 站内深链：直接打开讲义某一页（#/lec/<key>） */   /* 考点卡（cards.js） */   /* 知识点笔记（notes.js） */                                          /* AI 对话（chat.js）：出题 / 问知识点 / 分析题库 */
   return { name: 'home' };
 }
 function go(hash) {
@@ -3496,6 +3497,21 @@ function renderNow() {
   /* web262：统计数字从 0 滚到目标值（渲染完再滚，元素这时才在） */
   try { rollStats(document.querySelectorAll('#view .hero .hstat b')); } catch (e) {}
 }
+/* 站内深链 #/lec/<key>：打开讲义查看器并翻到那一页 */
+function renderLecPage(key) {
+  const v = $('view');
+  v.innerHTML = '<div class="card lec-dl"><div class="lec-dl-t">📖 讲义页</div>'
+    + '<div class="lec-dl-k">' + esc(key || '（没给页码）') + '</div>'
+    + '<div class="lec-dl-s">正在打开这一页…</div>'
+    + '<div class="lec-dl-b"><button class="btn" data-act="go" data-hash="#/">返回首页</button></div></div>';
+  const s = v.querySelector('.lec-dl-s');
+  const p = (window.LECTURE && LECTURE.openKey) ? LECTURE.openKey(key) : Promise.resolve(false);
+  Promise.resolve(p).then(function (ok) {
+    if (ok) { if (s) s.textContent = '已打开，可以左右翻页；按 Esc 关闭。'; return; }
+    if (s) s.textContent = (window.LECTURE ? '没打开这一页：讲义索引里找不到 ' + key : '讲义模块没加载（lec3.js）');
+  }).catch(function (e) { if (s) s.textContent = '打开失败：' + ((e && e.message) || e); });
+}
+
 function renderInner() {
   const r = route();
   document.querySelectorAll('.mask').forEach(m => m.classList.remove('show'));
@@ -3565,6 +3581,7 @@ function renderInner() {
   else if (r.name === 'chat') { if (window.CHAT && CHAT.render) CHAT.render(); else $('view').innerHTML = '<div class="card"><div class="empty">AI 对话模块没加载（chat.js）。</div></div>'; }
   else if (r.name === 'notes') { if (window.LECNOTES && window.LECNOTES.render) window.LECNOTES.render(); else $('view').innerHTML = '<div class="card"><div class="empty">笔记模块没加载（notes.js）。</div></div>'; }
   else if (r.name === 'cards') { if (window.CARDS && CARDS.render) CARDS.render(r.bankId); else $('view').innerHTML = '<div class="card"><div class="empty">考点卡模块没加载（cards.js）。</div></div>'; }
+  else if (r.name === 'lec') { renderLecPage(r.key); }
   else renderQuiz(r.bankId);
   markTop(r.name);
   try { uiPaintBadge(); } catch (e) {}

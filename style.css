@@ -4821,3 +4821,11 @@ body.dark .lec-segbtn.on{background:#e9eef6;color:#0f172a;box-shadow:0 1px 2px r
 body.dark .nt-edprev{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.05)}
 body.dark .nt-edprev th,body.dark .nt-mdblock th{background:rgba(255,255,255,.10)}
 body.dark .nt-edprev th,body.dark .nt-edprev td,body.dark .nt-mdblock th,body.dark .nt-mdblock td{border-color:rgba(255,255,255,.22)}
+
+
+/* ===== web818：讲义深链硵位页 ===== */
+.lec-dl{max-width:560px;margin:24px auto}
+.lec-dl-t{font-size:15px;font-weight:700;margin-bottom:6px}
+.lec-dl-k{font-family:ui-monospace,Consolas,monospace;font-size:12px;opacity:.62;margin-bottom:10px;word-break:break-all}
+.lec-dl-s{font-size:13px;opacity:.8;margin-bottom:14px}
+.lec-dl-b{display:flex;gap:8px}

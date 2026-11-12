@@ -1935,6 +1935,22 @@
     });
   }
 
+  /* 站内深链 #/lec/<key>：直接打开某份讲义的某一页（key 形如 e57147e02afb_p1） */
+  function openKey(key) {
+    var k = String(key || '').trim();
+    if (!k) return Promise.resolve(false);
+    return loadIndex().then(function () {
+      var o = BYKEY[k];
+      if (!o) { toast('讲义索引里没有这一页：' + k); return false; }
+      open();
+      return new Promise(function (r) { setTimeout(r, 120); }).then(function () {
+        var p = o.p | 0;
+        jumpToSrc(o.src, p, '📖 讲义 · 第 ' + p + ' 页');
+        return true;
+      });
+    }).catch(function (e) { toast('讲义索引没读出来：' + ((e && e.message) || e)); return false; });
+  }
+
   function open() {
     build();
     if (!el.sheet) return;
@@ -3666,7 +3682,7 @@
 
 window.LECTURE = { fileOfName: fileOfName, overviewAsk: overviewAsk, kbMulti: kbMulti, askKeys: askKeys, collectSources: collectSources, open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },
-    openHit: openHit,
+    openHit: openHit, openKey: openKey,
     find: function (q) { if (el.find) el.find.value = q || ''; doFind(); }, state: function () { return { src: CUR.src, p: CUR.p, files: (FILES || []).length }; },
     files: function () { return FILES; }, pageKey: keyFor,
     diff: { on: diffOn, set: diffSet, plan: diffPlan, rerank: diffRerank, text: pageText },
