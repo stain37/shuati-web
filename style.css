@@ -5098,3 +5098,13 @@ body.dark .cc-reveal-t{ background:rgba(15,21,31,.9); color:#9cc0ff; }
 
 .cc-reveal-hint{ margin-top:7px; font-size:12px; color:#8391a3; text-align:center; }
 body.dark .cc-reveal-hint{ color:#8b98a9; }
+
+
+/* ===== web845：遮挡只糊橙色重点字，正文照常看 ===== */
+.cc-key.masked{ filter:none; }
+b.cc-kw.hid, .cc-kws .cc-kw.hid{
+  filter:blur(5px); background:rgba(232,137,43,.20); border-radius:5px;
+  cursor:pointer; user-select:none; -webkit-user-select:none;
+  text-decoration:none; color:#e8892b;
+}
+b.cc-kw.hid:hover, .cc-kws .cc-kw.hid:hover{ filter:blur(4px); background:rgba(232,137,43,.28); }

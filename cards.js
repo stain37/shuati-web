@@ -202,7 +202,7 @@
     var g = genMap();
     var todo = items.filter(function (it) { return force || !(g[it.key] && g[it.key].t); });
     if (!todo.length) { toast('这个题库都已经有结论了', 1400); return; }
-    GEN = { on: true, stop: false, done: 0, total: todo.length };
+    GEN = { on: true, stop: false, done: 0, total: todo.length, force: !!force };
     renderPreview();
     paintGen();
     var i = 0, stopped = false;
@@ -292,11 +292,14 @@
     });
     return out.slice(0, 5);
   }
-  function hilite(text, kws) {
+  function hilite(text, kws, hide) {
     var html = esc(text);
     kws.forEach(function (w) {
       var re = new RegExp(esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      html = html.replace(re, '<b class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</b>');
+      var tag = hide
+        ? '<b class="cc-kw hid" data-act="reveal">' + esc(w) + '</b>'
+        : '<b class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</b>';
+      html = html.replace(re, tag);
     });
     return html;
   }
@@ -429,14 +432,15 @@
     }
     h += '<div class="cd-gap"></div>';
     var miss = missGen(ST.items);
-    if (miss.length) {
+    if (miss.length || GEN.on) {
       h += '<div class="cd-bar cd-bar-gen">'
-        + (GEN.on ? '<div class="cd-gtop"><span>正在写结论</span><i id="cdGnum">' + GEN.done + ' / ' + GEN.total + '</i></div>'
+        + (GEN.on ? '<div class="cd-gtop"><span>' + (GEN.force ? '正在整库重写' : '正在写结论') + '</span><i id="cdGnum">' + GEN.done + ' / ' + GEN.total + '</i></div>'
           + '<div class="cd-gprog"><i id="cdGenProg" style="width:' + (GEN.total ? Math.round(GEN.done * 100 / GEN.total) : 0) + '%"></i></div>' : '')
         + '<div class="cd-grow">'
-        + '<button class="btn primary cd-genall' + (GEN.on ? ' on' : '') + '" id="cdGenAll" data-act="genall">'
-        + (GEN.on ? ('■ 停止（' + GEN.done + '/' + GEN.total + '）') : ('✨ 一键写完结论 · 还差 ' + miss.length + ' 张')) + '</button>'
-        + '<button class="btn" data-act="cards" disabled title="先把结论写完">🃏 开始背诵</button>'
+        + (GEN.on
+          ? '<button class="btn primary cd-genall on" id="cdGenAll" data-act="genall">■ 停止（' + GEN.done + '/' + GEN.total + '）</button>'
+          : '<button class="btn primary cd-genall" id="cdGenAll" data-act="genall">✨ 一键写完结论 · 还差 ' + miss.length + ' 张</button>')
+        + '<button class="btn" data-act="cards"' + (GEN.on || miss.length ? ' disabled title="先把结论写完"' : '') + '>🃏 开始背诵</button>'
         + '</div></div>';
     } else {
       h += '<div class="cd-bar">'
@@ -541,13 +545,14 @@
       if (a === 'mask') {
         var on = !MASK_ON();
         MASK_SET(on);
+        REVEALED = false;
         paintCard();
-        toast(on ? '已遮住重点：先自己回想，点一下正文就揭开' : '已显示重点', 1600);
+        toast(on ? '已遮住橙色重点：先自己回想，点一下重点字就揭开' : '已显示重点', 1600);
         return;
       }
       if (a === 'reveal') {
-        var kk = document.querySelector('#cdStage .cc-key');
-        if (kk) { kk.classList.remove('masked'); kk.removeAttribute('data-act'); var tip = kk.querySelector('.cc-reveal-t'); if (tip) tip.remove(); }
+        REVEALED = true;
+        paintCard();
         return;
       }
       if (a === 'prev') return step(-1);
@@ -591,15 +596,16 @@
     if (!lines.length) return { head: '', pts: [] };
     return { head: lines[0], pts: lines.slice(1, 6) };
   }
-  function oneHtml(t, kws) {
+  function oneHtml(t, kws, hide) {
     var p = oneParts(t);
-    var h = '<div class="cc-one">' + hilite(p.head, kws) + '</div>';
+    var h = '<div class="cc-one">' + hilite(p.head, kws, hide) + '</div>';
     if (p.pts.length) {
-      h += '<ul class="cc-pts">' + p.pts.map(function (x) { return '<li>' + hilite(x, kws) + '</li>'; }).join('') + '</ul>';
+      h += '<ul class="cc-pts">' + p.pts.map(function (x) { return '<li>' + hilite(x, kws, hide) + '</li>'; }).join('') + '</ul>';
     }
     return h;
   }
   var MASK_KEY = 'qbank.cards.mask.v1';
+  var REVEALED = false;   // 这一张是否已经点开看答案（不落盘，换卡重置）
   function MASK_ON() { try { return localStorage.getItem(MASK_KEY) === '1'; } catch (e) { return false; } }
   function MASK_SET(v) { try { localStorage.setItem(MASK_KEY, v ? '1' : '0'); } catch (e) {} }
 
@@ -616,6 +622,7 @@
     var it = list[ST.i];
     var one = oneOf(it);
     var kws = kwList(it);
+    var hideKw = MASK_ON() && !REVEALED;
     var v = markOf(it);
     var q = it.q || {};
     var ans = (q.answer || []).join('');
@@ -623,11 +630,13 @@
     var html = '<div class="cc-wrap"><div class="cc-card' + (v === 1 ? ' ok' : (v === -1 ? ' no' : '')) + '">'
       + '<div class="cc-tag">' + esc(it.subj) + '</div>'
       + '<div class="cc-title">' + esc(it.tag) + '</div>'
-      + '<div class="cc-key' + (MASK_ON() ? ' masked' : '') + '" data-act="' + (MASK_ON() ? 'reveal' : '') + '">'
-      + oneHtml(one.t, kws)
+      + '<div class="cc-key">'
+      + oneHtml(one.t, kws, hideKw)
       + '</div>'
-      + (MASK_ON() ? '<div class="cc-reveal-hint">点一下正文看答案</div>' : '')
-      + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<button class="cc-kw" data-act="kw" data-kw="' + esc(w) + '">' + esc(w) + '</button>'; }).join('') + '</div>' : '')
+      + (hideKw ? '<div class="cc-reveal-hint">橙色重点字已遮住 · 点一下看答案</div>' : '')
+      + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) {
+        return '<button class="cc-kw' + (hideKw ? ' hid' : '') + '" data-act="' + (hideKw ? 'reveal' : 'kw') + '" data-kw="' + esc(w) + '">' + esc(w) + '</button>';
+      }).join('') + '</div>' : '')
       + '<button class="cc-stembtn" data-act="stem">看这道题 ▾</button>'
       + '<div class="cc-stem" id="cdStem"><b data-act="quizone" title="点这里去做这道题">' + esc(q.stem || '') + '</b>'
       + (explain ? '<p>' + hilite(explain, kws) + '</p>' : '')
