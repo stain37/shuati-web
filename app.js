@@ -4570,6 +4570,8 @@ function renderQuiz(bankId) {
       <div class="qmode" aria-label="刷题模式">
         <button class="chip qm qm-trigger${SET.quizMode !== 'normal' ? ' on' : ''}" id="qmMenu" aria-haspopup="true" aria-expanded="false" title="切换刷题模式（普通 / 速刷 / 背题），以及计时、单手、语音">${
           (QUIZ_MODES.find(function (x) { return x[0] === SET.quizMode; }) || QUIZ_MODES[0])[1]} <span class="qm-car">▾</span></button>
+        <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
+              SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
         <div class="qm-pop" id="qmPop" hidden>
           <div class="qm-pop-t">模式</div>
@@ -4582,8 +4584,7 @@ function renderQuiz(bankId) {
           <div class="qm-pop-t">辅助</div>
           <div class="qm-pop-row">
             <button class="chip qm qtime${SET.qtime ? ' on' : ''}" id="btnQTime" title="本套题的用时：点一下显示 / 隐藏（长按归零）">⏱ 计时</button>
-            <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
-              SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
+
             <button class="chip qm voice${SET.voice && SET.voice.on ? ' on' : ''}" id="btnVoice" title="语音刷题：自动读题 + 听你说 A / ABC（多选）；点一下开，再点关，长按调设置">${SET.voice && SET.voice.on ? '🎙 语音中' : '🎙 语音'}</button>
           </div>
         </div>
