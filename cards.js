@@ -121,30 +121,49 @@
   }
   function askOne(it) {
     var q = it.q || {};
-    var sys = '你是医学考研辅导老师。把这道题考的考点，写成一句可以直接背的结论（不超过 40 字），'
-      + '要求：必须能从题干或解析推出，不要补充题外知识；再给 2-4 个关键词（用于标黄）。只输出 JSON：'
-      + '{"t":"结论句","k":["关键词1","关键词2"]}';
+    var sys = '你是医学考研辅导老师。把这道题考的考点整理成一张能直接背的卡片，不要太短：\n'
+      + '第 1 行：一句话结论（≤40 字，点明这题考什么、答案是什么）。\n'
+      + '第 2 行起：2–5 条要点，每条以「· 」开头，把这道题涉及的知识点讲全——机制/原理、典型表现、鉴别点、易错点、关键数值或分型，有哪条写哪条。\n'
+      + '要求：只能用题干和解析里出现的内容，不要补充题外知识，不要编数字；总长 ≤220 字。'
+      + '再给 3-6 个关键词（用于标黄，别和考点名重复）。只输出 JSON：'
+      + '{"t":"第1行\n· 要点1\n· 要点2","k":["关键词1","关键词2"]}';
     var usr = '考点：' + it.tag + '\n题干：' + String(q.stem || '').slice(0, 400)
       + '\n答案：' + (q.answer || []).join('')
-      + '\n解析：' + tidyOne(q.explain || q.exp || '').slice(0, 500);
+      + '\n解析：' + tidyOne(q.explain || q.exp || '').slice(0, 900)
+      + (q.options && q.options.length ? '\n选项：' + q.options.map(function (o, i) { return String.fromCharCode(65 + i) + '. ' + String(o).slice(0, 90); }).join(' ').slice(0, 600) : '');
     function call(mt) {
       return Promise.resolve(window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }],
         null, null, { stream: false, temp: 0.2, maxTokens: mt }));
     }
     var ok = (typeof window.aiChat === 'function');
-    return (ok ? call(700).then(function (t0) {
-      return String(t0 || '').trim() ? t0 : call(2600);
+    return (ok ? call(900).then(function (t0) {
+      return String(t0 || '').trim() ? t0 : call(3200);
     }) : Promise.reject(new Error('AI 模块没加载')))
       .then(function (txt) {
         var m = String(txt || '').match(/\{[\s\S]*\}/), o = null;
         try { o = JSON.parse(m ? m[0] : txt); } catch (e) { o = null; }
         if (!o || !o.t) throw new Error('没解析出结论');
-        return { t: String(o.t).slice(0, 60), k: (o.k || []).slice(0, 5), ts: Date.now() };
+        return { t: String(o.t).replace(/\\n{3,}/g, '\n\n').slice(0, 420), k: (o.k || []).slice(0, 6), ts: Date.now() };
       })
       .catch(function () {
         /* AI 没写出来：先用解析首句 / 题干顶上，保证这一张不是空的，之后可以单张重写 */
-        var fb = tidyOne(q.explain || q.exp || '').split(/[。；;\n]/)[0];
-        if (fb && fb.length >= 6) return { t: fb.slice(0, 60), k: [], ts: Date.now(), auto: 1 };
+        var sents = tidyOne(q.explain || q.exp || '').split(/[。；;\n]/).map(function (x) { return String(x || '').trim(); })
+          .filter(function (x) { return x.length >= 6; });
+        if (sents.length) {
+          var txt = sents[0].slice(0, 60);
+          sents.slice(1, 4).forEach(function (x) { txt += '\n· ' + x.slice(0, 60); });
+          if (txt.indexOf('\n') < 0) {
+            /* 解析只有一句时，补一条「答案 + 正确项原文」，别让卡片空成一句话 */
+            var opts = q.options || [];
+            var head = (q.answer || []).join('');
+            var pick = (q.answer || []).map(function (a) {
+              var i = String(a).charCodeAt(0) - 65;
+              return opts[i] ? String(opts[i]).replace(/^[A-H][\s.、．]?/, '').slice(0, 40) : '';
+            }).filter(Boolean).join(' / ');
+            if (head) txt += '\n· 正确答案 ' + head + (pick ? '：' + pick : '');
+          }
+          return { t: txt, k: [], ts: Date.now(), auto: 1 };
+        }
         return { t: fallbackOne(it), k: [], ts: Date.now(), auto: 2 };
       });
   }
@@ -472,6 +491,21 @@
     });
   }
 
+  /* 结论可能是「一句话 + · 要点」多行：第一行大字，其余做成要点列表 */
+  function oneParts(t) {
+    var lines = String(t || '').split(/\n+/).map(function (x) { return x.replace(/^\s*[·•\-*]\s*/, '').trim(); })
+      .filter(function (x) { return x; });
+    if (!lines.length) return { head: '', pts: [] };
+    return { head: lines[0], pts: lines.slice(1, 6) };
+  }
+  function oneHtml(t, kws) {
+    var p = oneParts(t);
+    var h = '<div class="cc-one">' + hilite(p.head, kws) + '</div>';
+    if (p.pts.length) {
+      h += '<ul class="cc-pts">' + p.pts.map(function (x) { return '<li>' + hilite(x, kws) + '</li>'; }).join('') + '</ul>';
+    }
+    return h;
+  }
   function paintCard() {
     ensureMask();
     var list = filterItems();
@@ -492,7 +526,7 @@
     var html = '<div class="cc-wrap"><div class="cc-card' + (v === 1 ? ' ok' : (v === -1 ? ' no' : '')) + '">'
       + '<div class="cc-tag">' + esc(it.subj) + '</div>'
       + '<div class="cc-title">' + esc(it.tag) + '</div>'
-      + '<div class="cc-one' + (one.ai ? '' : ' auto') + '">' + hilite(one.t, kws) + '</div>'
+      + oneHtml(one.t, kws)
       + (kws.length ? '<div class="cc-kws">' + kws.map(function (w) { return '<span>' + esc(w) + '</span>'; }).join('') + '</div>' : '')
       + '<button class="cc-stembtn" data-act="stem">看这道题 ▾</button>'
       + '<div class="cc-stem" id="cdStem"><b>' + esc(q.stem || '') + '</b>'
@@ -501,7 +535,7 @@
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
       + (v === 1 ? ' · 已标记会' : (v === -1 ? ' · 已标记还不会' : '')) + '</div>'
       + '</div>'
-      + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成一句' : '让 AI 写一句结论') + '</button></div>';
+      + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
     $('#cdCnt').textContent = (ST.i + 1) + ' / ' + list.length;
     $('#cdProg').style.width = Math.round((ST.i + 1) * 100 / list.length) + '%';
@@ -582,50 +616,18 @@
     var it = list[ST.i];
     if (!it) return;
     if (typeof window.aiChat !== 'function') { toast('AI 模块没加载', 1600); return; }
-    var q = it.q || {};
-    var sys = '你是医学考研辅导老师。把这道题考的考点，写成一句可以直接背的结论（不超过 40 字），'
-      + '要求：必须能从题干或解析推出，不要补充题外知识；再给 2-4 个关键词（用于标黄）。只输出 JSON：'
-      + '{"t":"结论句","k":["关键词1","关键词2"]}';
-    var usr = '考点：' + it.tag + '\n题干：' + String(q.stem || '').slice(0, 400)
-      + '\n答案：' + (q.answer || []).join('')
-      + '\n解析：' + tidyOne(q.explain || q.exp || '').slice(0, 500);
     var b = $('[data-act="ai"]');
     if (b) { b.disabled = true; b.textContent = '正在写…'; }
-    function callAI(mt) {
-      return Promise.resolve(window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }],
-        null, null, { stream: false, temp: 0.2, maxTokens: mt }));
-    }
-    callAI(700)
-      .then(function (tx0) {
-        if (String(tx0 || '').trim()) return tx0;
-        /* 推理模型把预算花在思考上时：放大预算再来一次 */
-        return callAI(2600);
-      })
-      .then(function (txt) {
-        var t = String(txt || '');
-        var m = t.match(/\{[\s\S]*\}/);
-        var o = null;
-        try { o = JSON.parse(m ? m[0] : t); } catch (e) { o = null; }
-        if (!o || !o.t) throw new Error('没解析出结论');
-        var g = genMap();
-        g[it.key] = { t: String(o.t).slice(0, 60), k: (o.k || []).slice(0, 5), ts: Date.now() };
-        writeLS(GEN_KEY, g);
-        paintCard();
-        toast('已写好，并记住这条（同一个考点下次直接用）', 1800);
-      })
-      .catch(function (e) {
-        if (b) { b.disabled = false; b.textContent = '✨ 再试一次'; }
-        var fb = tidyOne(q.explain || q.exp || '').split(/[。；;\n]/)[0];
-        if (fb && fb.length >= 6) {
-          var g2 = genMap();
-          g2[it.key] = { t: fb.slice(0, 60), k: [], ts: Date.now(), auto: 1 };
-          writeLS(GEN_KEY, g2);
-          paintCard();
-          toast('AI 没回正文，先用解析首句顶上：' + fb.slice(0, 18) + '…', 2400);
-          return;
-        }
-        toast('没写成：' + ((e && e.message) || e), 2400, 'bad');
-      });
+    askOne(it).then(function (res) {
+      var g = genMap();
+      g[it.key] = res;
+      writeLS(GEN_KEY, g);
+      paintCard();
+      toast(res.auto ? 'AI 没回正文，先用解析里的句子顶上；可以再点一次重写' : '这张卡写好了，下次这个考点直接用', 2200);
+    }).catch(function (e) {
+      if (b) { b.disabled = false; b.textContent = '✨ 再试一次'; }
+      toast('没写成：' + ((e && e.message) || e), 2400, 'bad');
+    });
   }
 
   /* ---------- 事件 ---------- */

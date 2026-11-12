@@ -5004,3 +5004,12 @@ body.dark .cd-shuf.on{background:#3f7ef0;border-color:#3f7ef0;color:#fff}
 body.dark .cd-fbtn{background:rgba(255,255,255,.07);color:#a9b6c7}
 body.dark .cd-fbtn:hover{background:rgba(255,255,255,.12)}
 body.dark .cd-fbtn.on{background:#3f7ef0;color:#fff;box-shadow:0 2px 10px rgba(63,126,240,.35)}
+
+
+/* ===== web840：考点卡结论改成「一句话 + 要点」 ===== */
+.cc-pts{ margin:9px 0 4px; padding:0; list-style:none; }
+.cc-pts li{ position:relative; padding-left:15px; margin:5px 0; font-size:14.5px; line-height:1.72; color:#4a5566; }
+.cc-pts li::before{ content:'·'; position:absolute; left:3px; top:-1px; color:#2f6fed; font-weight:800; font-size:17px; }
+body.dark .cc-pts li{ color:#c9d3e1; }
+.cc-card{ max-height:min(76vh, 640px); overflow:auto; }
+@media (max-width:560px){ .cc-card{ max-height:74vh; } }
