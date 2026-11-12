@@ -17,7 +17,7 @@
 
 const SYNC_LS = 'qbank.sync.v1';
 /* 自检口：control 台里喂一份云端数据就能验证合并逻辑（不参与正常流程） */
-try { window.SYNC_DEBUG = { cards: function (g, m) { return syncMergeCards(g, m); }, lecnotes: function (n) { return syncMergeLecNotes(n); } }; } catch (e) {}
+try { window.SYNC_DEBUG = { cards: function (g, m) { return syncMergeCards(g, m); }, lecnotes: function (n) { return syncMergeLecNotes(n); }, keys: async function () { const p = await syncPayload(); return { data: Object.keys(p.data || {}), scope: p.scope }; } }; } catch (e) {}
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
@@ -408,8 +408,16 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   if (s.lec !== false && d.lecBind) { try { added += syncMergeLecBind(d.lecBind); } catch (e) {} }
-  if (s.cards && (d.cardsGen || d.cardsMark)) { try { added += syncMergeCards(d.cardsGen, d.cardsMark); } catch (e) { syncLog('考点卡合并失败：' + (e.message || e), true); } }
-  if (s.lecnotes && d.lecNotes) { try { added += syncMergeLecNotes(d.lecNotes); } catch (e) { syncLog('知识点笔记合并失败：' + (e.message || e), true); } }
+  let cardsAdded = 0, notesAdded = 0;
+  if (s.cards && (d.cardsGen || d.cardsMark)) {
+    try { cardsAdded = syncMergeCards(d.cardsGen, d.cardsMark); added += cardsAdded; }
+    catch (e) { syncLog('考点卡合并失败：' + (e.message || e), true); }
+  }
+  if (s.lecnotes && d.lecNotes) {
+    try { notesAdded = syncMergeLecNotes(d.lecNotes); added += notesAdded; }
+    catch (e) { syncLog('知识点笔记合并失败：' + (e.message || e), true); }
+  }
+  if (cardsAdded || notesAdded) syncLog('补进：考点卡 ' + cardsAdded + ' 条 · 知识点笔记 ' + notesAdded + ' 篇');
   if (s.kp && d.kpMd && window.MAPQ && typeof MAPQ.kpImport === 'function') { try { added += MAPQ.kpImport(d.kpMd); } catch (e) { syncLog('考点总结合并失败：' + (e.message || e), true); } }
   /* 0-方案) 多方案：方案清单按 id 并集，归属按方案并集；本机已有的不动 */
   if (s.cat && window.SCM && SCM.raw && (d.schemes || d.catmap)) {
@@ -570,7 +578,7 @@ function syncMergeCloud(cloud) {
   }
 
   migrate(); invalidateBanks();
-  return { added: added, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
+  return { added: added, cardsAdded: cardsAdded, notesAdded: notesAdded, updatedAt: +cloud.updatedAt || 0, device: cloud.device || '另一台设备' };
 }
 
 /* ---------- 同步动作 ---------- */
@@ -644,8 +652,15 @@ async function syncNow(silent) {
     const bytes = await syncPush(true);
     SYC.lastAt = Date.now(); SYC.lastSha = (meta && meta.sha) || '';
     syncSave();
+    let detail = '';
+    if (merged) {
+      const bits = [];
+      if (merged.cardsAdded) bits.push('考点卡 ' + merged.cardsAdded + ' 条');
+      if (merged.notesAdded) bits.push('知识点笔记 ' + merged.notesAdded + ' 篇');
+      if (bits.length) detail = '（补进 ' + bits.join(' · ') + '）';
+    }
     const tip = merged
-      ? '已同步：云端 ' + (merged.added ? '补进 ' + merged.added + ' 条，' : '') + '本机上传 ' + (bytes / 1024).toFixed(0) + ' KB'
+      ? '已同步：云端 ' + (merged.added ? '补进 ' + merged.added + ' 条' + detail + '，' : '没有新内容，') + '本机上传 ' + (bytes / 1024).toFixed(0) + ' KB'
       : '云端还是空的，已把本机数据上传（' + (bytes / 1024).toFixed(0) + ' KB）';
     syncLog(tip + '　' + (merged ? '云端来自 ' + merged.device : ''));
     syncBusy(false); syncState('已同步 · ' + syncAgo(SYC.lastAt), 'ok');
@@ -837,6 +852,19 @@ function syncValidBank(id) {
   try { if (window.bankById && window.bankById(id)) return true; } catch (e) {}
   return false;
 }
+/* 本机这几项有多少（同步页上一行小字：同步没带上时，一眼能看出是「本机为空」还是「上传没生效」） */
+function syncExtraDiagHtml() {
+  try {
+    const cg = syncLS('qbank.cards.gen.v1', {}) || {};
+    const cm = syncLS('qbank.cards.mark.v1', {}) || {};
+    const ln = syncLS('qbank.lec.notes.v1', null);
+    const n = (ln && Array.isArray(ln.list)) ? ln.list.length : 0;
+    let kp = 0;
+    try { kp = Object.keys((window.MAPQ && MAPQ.kpExport && MAPQ.kpExport()) || {}).length; } catch (e) { kp = 0; }
+    return '本机：考点卡结论 ' + Object.keys(cg).length + ' 条 · 已背标记 ' + Object.keys(cm).length
+      + ' 条 · 知识点笔记 ' + n + ' 篇 · 考点总结 ' + kp + ' 篇';
+  } catch (e) { return ''; }
+}
 function syncTagDiagHtml() {
   try {
     if (typeof TAGS === 'undefined') return '';
@@ -903,6 +931,7 @@ function syncCardHtml() {
     + '<span class="small muted">0–120；填 0 = 只手动点。改动仍然随时会记，只是攒够这个间隔再一起传。</span></div>');
   L.push('<div class="tools">' + SYNC_SCOPES.map(x => '<label class="chk" title="' + esc(x.tip) + '"><input type="checkbox" class="syncScope" data-k="' + x.k + '"' + (SYC.scope[x.k] ? ' checked' : '') + '> ' + esc(x.label) + '</label>').join('') + '</div>');
   L.push('<div class="tools"><span class="tl">标签</span><span class="small">' + syncTagDiagHtml() + '</span></div>');
+  L.push('<div class="tools"><span class="tl">本机</span><span class="small">' + syncExtraDiagHtml() + '</span></div>');
   L.push('<div class="tools"><span class="tl">流量</span><span class="small">' + syncNetHtml() + '</span></div>');
   L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
