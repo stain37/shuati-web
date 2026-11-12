@@ -16,10 +16,12 @@
    ============================================================ */
 
 const SYNC_LS = 'qbank.sync.v1';
+/* 自检口：control 台里喂一份云端数据就能验证合并逻辑（不参与正常流程） */
+try { window.SYNC_DEBUG = { cards: function (g, m) { return syncMergeCards(g, m); }, lecnotes: function (n) { return syncMergeLecNotes(n); } }; } catch (e) {}
 const SYNC_DEF = {
   provider: 'github', owner: '', repo: '', branch: 'main', path: 'sync/data.json', token: '',
   auto: true, autoMin: 2, device: '',
-  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false, lec: true },
+  scope: { ans: true, note: true, qtn: true, paper: true, var: true, srs: true, banks: true, cat: true, ai: true, kb: true, tag: true, star: true, board: false, lec: true, cards: true, lecnotes: true, kp: true },
   lastPull: 0, lastPush: 0, lastAt: 0, lastErr: '', lastSha: '', lastBytes: 0
 };
 let SYC = readLS(SYNC_LS, null) || {};
@@ -42,6 +44,9 @@ const SYNC_SCOPES = [
   { k: 'star', label: '星标常驻（侧栏）', tip: '侧栏里标了 ★ 的题库 / 文件夹，两边保持一致；搜索词、展开状态这些设备偏好不跟着走' },
   { k: 'banks', label: '自建题库', tip: '你在网页上导入的题库（可能几 MB，同步会慢一点）' },
   { k: 'tag', label: '考点标签', tip: '你导入 / AI 生成的那份考点词表，以及 AI 给每道题贴的标签（统计页「按考点」用的就是它）；删词 / 批量清除也会跟着走' },
+  { k: 'cards', label: '考点卡（结论 · 会了/还不会）', tip: '考点卡每张卡那句「可背诵结论」，以及「会了 / 还不会」的进度；结论按时间戳新的为准' },
+  { k: 'lecnotes', label: '知识点笔记', tip: '「知识点笔记」里存下来的整篇讲解、以及你自己改过的正文（含 Markdown 表格、图片），按更新时间合并' },
+  { k: 'kp', label: '考点总结（脑图里手写的）', tip: '相似题脑图 → 点考点 → 手写的那份总结。合并时只补本机没有的，不会覆盖你后来改过的' },
   { k: 'kb', label: '自己导入的资料库', tip: '在「AI 与知识库」页导入的 txt / pdf / md 等（正文在浏览器数据库里；网站自带的 5 个「完整版」库不用同步，两边打开网址就有）' },
   { k: 'ai', label: 'AI 配置（含 API Key）', tip: '⚠️ Key 会明文存进你的私有仓库' },
   { k: 'board', label: '空白板手稿（30 张上限）', tip: '答题页「白板」画完存下来的手稿，是图片级的笔迹数据，勾上会让同步文件大几 MB；默认不勾' }
@@ -239,6 +244,57 @@ function syncKbMerge(o, drops) {
   syncLog('知识库并进来 ' + list.length + ' 个：' + list.map(k => k.name).join('、'));
   return list.length;
 }
+/* ---------- 新增：考点卡 / 知识点笔记 / 考点总结 的合并 ----------
+   都只动 localStorage，谁也不依赖站点里的模块，读挂了也只丢这一项。 */
+function syncLS(k, dflt) {
+  try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? dflt : v; } catch (e) { return dflt; }
+}
+function syncLSWrite(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+/* 考点卡：结论按 ts 新的赢；「会了/还不会」本机有就以本机为准（本机可能刚点过） */
+function syncMergeCards(theirsGen, theirsMark) {
+  let n = 0;
+  if (theirsGen && typeof theirsGen === 'object') {
+    const mine = syncLS('qbank.cards.gen.v1', {}) || {};
+    Object.keys(theirsGen).forEach(k => {
+      const a = theirsGen[k] || {};
+      if (!a.t) return;
+      const b = mine[k];
+      if (!b || !b.t || (+a.ts || 0) > (+b.ts || 0)) { mine[k] = a; n++; }
+    });
+    if (n) syncLSWrite('qbank.cards.gen.v1', mine);
+  }
+  if (theirsMark && typeof theirsMark === 'object') {
+    const mine = syncLS('qbank.cards.mark.v1', {}) || {};
+    let m = 0;
+    Object.keys(theirsMark).forEach(k => {
+      if (mine[k] == null) { mine[k] = theirsMark[k]; m++; }
+    });
+    if (m) { syncLSWrite('qbank.cards.mark.v1', mine); n += m; }
+  }
+  return n;
+}
+/* 知识点笔记：storage 是 {v:1, list:[{id, ..., ts, editTs}]}，同 id 取 editTs/ts 新的 */
+function syncMergeLecNotes(theirs) {
+  if (!theirs || !Array.isArray(theirs.list)) return 0;
+  let mine = syncLS('qbank.lec.notes.v1', null);
+  if (!mine || !Array.isArray(mine.list)) mine = { v: 1, list: [] };
+  const idx = {};
+  mine.list.forEach(x => { if (x && x.id) idx[x.id] = x; });
+  let n = 0;
+  theirs.list.forEach(x => {
+    if (!x || !x.id) return;
+    const b = idx[x.id];
+    const ta = +(x.editTs || x.ts || 0);
+    if (!b) { mine.list.push(x); idx[x.id] = x; n++; return; }
+    const tb = +(b.editTs || b.ts || 0);
+    if (ta > tb) { Object.assign(b, x); n++; }
+  });
+  if (n) {
+    syncLSWrite('qbank.lec.notes.v1', mine);
+    try { if (window.LECNOTES && LECNOTES.render && String(location.hash || '').indexOf('#/notes') === 0) LECNOTES.render(); } catch (e) {}
+  }
+  return n;
+}
 async function syncPayload() {
   const s = SYC.scope, d = {};
   if (s.ans) { d.answers = ANS; d.favs = FAV; }
@@ -285,6 +341,22 @@ async function syncPayload() {
       const b = JSON.parse(localStorage.getItem('qbank.lec.bind.v1') || '{}');
       if (b && typeof b === 'object' && Object.keys(b).length) d.lecBind = b;
     } catch (e) {}
+  }
+  /* 考点卡：结论 + 会了/还不会 */
+  if (s.cards) {
+    const g = syncLS('qbank.cards.gen.v1', {});
+    if (g && Object.keys(g).length) d.cardsGen = g;
+    const m = syncLS('qbank.cards.mark.v1', {});
+    if (m && Object.keys(m).length) d.cardsMark = m;
+  }
+  /* 知识点笔记（整篇讲解 / 自己改过的正文） */
+  if (s.lecnotes) {
+    const n = syncLS('qbank.lec.notes.v1', null);
+    if (n && Array.isArray(n.list) && n.list.length) d.lecNotes = n;
+  }
+  /* 脑图里手写的考点总结：摊平成 {考点名: markdown} 单独传，避免整份脑图组（含坐标）来回搬 */
+  if (s.kp && window.MAPQ && typeof MAPQ.kpExport === 'function') {
+    try { const kp = MAPQ.kpExport(); if (kp && Object.keys(kp).length) d.kpMd = kp; } catch (e) {}
   }
   if (s.kb) { const kb = await syncKbPack(); if (kb && (kb.list || []).length) d.kb = kb; }
   /* 侧栏星标：只拿 star 这一项，搜索词 / 展开状态 / 多选状态都是每台设备自己的偏好 */
@@ -336,6 +408,9 @@ function syncMergeCloud(cloud) {
   let added = 0;
 
   if (s.lec !== false && d.lecBind) { try { added += syncMergeLecBind(d.lecBind); } catch (e) {} }
+  if (s.cards && (d.cardsGen || d.cardsMark)) { try { added += syncMergeCards(d.cardsGen, d.cardsMark); } catch (e) { syncLog('考点卡合并失败：' + (e.message || e), true); } }
+  if (s.lecnotes && d.lecNotes) { try { added += syncMergeLecNotes(d.lecNotes); } catch (e) { syncLog('知识点笔记合并失败：' + (e.message || e), true); } }
+  if (s.kp && d.kpMd && window.MAPQ && typeof MAPQ.kpImport === 'function') { try { added += MAPQ.kpImport(d.kpMd); } catch (e) { syncLog('考点总结合并失败：' + (e.message || e), true); } }
   /* 0-方案) 多方案：方案清单按 id 并集，归属按方案并集；本机已有的不动 */
   if (s.cat && window.SCM && SCM.raw && (d.schemes || d.catmap)) {
     try {

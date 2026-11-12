@@ -7878,8 +7878,39 @@ function bindShell() {
     close();
   }
 
+  /* ---------- 同步用：把所有组里手写的考点总结摊平 ---------- */
+  function kpExport() {
+    var out = {};
+    (G.list || []).forEach(function (g) {
+      var kp = (g && g.kp) || {};
+      Object.keys(kp).forEach(function (k) {
+        var v = String(kp[k] || '').trim();
+        if (v && !out[k]) out[k] = kp[k];
+      });
+    });
+    return out;
+  }
+  /* 只补本机空着的考点；本机已经写过的（哪怕更短）不覆盖 */
+  function kpImport(map) {
+    if (!map || typeof map !== 'object') return 0;
+    /* 脑图还没打开过时，组数据只在 localStorage 里，先读出来再合并 */
+    if (!(G.list || []).length) { try { gLoad(); } catch (e0) {} }
+    var g = gCur() || (G.list && G.list[0]);
+    if (!g) return 0;
+    if (!g.kp || typeof g.kp !== 'object') g.kp = {};
+    var n = 0;
+    Object.keys(map).forEach(function (k) {
+      var v = String(map[k] || '').trim();
+      if (!v) return;
+      if (!String(g.kp[k] || '').trim()) { g.kp[k] = map[k]; n++; }
+    });
+    if (n) { try { gSaveNow(); } catch (e0) {} }
+    return n;
+  }
+
   window.MAPQ = {
     kpOpen: function (n) { kpOpen(n); }, kpClose: kpClose,
+    kpExport: kpExport, kpImport: kpImport,
     open: open, close: close, toggle: toggle,
     layout: function (k) { applyLayout(k); return LAY.name; },
     /* 调试/自检用：手动放一个进度环、手动触发一次长按展开 */
