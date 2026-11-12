@@ -5108,3 +5108,28 @@ b.cc-kw.hid, .cc-kws .cc-kw.hid{
   text-decoration:none; color:#e8892b;
 }
 b.cc-kw.hid:hover, .cc-kws .cc-kw.hid:hover{ filter:blur(4px); background:rgba(232,137,43,.28); }
+
+
+/* ===== web846：考点卡接入真实调度（四档评分 + 到期队列） ===== */
+.cd-acts.cd-acts4{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.cd-acts4 button{ height:58px; border-radius:14px; border:1px solid transparent; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.cd-acts4 button b{ font-size:14px; font-weight:700; }
+.cd-acts4 button i{ font-style:normal; font-size:10.5px; opacity:.72; }
+.cd-acts4 .cd-no{ background:rgba(229,72,77,.14); color:#e5484d; border-color:rgba(229,72,77,.30); }
+.cd-acts4 .cd-hard{ background:rgba(232,137,43,.14); color:#c2410c; border-color:rgba(232,137,43,.32); }
+.cd-acts4 .cd-yes{ background:rgba(47,111,237,.14); color:#2f6fed; border-color:rgba(47,111,237,.32); }
+.cd-acts4 .cd-easy{ background:rgba(22,163,74,.14); color:#15803d; border-color:rgba(22,163,74,.32); }
+.cd-acts4 button:active{ transform:scale(.985); }
+body.dark .cd-acts4 .cd-no{ background:rgba(229,72,77,.18); color:#ff8b8e; }
+body.dark .cd-acts4 .cd-hard{ background:rgba(232,137,43,.18); color:#ffb27a; }
+body.dark .cd-acts4 .cd-yes{ background:rgba(91,157,255,.18); color:#8ec0ff; }
+body.dark .cd-acts4 .cd-easy{ background:rgba(34,197,94,.18); color:#7ee2a4; }
+@media (max-width:520px){
+  .cd-acts4 button{ height:52px; }
+  .cd-acts4 button b{ font-size:13px; }
+  .cd-acts4 button i{ font-size:10px; }
+}
+.cc-foot .cc-srs{ opacity:.85; }
+.cd-note b{ color:#2f6fed; }
+body.dark .cd-note b{ color:#8ec0ff; }

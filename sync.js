@@ -251,7 +251,7 @@ function syncLS(k, dflt) {
 }
 function syncLSWrite(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 /* 考点卡：结论按 ts 新的赢；「会了/还不会」本机有就以本机为准（本机可能刚点过） */
-function syncMergeCards(theirsGen, theirsMark) {
+function syncMergeCards(theirsGen, theirsMark, theirsSched, theirsCrt) {
   let n = 0;
   if (theirsGen && typeof theirsGen === 'object') {
     const mine = syncLS('qbank.cards.gen.v1', {}) || {};
@@ -270,6 +270,21 @@ function syncMergeCards(theirsGen, theirsMark) {
       if (mine[k] == null) { mine[k] = theirsMark[k]; m++; }
     });
     if (m) { syncLSWrite('qbank.cards.mark.v1', mine); n += m; }
+  }
+  /* 调度状态：同一张卡取 ts 新的（云端/本机谁后答对谁的） */
+  if (theirsSched && typeof theirsSched === 'object') {
+    const mine = syncLS('qbank.cards.sched.v1', {}) || {};
+    let m = 0;
+    Object.keys(theirsSched).forEach(k => {
+      const a = theirsSched[k] || {};
+      const b = mine[k];
+      if (!b || (+a.ts || 0) > (+b.ts || 0)) { mine[k] = a; m++; }
+    });
+    if (m) { syncLSWrite('qbank.cards.sched.v1', mine); n += m; }
+  }
+  /* collection 创建日：本机没有才补，避免两台把彼此的 due 基准改掉 */
+  if (theirsCrt && !localStorage.getItem('qbank.cards.crt.v1')) {
+    try { localStorage.setItem('qbank.cards.crt.v1', String(theirsCrt)); } catch (e) {}
   }
   return n;
 }
@@ -348,6 +363,10 @@ async function syncPayload() {
     if (g && Object.keys(g).length) d.cardsGen = g;
     const m = syncLS('qbank.cards.mark.v1', {});
     if (m && Object.keys(m).length) d.cardsMark = m;
+    const sc = syncLS('qbank.cards.sched.v1', {});
+    if (sc && Object.keys(sc).length) d.cardsSched = sc;
+    const crt = localStorage.getItem('qbank.cards.crt.v1');
+    if (crt) d.cardsCrt = crt;
   }
   /* 知识点笔记（整篇讲解 / 自己改过的正文） */
   if (s.lecnotes) {
@@ -410,7 +429,7 @@ function syncMergeCloud(cloud) {
   if (s.lec !== false && d.lecBind) { try { added += syncMergeLecBind(d.lecBind); } catch (e) {} }
   let cardsAdded = 0, notesAdded = 0;
   if (s.cards && (d.cardsGen || d.cardsMark)) {
-    try { cardsAdded = syncMergeCards(d.cardsGen, d.cardsMark); added += cardsAdded; }
+    try { cardsAdded = syncMergeCards(d.cardsGen, d.cardsMark, d.cardsSched, d.cardsCrt); added += cardsAdded; }
     catch (e) { syncLog('考点卡合并失败：' + (e.message || e), true); }
   }
   if (s.lecnotes && d.lecNotes) {

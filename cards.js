@@ -308,10 +308,49 @@
   var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false };
   var POS_KEY = 'qbank.cards.pos.v1';
 
+  /* ---------- 真实调度（Anki 式四档 + 到期队列） ---------- */
+  var SCHED_KEY = 'qbank.cards.sched.v1';
+  var CRT_KEY = 'qbank.cards.crt.v1';
+  var RATE_NAME = { 1: '还不会', 2: '有点难', 3: '会了', 4: '简单' };
+
+  function dayNo() { return Math.floor(Date.now() / 86400000); }
+  function crtDay() {
+    var v = Number(localStorage.getItem(CRT_KEY) || 0);
+    if (!v) { v = dayNo(); try { localStorage.setItem(CRT_KEY, String(v)); } catch (e) {} }
+    return v;
+  }
+  function schedMap() { return readLS(SCHED_KEY, {}) || {}; }
+  function stateOf(it, idx) {
+    var st = schedMap()[it.key];
+    if (st && st.type != null) return st;
+    return { type: 0, queue: 0, due: idx || 0, ivl: 0, factor: 2500, reps: 0, lapses: 0, left: 0 };
+  }
+  function isReady(st) {
+    if (!st || st.type === 0) return true;
+    if (st.type === 2) return crtDay() + st.due <= dayNo();
+    return st.due <= Math.floor(Date.now() / 1000);
+  }
+  function dueText(st) {
+    if (!st || st.type === 0) return '新卡';
+    if (st.type === 2) {
+      var d = crtDay() + st.due - dayNo();
+      return d <= 0 ? '今天到期' : (d + ' 天后');
+    }
+    var sec = st.due - Math.floor(Date.now() / 1000);
+    if (sec <= 0) return '现在到期';
+    if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + ' 分钟后';
+    if (sec < 86400) return Math.round(sec / 3600) + ' 小时后';
+    return Math.round(sec / 86400) + ' 天后';
+  }
+
   function filterItems() {
     var m = markers();
     var list = ST.items;
-    if (ST.filter === 'todo') list = list.filter(function (it) { return m[it.key] !== 1; });
+    if (ST.filter === 'due') list = list.filter(function (it) { return isReady(stateOf(it)); });
+    else if (ST.filter === 'newc') list = list.filter(function (it) { return (stateOf(it).reps || 0) === 0; });
+    else if (ST.filter === 'learn') list = list.filter(function (it) { var t = stateOf(it).type; return t === 1 || t === 3; });
+    else if (ST.filter === 'review') list = list.filter(function (it) { return stateOf(it).type === 2; });
+    else if (ST.filter === 'todo') list = list.filter(function (it) { return m[it.key] !== 1; });
     else if (ST.filter === 'yes') list = list.filter(function (it) { return m[it.key] === 1; });
     else if (ST.filter === 'no') list = list.filter(function (it) { return m[it.key] === -1; });
     var q = String(ST.q || '').trim().toLowerCase();
@@ -387,21 +426,26 @@
       all: ST.items.length,
       todo: ST.items.filter(function (x) { return mAll[x.key] !== 1; }).length,
       yes: ST.items.filter(function (x) { return mAll[x.key] === 1; }).length,
-      no: ST.items.filter(function (x) { return mAll[x.key] === -1; }).length
+      no: ST.items.filter(function (x) { return mAll[x.key] === -1; }).length,
+      due: ST.items.filter(function (x) { return isReady(stateOf(x)); }).length,
+      newc: ST.items.filter(function (x) { return (stateOf(x).reps || 0) === 0; }).length,
+      learn: ST.items.filter(function (x) { var t = stateOf(x).type; return t === 1 || t === 3; }).length,
+      review: ST.items.filter(function (x) { return stateOf(x).type === 2; }).length
     };
     var h = '<div class="card cd-head">'
       + '<div class="cd-htop"><div><b>' + esc(bank.title || bank.id) + '</b>'
       + '<span>共 ' + (bank.questions || []).length + ' 题 · ' + ST.items.length + ' 个考点</span></div>'
       + '<div class="cd-hnum">' + p.done + '/' + p.total + '<i>已背</i></div></div>'
       + '<div class="cd-progline"><i style="width:' + (p.total ? Math.round(p.done * 100 / p.total) : 0) + '%"></i></div>'
-      + '<div class="cd-note">点任一行从那个考点开始背；底部「开始背诵」从头来（结论写完才可用）。</div>'
+      + '<div class="cd-note">今天到期 <b>' + cnt.due + '</b> 张（其中新卡 ' + cnt.newc + ' 张）· 点任一行开始背；四档评分按 Anki 的间隔走。</div>'
       + '<div class="cd-srch"><input id="cdQ" class="cd-q" placeholder="搜考点 / 题干关键字…" value="' + esc(ST.q || '') + '">'
       + '<button class="cd-shuf' + (ST.shuf ? ' on' : '') + '" data-act="shuf" title="打乱顺序（背第二遍时用）">' + (ST.shuf ? '🎲 打乱中' : '🎲 打乱') + '</button></div>'
       + '<div class="cd-flt">'
+      + '<button class="cd-fbtn' + (ST.filter === 'due' ? ' on' : '') + '" data-act="flt" data-f="due">今天要背 ' + cnt.due + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'all' ? ' on' : '') + '" data-act="flt" data-f="all">全部 ' + cnt.all + '</button>'
-      + '<button class="cd-fbtn' + (ST.filter === 'todo' ? ' on' : '') + '" data-act="flt" data-f="todo">没背过 ' + cnt.todo + '</button>'
-      + '<button class="cd-fbtn' + (ST.filter === 'yes' ? ' on' : '') + '" data-act="flt" data-f="yes">已会 ' + cnt.yes + '</button>'
-      + '<button class="cd-fbtn' + (ST.filter === 'no' ? ' on' : '') + '" data-act="flt" data-f="no">还不会 ' + cnt.no + '</button>'
+      + '<button class="cd-fbtn' + (ST.filter === 'newc' ? ' on' : '') + '" data-act="flt" data-f="newc">新卡 ' + cnt.newc + '</button>'
+      + '<button class="cd-fbtn' + (ST.filter === 'learn' ? ' on' : '') + '" data-act="flt" data-f="learn">学习中 ' + cnt.learn + '</button>'
+      + '<button class="cd-fbtn' + (ST.filter === 'review' ? ' on' : '') + '" data-act="flt" data-f="review">复习中 ' + cnt.review + '</button>'
       + '</div>'
       + '<div class="cd-tools"><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
       + '</div>';
@@ -417,7 +461,7 @@
         h += '<button class="cd-row' + (noGen ? ' cd-row-todo' : '') + '" data-act="card" data-i="' + idx + '">'
           + '<em>' + n + '</em>'
           + '<div><b>' + esc(it.tag) + '</b><span>' + (it.qs.length > 1 ? it.qs.length + ' 道题都考这里 · ' : '')
-          + '第 ' + it.qs.slice(0, 6).join('、') + ' 题</span></div>'
+          + '第 ' + it.qs.slice(0, 6).join('、') + ' 题 · ' + dueText(stateOf(it)) + '</span></div>'
           + mark
           + (noGen ? '<u class="cd-todo">待写</u>' : '')
           + '</button>';
@@ -530,9 +574,11 @@
       + '</div>'
       + '<div class="cd-stage" id="cdStage"></div>'
       + '<div class="cd-loadline" id="cdLoad"><i></i></div>'
-      + '<div class="cd-acts">'
-      + '<button class="cd-no" data-act="no">还不会</button>'
-      + '<button class="cd-yes" data-act="yes">会了</button>'
+      + '<div class="cd-acts cd-acts4">'
+      + '<button class="cd-no" data-act="rate" data-r="1"><b>还不会</b><i>1 · 1 分钟后</i></button>'
+      + '<button class="cd-hard" data-act="rate" data-r="2"><b>有点难</b><i>2</i></button>'
+      + '<button class="cd-yes" data-act="rate" data-r="3"><b>会了</b><i>3 · 看熟练度</i></button>'
+      + '<button class="cd-easy" data-act="rate" data-r="4"><b>简单</b><i>4 · 隔更久</i></button>'
       + '</div>'
       + '<div class="cd-prog"><i id="cdProg"></i></div>';
     document.body.appendChild(d);
@@ -559,6 +605,7 @@
       if (a === 'next') return step(1);
       if (a === 'yes') return mark(1);
       if (a === 'no') return mark(-1);
+      if (a === 'rate') return rate(Number(b.getAttribute('data-r')) || 3);
       if (a === 'ai') return genOne();
       if (a === 'kw') return kwMenuShow(b, b.getAttribute('data-kw') || b.textContent || '');
       if (a === 'stem') {
@@ -643,7 +690,7 @@
       + '<u>答案：' + esc(ans || '—') + '</u>'
       + '<button class="cc-goq" data-act="quizone">去做这道题 →</button></div>'
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
-      + (v === 1 ? ' · 已标记会' : (v === -1 ? ' · 已标记还不会' : '')) + '</div>'
+      + ' · <span class="cc-srs">背过 ' + ((stateOf(it).reps || 0)) + ' 次 · 下次 ' + dueText(stateOf(it)) + '</span></div>'
       + '</div>'
       + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
@@ -660,6 +707,36 @@
     ST.i = (ST.i + d + list.length) % list.length;
     paintCard();
   }
+  function rate(r) {
+    var list = filterItems();
+    var it = list[ST.i];
+    if (!it) return;
+    var st = stateOf(it);
+    var nowSec = Math.floor(Date.now() / 1000);
+    var today = dayNo();
+    var crt = crtDay();
+    var next = null;
+    if (window.ANKI_SCHED && window.ANKI_SCHED.answer) {
+      try {
+        next = window.ANKI_SCHED.answer(st, r, nowSec, window.ANKI_SCHED.DEFAULT_DECK,
+          { today: today, crtDay: crt, preLapseIvl: st.ivl || 0 });
+      } catch (e) { toast('调度出错：' + (e && e.message), 2400); return; }
+      next.ts = Date.now();
+      var map = schedMap();
+      map[it.key] = next;
+      writeLS(SCHED_KEY, map);
+    }
+    var m = markers();
+    m[it.key] = r >= 3 ? 1 : -1;
+    writeLS(MARK_KEY, m);
+    var after = filterItems();
+    if (!after.length) { closeCard(); toast('都过完了 🎉', 1800); return; }
+    ST.i = ST.filter === 'all' ? (ST.i + 1) % after.length : Math.min(ST.i, after.length - 1);
+    try { renderPreview(); } catch (e0) {}   /* 背后的列表/计数跟着更新（到期数、学习中、复习中） */
+    paintCard();
+    toast('记下：' + RATE_NAME[r] + ' · 下次 ' + dueText(next || st), 1300);
+  }
+
   function mark(v) {
     var list = filterItems();
     var it = list[ST.i];
