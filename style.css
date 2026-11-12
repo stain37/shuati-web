@@ -4614,12 +4614,13 @@ body.dark .lec-ovmh .lec-ovmode.on{background:#3b82f6;border-color:#3b82f6;color
 .cd-gap{height:76px}
 .cd-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-top:1px solid rgba(20,26,34,.08)}
 .cd-bar .btn{flex:1}
-.cd-mask{position:fixed;inset:0;z-index:40075;display:none;flex-direction:column;background:#eef2f8;padding-top:env(safe-area-inset-top)}
+.cd-mask{position:fixed;inset:0;z-index:40075;display:none;flex-direction:column;background:#eef2f8}
 .cd-mask.on{display:flex}
 .cd-top{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px}
 .cd-top b{margin-left:auto;margin-right:auto;font-size:13px;color:#516072}
 .cd-back,.cd-qbtn{border:0;background:transparent;font-size:13.5px;color:#2f66c9;padding:6px 4px;cursor:pointer}
-.cd-stage{flex:1;min-height:0;padding:6px 14px 0;display:flex;flex-direction:column;justify-content:center;overflow:auto}
+.cd-stage{flex:1;min-height:0;padding:8px 14px 0;display:flex;flex-direction:column;justify-content:flex-start;overflow:auto;-webkit-overflow-scrolling:touch}
+.cd-stage>.cc-wrap{margin-block:auto;padding-bottom:10px}
 .cc-wrap{width:100%;max-width:560px;margin:0 auto}
 .cc-card{min-height:210px;display:flex;flex-direction:column}
 .cc-card{width:100%;background:#fff;border-radius:20px;padding:20px 18px 16px;box-shadow:0 10px 30px rgba(24,44,80,.10);border:1px solid rgba(63,126,240,.10)}
@@ -4702,3 +4703,94 @@ body.dark .fh-t{color:#e9eef6}
 body.dark .fh-s,body.dark .hlink{color:#9aa7b8}
 .qsheet-sub{grid-column:1/-1;margin:8px 2px -2px;font-size:12px;font-weight:700;color:#8b95a5;letter-spacing:.02em}
 body.dark .qsheet-sub{color:#8b95a5}
+
+/* web791：刷题模式收成「模式 ▾」；错题本/收藏页排序筛选折叠 */
+.qmode{position:relative}
+.qm-trigger .qm-car{font-size:11px;opacity:.7}
+.qm-pop{position:absolute;left:0;top:calc(100% + 6px);z-index:80;min-width:212px;padding:10px 10px 6px;
+  background:#fff;border:1px solid rgba(15,23,42,.10);border-radius:14px;box-shadow:0 14px 34px rgba(15,23,42,.18)}
+.qm-pop[hidden]{display:none}
+.qm-pop-t{font-size:11.5px;font-weight:700;color:#8b95a5;margin:2px 2px 6px}
+.qm-pop-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.qm-pop-row:last-child{margin-bottom:2px}
+body.dark .qm-pop{background:#151c27;border-color:rgba(255,255,255,.12)}
+.fold.adv summary{cursor:pointer}
+.fold.adv summary b{color:inherit}
+
+/* web791：脑图路径置信度门槛 */
+#mpPathTh.mp-th{height:28px;padding:0 6px;border-radius:8px;font-size:12px;
+  background:rgba(255,255,255,.9);border:1px solid rgba(15,23,42,.14);color:#141a22}
+body.dark #mpPathTh.mp-th{background:#1b2330;border-color:rgba(255,255,255,.16);color:#e9eef6}
+.fold.sweep summary{cursor:pointer;font-size:12px;opacity:.8}
+.fold.sweep .fold-body{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-top:6px}
+
+/* web791：脑图 AI 解析的真实状态 */
+.mp-sdai-wait{color:#5b6472;font-size:12.5px;margin-top:6px}
+.mp-sdai-wait::after{content:'';display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;
+  border:2px solid rgba(10,132,255,.25);border-top-color:#0a84ff;animation:lecSpin .8s linear infinite;vertical-align:-1px}
+.mp-sdai-err{color:#b42318;font-size:12.5px;margin-top:6px;line-height:1.55}
+body.dark .mp-sdai-wait{color:#9aa6b6}
+body.dark .mp-sdai-err{color:#ff8a80}
+
+/* web791：考点总结一键生成 + 图片删除 */
+.mp-kpsub2{display:block}
+.mp-kpsub-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mp-kpsub-t{font-weight:600}
+.mp-kpsub-b{display:flex;gap:8px;margin-top:6px}
+.mp-kpgen{background:#0a84ff;color:#fff;border-color:#0a84ff;font-weight:600}
+.mp-kpgen:hover{filter:brightness(1.05)}
+#mpKpDraft[hidden]{display:none}
+.rte-imgsel{outline:2px solid #0a84ff;outline-offset:2px;border-radius:6px}
+#rteImgX{position:fixed;z-index:99999;border:0;border-radius:999px;padding:6px 12px;font-size:12px;color:#fff;
+  background:#d92d20;box-shadow:0 6px 18px rgba(0,0,0,.18);cursor:pointer}
+body.dark #rteImgX{background:#ff6b5e}
+
+
+/* ===== web808：知识点讲解「挂起」浮标（生成在后台继续） ===== */
+.lec-sx.lec-minbtn{ font-size:15px; line-height:1; padding-bottom:2px; }
+#lecOvChip.lec-ovchip{
+  position:fixed; right:14px; bottom:86px; z-index:30080;
+  max-width:calc(100vw - 28px);
+  display:flex; flex-direction:column; gap:1px;
+  padding:10px 15px; border-radius:16px; cursor:pointer;
+  background:#1b1f2a; color:#fff; border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 10px 28px rgba(0,0,0,.35);
+  font-size:12px; line-height:1.45;
+}
+#lecOvChip.lec-ovchip b{ font-size:13.5px; font-weight:700; letter-spacing:.2px; }
+#lecOvChip.lec-ovchip em{ font-style:normal; opacity:.72; }
+#lecOvChip.lec-ovchip i{ font-style:normal; opacity:.92; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:270px; font-size:12.5px; }
+body:not(.dark) #lecOvChip.lec-ovchip{ background:#fff; color:#1b2430; border-color:rgba(0,0,0,.1); box-shadow:0 10px 28px rgba(31,45,61,.18); }
+
+
+/* ===== web810：面板内的 toast 要压在上面（原来 z-index:1000 被 .lec-smask 40060 盖住，存笔记时看不到反馈） ===== */
+.toast{ z-index:50000 !important; }
+.lec-nsave.ok{ background:#16a34a !important; border-color:#16a34a !important; color:#fff !important; }
+
+
+/* ===== web811：挂起按钮别再像红色的关闭键 ===== */
+.lec-sx.lec-minbtn{ background:rgba(120,130,150,.16)!important; color:inherit!important; border-color:rgba(120,130,150,.28)!important; font-weight:600; }
+.lec-sx.lec-minbtn:hover{ background:rgba(120,130,150,.28)!important; }
+body.dark .lec-sx.lec-minbtn{ background:rgba(255,255,255,.12)!important; border-color:rgba(255,255,255,.2)!important; color:#e9eef6!important; }
+
+
+/* ===== web812：贯通篇幅三档选择器 ===== */
+.lec-capw{display:inline-flex;align-items:center;gap:4px;font-size:12px;opacity:.95}
+.lec-capw-t{opacity:.65}
+select.lec-cap{font:inherit;font-size:12px;padding:2px 5px;border-radius:8px;border:1px solid rgba(0,0,0,.16);background:#fff;color:inherit;outline:none}
+body.dark select.lec-cap{background:#1d2634;color:#e9eef6;border-color:rgba(255,255,255,.18)}
+
+
+/* ===== web814：贯通篇幅改成胶囊分段控件（参考 ChatGPT 的 pill 切换） ===== */
+.lec-capw{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+.lec-capw-t{opacity:.6;font-size:11.5px;letter-spacing:.02em}
+.lec-seg{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:999px;
+  background:rgba(126,138,158,.18);box-shadow:inset 0 0 0 1px rgba(126,138,158,.14)}
+.lec-segbtn{border:0;background:transparent;color:inherit;font:inherit;font-size:11.5px;line-height:1;
+  padding:5px 10px;border-radius:999px;opacity:.62;cursor:pointer;
+  transition:background .18s ease,color .18s ease,opacity .18s ease,box-shadow .18s ease,transform .18s ease}
+.lec-segbtn:hover{opacity:.9}
+.lec-segbtn.on{background:#fff;color:#0f172a;opacity:1;box-shadow:0 1px 2px rgba(15,23,42,.16),0 2px 8px rgba(15,23,42,.10)}
+.lec-segbtn:active{transform:scale(.97)}
+body.dark .lec-seg{background:rgba(255,255,255,.10);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+body.dark .lec-segbtn.on{background:#e9eef6;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.4)}

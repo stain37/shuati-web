@@ -3813,6 +3813,7 @@ function renderHome() {
   const guideHtml = firstGuideHtml();
 
   const bytes = storageBytes();
+
   $('view').innerHTML = `
     <div class="hero">
       <h1>刷题站</h1>
@@ -4528,16 +4529,26 @@ function renderQuiz(bankId) {
     <div class="card qcard">
       <div class="qgrip" id="qdBar" title="按住拖动题目卡片；点一下浮起 / 还原"><i></i></div>
       ${attRailHtml(fk)}
-      <div class="qmode" role="tablist" aria-label="刷题模式">
-        ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
-          mk === 'normal' ? '普通模式：点选项判分，看解析' :
-          mk === 'speed' ? '速刷模式：答对约 1.2 秒自动跳下一题，答错停下看解析' :
-          '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
+      <div class="qmode" aria-label="刷题模式">
+        <button class="chip qm qm-trigger${SET.quizMode !== 'normal' ? ' on' : ''}" id="qmMenu" aria-haspopup="true" aria-expanded="false" title="切换刷题模式（普通 / 速刷 / 背题），以及计时、单手、语音">${
+          (QUIZ_MODES.find(function (x) { return x[0] === SET.quizMode; }) || QUIZ_MODES[0])[1]} <span class="qm-car">▾</span></button>
         ${speed && SET.speedSec > 0 && !locked ? `<span class="sp-clock" id="spClock" title="速刷限时：超时算答错">⏱ ${SET.speedSec}s</span>` : ''}
-        <button class="chip qm qtime${SET.qtime ? ' on' : ''}" id="btnQTime" title="本套题的用时：点一下显示 / 隐藏（长按归零）">⏱ 计时</button>
-        <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
-          SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
-        <button class="chip qm voice${SET.voice && SET.voice.on ? ' on' : ''}" id="btnVoice" title="语音刷题：自动读题 + 听你说 A / ABC（多选）；点一下开，再点关，长按调设置">${SET.voice && SET.voice.on ? '🎙 语音中' : '🎙 语音'}</button>
+        <div class="qm-pop" id="qmPop" hidden>
+          <div class="qm-pop-t">模式</div>
+          <div class="qm-pop-row">
+            ${QUIZ_MODES.map(([mk, mt]) => `<button class="chip qm${SET.quizMode === mk ? ' on' : ''}" data-qm="${mk}" title="${
+              mk === 'normal' ? '普通模式：点选项判分，看解析' :
+              mk === 'speed' ? '速刷模式：答对约 1.2 秒自动跳下一题，答错停下看解析' :
+              '背题模式：不要求作答，直接看答案和解析（不写任何作答记录，不熟就点 ★ 收藏）'}">${mt}</button>`).join('')}
+          </div>
+          <div class="qm-pop-t">辅助</div>
+          <div class="qm-pop-row">
+            <button class="chip qm qtime${SET.qtime ? ' on' : ''}" id="btnQTime" title="本套题的用时：点一下显示 / 隐藏（长按归零）">⏱ 计时</button>
+            <button class="chip qm hand${SET.hand && SET.hand !== 'off' ? ' on' : ''}" id="btnHand" title="单手刷题：选项和翻页按钮放大、贴到拇指区；再点一下换左右手（左手 / 右手 / 关）">${
+              SET.hand === 'left' ? '🤙 左手' : SET.hand === 'right' ? '🤚 右手' : '🤚 单手'}</button>
+            <button class="chip qm voice${SET.voice && SET.voice.on ? ' on' : ''}" id="btnVoice" title="语音刷题：自动读题 + 听你说 A / ABC（多选）；点一下开，再点关，长按调设置">${SET.voice && SET.voice.on ? '🎙 语音中' : '🎙 语音'}</button>
+          </div>
+        </div>
         <span class="spacer-grow"></span>
         <span class="qm-hint small muted">${recite ? '背题：直接看答案，不记作答' : speed ? '速刷：答对自动跳，答错停下' : ''}</span>
       </div>
@@ -4617,6 +4628,22 @@ function renderQuiz(bankId) {
     </div>`;
 
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
+  /* web791：模式收进一个下拉；点外面 / 点任意一项都收起 */
+  (function bindQmPop() {
+    const m = $('qmMenu'), pop = $('qmPop');
+    if (!m || !pop) return;
+    m.onclick = (e) => { e.stopPropagation(); const open = pop.hidden; pop.hidden = !open; m.setAttribute('aria-expanded', String(open)); };
+    pop.addEventListener('click', (e) => { if (e.target.closest('[data-qm],#btnQTime,#btnHand,#btnVoice')) { pop.hidden = true; m.setAttribute('aria-expanded', 'false'); } });
+    if (!window.__qmOutside) {
+      window.__qmOutside = true;
+      document.addEventListener('pointerdown', (e) => {
+        const p2 = document.getElementById('qmPop'), t2 = document.getElementById('qmMenu');
+        if (!p2 || p2.hidden) return;
+        if (p2.contains(e.target) || (t2 && t2.contains(e.target))) return;
+        p2.hidden = true; if (t2) t2.setAttribute('aria-expanded', 'false');
+      }, true);
+    }
+  })();
   const hb = $('btnHand'); if (hb) hb.onclick = () => uiHandCycle();
   /* 「⋯ 更多」抽屉必须挂在 body 下：面板磨砂（backdrop-filter）会给卡片生成包含块，
      .qsheet 的 position:fixed 会被困在卡片里 → 被底栏盖住 / 答题后整块看不见。

@@ -2569,8 +2569,8 @@ function renderList(mode) {
         <div><b>${acc}%</b><span>总正确率</span></div>
       </div>
       ${isWrong ? `<div class="revbar">
-        <div class="dueinfo"><b>${dueItems.length ? '今天有 ' + dueItems.length + ' 道错题到期该复习' : '今天没有到期的错题'}</b>
-          <span class="small muted">间隔重复：答对拉长间隔（1/3/8/20… 天），答错当天打回队列</span></div>
+        <div class="dueinfo"><b>${dueItems.length ? dueItems.length + ' 道到期' : '今天没有到期的错题'}</b>
+          <span class="small muted">答对拉长间隔（1/3/8/20… 天），答错当天回来</span></div>
         <button class="btn primary" id="wRevAll" ${dueItems.length ? '' : 'disabled'}>开始复习（${dueItems.length} 题）</button>
         <button class="btn" id="wRevSel" ${selKeys.length ? '' : 'disabled'}>复习选中的 ${selKeys.length} 题</button>
       </div>` : ''}
@@ -2594,6 +2594,9 @@ function renderList(mode) {
       ${qaiScopeHtml()}
       ${QAI.on && kwQ.length >= 2 ? `<div class="tools" id="lkwAiRow">${qaiNoteHtml(kwQ, aiHits.length)}</div>` : ''}
 
+      <details class="fold adv" id="listAdv">
+        <summary>排序与筛选 · <b>${(SORTS[st.sort] || SORTS.wrong).label} ${ARROW(st.dir)}</b>${isWrong && (st.minWrong || st.onlyOpen || st.onlyDue || st.leech) ? ' · 已加条件' : ''}</summary>
+        <div class="fold-body">
       <div class="tools">
         <span class="tl">排序（点第二次反向）</span>
         ${Object.keys(SORTS).map(id => {
@@ -2614,6 +2617,8 @@ function renderList(mode) {
         ${wfpIsDefault(st) ? '' : `<button class="btn small" id="stReset" title="把筛选和排序恢复成默认（错次 ↓、不筛选）">↺ 重置筛选</button>`}
       </div>${st.leech ? `<div class="note small" style="margin-top:8px">🧟 顽固题：错 ≥ 3 次且到现在还没做对（共 ${shown.length} 道）。多刷没用——先看解析、写「口诀」，或者换一本题库再来。</div>` : ''}
       ${wfpIsDefault(st) ? '' : `<div class="small muted" style="margin-top:6px">筛选和排序会记住（下次打开错题本还是这样），点「↺ 重置筛选」回默认。</div>`}` : ''}
+        </div>
+      </details>
 
       <details class="fold">
         <summary>批量操作与导出 · 已选 <b>${selN}</b> 题</summary>
@@ -2650,17 +2655,22 @@ function renderList(mode) {
 
           <div class="tools">
             <span class="tl">导出</span>
-            <label class="chk mini"><input type="checkbox" id="withExp" ${st.withExp ? 'checked' : ''}>含解析</label>
-            <label class="chk mini"><input type="checkbox" id="withImg" ${st.withImg ? 'checked' : ''}>含图片</label>
-            <label class="chk mini"><input type="checkbox" id="withSel" ${st.withSel ? 'checked' : ''}>含我的选择（错项）</label>
-            <label class="chk mini"><input type="checkbox" id="withStat" ${st.withStat ? 'checked' : ''}>含错次统计</label>
-            <select id="fmtSel" class="num">
-              <option value="md">Markdown</option>
-              <option value="html">HTML（可打印成PDF）</option>
-              <option value="json">JSON</option>
-            </select>
             <button class="btn primary" id="expSel" ${selN ? '' : 'disabled'}>导出选中（${selN}）</button>
             <button class="btn" id="expShown">导出当前列表（${shown.length}）</button>
+            <details class="fold sweep" style="flex:1 1 100%">
+              <summary>导出选项 · ${({md:'Markdown',html:'HTML',json:'JSON'})[st.fmt || 'md'] || 'Markdown'}${st.withExp ? ' · 含解析' : ''}${st.withImg ? ' · 含图片' : ''}</summary>
+              <div class="fold-body">
+                <label class="chk mini"><input type="checkbox" id="withExp" ${st.withExp ? 'checked' : ''}>含解析</label>
+                <label class="chk mini"><input type="checkbox" id="withImg" ${st.withImg ? 'checked' : ''}>含图片</label>
+                <label class="chk mini"><input type="checkbox" id="withSel" ${st.withSel ? 'checked' : ''}>含我的选择（错项）</label>
+                <label class="chk mini"><input type="checkbox" id="withStat" ${st.withStat ? 'checked' : ''}>含错次统计</label>
+                <select id="fmtSel" class="num">
+                  <option value="md">Markdown</option>
+                  <option value="html">HTML（可打印成PDF）</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+            </details>
           </div>
         </div>
       </details>

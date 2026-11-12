@@ -2139,7 +2139,7 @@
     setTimeout(function () { try { ta.focus(); } catch (e) {} }, 60);
   }
 
-  function closeWeb() { var m = $('#lecWebMask'); if (m) m.remove(); }
+  function closeWeb() { var m = $('#lecWebMask'); if (m) m.remove(); try { ovChipOff(); } catch (e) {} }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
@@ -2266,7 +2266,15 @@
   }
 
   /* ===== 知识点总览：全库合并成一份，每条挂「哪份讲义第几页」 ===== */
-  var OV_MODE = 'chapter';
+  var OV_MODE = 'full';
+  /* 贯通篇幅三档：原句池 240 / 320 / 420 条（直接决定成篇多长） */
+  var OV_CAP_KEY = 'qbank.lec.fullcap.v1';
+  var OV_CAPS = [240, 320, 420];
+  var OV_FULL_CAP = 320;
+  try {
+    var _fc = parseInt(localStorage.getItem(OV_CAP_KEY), 10);
+    if (OV_CAPS.indexOf(_fc) >= 0) OV_FULL_CAP = _fc;
+  } catch (eCap) {}
   var OV_STOPPED = false;
   var OV_ST = null;
   var OV_LAST = null;
@@ -2640,7 +2648,9 @@
 
   var OV_CACHE_KEY = 'qbank.lec.ov2.v1';
   function ovCacheKey(keys, mode, sel) {
-    return mode + '|' + (keys || []).slice().sort().join('/') + '|' + String(sel || '').slice(0, 24);
+    /* 贯通模式按「原句池档位」也分缓存，否则换了长短档还拿旧那篇 */
+    var mk = (mode === 'full') ? ('full' + OV_FULL_CAP) : mode;
+    return mk + '|' + (keys || []).slice().sort().join('/') + '|' + String(sel || '').slice(0, 24);
   }
   function ovCacheGet(keys, mode, sel) {
     try {
@@ -2727,6 +2737,27 @@
     return h;
   }
 
+  /* 挂起：生成在后台继续，面板收成右下角浮标，点一下回来 */
+  var OV_MIN = false;
+  function ovChipOff() { var c = document.getElementById('lecOvChip'); if (c) c.remove(); }
+  function ovChip(st) {
+    var c = document.getElementById('lecOvChip');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'lecOvChip'; c.className = 'lec-ovchip'; c.title = '点一下回到知识点讲解';
+      c.addEventListener('click', function () {
+        OV_MIN = false;
+        var m = document.getElementById('lecWebMask');
+        if (m) m.style.display = '';
+        c.remove();
+      });
+      document.body.appendChild(c);
+    }
+    var ov = (st && st.ov) || {};
+    var txt = ov.pending ? ('正在写 · ' + String(ov.prog || '').slice(0, 30))
+      : ((ov.sections && ov.sections.length) ? ('写完了 · ' + ov.sections.length + ' 节') : '已挂起');
+    c.innerHTML = '<b>📖 知识点讲解</b><em>' + esc(String((st && st.sel) || '').slice(0, 12)) + '</em><i>' + esc(txt) + '</i>';
+  }
   function renderOverview(st) {
     OV_ST = st;
     OV_LAST = st;
@@ -2743,13 +2774,21 @@
     if (st.sources && st.sources.length) {
       meta.push('<button class="lec-ovsrcb" data-web="srcs">依据 ' + st.sources.length + ' 条 ▾</button>');
     }
+    if (st.mode === 'full') {
+      meta.push('<span class="lec-capw"><span class="lec-capw-t">篇幅</span><span class="lec-seg" role="group" aria-label="贯通篇幅">'
+        + OV_CAPS.map(function (c) {
+          return '<button type="button" class="lec-segbtn' + (c === OV_FULL_CAP ? ' on' : '') + '" data-web="cap" data-cap="' + c + '" title="扫 ' + c + ' 条原句">' + c + '</button>';
+        }).join('')
+        + '</span></span>');
+    }
     mask.innerHTML = '<div class="lec-ssheet lec-ovsheet">'
       + '<div class="lec-shead"><b>📖 知识点讲解</b>'
       + '<span class="lec-ovmh">'
       + '<button class="lec-ovmode' + (st.mode === 'short' ? ' on' : '') + '" data-web="mode" data-m="short" title="简短版：5–7 段，一分钟看完">简短</button>'
-      + '<button class="lec-ovmode' + ((st.mode || 'chapter') === 'mid' ? ' on' : '') + '" data-web="mode" data-m="mid" title="标准版：12–16 段">标准</button>'
-      + '<button class="lec-ovmode' + ((st.mode || 'chapter') === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter" title="整章版：18–26 段，可替代翻讲义">整章</button>'
-      + '</span><button class="lec-sx" data-web="close">×</button></div>'
+      + '<button class="lec-ovmode' + ((st.mode || 'full') === 'mid' ? ' on' : '') + '" data-web="mode" data-m="mid" title="标准版：12–16 段">标准</button>'
+      + '<button class="lec-ovmode' + ((st.mode || 'full') === 'chapter' ? ' on' : '') + '" data-web="mode" data-m="chapter" title="整章版：18–26 段，可替代翻讲义">整章</button>'
+      + '<button class="lec-ovmode' + ((st.mode || 'full') === 'full' ? ' on' : '') + '" data-web="mode" data-m="full" title="贯通版：全库相关原句分批提炼、逐轮重合，一次成篇（最长）">贯通</button>'
+      + '</span><button class="lec-sx lec-minbtn" data-web="min" title="挂起：后台继续写，点右下角浮标回来">–</button><button class="lec-sx" data-web="close">×</button></div>'
       + '<div class="lec-ovmeta"><span class="lec-ovq" title="你输入的搜索词">' + esc(String(st.sel || '').slice(0, 40)) + '</span>'
       + ((st.keys && st.keys.length) ? '<button class="lec-ovkeys" data-web="ask" title="点这里改词重搜">词：' + esc(st.keys.join('/')) + '</button>' : '')
       + (meta.length ? '<i>·</i>' + meta.join('<i>·</i>') : '') + '</div>'
@@ -2758,14 +2797,31 @@
       + '<div class="lec-sfoot">'
       + (pend
         ? '<button class="lec-nsum2" data-web="stop">■ 停止</button>'
-        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? ('↻ 重新生成' + (st.mode === 'chapter' ? '整篇' : '')) : '✨ 生成') + '</button>')
+        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? ('↻ 重新生成' + ((st.mode === 'chapter' || st.mode === 'full') ? '整篇' : '')) : '✨ 生成') + '</button>')
       + '<button class="lec-nsave" data-web="saveov">💾 存成笔记</button></div></div>';
+    if (OV_MIN) mask.style.display = 'none';
     document.body.appendChild(mask);
+    if (OV_MIN) ovChip(st);
     mask.addEventListener('click', function (ev) {
       var b = ev.target.closest('[data-web]');
       if (!b) return;
       var a = b.getAttribute('data-web');
-      if (a === 'close') { ev.stopPropagation(); return mask.remove(); }
+      if (a === 'min') { ev.stopPropagation(); OV_MIN = true; mask.style.display = 'none'; ovChip(st); toast('已挂起，后台继续写', 1400); return; }
+      if (a === 'cap') {
+        ev.stopPropagation();
+        var cv = parseInt(b.getAttribute('data-cap'), 10);
+        if (OV_CAPS.indexOf(cv) < 0 || cv === OV_FULL_CAP) return;
+        OV_FULL_CAP = cv;
+        try { localStorage.setItem(OV_CAP_KEY, String(cv)); } catch (eCap3) {}
+        Array.prototype.forEach.call(mask.querySelectorAll('.lec-segbtn'), function (x) {
+          x.classList.toggle('on', parseInt(x.getAttribute('data-cap'), 10) === cv);
+        });
+        toast('贯通篇幅：' + cv + ' 条原句 · 正在重新扫库', 1800, 'ok');
+        try { st.sources = []; } catch (e0) {}
+        overview(st.sel, st.keys, false);
+        return;
+      }
+      if (a === 'close') { ev.stopPropagation(); OV_MIN = false; ovChipOff(); return mask.remove(); }
       if (a === 'srcs') {
         ev.stopPropagation();
         st.srcsOpen = !st.srcsOpen;
@@ -2814,8 +2870,8 @@
         if (m === st.mode && st.ov && st.ov.sections && st.ov.sections.length) return;
         st.mode = m; OV_MODE = st.mode;
         Array.prototype.forEach.call(mask.querySelectorAll('.lec-ovmode'), function (x) { x.classList.toggle('on', x.getAttribute('data-m') === st.mode); });
-        var mname = st.mode === 'chapter' ? '整章' : (st.mode === 'short' ? '简短' : '标准');
-        toast(mname + '版：' + (st.mode === 'chapter' ? '18–26 段，慢一点' : (st.mode === 'short' ? '5–7 段，很快' : '10–14 段')), 1600);
+        var mname = st.mode === 'full' ? '贯通' : (st.mode === 'chapter' ? '整章' : (st.mode === 'short' ? '简短' : '标准'));
+        toast(mname + '版：' + (st.mode === 'full' ? '全库串成一篇，3–5 分钟' : (st.mode === 'chapter' ? '18–26 段，慢一点' : (st.mode === 'short' ? '5–7 段，很快' : '10–14 段'))), 1600);
         renderLoading('正在写' + mname + '版讲解…', '把全库原句按知识逻辑写成讲解');
         return runOverview(st.sel, st.keys, st.mode, st);
       }
@@ -2828,9 +2884,20 @@
       }
       if (a === 'saveov') {
         ev.stopPropagation();
-        if (!window.LECNOTES || !window.LECNOTES.saveOverview) { toast('笔记模块没加载', 1600, 'bad'); return; }
-        var r = window.LECNOTES.saveOverview(st);
-        toast(r && r.updated ? '已更新这条知识点笔记（旧版留在「历史」里）' : '已存进「📚 知识点笔记」', 2000, 'ok');
+        if (!st.ov || !((st.ov.sections || []).length)) { toast('还没生成内容，先点「✨ 生成」再存', 1900, 'bad'); return; }
+        if (!window.LECNOTES || !window.LECNOTES.saveOverview) { toast('笔记模块没加载（notes.js 没起来，刷新一次再试）', 2200, 'bad'); return; }
+        var sbtn = b, sold = sbtn.textContent;
+        try {
+          var rr = window.LECNOTES.saveOverview(st);
+          sbtn.textContent = (rr && rr.updated) ? '✅ 已更新笔记' : '✅ 已存进笔记';
+          sbtn.classList.add('ok');
+          setTimeout(function () { sbtn.textContent = sold; sbtn.classList.remove('ok'); }, 2000);
+          toast((rr && rr.updated) ? '已更新这条知识点笔记（旧版留在「历史」里）' : '已存进「📚 知识点笔记」，主页那张卡里能打开', 2400, 'ok');
+        } catch (eS) {
+          sbtn.textContent = '⚠ 存失败';
+          setTimeout(function () { sbtn.textContent = sold; }, 2200);
+          toast('存笔记失败：' + ((eS && eS.message) || eS), 2800, 'bad');
+        }
         return;
       }
       if (a === 'go') {
@@ -2991,6 +3058,139 @@
     } catch (e) { return ''; }
   }
 
+  /* ===== 贯通版（full）：全库相关原句 → 分批提炼要点 → 逐轮重合 → 一次成篇 ===== */
+  function ovJsonLooseX(t) {
+    t = String(t || '').replace(/```[a-z]*/gi, '').replace(/```/g, '').trim();
+    var i = t.indexOf('{'), j = t.lastIndexOf('}');
+    if (i < 0 || j <= i) return null;
+    try { return JSON.parse(t.slice(i, j + 1)); } catch (e) {}
+    try { return JSON.parse(t.slice(i, j + 1).replace(/,\s*([}\]])/g, '$1')); } catch (e2) {}
+    return null;
+  }
+  function ovFullItems(o) {
+    var arr = (o && o.items) || [];
+    return arr.filter(function (x) { return x && x.k && x.t; }).map(function (x) {
+      return {
+        k: String(x.k).replace(/\s+/g, ' ').slice(0, 20),
+        t: String(x.t).replace(/\s+/g, ' ').slice(0, 130),
+        ns: (x.n || []).map(Number).filter(function (v) { return v > 0; })
+      };
+    });
+  }
+  function ovFullMap(sel, batch) {
+    var sys = '你在读一段医学讲义原文，任务是把其中关于「' + sel + '」的知识点提炼成条目。'
+      + '只提取原文写到的内容：定义、解剖或分子定位、机制或原理、分型分类、临床表现、判据（看到什么→想到什么）、检查、鉴别点、治疗处理、易错易混。'
+      + '不要写做题视角（不许出现「本题」「选项」「考了几次」），不要编造原文没有的数值或结论。'
+      + '同一知识点在多个编号里出现时合并成一条，n 里写全部支撑编号。'
+      + '只输出 JSON：{"items":[{"k":"知识点标题(≤14字)","t":"一句话要点(≤70字，可直接背)","n":[3,7]}]}，最多 24 条。';
+    var user = '讲义原文（每条带编号）：\n' + batch.map(function (x) { return '[' + x.i + '] ' + String(x.t || ''); }).join('\n');
+    return ovAsk(sys, user, 2600, 120000).then(function (txt) { return ovFullItems(ovJsonLooseX(txt)); });
+  }
+  function ovFullMerge(sel, groups) {
+    var sys = '你在合并几份关于「' + sel + '」的知识点清单。任务：去重、合并同一知识点的不同说法、把互补的并成一条、保留全部支撑编号。'
+      + '资料说法不一致时两条都留，并在 t 末尾标「（资料说法不一致）」；不要新增清单里没有的内容。'
+      + '只输出 JSON：{"items":[{"k":"知识点标题(≤14字)","t":"一句话要点(≤70字)","n":[3,7]}]}，最多 48 条。';
+    var user = groups.map(function (g, i) {
+      return '【清单 ' + (i + 1) + '】\n' + g.map(function (x) { return '- ' + x.k + '：' + x.t + ' [' + (x.ns || []).join(',') + ']'; }).join('\n');
+    }).join('\n\n');
+    return ovAsk(sys, user, 3200, 180000).then(function (txt) { return ovFullItems(ovJsonLooseX(txt)); });
+  }
+  function ovFullWrite(sel, items) {
+    var sys = '你是医学考研讲义的撰稿人。下面是一个知识点的全部要点清单（每条带支撑编号）。'
+      + '任务：把它们串成**一篇**可以直接拿来复习的贯通讲解——有前后逻辑，不是条目罗列。'
+      + '只输出 JSON，不要解释、不要代码块：'
+      + '{"title":"这篇讲什么（≤18字）","lead":"一句话导语（≤60字）",'
+      + '"sections":[{"h":"一、小节标题","paras":[{"t":"讲解正文，句末标来源 [[3]][[7]]"}]}],'
+      + '"conflict":"（可选）资料不一致处","coverage":{"hit":9,"total":12,"missing":["哪些方面资料没写到"]}}'
+      + '。要求：'
+      + '1) 小节按知识脉络排：定义与定位 → 机制/原理 → 分型分类 → 临床表现 → 判据（看到什么→想到什么）→ 检查 → 鉴别 → 治疗处理 → 易错易混；资料没写的小节整节省略，不要硬凑。'
+      + '2) 10–14 节，每节 3–5 段，每段 3–6 句、130–200 字，全篇 4200–6000 字。'
+      + '3) 每段末尾用 [[n]] 标出处，n 只能来自清单里的编号；一段可标多个。'
+      + '4) 只写清单里有的事实；清单没有的写「资料未覆盖」，绝不补医学细节。'
+      + '5) 不许写「讲义指出」「第 N 页」「第 N 批」「选项 A」这类出处或做题视角的字样，直接讲知识。'
+      + '6) 不许编口诀；可以给记忆钩子，但必须是清单里已有的对照关系。';
+    var list = items.map(function (x) { return '- ' + x.k + '：' + x.t + ' [' + (x.ns || []).join(',') + ']'; }).join('\n');
+    var user = '知识点：' + sel + '\n要点清单（共 ' + items.length + ' 条）：\n' + list;
+    return ovAsk(sys, user, 9800, 360000);
+  }
+  function runFull(sel, keys, st) {
+    var srcs = st.sources || [];
+    var per = 32, groups = [], i;
+    for (i = 0; i < srcs.length; i += per) groups.push(srcs.slice(i, i + per));
+    var fail = [];
+    function say(t) { st.ov = { pending: 1, prog: t }; renderOverview(st); }
+    var lists = [], bi = 0;
+    function mapStep() {
+      if (OV_STOPPED) return Promise.resolve(null);
+      if (bi >= groups.length) return Promise.resolve(lists);
+      say('贯通 · 第 ' + (bi + 1) + '/' + groups.length + ' 批 · 原句 ' + (bi * per + 1) + '–' + Math.min(srcs.length, (bi + 1) * per));
+      return ovFullMap(sel, groups[bi]).catch(function (e) { fail.push('第' + (bi + 1) + '批提炼失败：' + (e && e.message || e)); return []; }).then(function (items) {
+        if (items && items.length) lists.push(items);
+        bi++;
+        return mapStep();
+      });
+    }
+    return mapStep().then(function (ls) {
+      if (OV_STOPPED || !ls || !ls.length) return null;
+      var round = 0;
+      function fanIn(arr) { var out = [], k; for (k = 0; k < arr.length; k += 3) out.push(arr.slice(k, k + 3)); return out; }
+      function mergeStep() {
+        if (OV_STOPPED) return Promise.resolve(null);
+        if (ls.length === 1) return Promise.resolve(ls[0]);
+        round++;
+        var packs = fanIn(ls);
+        say('贯通 · 第 ' + round + ' 轮重合：' + ls.length + ' 份清单 → ' + packs.length + ' 份');
+        var next = [], pi = 0;
+        function one() {
+          if (pi >= packs.length) return Promise.resolve(next);
+          var pack = packs[pi];
+          return (pack.length === 1 ? Promise.resolve(pack[0]) : ovFullMerge(sel, pack).catch(function (e) {
+            fail.push('重合失败：' + (e && e.message || e));
+            return pack[0];
+          })).then(function (items) {
+            if (items && items.length) next.push(items);
+            pi++;
+            return one();
+          });
+        }
+        return one().then(function () {
+          ls = next;
+          return mergeStep();
+        });
+      }
+      return mergeStep();
+    }).then(function (items) {
+      if (OV_STOPPED) return null;
+      if (!items || !items.length) return null;
+      say('贯通 · 已合成 ' + items.length + ' 条要点，正在成篇…');
+      return ovFullWrite(sel, items).then(function (txt) {
+        var ov = parseOverview(txt, srcs);
+        if (!ov) { fail.push('成篇解析失败，AI 原文（' + String(txt || '').length + ' 字）：' + String(txt || '（空）').slice(0, 300)); return null; }
+        ov.full = 1;
+        ov.items = items.length;
+        return ov;
+      });
+    }).then(function (ov) {
+      if (!ov) {
+        if (OV_STOPPED) {
+          st.ov = { sections: [], conflict: '', stopped: 1 };
+          renderOverview(st);
+          toast('已停止，写好的部分保留', 2000, '');
+          return;
+        }
+        st.ov = { sections: [], conflict: '', failed: 1, raw: (fail.join('\n') || '没拿到内容') + ovAiDiag() };
+        renderOverview(st);
+        return;
+      }
+      st.ov = ov;
+      try { ovCachePut(keys, 'full', ov, srcs, sel); } catch (e) {}
+      renderOverview(st);
+      if (fail.length) toast('部分批没提炼出来（' + fail.length + ' 处）', 2600, 'bad');
+    }).catch(function (e) {
+      st.ov = { sections: [], conflict: '', failed: 1, raw: '请求失败：' + (e && e.message || e) + ovAiDiag() };
+      renderOverview(st);
+    });
+  }
   function runOverview(sel, keys, mode, keep) {
     var st = keep || { sel: sel, keys: keys, mode: mode, sources: [], ov: null };
     st.mode = mode;
@@ -3004,7 +3204,7 @@
         return Promise.resolve(true);
       }
     }
-    var cap = mode === 'chapter' ? 72 : (mode === 'short' ? 28 : 48);
+    var cap = mode === 'full' ? OV_FULL_CAP : (mode === 'chapter' ? 72 : (mode === 'short' ? 28 : 48));
     if (st.sel) {
       st.ov = { pending: 1, prog: '正在全库扫「' + (keys || []).join('、') + '」相关原句…' };
       renderOverview(st);
@@ -3020,6 +3220,7 @@
         st.ov = { sections: [], conflict: '', failed: 1, raw: '这个页面没加载 AI 模块（ai.js 未就绪），或浏览器把 AI 功能关掉了。刷新一次再试。' };
         renderOverview(st); return;
       }
+      if (mode === 'full') return runFull(sel, keys, st);
       st.ov = { pending: 1, prog: '已从 ' + srcs.length + ' 处捞到原句，正在列讲解大纲…' };
       renderOverview(st);
       var failNote = [];
@@ -3089,6 +3290,7 @@
     if (!sel) return Promise.resolve(false);
     /* 只有「从笔记里点知识点总览」才把整道题喂给抽词；用户自己写的词就只用这个词，别被当前题目带偏 */
     var qtext = ''; if (fromQuestion) { try { qtext = questionText(); } catch (e) {} }
+    OV_MIN = false; ovChipOff();
     renderLoading('正在扫全库…', '先从所有讲义里把讲这个知识点的句子捞出来');
     return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : askKeys(sel, qtext)).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
@@ -3355,6 +3557,7 @@
   }
 
   setTimeout(function () { try { ovWarm(); } catch (e) {} }, 1800);
+
 
 window.LECTURE = { fileOfName: fileOfName, overviewAsk: overviewAsk, kbMulti: kbMulti, askKeys: askKeys, collectSources: collectSources, open: open, close: close, load: loadIndex, locate: locate, search: function (q) { return TXT ? searchIn(TXT, q) : []; }, text: loadText, textSubj: loadTextSubj,
     bind: putBind, unbind: delBind, bound: getBind, binds: function () { return bindAll(); },

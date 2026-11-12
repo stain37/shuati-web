@@ -1597,7 +1597,7 @@ body.dark #mpKp #mpKpPrev2 blockquote{ background:#242634; color:#cfcbe4; border
 @media (prefers-reduced-motion: reduce){ #mpWrap #mpSide.show{ animation:none!important; } }
 /* ===== web431：考点总结 = 站里「解析块」同款 rich-edit（就地编辑，本身即显示） ===== */
 #mpKp #mpKpMd.mp-kprich{
-  min-height:170px; max-height:46vh; overflow:auto;
+  min-height:320px; max-height:58vh; overflow:auto;
   padding:12px 14px; background:#fff; border:1px solid var(--line); border-radius:12px;
   font-size:13px; line-height:1.8; color:#2b2f3d; outline:none;
 }
@@ -2030,3 +2030,7 @@ html[data-style="win95"] #mpWrap #mpFindPop .fgrp{ background:var(--w95-face,#c0
 /* web601: 「同考点」胶囊（标签+选项对上、题干不像的那一类） */
 #mpWrap .mp-pill.t{ background:rgba(139,92,246,.14); color:#6d28d9; border:1px solid rgba(139,92,246,.45); }
 body.dark #mpWrap .mp-pill.t{ background:rgba(139,92,246,.22); color:#c4b5fd; border-color:rgba(139,92,246,.55); }
+
+/* ===== web805 补：考点面板比窗口宽时别溢出左边（窄窗口 / 手机） ===== */
+#mpKp{max-width:calc(100% - 10px);box-sizing:border-box}
+@media (max-width:760px){ #mpKp{left:0!important;right:0!important;width:auto!important} }

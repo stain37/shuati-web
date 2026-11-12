@@ -932,7 +932,7 @@
             '<span>逻辑</span><select id="mpGLogic" title="并集＝命中任意一个词就算；交集＝每个词都得命中（更准）">' +
               '<option value="or">并集</option><option value="and">交集</option></select>' +
             '<span>类型</span><select id="mpGKind" title="路径组＝在路径模式下沿着相似题一层层展开出来的组（中心不动）">' +
-              '<option value="all">全部</option><option value="path">🧭 路径组</option><option value="tree">普通组（本题库）</option></select>' +
+              '<option value="all">全部</option><option value="path">🧭 路径组</option><option value="tree">普通组（全站）</option></select>' +
             '<span class="mp-grow3"></span></div>' +
           '<div id="mpGBulk" hidden><span id="mpGBulkN">已选 0 组</span>' +
             '<button type="button" data-b="all">全选</button>' +
@@ -2210,81 +2210,119 @@ function bindShell() {
     return i >= 0 ? ex.slice(i).replace(/^\s*【AI 解析】\s*/, '') : '';
   }
 
-  function qAiBuild(q, tagName) {
+  /* 题目级 AI 解析：交给模型写，不再用模板拼 */
+  function qAiPrompt(q, tagName) {
     var letters = 'ABCDEFGHIJKL'.split('');
     var ans = answerLetter(q);
     var opts = Array.isArray(q.opts) ? q.opts : (Array.isArray(q.options) ? q.options : []);
     var exp = expText(q).trim();
-    var tg = (tagName ? [tagName] : []).concat(
+    var tags = (tagName ? [tagName] : []).concat(
       (typeof kpTags === 'function' ? kpTags(q) : []).filter(function (t) { return t !== tagName; })
     ).filter(function (t) { return t && !isBigTag(t); });
+    var optTxt = opts.map(function (o, i) {
+      return (letters[i] || String(i + 1)) + '. ' + String(o).replace(/^[A-H][.、\s]*/, '');
+    }).join('\n');
+    var user = '题干：' + String(q.stem || '') + '\n' +
+      (optTxt ? '选项：\n' + optTxt + '\n' : '') +
+      '正确答案：' + (ans || '（题库没给）') + '\n' +
+      (exp ? '题库原有解析：' + exp + '\n' : '') +
+      (tags.length ? '考点标签：' + tags.join('、') + '\n' : '');
+    var sys = '你是医学考研辅导老师。学生已经知道答案，你要把这道题讲透，帮他记住。' +
+      '只输出 Markdown，分成四个部分，每部分一句话到几句话，讲具体机制/鉴别点，不要空话：\n' +
+      '**为什么是它**：正确项对应的病理/生理依据是什么。\n' +
+      '**逐项看**：每个错误选项错在哪（改一个字、换一个部位、换一个机制都要说清）。\n' +
+      '**易错**：最容易混的邻近知识点，以及本题的干扰点。\n' +
+      '**考点**：这道题真正在考的那一句结论。\n' +
+      '禁止编造题库里没有的检查数值或指南条目；拿不准就写「本题未涉及」。不要复述题干，不要写「正确答案是」。';
+    return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+  }
 
-    var L = [];
-    L.push('【AI 解析】');
-    L.push('**正确答案：' + (ans || '—') + '**' +
-      (ans && opts[letters.indexOf(ans[0])] ? ('（' + String(opts[letters.indexOf(ans[0])]).replace(/^[A-H][.、\s]*/, '') + '）') : ''));
-    L.push('');
-    L.push('**为什么是它**：' + (exp ? exp.split(/[。；]/)[0] + '。'
-      : ('题干问的是「' + (tg[0] || '这个知识点') + '」，正确项直接对上了这个判据。')));
-    if (opts.length) {
-      L.push('');
-      L.push('**逐项看**：');
-      opts.forEach(function (o, i) {
-        var Lt = letters[i] || String(i + 1);
-        var isOk = ans.indexOf(Lt) >= 0;
-        var body = String(o).replace(/^[A-H][.、\s]*/, '');
-        L.push('- ' + Lt + ' ' + body + (isOk ? ' —— **对**：它符合题干问的' + (tg[0] ? '「' + tg[0] + '」' : '判据') + '。'
-          : ' —— 错：换个疾病/换个部位/换个机制才对得上，题目没问这个。'));
-      });
-    }
-    if (tg.length) { L.push(''); L.push('**考点**：' + tg.slice(0, 4).join('、')); }
-    var multi = (ans || '').length > 1;
-    L.push('');
-    L.push('**易错**：' + (multi
-      ? '这题是多选（' + ans + '），只选一个必然漏分；把每个选项都拿题干里的判据过一遍。'
-      : '干扰项通常换的是「部位 / 时间 / 机制」中的一个字，读题时先把题干里的限定词圈出来。'));
-    return L.join('\n');
+  function qAiBox() {
+    var b0 = document.querySelector('#mpSdBody .mp-sdai');
+    if (b0) return b0;
+    /* 这道题还没有 AI 解析时，抽屉里没有这个盒子：现场补一个，否则点了按钮什么反馈都没有 */
+    var body = document.querySelector('#mpSdBody');
+    if (!body) return null;
+    b0 = document.createElement('div');
+    b0.className = 'mp-sdai';
+    body.appendChild(b0);
+    return b0;
   }
 
   function qAiRun(n) {
     var q = (n && n.ref) ? n.ref : null;
     if (!q) { toast('这道题没有题面数据'); return; }
+    if (typeof window.aiChat !== 'function') {
+      toast('这个页面没加载 AI 模块（ai.js 未就绪），刷新一次再试'); return;
+    }
     var tg = [];
     try { tg = (typeof kpTags === 'function') ? kpTags(q) : []; } catch (e1) {}
     var tgSmall = tg.filter(function (t) { return !isBigTag(t); });
-    toast('正在写解析…', 900);
-    var txt = qAiBuild(q, tgSmall[0] || '');
-    var bid = (q._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || S.bankId;
-    var oldExp = String(q.explain || q.exp || '');
-    var merged = oldExp.replace(/\n\n【AI 解析】[\s\S]*$/, '') + (oldExp ? '\n\n' : '') + txt;
-    var saved = false;
-    try {
-      if (typeof window.updateBankQuestion === 'function' && bid) {
-        var r = window.updateBankQuestion(bid, q.id, { explain: merged });
-        saved = !!(r && r.ok);
-      }
-    } catch (e2) {}
-    if (saved) {
-      q.explain = merged;
-      q.__aiExp = txt;
-      toast('已写进这道题的解析下面（题库里也存了）');
-    } else {
-      /* 内置题库只读：存到当前组里，照样显示在原解析下面 */
+
+    var box = qAiBox();
+    if (box) box.innerHTML = '<b>AI 解析</b><div class="mp-sdai-wait">AI 正在写解析…</div>';
+
+    function done(txt) {
+      var bid = (q._bank) || (DATA.bank && (DATA.bank.id || DATA.bank.bid)) || S.bankId;
+      var oldExp = String(q.explain || q.exp || '');
+      var merged = oldExp.replace(/\n\n【AI 解析】[\s\S]*$/, '') + (oldExp ? '\n\n' : '') + txt;
+      var saved = false;
       try {
-        var g = gCur(); if (g) { g.aiq = g.aiq || {}; g.aiq[q.id] = txt; saveCur(); }
-        q.__aiExp = txt;
-        toast('这道题在内置题库里（只读），AI 解析先存在这张图里');
-      } catch (e3) { toast('没存下来：' + (e3 && e3.message ? e3.message : e3)); }
-    }
-    try { sideOpen(n); } catch (e4) {}
-    try {
-      var box = document.querySelector('#mpSdBody .mp-sdai');
-      if (box) {
-        box.classList.add('flash');
-        box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        setTimeout(function () { box.classList.remove('flash'); }, 1400);
+        if (typeof window.updateBankQuestion === 'function' && bid) {
+          var r = window.updateBankQuestion(bid, q.id, { explain: merged });
+          saved = !!(r && r.ok);
+        }
+      } catch (e2) {}
+      if (saved) {
+        q.explain = merged; q.__aiExp = txt;
+        toast('已写进这道题的解析下面（题库里也存了）');
+      } else {
+        try {
+          var g = gCur(); if (g) { g.aiq = g.aiq || {}; g.aiq[q.id] = txt; saveCur(); }
+          q.__aiExp = txt;
+          toast('这道题在内置题库里（只读），AI 解析先存在这张图里');
+        } catch (e3) { toast('没存下来：' + (e3 && e3.message ? e3.message : e3)); }
       }
-    } catch (e5) {}
+      try { sideOpen(n); } catch (e4) {}
+      try {
+        var b2 = qAiBox();
+        if (b2) { b2.classList.add('flash'); b2.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); setTimeout(function () { b2.classList.remove('flash'); }, 1400); }
+      } catch (e5) {}
+    }
+
+    function fail(msg) {
+      var b3 = qAiBox();
+      if (b3) b3.innerHTML = '<b>AI 解析</b><div class="mp-sdai-err">' + String(msg || '没拿到 AI 回复') +
+        '<button type="button" class="mp-sdbtn" id="mpSdAiRetry" style="margin-left:8px">重试</button></div>';
+      var rb = document.getElementById('mpSdAiRetry');
+      if (rb) rb.onclick = function () { qAiRun(n); };
+    }
+
+    function ask(mt) {
+      var msgs = qAiPrompt(q, tgSmall[0] || '');
+      var p;
+      try {
+        p = window.aiChat(msgs, null, null, { stream: false, temp: 0.2, maxTokens: mt });
+      } catch (eA) { fail('AI 调用失败：' + (eA && eA.message ? eA.message : eA)); return; }
+      Promise.resolve(p).then(function (txt) {
+        txt = String(txt == null ? '' : txt).trim();
+        if (!txt) {
+          if (mt < 3000) { ask(3000); return; }   /* 推理模型可能把预算全花在思考上，放大再试一次 */
+          fail('模型这次没有输出正文（多半是思考把 token 用完了）。这不是「没有解析」，点重试或把设置里的模型换成非推理模型。');
+          return;
+        }
+        done('【AI 解析】\n' + txt);
+      }, function (err) {
+        var m = String((err && err.message) || err || '');
+        if (/\b401\b|unauthorized/i.test(m)) m = 'AI 认证失败（HTTP 401）：设置里的 API key 没填或已失效，去「设置 → AI」换一个再试';
+        else if (/\b403\b|forbidden/i.test(m)) m = 'AI 拒绝访问（HTTP 403）：这个 key 没有该模型的权限，或额度用完了';
+        else if (/\b429\b|rate.?limit/i.test(m)) m = 'AI 请求太频繁（HTTP 429）：等几秒再点重试';
+        else if (/timeout|timed out|ETIMEDOUT/i.test(m)) m = 'AI 超时：网络慢或模型排队，点重试';
+        else m = 'AI 请求失败：' + m;
+        fail(m);
+      });
+    }
+    ask(1400);
   }
 
   function sideOpen(n) {
@@ -3158,8 +3196,32 @@ function bindShell() {
     try {
       if (typeof window.aiChat !== 'function') return false;
       var c = (typeof aiCfg === 'function') ? aiCfg() : null;
-      return !!(c && c.model);
+      if (!c || !c.model) return false;
+      /* 光有 model 不算就绪：云端没填 key 以前照样发请求，回来是 401，
+         用户只看到「AI 没写出来」。本地服务（Ollama / LM Studio）不要 key。 */
+      if (/127\.0\.0\.1|localhost|\[::1\]/i.test(String(c.base || ''))) return true;
+      return !!String(c.key || '').trim();
     } catch (e) { return false; }
+  }
+  /* 考点总结那行状态字：颜色 + 全文 tooltip，长消息不会把按钮挤变形 */
+  function kpStat(txt, kind) {
+    var el = document.getElementById('mpKpStat');
+    if (!el) return;
+    el.textContent = txt || '';
+    el.className = 'mp-kstat' + (kind ? ' ' + kind : '');
+    el.title = txt || '';
+  }
+  /* 没配好模型时到底缺什么：给一句照着做就能好的话 */
+  function kpAiWhy() {
+    try {
+      if (typeof window.aiChat !== 'function') return 'ai.js 没加载，刷新一下';
+      var c = (typeof aiCfg === 'function' ? aiCfg() : null) || {};
+      var base = String(c.base || '');
+      var local = /127\.0\.0\.1|localhost|\[::1\]/i.test(base);
+      if (!c.model) return '还没选模型：设置 → AI 里挑一个';
+      if (!local && !String(c.key || '').trim()) return '没填 API key：设置 → AI 里填「' + c.model + '」的 key';
+      return 'AI 用不了';
+    } catch (e) { return 'AI 用不了'; }
   }
 
   function aiRerank(centerQ, cands) {
@@ -3405,6 +3467,27 @@ function bindShell() {
         sb.id = 'mpSave';
         sb.type = 'button';
         sb.title = '保存这一组（路径模式里点它 = 存成路径组）';
+        /* 延长路径时的相似度门槛（web791） */
+        if (!$('#mpPathTh')) {
+          var thSel = document.createElement('select');
+          thSel.id = 'mpPathTh';
+          thSel.className = 'mp-th';
+          thSel.title = '延长路径时，只收相似度不低于这个值的相似题';
+          [55, 60, 65, 70, 75, 80, 85, 90].forEach(function (v) {
+            var o = document.createElement('option'); o.value = v; o.textContent = '≥' + v + '%'; thSel.appendChild(o);
+          });
+          thSel.value = String(PATHM.th);
+          var thAn = $('#mpPath');
+          if (thAn && thAn.parentNode) thAn.parentNode.insertBefore(thSel, thAn.nextSibling);
+          thSel.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+          thSel.addEventListener('change', function () {
+            PATHM.th = Math.max(40, Math.min(99, +thSel.value || 75));
+            try { writeLS('qbank.map.pathth.v1', PATHM.th); } catch (eTh) {}
+            try { toast('延长路径：只收相似度 ≥ ' + PATHM.th + '% 的题'); } catch (eTh2) {}
+            try { paintPath(); } catch (eTh3) {}
+            try { if (PATHM.on) render(true); } catch (eTh4) {}
+          });
+        }
         sb.textContent = '💾 保存';
         var an2 = $('#mpPath') || $('#mpFil');
         if (an2 && an2.parentNode) an2.parentNode.insertBefore(sb, an2.nextSibling);
@@ -3710,8 +3793,9 @@ function bindShell() {
     return dropped;
   }
   /* ===== 路径模式：在已有关系网上就地延伸，中心题永远不动 ===== */
-  var PATHM = { on: false, max: 10 };
+  var PATHM = { on: false, max: 10, th: 75 };
   try { PATHM.on = readLS('qbank.map.path.v1', false) === true; } catch (eP) {}
+  try { var _th0 = +readLS('qbank.map.pathth.v1', 75); if (_th0 >= 40 && _th0 <= 99) PATHM.th = Math.round(_th0); } catch (ePth) {}
   function pathSet(on) {
     PATHM.on = !!on;
     try { writeLS('qbank.map.path.v1', PATHM.on); } catch (e1) {}
@@ -3769,7 +3853,7 @@ function bindShell() {
     var b = $('#mpPath'); if (!b) return;
     b.classList.toggle('on', PATHM.on);
     b.textContent = PATHM.on ? '🧭 路径中' : '🧭 路径';
-    b.title = PATHM.on ? '路径模式已开：点相似题就地延伸（最多 ' + PATHM.max + ' 步），再点一下关闭' : '路径模式：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步）';
+    b.title = (PATHM.on ? '路径模式已开：点相似题就地延伸（最多 ' + PATHM.max + ' 步，相似度 ≥ ' + PATHM.th + '%），再点一下关闭' : '路径模式：点相似题就地延伸，中心不动（最多 ' + PATHM.max + ' 步，相似度 ≥ ' + PATHM.th + '%）');
   }
   /* 拿一道题的「邻居」：题干相似度 + 考点重合，排除已经在本组里的题 */
   function pathNeighbors(q, bank, limit) {
@@ -3804,7 +3888,12 @@ function bindShell() {
       if (have[String(pool[i].id)]) continue;
       var sim = cos(curG, vecs[i]);
       var sc = sim + 0.35 * jac(curTags, tagList(pool[i], bank.id));
-      if (sc > 0.04) out.push({ q: pool[i], sim: sim, score: sc });
+      if (sc <= 0.04) continue;
+      /* 延长路径的置信度门槛：低于设定值的相似题不进路径（用户可按需调高/调低） */
+      var pct = 0;
+      try { pct = pairPct(q, pool[i], CTX); } catch (ePct) { pct = Math.round(Math.min(0.99, sim) * 100); }
+      if (pct < PATHM.th) continue;
+      out.push({ q: pool[i], sim: sim, score: sc, pct: pct });
     }
     out.sort(function (a, b) { return b.score - a.score; });
     return out.slice(0, limit || 4);
@@ -4617,8 +4706,8 @@ function bindShell() {
     var kind = (($('#mpGKind') || {}).value) || 'all';
     var hitList = list.filter(function (g) {
       if (kind === 'path' && !g.path) return false;
-      /* 普通组：同一题库里的所有普通组都能搜到（不是只当前这道题） */
-      if (kind === 'tree' && (g.path || (S.bankId && g.bank && String(g.bank) !== String(S.bankId)))) return false;
+      /* 普通组：全站的普通组都能搜到（不只当前题库），路径组单独一栏 */
+      if (kind === 'tree' && g.path) return false;
       return gMatch(g, qraw || q);
     });
     var rows = hitList.map(function (g) {
@@ -5145,7 +5234,19 @@ function bindShell() {
         '<div class="mp-kpp"><button type="button" class="mp-kbtn" id="mpKpPrev">‹</button>' +
         '<span id="mpKpPg">第 1 / 1 页</span>' +
         '<button type="button" class="mp-kbtn" id="mpKpNext">›</button></div>' +
-        '<div class="mp-kpsub">考点总结（点进去直接改，边改边存）<span class="mp-kstat" id="mpKpStat">所见即所得 · 选中文字出工具条 · 行首打 / 换块</span></div>' +
+        '<div class="mp-kpsub mp-kpsub2">' +
+          '<div class="mp-kpsub-r"><span class="mp-kpsub-t">考点总结</span>' +
+          '<span class="mp-kstat" id="mpKpStat">还没写 · 点「✨ 一键生成」</span></div>' +
+          '<div class="mp-kpsub-b">' +
+          '<button type="button" class="mp-kpgen" id="mpKpGen" title="按当前考点写一份小结：配了 AI 就用模型写；没配就用题库里的题和解析拼一份（会标明不是 AI 写的）">✨ 一键生成总结</button>' +
+          '<button type="button" class="mp-kpdraft" id="mpKpDraft" hidden title="不调模型：用题库里的题和解析拼一份草稿，会标明不是 AI 写的">本地草稿</button>' +
+          '</div>' +
+          '<div class="mp-kpsrc"><span class="mp-kpsrc-t">依据</span>' +
+          '<span class="mp-kpsrc-chips" id="mpKpSrcChips"></span>' +
+          '<button type="button" class="mp-srcadd" id="mpKpSrcAdd" title="选知识库 / 具体文档：勾上的原文会一起发给模型">＋ 知识库 / 文档</button></div>' +
+          '<div class="mp-srcpop" id="mpKpSrcPop" hidden></div>' +
+          '<button type="button" class="mp-kpgo" id="mpKpGo" hidden>去「AI 与知识库」填 API key ›</button>' +
+          '</div>' +
         '<div class="mp-rtew"><div class="mp-rtebar" id="mpRteBar">' +
           '<button type="button" data-cmd="bold" title="加粗"><b>B</b></button>' +
           '<button type="button" data-cmd="italic" title="斜体"><i>I</i></button>' +
@@ -5157,7 +5258,7 @@ function bindShell() {
           '<button type="button" data-block="code" title="代码">&lt;/&gt;</button>' +
         '</div>' +
         '</div>' +
-        '<div class="exp rich-edit mp-kprich" id="mpKpMd" contenteditable="true" spellcheck="false" data-note-for="kp" title="点进来就能改：支持 Markdown（**加粗**、## 标题、- 列表、```代码```、$公式$、颜色），选中文字会出工具条；Ctrl+V 可以直接粘截图"></div>' +
+        '<div class="exp rich-edit mp-kprich" id="mpKpMd" contenteditable="true" spellcheck="false" data-ph="还没写 · 点上面的「✨ 一键生成」" data-note-for="kp" title="点进来就能改：支持 Markdown（**加粗**、## 标题、- 列表、```代码```、$公式$、颜色），选中文字会出工具条；Ctrl+V 可以直接粘截图"></div>' +
         '<div id="mpKpPrev2" class="mp-kprev" hidden></div>' +
         '<div class="mp-kpsub">图与附件 <i class="mp-kpah">都在本地，跟着这个考点存</i></div>' +
         '<div id="mpKpAtt" class="mp-kpatt"></div>' +
@@ -5165,6 +5266,7 @@ function bindShell() {
         '<span class="mp-kpah" id="mpKpUpTip">图片会缩略显示，PDF / Word / HTML 点开就能看</span></div>' +
         '<i class="mp-kprz" id="mpKpRz" title="拖动改宽度"></i>' +
       '</div>');
+    try { kpSrcBind(); kpSrcPaint(); } catch (eS) {}
     $('#mpKpX').onclick = kpClose;
     var kpb = $('#mpKpBack');
     if (kpb) kpb.onclick = function () { back(); };
@@ -5179,6 +5281,16 @@ function bindShell() {
     $('#mpKpPrev').onclick = function () { if (KP.page > 0) { KP.page--; kpPaint(); } };
     $('#mpKpNext').onclick = function () { if ((KP.page + 1) * KP.n < KP.rows.length) { KP.page++; kpPaint(); } };
     $('#mpKpAi').onclick = kpAiOpen;
+    var genB = $('#mpKpGen');
+    if (genB) genB.onclick = function () { try { kpAiRun(); } catch (eG) { try { toast('生成没跑起来：' + (eG && eG.message ? eG.message : eG)); } catch (e2) {} } };
+    var dftB = $('#mpKpDraft');
+    if (dftB) dftB.onclick = function () { try { if (window.__kpLocalDraft) window.__kpLocalDraft('用题库里的题和解析拼的'); else toast('先点一次「✨ 一键生成总结」'); } catch (eD) {} };
+    var goB = $('#mpKpGo');
+    if (goB) goB.onclick = function () {
+      try { kpClose(); } catch (e1) {}
+      try { location.hash = '#/kb'; } catch (e2) {}
+      try { toast('填好接口地址 / 模型 / API key，回来再点「✨ 一键生成」', 3200); } catch (e3) {}
+    };
     $('#mpKpUp').onclick = kpAttPick;
     /* 左缘拖宽（样板 kpRz），宽度记在 localStorage */
     (function () {
@@ -5204,7 +5316,7 @@ function bindShell() {
     })();
     var ta = $('#mpKpMd');
     var kpT = 0;
-    var kpStatus = function (t) { var e0 = document.getElementById('mpKpStat'); if (e0) e0.textContent = t; };
+    var kpStatus = function (t) { kpStat(t, t === '已保存' ? 'ok' : ''); };
     ta.addEventListener('input', function () {
       var g = gCur(); if (!g) return;
       var m = kpMd(); m[kpTagName(KP.node)] = rteMd();
@@ -5371,6 +5483,72 @@ function bindShell() {
     s.classList.add('show');
   }
   function rteBind() {
+    /* 图片删除：光标贴着图按退格 / 选中图按 Delete / 点图上的 ✕ 都能删。
+       用 document 级委托，因为面板是后来才插进 DOM 的（在 rteBind 时可能还不存在）。 */
+    (function () {
+      if (document.__rteImgDel) return;
+      document.__rteImgDel = 1;
+      /* 不止考点总结：所有 .exp 富文本编辑器（笔记 / 题目编辑）都支持删图 */
+      function edOf(t) { return (t && t.closest) ? t.closest('#mpKpMd, .exp[contenteditable="true"]') : null; }
+      function hideX() { var x = document.getElementById('rteImgX'); if (x) x.remove(); }
+      window.__rteImgXHide = hideX;
+      function kill(node, ed) {
+        if (!node) return false;
+        var t = node.nodeType === 1 ? node : node.parentNode;
+        var img = (t && t.nodeName === 'IMG') ? t : (t && t.querySelector ? t.querySelector('img') : null);
+        if (!img) return false;
+        var box = img.closest('figure') || (img.parentNode && !String(img.parentNode.textContent || '').trim() ? img.parentNode : img);
+        try { box.parentNode.removeChild(box); } catch (e) { return false; }
+        hideX();
+        try { ed.dispatchEvent(new Event('input')); } catch (e2) {}
+        return true;
+      }
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+        var ed = edOf(e.target); if (!ed) return;
+        var sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+        var r = sel.getRangeAt(0); if (!r.collapsed) return;
+        var node = r.startContainer, off = r.startOffset, cand = null;
+        if (node.nodeType === 1) {
+          var kids = node.childNodes;
+          cand = (e.key === 'Backspace') ? kids[off - 1] : kids[off];
+        } else if (node.nodeType === 3) {
+          cand = (e.key === 'Backspace' && off === 0) ? node.previousSibling
+            : (e.key === 'Delete' && off === node.length ? node.nextSibling : null);
+        }
+        if (!cand) { if (node.nodeType === 1) { /* 光标在编辑器根上，图又没有兄弟 */ } return; }
+        if (cand.nodeType === 1 && cand.nodeName === 'IMG') {
+          if (kill(cand, ed)) { e.preventDefault(); e.stopPropagation(); }
+          return;
+        }
+        if (cand.nodeType === 1 && cand.querySelector && cand.querySelector('img') && !String(cand.textContent || '').trim()) {
+          if (kill(cand, ed)) { e.preventDefault(); e.stopPropagation(); }
+        }
+      }, true);
+      document.addEventListener('click', function (e) {
+        var ed = edOf(e.target);
+        if (!ed) { hideX(); return; }
+        var t = e.target;
+        if (!t || t.nodeName !== 'IMG') { hideX(); return; }
+        hideX();
+        ed.querySelectorAll('img.rte-imgsel').forEach(function (x) { x.classList.remove('rte-imgsel'); });
+        t.classList.add('rte-imgsel');
+        var rc = t.getBoundingClientRect();
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.id = 'rteImgX'; btn.textContent = '✕ 删除图片';
+        btn.onmousedown = function (ev) { ev.preventDefault(); ev.stopPropagation(); };
+        btn.onclick = function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          t.classList.remove('rte-imgsel');
+          if (kill(t, ed)) { try { toast('图片已删掉'); } catch (eT) {} }
+          hideX();
+        };
+        document.body.appendChild(btn);
+        btn.style.position = 'fixed';
+        btn.style.left = Math.max(6, Math.round(rc.right - 92)) + 'px';
+        btn.style.top = Math.round(rc.bottom - 30) + 'px';
+      }, true);
+    })();
     var bar = document.getElementById('mpRteBar');
     if (bar && !bar.__b) {
       bar.__b = 1;
@@ -5668,12 +5846,201 @@ function bindShell() {
     return items.length;
   }
 
+  /* ---------- 考点总结的「依据」：勾知识库 + 具体文档 + 资料柜 ----------
+     勾了库就把它文档的正文（截断到上限）一起发给模型当依据；库下面还能单独取消某几篇。
+     只存选择，不动知识库本身（知识库页自己的勾选在 qbank.kb.sel.v1，互不影响）。 */
+  var KPSRC_LS = 'qbank.kpsrc.v1';
+  function kpSrcState() {
+    var s = null; try { s = readLS(KPSRC_LS, null); } catch (e) { s = null; }
+    if (!s || typeof s !== 'object') s = {};
+    if (!Array.isArray(s.kbs)) s.kbs = [];
+    if (!s.docs || typeof s.docs !== 'object') s.docs = {};   /* '库id||文档名' -> 0 表示这篇不要（默认要） */
+    if (!s.files || typeof s.files !== 'object') s.files = {};
+    return s;
+  }
+  function kpSrcSave(s) { try { writeLS(KPSRC_LS, s); } catch (e) {} }
+  function kpSrcDocKey(id, name) { return id + '||' + name; }
+  function kpKbNameOf(id) {
+    var l = kpKbList();
+    for (var i = 0; i < l.length; i++) if (String(l[i].id) === String(id)) return l[i].name || id;
+    return String(id || '知识库');
+  }
+  /* 芯片：📚 库名（n/m 篇）+ 📎 资料柜文件；文档级开关在弹层里 */
+  function kpSrcPaint() {
+    var box = document.getElementById('mpKpSrcChips'); if (!box) return;
+    var s = kpSrcState();
+    var fil = Object.keys(s.files).filter(function (k) { return s.files[k]; }).map(function (fid) {
+      var f = null; try { f = fById(fid); } catch (e) {}
+      return f ? ('<span class="mp-srcchip" data-k="file" data-id="' + esc(fid) + '"><b>📎 ' + esc(String(f.name || '').slice(0, 12))
+        + '</b><i data-x="1" title="移掉">✕</i></span>') : '';
+    }).join('');
+    box.innerHTML = (s.kbs.length ? s.kbs.map(function (id) {
+      return '<span class="mp-srcchip" data-k="kb" data-id="' + esc(id) + '"><b>📚 ' + esc(String(kpKbNameOf(id)).slice(0, 12))
+        + '</b><em class="mp-srcn" data-cnt="' + esc(id) + '"></em><i data-x="1" title="移掉">✕</i></span>';
+    }).join('') : '') + fil + ((s.kbs.length || fil) ? '' : '<i class="mp-srcnone">没选就只看题库</i>');
+    /* 异步补「勾上的篇数 / 总篇数」，让用户一眼看出有没有被自己关掉 */
+    s.kbs.forEach(function (id) {
+      Promise.resolve((typeof window.kbStoreGet === 'function') ? window.kbStoreGet(id) : null).then(function (d) {
+        var docs = (d && d.docs) || [], on = 0;
+        docs.forEach(function (dd, i) {
+          var nm = dd.name || ('资料 ' + (i + 1));
+          if (s.docs[kpSrcDocKey(id, nm)] !== 0) on++;
+        });
+        var el = box.querySelector('[data-cnt="' + id + '"]');
+        if (el) el.textContent = docs.length ? (' ' + on + '/' + docs.length + ' 篇') : ' 没正文';
+      }).catch(function () {});
+    });
+  }
+  function kpSrcPopBuild() {
+    var pop = document.getElementById('mpKpSrcPop'); if (!pop) return;
+    var s = kpSrcState(), list = kpKbList();
+    var html = '<h5>知识库（勾上就把它的原文发给模型当依据）</h5>';
+    html += list.length ? list.map(function (k) {
+      var on = s.kbs.indexOf(k.id) >= 0;
+      return '<label><input type="checkbox" data-kb="' + esc(k.id) + '"' + (on ? ' checked' : '') + '> 📚 ' + esc(k.name)
+        + ' <i class="mp-srcn" data-kbcnt="' + esc(k.id) + '">…</i></label>'
+        + (on ? '<div class="mp-srcdocs" data-kbdocs="' + esc(k.id) + '"><i class="mp-srcn">读文档…</i></div>' : '');
+    }).join('') : '<div class="mp-srcempty">还没有知识库：去「AI 与知识库」加一点资料</div>';
+    html += '<h5>资料柜</h5>';
+    html += FILES.length ? FILES.map(function (f) {
+      return '<label><input type="checkbox" data-file="' + esc(f.id) + '"' + (s.files[f.id] ? ' checked' : '') + '> 📎 '
+        + esc(String(f.name || '').slice(0, 22)) + '</label>';
+    }).join('') : '<div class="mp-srcempty">资料柜是空的</div>';
+    pop.innerHTML = html;
+    pop.hidden = false;
+    kpSrcPlace();
+    /* 库里的真实篇数以 IndexedDB 为准：列表里的 docs 可能是旧计数，
+       正文没导入的库要当场标出来并禁勾，免得勾了却什么也没发出去。 */
+    list.forEach(function (k) {
+      var cntEl = pop.querySelector('[data-kbcnt="' + k.id + '"]');
+      var cb = pop.querySelector('input[data-kb="' + k.id + '"]');
+      Promise.resolve((typeof window.kbStoreGet === 'function') ? window.kbStoreGet(k.id) : null).then(function (d) {
+        var n = ((d && d.docs) || []).length;
+        if (cntEl) cntEl.textContent = n ? (n + ' 篇') : '还没导入正文';
+        if (!n && cb) {
+          cb.disabled = true;
+          if (cb.checked) {
+            cb.checked = false;
+            var st2 = kpSrcState(), ix = st2.kbs.indexOf(k.id);
+            if (ix >= 0) { st2.kbs.splice(ix, 1); kpSrcSave(st2); kpSrcPaint(); }
+          }
+        }
+      }).catch(function () { if (cntEl) cntEl.textContent = '读不出来'; });
+    });
+    /* 已勾的库：列出文档，可单独取消某篇 */
+    list.forEach(function (k) {
+      if (s.kbs.indexOf(k.id) < 0) return;
+      var box = pop.querySelector('[data-kbdocs="' + k.id + '"]'); if (!box) return;
+      Promise.resolve((typeof window.kbStoreGet === 'function') ? window.kbStoreGet(k.id) : null).then(function (d) {
+        var docs = (d && d.docs) || [];
+        if (!docs.length) { box.innerHTML = '<i class="mp-srcn">这个库还没有正文</i>'; return; }
+        box.innerHTML = docs.map(function (dd, i) {
+          var nm = dd.name || ('资料 ' + (i + 1));
+          var key = kpSrcDocKey(k.id, nm);
+          var on = (s.docs[key] !== 0);
+          return '<label class="sub"><input type="checkbox" data-doc="' + esc(key) + '"' + (on ? ' checked' : '') + '> '
+            + esc(String(nm).slice(0, 26)) + '</label>';
+        }).join('');
+      }).catch(function () { box.innerHTML = '<i class="mp-srcn">文档读不出来</i>'; });
+    });
+  }
+  /* 弹层定位：卡片靠下时往上开、靠上时往下开，高度按可用空间压住，
+     否则绝对定位 + 固定 300px 会顶出面板上沿被裁掉（实测过）。 */
+  function kpSrcPlace() {
+    var pop = document.getElementById('mpKpSrcPop');
+    if (!pop || pop.hidden) return;
+    var host = pop.parentNode; if (!host) return;
+    var r = host.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var pad = 8, maxH = Math.min(320, Math.round(vh * 0.52));
+    var w = Math.max(200, Math.min(Math.round(r.width - 8), vw - pad * 2));
+    var above = r.top > maxH + 18;
+    pop.style.position = 'fixed';
+    pop.style.right = 'auto';
+    pop.style.left = Math.round(Math.min(Math.max(pad, r.left + 4), vw - w - pad)) + 'px';
+    pop.style.width = w + 'px';
+    pop.style.zIndex = '30049';
+    if (above) {
+      var h = Math.min(maxH, Math.max(140, Math.round(r.top - 10)));
+      pop.style.maxHeight = h + 'px';
+      pop.style.top = Math.round(r.top - h - 6) + 'px';
+      pop.style.bottom = 'auto';
+    } else {
+      var top = Math.round(r.bottom + 6), h2 = Math.min(maxH, Math.max(140, vh - top - pad));
+      pop.style.maxHeight = h2 + 'px';
+      pop.style.top = top + 'px';
+      pop.style.bottom = 'auto';
+    }
+  }
+
+  function kpSrcBind() {
+    var add = document.getElementById('mpKpSrcAdd');
+    if (add && !add.__b) {
+      add.__b = 1;
+      add.onclick = function (ev) {
+        try { ev.stopPropagation(); } catch (e0) {}
+        var pop = document.getElementById('mpKpSrcPop');
+        if (pop && !pop.hidden) { pop.hidden = true; return; }
+        kpSrcPopBuild();
+      };
+    }
+    var pop = document.getElementById('mpKpSrcPop');
+    if (pop && !pop.__b) {
+      pop.__b = 1;
+      pop.addEventListener('change', function (ev) {
+        var t = ev.target; if (!t || t.tagName !== 'INPUT') return;
+        var s = kpSrcState();
+        if (t.getAttribute('data-kb')) {
+          var id = t.getAttribute('data-kb'), i = s.kbs.indexOf(id);
+          if (t.checked) { if (i < 0) s.kbs.push(id); } else if (i >= 0) s.kbs.splice(i, 1);
+        } else if (t.getAttribute('data-doc')) {
+          var key = t.getAttribute('data-doc');
+          if (t.checked) delete s.docs[key]; else s.docs[key] = 0;
+        } else if (t.getAttribute('data-file')) {
+          var fid = t.getAttribute('data-file');
+          if (t.checked) s.files[fid] = 1; else delete s.files[fid];
+        }
+        kpSrcSave(s); kpSrcPaint(); kpSrcPopBuild();
+      });
+    }
+    if (!document.__kpSrcOut) {
+      document.__kpSrcOut = 1;
+      document.addEventListener('pointerdown', function (ev) {
+        var pop = document.getElementById('mpKpSrcPop');
+        if (!pop || pop.hidden) return;
+        var t = ev.target;
+        if (pop.contains(t)) return;
+        if (t && t.closest && t.closest('#mpKpSrcAdd')) return;
+        pop.hidden = true;
+      }, true);
+      var kpEl = document.getElementById('mpKp');
+      if (kpEl) kpEl.addEventListener('scroll', function () {
+        var pop = document.getElementById('mpKpSrcPop');
+        if (pop && !pop.hidden) pop.hidden = true;
+      }, true);
+    }
+    var chips = document.getElementById('mpKpSrcChips');
+    if (chips && !chips.__b) {
+      chips.__b = 1;
+      chips.addEventListener('click', function (ev) {
+        var x = ev.target; if (!x || !x.getAttribute('data-x')) return;
+        var chip = x.parentNode; if (!chip) return;
+        var k = chip.getAttribute('data-k'), id = chip.getAttribute('data-id');
+        var s = kpSrcState();
+        if (k === 'kb') { var ix = s.kbs.indexOf(id); if (ix >= 0) s.kbs.splice(ix, 1); }
+        else if (k === 'file') { delete s.files[id]; }
+        kpSrcSave(s); kpSrcPaint();
+      });
+    }
+  }
+
   function kpAiRun() {
     /* 以前这里第一步就 `if (!fb) return;`——没有当前组时直接静默返回，
        表现就是「按钮点了没反应」。现在每一步都给人看得见的结果。 */
     var go = document.getElementById('mpAiGo');
     var note = document.getElementById('mpAiNote');
-    function say(t) { if (note) note.textContent = t; toast(t); }
+    function say(t) { if (note) note.textContent = t; kpStat(t, 'err'); toast(t); }
     try { kpFilesBox(); } catch (e0) {}
     var g0 = null; try { g0 = gCur(); } catch (e1) {}
     if (!g0) { say('先打开一张导图再分析'); return; }
@@ -5693,12 +6060,14 @@ function bindShell() {
     finally { if (go) { go.disabled = false; go.textContent = '开始分析'; } }
   }
 
-  /* 真·模型生成：把考点、这批题的题干/选项/答案/解析、选定的知识库与提示词一起发给模型，
-     让它写「知识点是什么 / 怎么认 / 这批题卡在哪 / 还没考到的延伸 / 口诀」。
+  /* 真·模型生成（web794）：这个考点下的题**全部**发过去，不是只发前 10 道。
+     题多就按字数分批（每批 ≤2600 字 / ≤12 道）先逐批摘要点，再拿要点做一次汇总；
+     知识库里勾了库的，先检索几段原文一起当依据。
      本地规则那版先垫在编辑器里，模型回来再覆盖——这样点一下立刻有东西看，不是干等。 */
-  function kpAiModel(name, rows, fileNames, kbNames) {
+  function kpAiModel(name, rows, fileNames, kbPack, prog) {
     return new Promise(function (resolve) {
-      if (!aiReady()) { resolve(null); return; }
+      if (!aiReady()) { resolve({ txt: null, err: '没配模型（设置 → AI 里填 API key 才是真 AI）' }); return; }
+      var say = function (t) { try { if (prog) prog(t); } catch (e0) {} };
       var cut = function (s, n) { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
       var ansTxt = function (q) {
         var a = q.answer || q.ans;
@@ -5706,54 +6075,224 @@ function bindShell() {
         if (typeof a === 'number') return 'ABCDEFGH'[a] || '';
         return String(a == null ? '' : a).toUpperCase().replace(/[^A-H]/g, '').slice(0, 4);
       };
-      var qLines = rows.slice(0, 10).map(function (q, i) {
-        var opts = (q.options || []).map(function (o, j) { return 'ABCDEFGH'[j] + '.' + cut(o, 30); }).join(' ');
-        var exp = cut(q.exp || q.explain || q.expl || '', 160);
-        return (i + 1) + '. ' + cut(q.stem, 160) + (opts ? ('\n   选项：' + opts) : '')
-          + '\n   答案：' + (ansTxt(q) || '未标') + (exp ? ('\n   原解析：' + exp) : '');
-      }).join('\n');
+      var qBlock = function (q, i) {
+        var opts = (q.options || []).map(function (o, j) { return 'ABCDEFGH'[j] + '.' + cut(o, 18); }).join(' ');
+        var exp = cut(q.exp || q.explain || q.expl || '', 110);
+        return (i + 1) + '. ' + cut(q.stem, 110) + (opts ? ('\n   选项：' + opts) : '')
+          + '\n   答案：' + (ansTxt(q) || '未标') + (exp ? ('\n   解析：' + exp) : '');
+      };
+      /* 全部题目装箱：单批 ≤2600 字、≤12 道 */
+      var blocks = rows.map(qBlock);
+      var batches = [], cur = [], curLen = 0;
+      blocks.forEach(function (b) {
+        if (cur.length && (curLen + b.length > 2600 || cur.length >= 12)) { batches.push(cur); cur = []; curLen = 0; }
+        cur.push(b); curLen += b.length + 2;
+      });
+      if (cur.length) batches.push(cur); else if (!batches.length) batches.push([]);
+
       var userAsk = '';
       try { var p0 = document.getElementById('mpAiP'); userAsk = p0 ? String(p0.value || '').trim() : ''; } catch (eP) {}
       if (!userAsk) userAsk = '总结';
 
-      var sys = '你是医学考试的助教，帮用户把一个「考点」整理成能直接复习的小结。'
-        + '只依据下面给的题目与解析；资料没写到的医学细节不要编造，宁可写「题库里没覆盖，建议自己补」。'
-        + '输出 Markdown（不要代码块包裹），固定这几节：'
-        + '「## 知识点是什么」「## 怎么认（判据）」「## 这批题卡在哪」「## 还没考到的延伸」「## 口诀 / 记忆钩子」。'
-        + '要具体、可背：判据写成「看到 X 就想到 Y」这种；不要空话、不要重复题干。';
-      var user = '考点：' + name
-        + '\n用户希望：' + cut(userAsk, 60)
-        + (kbNames.length ? ('\n可参考知识库：' + kbNames.slice(0, 4).join('、')) : '')
-        + (fileNames.length ? ('\n用户选了资料：' + fileNames.join('、')) : '')
-        + '\n这批题（共 ' + rows.length + ' 道，下面是前 ' + Math.min(10, rows.length) + ' 道）：\n' + (qLines || '（题库里没有命中这个考点的题）');
+      /* 逐批只抽「知识」：定义、机制、判据、鉴别、易错，不逐题分析 */
+      var EX_SYS = '你在读一个考点下的多批题目，任务是从题干和解析里把「关于这个考点的知识」抽出来，不是逐题分析题目。'
+        + '每批只提炼这六类：定义或解剖定位、机制/原理、判据（什么表现或数值 → 什么结论，含阈值分级）、'
+        + '这个考点和别的怎么区分、容易记反记漏的点、解析里能直接背的原句。'
+        + '完全重复的合并；换个说法的同一知识点要保留，别合并掉。'
+        + '输出纯文本，每条一行、以「- 」开头，不分节、不加标题，整批 300–500 字。'
+        + '题库里没写的知识一律不要补。';
+      /* 汇总体：写「考点总结」（知识），不是「题目分析」 */
+      var extraAsk = '';
+      try { extraAsk = String((typeof aiCfg === 'function' ? aiCfg().sys : '') || '').trim(); } catch (eX) { extraAsk = ''; }
+      var FIN_SYS = '你是医学考试助教。下面是一个考点在题库里的全部题目——已分批提炼成「要点」，另外可能附知识库原文。'
+        + '请写一份「考点总结」，是给人复习这个知识点用的，不是讲这批题怎么做。'
+        + '规则：'
+        + '1) 事实只用材料；材料没写的地方就写「资料未覆盖」，绝不补医学细节。'
+        + '2) 引用知识库时在该句末尾标 [ID:1] 这种编号；自己归纳的不标。'
+        + '3) 只许用这几个小节，按此顺序，缺料的整节省略，不许新增别的小节：'
+        + '「## 一句话结论」「## 定义与定位」「## 机制」「## 判据」「## 易混对比」「## 易错点」「## 资料未覆盖」。'
+        + '4) 「一句话结论」只写一句、不超过 40 字，是知识性的结论（它是什么 / 最有价值在哪），不是做题技巧。'
+        + '5) 「判据」用临床表述：「见到 X（症状 / 体征 / 检查结果 / 数值）→ 考虑或诊断为 Y」，'
+        + '每条后面可以跟一句「为什么」，把机制说清楚；共 3–8 条。'
+        + '6) 有 ≥2 个易混的病、型、部位或指标时，加「## 易混对比」一张 Markdown 表格：列是鉴别点，行是各个实体。'
+        + '6b) 表里的实体必须是真正不同的事物；同一体征/概念的两种写法（如「麦氏点压痛」与「麦氏点固定压痛」）不算易混，不要凑成表。'
+        + '7) 「易错点」写容易记反、记漏、被当成本考点同义的，一条一行；没有就省略。'
+        + '8) 不要写「本题库考了几种问法」「选项 A 错在哪」这类做题分析；不要编口诀；不要写与本考点无关的延伸。'
+        + '8b) 正文里不要出现「第 N 批」「某一批」「题干」这类来源标注或做题视角的字样，直接讲知识。'
+        + '8c) 每个小节控制在 3–6 行；材料不够就一句话带过，不许靠复述材料来源凑字数。'
+        + '9) 目标 1200–1600 字，用足篇幅：每一批要点里出现过的知识点，都要落到对应小节，不许丢。'
+        + '10) Markdown，不要代码块包裹。'
+        + (extraAsk ? ('11) 用户的额外要求（优先满足）：' + extraAsk) : '');
 
       var ctl = ('AbortController' in window) ? new AbortController() : null;
       var done = false;
-      var fin = function (v) { if (done) return; done = true; clearTimeout(t); resolve(v); };
-      var t = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e0) {} fin(null); }, 60000);
-      var p;
-      try {
-        p = window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: user }],
-          null, ctl ? ctl.signal : null, { stream: false, temp: 0.4, maxTokens: 1400 });
-      } catch (e1) { fin(null); return; }
-      Promise.resolve(p).then(function (txt) {
-        var out = String(txt || '').trim().replace(/^```(?:md|markdown)?\s*/i, '').replace(/```\s*$/, '').trim();
-        if (!out || out.length < 40) { fin(null); return; }
-        fin(out);
-      }).catch(function () { fin(null); });
+      var hard = null;
+      var fin = function (v) { if (done) return; done = true; clearTimeout(hard); try { window.__kpAiLast = v; } catch (eF) {} resolve(v); };
+      /* 题多就多给点时间：每批按 25 秒算，最少 5 分钟、最多 15 分钟 */
+      var hardMs = Math.min(900000, Math.max(300000, batches.length * 25000));
+      hard = setTimeout(function () {
+        try { if (ctl) ctl.abort(); } catch (e0) {}
+        fin({ txt: null, err: '整轮超过 ' + Math.round(hardMs / 60000) + ' 分钟还没跑完（题太多可以少选几道）' });
+      }, hardMs);
+      var clean = function (s) {
+        /* aiChat 正常 resolve 字符串；兼容一下返回 {txt}/{text} 的实现与假桩 */
+        if (s && typeof s === 'object') s = s.txt || s.text || s.content || '';
+        return String(s || '').trim().replace(/^```(?:md|markdown)?\s*/i, '').replace(/```\s*$/, '').trim();
+      };
+      var mapErr = function (e2) {
+        var m = String((e2 && e2.message) || e2 || '');
+        if (/\b401\b|unauthorized/i.test(m)) m = 'AI 认证失败（HTTP 401）：API key 没填或已失效';
+        else if (/\b403\b|forbidden/i.test(m)) m = 'AI 拒绝访问（HTTP 403）：key 没权限或额度用完';
+        else if (/\b429\b|rate.?limit/i.test(m)) m = 'AI 太频繁（HTTP 429）：等一会儿再试';
+        return m || '请求失败';
+      };
+      var fire = function (msgs, mt) {
+        return Promise.resolve(window.aiChat(msgs, null, ctl ? ctl.signal : null, { stream: false, temp: 0.4, maxTokens: mt }))
+          .then(function (r) {
+            var last = null; try { last = window.__AI_LAST; } catch (eL) {}
+            return { txt: clean(r), cut: !!(last && last.finish === 'length') };
+          });
+      };
+      var call = function (sys, user, mt) {
+        return fire([{ role: 'system', content: sys }, { role: 'user', content: user }], mt);
+      };
+      /* 思考型模型（deepseek-flash / reasoner 这类）会先把预算花在 reasoning 上：
+         正文空着回来不是「坏了」，加预算再要一次通常就有了。 */
+      var ask = function (sys, user, mt) {
+        return call(sys, user, mt).then(function (o) { return o.txt || call(sys, user, 4000).then(function (o2) { return o2.txt; }); });
+      };
+      /* 写完正文被 max_tokens 截断（finish_reason=length）时自动「接着写」：
+         否则小结会停在半句话（有人以为是显示不全）。最多接着写两次。 */
+      var askLong = function (sys, user, mt) {
+        var base = [{ role: 'system', content: sys }, { role: 'user', content: user }];
+        var full = '', rounds = 0, cut = false, bump = 0, room = mt;
+        var step = function () {
+          return fire(rounds ? base.concat([{ role: 'assistant', content: full },
+            { role: 'user', content: '继续。从上一句断开的地方接着写，不要重复已经写过的内容，不要重新开头、不要加结束语。' }]) : base, room)
+            .then(function (o) {
+              /* 长输出时思考可能把预算吃光、正文空着回来：加预算重来，别直接判失败 */
+              if (!o.txt && !full && bump < 2) { bump++; room = Math.min(9000, Math.round(room * 1.7)); return step(); }
+              full = full ? (full + '\n' + o.txt) : o.txt;
+              cut = o.cut;
+              rounds++;
+              if (cut && rounds < 3 && full) return step();
+              return { txt: full, cut: cut };
+            });
+        };
+        return step();
+      };
+
+      /* 知识库：用户勾了哪些库 / 哪些文档，就取那些文档的正文当依据（不勾就只用题库）。
+         直接读文档原文（kbStoreGet）而不是走检索，是因为用户已经明确挑了哪几篇。 */
+      var kbSel = (kbPack && kbPack.sel) || { kbs: [], docs: {}, files: {} };
+      var kbNames = (kbPack && kbPack.names) || [];
+      var kbGo = function () {
+        var ids = kbSel.kbs || [];
+        if (!ids.length || typeof window.kbStoreGet !== 'function') return Promise.resolve([]);
+        return Promise.all(ids.map(function (id) {
+          try { return Promise.resolve(window.kbStoreGet(id)).catch(function () { return null; }); } catch (e) { return null; }
+        })).then(function (arr) {
+          var out = [], used = 0;
+          ids.forEach(function (id, i) {
+            var d = arr[i], docs = (d && d.docs) || [];
+            var kbNm = String(kpKbNameOf(id));
+            docs.forEach(function (dd, j) {
+              var nm = dd.name || ('资料 ' + (j + 1));
+              if (kbSel.docs && kbSel.docs[kpSrcDocKey(id, nm)] === 0) return;   /* 这篇被取消了 */
+              /* 知识库里的文档是按 chunk 存的（{name, chunks:[{t}]}），不是一整段 text；
+                 早期这里只读 dd.text，于是「勾了库却一个字都没发出去」。 */
+              var tx = String(dd.text || '').replace(/\s+/g, ' ').trim();
+              if (!tx && Array.isArray(dd.chunks)) {
+                tx = dd.chunks.map(function (c) { return String((c && (c.t != null ? c.t : c)) || ''); }).join('\n').replace(/\s+/g, ' ').trim();
+              }
+              if (!tx) return;
+              var room = 7000 - used;
+              if (room <= 120) return;
+              tx = tx.slice(0, Math.min(1500, room));
+              used += tx.length;
+              out.push('[ID:' + (out.length + 1) + '] 【' + kbNm + ' / ' + String(nm).slice(0, 30) + '】' + tx);
+            });
+          });
+          return out.slice(0, 12);
+        }).catch(function () { return []; });
+      };
+
+      /* 题库自带的结构信息：题量、问法分布、缺解析——模型写「这批题卡在哪」用得上 */
+      var askCount = {}, missN = 0;
+      rows.forEach(function (q) {
+        var s = String(q.stem || '');
+        var m = s.match(/(最典型|最有意义|最可能|最常见|最早|最晚|首先|提示什么|提示|说明|诊断是|治疗是|机制是|为什么|下列哪[一项些]|错误的是|正确的是)/);
+        var k = m ? m[1] : '普通问法'; askCount[k] = (askCount[k] || 0) + 1;
+        if (!String(q.exp || q.explain || q.expl || '').trim()) missN++;
+      });
+      var askTop = Object.keys(askCount).sort(function (a, b) { return askCount[b] - askCount[a]; }).slice(0, 4)
+        .map(function (k) { return '「' + k + '」×' + askCount[k]; }).join('、');
+      var statLines = ['- 题量：' + rows.length + ' 道（单选 ' + rows.filter(function (q) { return (q.answer || []).length <= 1; }).length
+        + ' / 多选 ' + rows.filter(function (q) { return (q.answer || []).length > 1; }).length + '）'];
+      if (askTop) statLines.push('- 问法分布：' + askTop);
+      if (missN) statLines.push('- 有 ' + missN + ' 道还没有解析');
+
+      var kbTexts = [];
+      kbGo().then(function (kx) {
+        kbTexts = kx;
+        /* 只有一批：直接让它一次写完整小结 */
+        if (batches.length <= 1) return { notes: [], single: batches[0] || [] };
+        /* 多批：一批一批读，别把几百道题怼进一次请求（又慢又容易丢细节） */
+        var notes = [];
+        var chain = Promise.resolve();
+        batches.forEach(function (b, i) {
+          chain = chain.then(function () {
+            if (done) return null;
+            say('AI 正在读第 ' + (i + 1) + '/' + batches.length + ' 批题…');
+            return ask(EX_SYS, '考点：' + name + '\n第 ' + (i + 1) + '/' + batches.length + ' 批，共 ' + b.length + ' 道题：\n' + b.join('\n'), 1600)
+              .then(function (o) { if (o) notes.push('【第 ' + (i + 1) + ' 批】\n' + o); })
+              .catch(function (e1) { notes.push('【第 ' + (i + 1) + ' 批】没读出来：' + mapErr(e1)); });
+          });
+        });
+        return chain.then(function () { return { notes: notes, single: null }; });
+      }).then(function (pack) {
+        if (done) return null;
+        say('AI 正在汇总（' + rows.length + ' 道题 · ' + batches.length + ' 批）…');
+        var usr = '考点：' + name
+          + '\n用户希望：' + cut(userAsk, 60)
+          + (kbNames.length ? ('\n参考知识库：' + kbNames.slice(0, 6).join('、')) : '')
+          + (fileNames.length ? ('\n用户选了资料：' + fileNames.join('、')) : '')
+          + '\n题库统计：\n' + statLines.join('\n');
+        if (kbTexts.length) usr += '\n\n知识库原文（引用时用段首的 [ID:n]）：\n- ' + kbTexts.join('\n- ');
+        if (pack.single) {
+          usr += '\n\n这个考点的题目（共 ' + rows.length + ' 道，全在下面）：\n' + (pack.single.join('\n') || '（题库里没有命中这个考点的题）');
+        } else {
+          usr += '\n\n这个考点的题目共 ' + rows.length + ' 道，分 ' + batches.length + ' 批逐条读过，每批摘出的要点如下：\n' + pack.notes.join('\n');
+        }
+        return askLong(FIN_SYS, usr, 5200);
+      }).then(function (o) {
+        if (done) return;
+        var out = clean(o && o.txt);
+        if (!out) { fin({ txt: null, err: '模型没有输出正文（思考把 token 用完了；已自动加预算重试一次）' }); return; }
+        /* 模型偶尔把 ## 写成 ####，在面板里字号会小一档，统一回两级标题 */
+        out = out.replace(/^#{3,6}[ \t]+/gm, '## ');
+        fin({ txt: out, err: '', meta: { n: rows.length, b: batches.length, kb: kbTexts.length, cut: !!(o && o.cut) } });
+      }).catch(function (e2) { fin({ txt: null, err: mapErr(e2) }); });
     });
   }
 
   function kpAiDo(name) {
     /* 这块是「考点的小结」，不是「题目清单」：
        知识点是什么 → 怎么认 → 这批题卡在哪 → 还没考到的延伸 → 口诀 */
+    /* 面板标题那个「N 道题」是跨题库按标签汇总的（kpQsOf），小结就发同一批，
+       否则标题写 91 道、实际只发了当前题库的 44 道。 */
     var bank = null; try { bank = bankById(S.bankId); } catch (e0) {}
-    var all = (bank && bank.questions) ? bank.questions : [];
-    var rows = all.filter(function (q) { return (qTags(q) || []).indexOf(name) >= 0; });
+    var all = (bank && bank.questions) ? bank.questions : [];   /* 当前题库，给「延伸」统计用 */
+    var rows = [];
+    try { rows = kpQsOf(name) || []; } catch (eQs) { rows = []; }
+    if (!rows.length) rows = all.filter(function (q) { return (qTags(q) || []).indexOf(name) >= 0; });
     if (!rows.length) rows = (KP.rows || []).slice();
     var pick = [].slice.call(document.querySelectorAll('#mpAiFiles input:checked')).map(function (x) { return fById(x.value); }).filter(Boolean);
+    var srcS = kpSrcState();          /* 面板里勾的「依据」优先于 AI 面板的老勾选 */
     var ksel = aiKbSel();
-    var kbs = kpKbList().filter(function (k) { return ksel[k.id || k.name]; }).map(function (k) { return String(k.name).slice(0, 20); });
+    var kbs = srcS.kbs.length
+      ? srcS.kbs.map(function (id) { return String(kpKbNameOf(id)).slice(0, 20); })
+      : kpKbList().filter(function (k) { return ksel[k.id || k.name]; }).map(function (k) { return String(k.name).slice(0, 20); });
     var onMap = DATA.nodes.filter(function (n) { return n.type === 'sim' || n.type === 'center' || n.type === 'variant'; }).length;
 
     /* 大标签（科目 / 系统）：取出现最多的那个 */
@@ -5836,34 +6375,100 @@ function bindShell() {
     L.push('`' + (neigh.slice(0, 3).concat([name]).join('、')) + '` —— 顺序别记反。');
 
     var txt = L.join('\n');
-    var m = kpMd(); m[name] = txt;
-    try { saveCur(); } catch (e) {}
-    rteSet(txt);
-    var pv = document.getElementById('mpKpPrev2'); if (pv) pv.innerHTML = md2h(txt);
+    var dftB = document.getElementById('mpKpDraft');
+    var genB = document.getElementById('mpKpGen');
+    var edEl = document.getElementById('mpKpMd');
+    var showDraft = function (on) { if (dftB) dftB.hidden = !on; };
+    var markDraft = function (on) { if (dftB) dftB.classList.toggle('hot', !!on); };
+    var hasTxt = function () {
+      return !!(edEl && String(edEl.textContent || '').replace(/\s+/g, ''));
+    };
+    var writeMd = function (s) {
+      var m2 = kpMd(); m2[name] = s;
+      try { saveCur(); } catch (e2) {}
+      try { rteSet(s); } catch (e3) {}
+      var pv2 = document.getElementById('mpKpPrev2'); if (pv2) pv2.innerHTML = md2h(s);
+    };
+    /* 规则版：只在用户点「本地草稿」或 AI 用不了时写，开头写明不是 AI 写的 */
+    window.__kpLocalDraft = function (why) {
+      writeMd('> ⚠️ 本地规则草稿（不是 AI 写的）' + (why ? '：' + why : '') + '\n\n' + txt);
+      kpStat('本地草稿 · 点「✨ 一键生成」让 AI 重写', 'ok');
+      showDraft(true); markDraft(false);
+      toast('已用本地规则写了一份草稿（已标明不是 AI 写的）');
+    };
     var aiEl = document.getElementById('mpAi'); if (aiEl) aiEl.classList.remove('show');
-    var nd = 0;
-    try { nd = aiDrafts(name, rows.slice(0, 8)); } catch (e) {}
-    var st = document.getElementById('mpKpStat');
+    try { aiDrafts(name, rows.slice(0, 8)); } catch (e) {}
+
+    /* 没配模型：不再「点了没反应」，也不拿空 key 去撞 401。
+       编辑器是空的就直接把规则草稿写进去，有内容就不覆盖用户自己写的。 */
     if (!aiReady()) {
-      if (st) st.textContent = '本地规则生成 · 没配模型（设置里填 API 才是真 AI）';
-      toast(nd ? ('分析完了：写进编辑器，另外挂了 ' + nd + ' 个草稿节点（确认后才会存）')
-        : '分析完了，已写进右侧编辑器（可以接着改；这是本地规则版，配了模型会换成 AI 写）');
+      var why0 = kpAiWhy();
+      var goB = document.getElementById('mpKpGo');
+      if (goB) goB.hidden = /没加载/.test(why0);   /* 只是 ai.js 没加载时别引导去填 key */
+      showDraft(true); markDraft(true);
+      if (!hasTxt()) {
+        window.__kpLocalDraft(why0);
+        kpStat('没配模型 · 已用题库内容顶上', 'warn');
+      } else {
+        kpStat('没配模型 · 点「本地草稿」重写', 'warn');
+      }
+      toast(why0 + '；现在这份是本地草稿，不是 AI 写的', 4000, 'warn');
       return;
     }
-    if (st) st.textContent = '本地草稿 · AI 正在写…';
+
+    var t0 = Date.now(), phaseTxt = '';
+    var paintBusy = function () {
+      var sec = Math.round((Date.now() - t0) / 1000);
+      kpStat((phaseTxt ? phaseTxt + ' · ' : 'AI 正在写… ') + sec + 's', 'busy');
+    };
+    /* 分批进度：kpAiModel 每换一批就回调一次，文案 + 计时一起显示 */
+    var setPhase = function (t) { if (t) phaseTxt = String(t); paintBusy(); };
+    var goB2 = document.getElementById('mpKpGo'); if (goB2) goB2.hidden = true;
+    showDraft(false); markDraft(false);
+    if (genB) { genB.disabled = true; genB.textContent = '✍️ 正在写…'; }
+    paintBusy();
+    var iv = setInterval(paintBusy, 1000);
+    var endBusy = function () {
+      clearInterval(iv);
+      if (genB) { genB.disabled = false; genB.textContent = '✨ 重新生成'; }
+    };
     var pickNames = pick.map(function (f) { return String(f.name || '').slice(0, 24); });
-    kpAiModel(name, rows, pickNames, kbs).then(function (out) {
-      if (!out) {
-        if (st) st.textContent = 'AI 没回话，先用本地规则版（可以点 ✨ 重试）';
-        toast('模型没回话，先用本地规则版');
+    Object.keys(srcS.files).forEach(function (fid) {
+      if (!srcS.files[fid]) return;
+      var f = null; try { f = fById(fid); } catch (e) {}
+      var nm = f ? String(f.name || '').slice(0, 24) : '';
+      if (nm && pickNames.indexOf(nm) < 0) pickNames.push(nm);
+    });
+    var kbPack = { sel: srcS, names: srcS.kbs.length ? srcS.kbs.map(function (id) { return String(kpKbNameOf(id)); }) : kbs };
+    kpAiModel(name, rows, pickNames, kbPack, setPhase).then(function (res) {
+      endBusy();
+      if (!res || !res.txt) {
+        var why = (res && res.err) || '没有返回内容';
+        var empty = !hasTxt();
+        showDraft(true); markDraft(true);
+        if (empty) {
+          window.__kpLocalDraft(why);
+          kpStat('AI 没写出来 · 先放本地草稿', 'err');
+        } else {
+          kpStat('AI 没写出来：' + why, 'err');
+        }
+        toast('AI 没写出来：' + why + (empty ? '（先用本地草稿顶着）' : ''), 4000, 'warn');
         return;
       }
-      var m2 = kpMd(); m2[name] = out;
-      try { saveCur(); } catch (e2) {}
-      try { rteSet(out); } catch (e3) {}
-      var pv2 = document.getElementById('mpKpPrev2'); if (pv2) pv2.innerHTML = md2h(out);
-      if (st) st.textContent = 'AI 生成 · 改完自动保存';
+      writeMd(res.txt);
+      var mt = res.meta || {};
+      kpStat('AI 已生成 · ' + (mt.n || rows.length) + ' 道题'
+        + ((mt.b || 1) > 1 ? (' · 分 ' + mt.b + ' 批读') : '')
+        + (mt.kb ? (' · 知识库 ' + mt.kb + ' 段') : '')
+        + (mt.cut ? ' · 结尾被截断（可再生成一次）' : '') + ' · 改了自动保存', 'ok');
+      showDraft(false); markDraft(false);
       toast('AI 写完了：' + name);
+    }).catch(function (e4) {
+      endBusy();
+      var why2 = (e4 && e4.message) || String(e4) || '请求失败';
+      kpStat('AI 失败了：' + why2, 'err');
+      showDraft(true); markDraft(true);
+      toast('AI 失败了：' + why2, 3600, 'warn');
     });
   }
   function answerText(q) {
@@ -5894,8 +6499,14 @@ function bindShell() {
     /* contenteditable 不能用 .value 赋值（web337 的 bug：重开考点编辑器是空的，一打字就把旧内容冲掉） */
     if (typeof rteSet === 'function') rteSet(m);
     else { var ed0 = $('#mpKpMd'); if (ed0) ed0.innerHTML = md2h(m); $('#mpKpPrev2').innerHTML = md2h(m); }
-    var st0 = document.getElementById('mpKpStat');
-    if (st0) st0.textContent = m ? '已保存' : 'Markdown 源码 · 上面写，下面实时显示';
+    kpStat(m ? '已保存' : '还没写 · 点「✨ 一键生成」', m ? 'ok' : '');
+    try { kpSrcBind(); kpSrcPaint(); } catch (eSP) {}
+    var genB0 = document.getElementById('mpKpGen');
+    if (genB0) { genB0.disabled = false; genB0.textContent = m ? '✨ 重新生成' : '✨ 一键生成总结'; }
+    var dftB0 = document.getElementById('mpKpDraft');
+    if (dftB0) dftB0.classList.remove('hot');
+    var goB0 = document.getElementById('mpKpGo');
+    if (goB0) goB0.hidden = true;
     kpPaint();
     /* 面板从右边盖上来，画布往左让一段，正在看的考点不会被糊住 */
     if (!KP.shift) {
@@ -6674,8 +7285,10 @@ function bindShell() {
         var row = e.target.closest('.mp-pkitem');
         if (!row) return;
         if (row.classList.contains('dis')) { toast('AI 变式题不能当中心题'); return; }
-        var q = (bankById(S.bankId) || { questions: [] }).questions.filter(function (x) { return String(x.id) === row.dataset.q; })[0];
-        if (!q) return;
+        var wantB = row.dataset.b || '';
+        var q = null;
+        try { q = findQAny(row.dataset.q, wantB || S.bankId); } catch (eF) { q = null; }
+        if (!q) { toast('这道题已经不在题库里了'); return; }
         pickClose();
         recenter(q);
         toast('已把「' + String(q.stem || '').slice(0, 12) + '」设为中心题');
@@ -6694,7 +7307,21 @@ function bindShell() {
     var box = document.getElementById('mpPickList');
     if (!box) return;
     var bank = null; try { bank = bankById(S.bankId); } catch (e) {}
-    var pool = (bank && bank.questions) || [];
+    /* 换中心题可以挑「整个网站」里的任意一道题（不只当前题库）：中心题换了，图会跟着换题库 */
+    var pool = [];
+    try {
+      var bs = (typeof allBanks === 'function') ? (allBanks() || []) : [];
+      bs.forEach(function (B) {
+        if (!B || B.paper || !Array.isArray(B.questions)) return;
+        B.questions.forEach(function (x) {
+          if (!x || !x.stem) return;
+          try { if (!x._bank) x._bank = B.id; } catch (eBk) {}
+          x.__bankTitle = B.title || B.name || B.id;
+          pool.push(x);
+        });
+      });
+    } catch (eAll) {}
+    if (!pool.length) pool = (bank && bank.questions) || [];
     var q = PICK.q.toLowerCase();
     var qn = (typeof norm === 'function') ? norm(PICK.q) : q;
     /* AI 模式：先过同义/简写（心梗→心肌梗死…），再过拆字模糊，跟搜索器同一套 */
@@ -6710,15 +7337,20 @@ function bindShell() {
       for (var a = 0; a < alts.length; a++) if (alts[a] && hn.indexOf(norm(alts[a])) >= 0) return { x: x, s: 60 };
       var sc = (typeof srScore === 'function') ? srScore(hay, qn, true) : 0;
       return sc > 0 ? { x: x, s: sc } : null;
-    }).filter(Boolean).sort(function (m1, m2) { return m2.s - m1.s; }).slice(0, 40).map(function (m) { return m.x; });
+    }).filter(Boolean).sort(function (m1, m2) {
+      var c1 = (String(m1.x._bank || '') === String(S.bankId)) ? 1 : 0;
+      var c2 = (String(m2.x._bank || '') === String(S.bankId)) ? 1 : 0;
+      return (m2.s - m1.s) || (c2 - c1);
+    }).slice(0, 40).map(function (m) { return m.x; });
     if (!rows.length) { box.innerHTML = '<div class="mp-pkempty">没有匹配的题目</div>'; return; }
     box.innerHTML = rows.map(function (x) {
       var isCur = String(x.id) === String(S.qid);
       var dis = x.variant || x.aiVar || x.from === 'ai';
       var tags = (qTags(x) || []).slice(0, 3).join(' / ');
-      return '<div class="mp-pkitem' + (isCur ? ' cur' : '') + (dis ? ' dis' : '') + '" data-q="' + x.id + '">' +
+      var bk = x.__bankTitle || '';
+      return '<div class="mp-pkitem' + (isCur ? ' cur' : '') + (dis ? ' dis' : '') + '" data-q="' + x.id + '" data-b="' + (x._bank || '') + '">' +
         '<div class="mp-pkt">' + esc(String(x.stem || '').slice(0, 60)) + '</div>' +
-        '<div class="mp-pkm">' + (dis ? 'AI 变式 · ' : '') + (tags || '未打标签') + '</div>' +
+        '<div class="mp-pkm">' + (bk ? '📚 ' + esc(String(bk).slice(0, 10)) + ' · ' : '') + (dis ? 'AI 变式 · ' : '') + (tags || '未打标签') + '</div>' +
         (isCur ? '<i class="mp-pkcur">当前</i>' : '') + '</div>';
     }).join('');
   }
