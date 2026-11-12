@@ -116,27 +116,71 @@
   /* 首句当结论句加粗 */
   function chapPara(t, sources, hits, id) {
     var s0 = String(t || '');
+    if (/\n/.test(s0) || /!\[/.test(s0)) {
+      var md = ntMdBlock(s0, sources, hits, id);
+      if (md) return md;
+    }
     var m = /^([\s\S]{8,52}?[。；])/.exec(s0);
     if (!m || m[1].length >= s0.length) return chapInline(s0, sources, hits, id);
     return '<b class="nt-ovld">' + chapInline(m[1], sources, hits, id) + '</b>' + chapInline(s0.slice(m[1].length), sources, hits, id);
   }
 
   function parseEdited(raw) {
-    var secs = [], cur = { h: '', paras: [] };
+    var secs = [], cur = { h: '', paras: [] }, buf = [];
     secs._title = '';
+    function flush() {
+      var t = buf.join('\n').replace(/^\s+|\s+$/g, '');
+      buf = [];
+      if (t) cur.paras.push({ t: t });
+    }
     String(raw || '').split('\n').forEach(function (ln) {
       ln = ln.replace(/\r$/, '');
-      if (/^#\s+/.test(ln)) { secs._title = ln.replace(/^#\s+/, '').trim(); return; }
+      if (/^#\s+/.test(ln)) { flush(); secs._title = ln.replace(/^#\s+/, '').trim(); return; }
       if (/^##\s+/.test(ln)) {
+        flush();
         if (cur.h || cur.paras.length) secs.push(cur);
         cur = { h: ln.replace(/^##\s+/, '').trim(), paras: [] };
         return;
       }
-      if (!ln.trim()) return;
-      cur.paras.push({ t: ln.trim() });
+      if (!ln.trim()) { flush(); return; }   /* 空行分段：表格/图片块因此不会被拆散 */
+      buf.push(ln);
     });
+    flush();
     if (cur.h || cur.paras.length) secs.push(cur);
     return secs;
+  }
+
+  /* 含换行或图片的块按 Markdown 渲染（表格、图片、列表），其余仍走高亮+上标的老路径 */
+  function ntMdBlock(s0, sources, hits, id) {
+    if (!window.mdToHtml) return '';
+    var html = '';
+    try { html = window.mdToHtml(s0); } catch (e) { return ''; }
+    if (!html) return '';
+    html = html.replace(/\[\[(\d+)\]\]/g, function (m, n) {
+      return '<sup class="nt-csup" data-nt-act="go" data-i="' + n + '">' + n + '</sup>';
+    });
+    return '<div class="nt-mdblock">' + html + '</div>';
+  }
+
+  function ntCaretInsert(ta, text) {
+    if (!ta) return;
+    var s0 = ta.selectionStart || 0, e0 = ta.selectionEnd || 0, val = ta.value;
+    ta.value = val.slice(0, s0) + text + val.slice(e0);
+    var pos = s0 + text.length;
+    try { ta.focus(); ta.setSelectionRange(pos, pos); } catch (e) {}
+    ta.dispatchEvent(new Event('input'));
+  }
+
+  function ntPrevRender(v, id) {
+    var ta = v.querySelector('[data-nt-ed="' + id + '"]');
+    var pv = v.querySelector('[data-nt-prev="' + id + '"]');
+    if (!ta || !pv || pv.hasAttribute('hidden')) return;
+    var html = '';
+    try { html = window.mdToHtml ? window.mdToHtml(ta.value) : ''; } catch (e) { html = ''; }
+    html = String(html || '').replace(/\[\[(\d+)\]\]/g, function (m, n) {
+      return '<sup class="nt-csup" data-nt-act="go" data-i="' + n + '">' + n + '</sup>';
+    });
+    pv.innerHTML = html || '<i class="nt-edempty">（这里会实时显示渲染结果）</i>';
   }
 
   function chapEditSrc(n) {
@@ -192,8 +236,16 @@
       var isChap = !!(n.ov && n.ov.sections && n.ov.sections.length && n.ov.sections[0].paras);
       if (isChap) {
         if (EDIT[n.id]) {
-          h += '<div class="nt-edwrap"><textarea class="nt-edit" data-nt-ed="' + n.id + '">' + esc(chapEditSrc(n)) + '</textarea>'
-            + '<div class="nt-edbar"><span>「## 小节标题」开新节，一行一段，[[n]] 是出处编号（可删，别改数字含义）</span>'
+          h += '<div class="nt-edwrap" data-nt-wrap="' + n.id + '">'
+            + '<div class="nt-edtools">'
+            + '<button class="btn tiny" data-nt-act="edImg" data-id="' + n.id + '">🖼 插入图片</button>'
+            + '<button class="btn tiny" data-nt-act="edTable" data-id="' + n.id + '">▦ 插入表格</button>'
+            + '<button class="btn tiny" data-nt-act="edPrev" data-id="' + n.id + '">👁 预览</button>'
+            + '<input type="file" accept="image/*" class="nt-edfile" data-nt-file="' + n.id + '" hidden>'
+            + '</div>'
+            + '<textarea class="nt-edit" data-nt-ed="' + n.id + '">' + esc(chapEditSrc(n)) + '</textarea>'
+            + '<div class="nt-edprev" data-nt-prev="' + n.id + '" hidden></div>'
+            + '<div class="nt-edbar"><span>「## 小节标题」开新节，空行分段；表格/图片都是 Markdown（工具条能插，图片建议 900 宽以内），[[n]] 是出处编号</span>'
             + '<button class="btn tiny" data-nt-act="editSave" data-id="' + n.id + '">保存</button>'
             + '<button class="btn tiny" data-nt-act="editCancel" data-id="' + n.id + '">取消</button></div></div>';
         } else {
@@ -346,6 +398,26 @@
       });
     });
 
+    v.querySelectorAll('[data-nt-ed]').forEach(function (ta) {
+      ta.addEventListener('input', function () { ntPrevRender(v, ta.getAttribute('data-nt-ed')); });
+    });
+    v.querySelectorAll('[data-nt-file]').forEach(function (fi) {
+      fi.addEventListener('change', function () {
+        var f = fi.files && fi.files[0]; if (!f) return;
+        var id2 = fi.getAttribute('data-nt-file');
+        var ta2 = v.querySelector('[data-nt-ed="' + id2 + '"]');
+        if (window.toast) toast('正在压缩图片…', 1200);
+        Promise.resolve(window.compressImage ? window.compressImage(f, 900, 0.8) : null).then(function (url) {
+          if (!url) throw new Error('读取图片失败');
+          ntCaretInsert(ta2, '\n\n![图](' + url + ')\n\n');
+          ntPrevRender(v, id2);
+          if (window.toast) toast('图片已插入（会一起存进笔记）', 1600, 'ok');
+        }).catch(function (e) {
+          if (window.toast) toast('插入图片失败：' + ((e && e.message) || e), 2200, 'bad');
+        });
+        fi.value = '';
+      });
+    });
     v.querySelectorAll('[data-nt-act]').forEach(function (b) {
       b.addEventListener('click', function (ev) {
         ev.stopPropagation();
@@ -354,6 +426,23 @@
         if (!note) return;
         if (act === 'toggle') { OPEN[id] = !OPEN[id]; render(); return; }
         if (act === 'edit') { EDIT[id] = 1; render(); return; }
+        if (act === 'edImg') {
+          var fi = v.querySelector('[data-nt-file="' + id + '"]'); if (fi) fi.click(); return;
+        }
+        if (act === 'edTable') {
+          var t1 = v.querySelector('[data-nt-ed="' + id + '"]');
+          ntCaretInsert(t1, (t1 && t1.value.trim() ? '\n\n' : '') + '| 项目 | 说明 |\n|---|---|\n|  |  |\n');
+          ntPrevRender(v, id);
+          return;
+        }
+        if (act === 'edPrev') {
+          var pv = v.querySelector('[data-nt-prev="' + id + '"]');
+          if (pv) {
+            if (pv.hasAttribute('hidden')) { pv.removeAttribute('hidden'); ntPrevRender(v, id); b.textContent = '👁 收起预览'; }
+            else { pv.setAttribute('hidden', ''); b.textContent = '👁 预览'; }
+          }
+          return;
+        }
         if (act === 'editCancel') { delete EDIT[id]; render(); return; }
         if (act === 'editSave') {
           var ta = v.querySelector('[data-nt-ed="' + id + '"]');

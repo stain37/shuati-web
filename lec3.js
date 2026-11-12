@@ -2693,6 +2693,16 @@
 
   function ovHtml(st) {
     var keys = st.keys || [], srcs = st.sources || [], h = '';
+    if (st.ov && st.ov.ready) {
+      var nb = st.mode === 'full' ? Math.ceil(OV_FULL_CAP / 32) : 0;
+      var est = st.mode === 'full'
+        ? ('贯通：先扫最多 ' + OV_FULL_CAP + ' 条相关原句，分 ' + nb + ' 批提炼要点，逐轮重合成一份，再排大纲、逐节写。大约 3–5 分钟、' + (nb + 6) + ' 次左右的模型调用。')
+        : (st.mode === 'chapter' ? '整章：1 次大纲 + 若干次分节写，约 1–2 分钟。'
+          : (st.mode === 'short' ? '简短：一两次调用，半分钟左右。' : '标准：几次调用，约一分钟。'));
+      return '<div class="lec-ovready"><b>还没开始，先确认一下</b>'
+        + '<span>' + esc(est) + '</span>'
+        + '<i class="lec-ovready-t">点了才开始花 token；写的时候可以「■ 停止」，也可以「–」挂起后回来接着看。</i></div>';
+    }
     if (st.ov && st.ov.stopped && !(st.ov.sections && st.ov.sections.length)) {
       return '<div class="lec-ovprog">已停止生成。已写好的小节会保留在这里，点「↻ 重新生成」可以接着做。</div>';
     }
@@ -2745,7 +2755,13 @@
     if (!c) {
       c = document.createElement('div');
       c.id = 'lecOvChip'; c.className = 'lec-ovchip'; c.title = '点一下回到知识点讲解';
-      c.addEventListener('click', function () {
+      c.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('.lec-chipstop')) {
+          ev.stopPropagation(); OV_STOPPED = true; toast('已停止，写好的部分保留', 1600);
+          var box = document.getElementById('lecOvChip'), it = box && box.querySelector('i');
+          if (it) it.textContent = '已停止';
+          return;
+        }
         OV_MIN = false;
         var m = document.getElementById('lecWebMask');
         if (m) m.style.display = '';
@@ -2756,7 +2772,8 @@
     var ov = (st && st.ov) || {};
     var txt = ov.pending ? ('正在写 · ' + String(ov.prog || '').slice(0, 30))
       : ((ov.sections && ov.sections.length) ? ('写完了 · ' + ov.sections.length + ' 节') : '已挂起');
-    c.innerHTML = '<b>📖 知识点讲解</b><em>' + esc(String((st && st.sel) || '').slice(0, 12)) + '</em><i>' + esc(txt) + '</i>';
+    c.innerHTML = '<b>📖 知识点讲解</b><em>' + esc(String((st && st.sel) || '').slice(0, 12)) + '</em><i>' + esc(txt) + '</i>'
+      + (ov.pending ? '<u class="lec-chipstop" title="停止生成，保留已写好的">■</u>' : '');
   }
   function renderOverview(st) {
     OV_ST = st;
@@ -2797,7 +2814,9 @@
       + '<div class="lec-sfoot">'
       + (pend
         ? '<button class="lec-nsum2" data-web="stop">■ 停止</button>'
-        : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? ('↻ 重新生成' + ((st.mode === 'chapter' || st.mode === 'full') ? '整篇' : '')) : '✨ 生成') + '</button>')
+        : (ov && ov.ready
+          ? '<button class="lec-nsum2 lec-ovgo" data-web="start">▶ 开始生成</button>'
+          : '<button class="lec-nsum2" data-web="gen">' + (st.ov ? ('↻ 重新生成' + ((st.mode === 'chapter' || st.mode === 'full') ? '整篇' : '')) : '✨ 生成') + '</button>'))
       + '<button class="lec-nsave" data-web="saveov">💾 存成笔记</button></div></div>';
     if (OV_MIN) mask.style.display = 'none';
     document.body.appendChild(mask);
@@ -2816,12 +2835,13 @@
         Array.prototype.forEach.call(mask.querySelectorAll('.lec-segbtn'), function (x) {
           x.classList.toggle('on', parseInt(x.getAttribute('data-cap'), 10) === cv);
         });
-        toast('贯通篇幅：' + cv + ' 条原句 · 正在重新扫库', 1800, 'ok');
+        toast('贯通篇幅：' + cv + ' 条原句' + (st.ov && st.ov.ready ? '' : ' · 正在重新扫库'), 1800, 'ok');
+        if (st.ov && st.ov.ready) { renderOverview(st); return; }
         try { st.sources = []; } catch (e0) {}
         overview(st.sel, st.keys, false);
         return;
       }
-      if (a === 'close') { ev.stopPropagation(); OV_MIN = false; ovChipOff(); return mask.remove(); }
+      if (a === 'close') { ev.stopPropagation(); OV_STOPPED = true; OV_MIN = false; ovChipOff(); return mask.remove(); }
       if (a === 'srcs') {
         ev.stopPropagation();
         st.srcsOpen = !st.srcsOpen;
@@ -2863,11 +2883,18 @@
         }
         return;
       }
+      if (a === 'start') {
+        ev.stopPropagation();
+        st.ov = null; st.sources = [];
+        renderLoading('正在扫全库…', '把讲这个知识点的原句捞出来，再按' + (st.mode === 'full' ? '贯通' : '讲解') + '写');
+        return runOverview(st.sel, st.keys, st.mode, st);
+      }
       if (a === 'stop') { ev.stopPropagation(); OV_STOPPED = true; toast('已停止，写好的部分保留', 1800); return; }
       if (a === 'mode') {
         ev.stopPropagation();
         var m = b.getAttribute('data-m');
         if (m === st.mode && st.ov && st.ov.sections && st.ov.sections.length) return;
+        if (st.ov && st.ov.ready) { st.mode = m; OV_MODE = m; renderOverview(st); return; }
         st.mode = m; OV_MODE = st.mode;
         Array.prototype.forEach.call(mask.querySelectorAll('.lec-ovmode'), function (x) { x.classList.toggle('on', x.getAttribute('data-m') === st.mode); });
         var mname = st.mode === 'full' ? '贯通' : (st.mode === 'chapter' ? '整章' : (st.mode === 'short' ? '简短' : '标准'));
@@ -3369,10 +3396,11 @@
     var qtext = ''; if (fromQuestion) { try { qtext = questionText(); } catch (e) {} }
     OV_MIN = false; ovChipOff();
     renderLoading('正在扫全库…', '先从所有讲义里把讲这个知识点的句子捞出来');
-    return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : askKeys(sel, qtext)).then(function (spec) {
+    return (keysHint && keysHint.length ? Promise.resolve({ keys: keysHint }) : (!window.aiChat ? Promise.resolve({ keys: [sel] }) : askKeys(sel, qtext))).then(function (spec) {
       var keys = (spec.keys && spec.keys.length ? spec.keys : [sel]).slice(0, 4);
-      var st = { sel: sel, keys: keys, para: spec.para || [], mode: OV_MODE, sources: [], ov: null };
-      return runOverview(sel, keys, OV_MODE, st);
+      var st = { sel: sel, keys: keys, para: spec.para || [], mode: OV_MODE, sources: [], ov: { ready: 1 } };
+      renderOverview(st);
+      return Promise.resolve(true);
     });
   }
 
