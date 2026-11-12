@@ -4843,10 +4843,10 @@ body.dark .nt-mdblock a[href*="#/lec/"], body.dark .md-preview a[href*="#/lec/"]
 
 /* ===== web821：笔记里的讲义角标链接，做成小蓝标 ===== */
 .nt-ovp a[href*="#/lec/"], .nt-mdblock a[href*="#/lec/"]{
-  display:inline-block; min-width:15px; padding:0 4px; margin:0 2px;
+  display:inline-block; min-width:17px; padding:0 5px; margin:0 3px;
   border-radius:999px; background:#2f6fed; color:#fff !important;
-  font-size:10.5px; line-height:15px; text-align:center; text-decoration:none !important;
-  vertical-align:super; letter-spacing:0;
+  font-size:11.5px; font-weight:700; line-height:17px; text-align:center;
+  text-decoration:none !important; vertical-align:2px; letter-spacing:0;
 }
 .nt-ovp a[href*="#/lec/"]:hover, .nt-mdblock a[href*="#/lec/"]:hover{ background:#1c56c9; }
 body.dark .nt-ovp a[href*="#/lec/"], body.dark .nt-mdblock a[href*="#/lec/"]{ background:#4b8cff; }
