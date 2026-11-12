@@ -3095,6 +3095,57 @@
     }).join('\n\n');
     return ovAsk(sys, user, 3200, 180000).then(function (txt) { return ovFullItems(ovJsonLooseX(txt)); });
   }
+    /* 贯通版第二步：先按要点清单排大纲（只列小节和要点编号，不写字） */
+  function ovFullOutline(sel, items) {
+    var sys = '你是医学考研讲义的撰稿人。下面是一份知识要点清单（每条带编号）。'
+      + '请先规划这篇「贯通讲解」的篇章结构，不写正文。只输出 JSON，不要解释、不要代码块：'
+      + '{"title":"这篇讲什么（≤18字）","lead":"一句话导语（≤60字）","sections":[{"h":"一、小节标题","ids":[1,2,3]}]}'
+      + '。规则：1) 按知识脉络排：定义与定位 → 机制/原理 → 分型分类 → 临床表现 → 判据 → 检查 → 鉴别 → 治疗处理 → 易错易混；'
+      + '2) 10–14 节，每节 3–8 条要点，编号必须来自清单；同一主题拆细比合并好，宁多分几节；'
+      + '3) 清单里没有的主题不要凭空加节；4) 小节标题要具体（「二、胰岛素的受体与 IRS/PI3K 信号」），不要写成「概述」「其他」。';
+    var list = items.map(function (x, i) { return (i + 1) + '. ' + x.k + '：' + x.t; }).join('\n');
+    var user = '知识点：' + sel + '\n要点清单（共 ' + items.length + ' 条）：\n' + list;
+    return ovAsk(sys, user, 2600, 90000).then(function (txt) { return ovOutlineParse(txt, items, sel); });
+  }
+  function ovOutlineParse(txt, items, sel) {
+    var o = ovJsonLooseX(txt);
+    if (!o || !o.sections || !o.sections.length) return null;
+    var secs = o.sections.map(function (x) {
+      var ids = (x.ids || []).map(function (n) { return parseInt(n, 10); }).filter(function (n) { return n >= 1 && n <= items.length; });
+      return { h: String(x.h || '').slice(0, 40), ids: ids };
+    }).filter(function (x) { return x.h && x.ids.length; });
+    if (!secs.length) return null;
+    return { title: String(o.title || sel).slice(0, 24), lead: String(o.lead || '').slice(0, 80), sections: secs };
+  }
+  /* 贯通版第三步：逐节写（每节单独一次请求，避免一次写太长被截断） */
+  function ovFullSec(sel, sec, items) {
+    var picked = (sec.ids || []).map(function (n) { return items[n - 1]; }).filter(Boolean);
+    var list = picked.map(function (x) { return '- ' + x.k + '：' + x.t + ' [' + (x.ns || []).join(',') + ']'; }).join('\n');
+    var sys = '你是医学考研讲义的撰稿人。把下面这些要点合并改写成通顺讲解，作为这篇贯通讲解的「' + sec.h + '」一节。'
+      + '只输出正文（纯文本，不要标题、不要 JSON、不要代码块）。'
+      + '规则：1) 3–5 段，每段 4–6 句、260–400 字，写满，不要几句话就收；'
+      + '2) 只写要点里有的事实，要点没写的绝不补；确实缺这块就说「资料未覆盖」，一句话带过；'
+      + '3) 段落之间要有因果或递进，是在讲一个连贯的道理，不是罗列条目；'
+      + '4) 每段末尾用 [[n]] 标出处，n 只能来自下面清单里的编号，一段可标多个；'
+      + '5) 不许出现「讲义指出」「第 N 页」「这批题」「选项 A」这类字样，直接讲知识；6) 不要编口诀。';
+    var user = '知识点：' + sel + '\n本节：' + sec.h + '\n\n可用要点：\n' + list;
+    return ovAsk(sys, user, 4200, 120000).then(function (t) { return String(t || '').trim(); });
+  }
+  function ovFullAssemble(ol, parts, items) {
+    var sections = [];
+    ol.sections.forEach(function (sec, i) {
+      var txt = parts[i];
+      if (!txt) return;
+      var paras = String(txt).replace(/```[a-z]*/gi, '').replace(/```/g, '').split(/\n{1,}/)
+        .map(function (x) { return x.replace(/^[-*•\d.、\s]+/, '').trim(); })
+        .filter(function (x) { return x.length >= 20; })
+        .map(function (x) { return { t: x.slice(0, 900) }; });
+      if (paras.length) sections.push({ h: sec.h, paras: paras });
+    });
+    if (!sections.length) return null;
+    return JSON.stringify({ title: ol.title, lead: ol.lead, sections: sections, coverage: { hit: items.length, total: items.length, missing: [] } });
+  }
+
   function ovFullWrite(sel, items) {
     var sys = '你是医学考研讲义的撰稿人。下面是一个知识点的全部要点清单（每条带支撑编号）。'
       + '任务：把它们串成**一篇**可以直接拿来复习的贯通讲解——有前后逻辑，不是条目罗列。'
@@ -3162,13 +3213,39 @@
     }).then(function (items) {
       if (OV_STOPPED) return null;
       if (!items || !items.length) return null;
-      say('贯通 · 已合成 ' + items.length + ' 条要点，正在成篇…');
-      return ovFullWrite(sel, items).then(function (txt) {
-        var ov = parseOverview(txt, srcs);
-        if (!ov) { fail.push('成篇解析失败，AI 原文（' + String(txt || '').length + ' 字）：' + String(txt || '（空）').slice(0, 300)); return null; }
-        ov.full = 1;
-        ov.items = items.length;
-        return ov;
+      say('贯通 · 已合成 ' + items.length + ' 条要点，正在排大纲…');
+      return ovFullOutline(sel, items).catch(function (e) { fail.push('排大纲失败：' + (e && e.message || e)); return null; }).then(function (ol) {
+        if (OV_STOPPED) return null;
+        if (!ol) {
+          /* 大纲没出来就退回一次性成篇（老路径） */
+          say('贯通 · 大纲没出来，改为一次成篇…');
+          return ovFullWrite(sel, items).then(function (txt) {
+            var ov0 = parseOverview(txt, srcs);
+            if (ov0) { ov0.full = 1; ov0.items = items.length; }
+            return ov0;
+          });
+        }
+        var parts = [], si = 0, total = ol.sections.length;
+        function secStep() {
+          if (OV_STOPPED) return Promise.resolve(parts);
+          if (si >= total) return Promise.resolve(parts);
+          say('贯通 · 写第 ' + (si + 1) + '/' + total + ' 节：' + ol.sections[si].h);
+          return ovFullSec(sel, ol.sections[si], items).catch(function (e) {
+            fail.push('第' + (si + 1) + '节失败：' + (e && e.message || e)); return '';
+          }).then(function (t) { parts[si] = t; si++; return secStep(); });
+        }
+        return secStep().then(function () {
+          if (OV_STOPPED) return null;
+          var built = ovFullAssemble(ol, parts, items);
+          if (!built) { fail.push('各节都没写出来'); return null; }
+          var ov = parseOverview(built, srcs);
+          if (!ov) { fail.push('成篇解析失败'); return null; }
+          ov.full = 1;
+          ov.items = items.length;
+          ov.secTotal = total;
+          ov.secOk = parts.filter(function (x) { return !!x; }).length;
+          return ov;
+        });
       });
     }).then(function (ov) {
       if (!ov) {
