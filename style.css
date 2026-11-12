@@ -5043,3 +5043,24 @@ body.dark #ccKwMenu{ background:#1b2431; border-color:rgba(255,255,255,.08); box
 body.dark #ccKwMenu .cc-kwm-t{ color:#8fa0b4; }
 body.dark #ccKwMenu button{ color:#e9eef6; }
 body.dark #ccKwMenu button:hover{ background:rgba(255,255,255,.08); }
+
+
+/* ===== web843：讲义搜索的「✨ AI」按钮 + 词条胶囊 ===== */
+.lec-aib{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 10px;border-radius:9px;
+  border:1px solid rgba(126,138,158,.40);background:transparent;color:#7a8ea8;font-size:12px;cursor:pointer;white-space:nowrap}
+.lec-aib:hover{border-color:#5b9dff;color:#2f6fed}
+.lec-aiterms{padding:8px 10px;border-bottom:1px solid rgba(20,26,34,.08);max-height:150px;overflow:auto}
+.lec-ait-t{font-size:12px;color:#7b8794;margin-bottom:6px}
+.lec-ait-row{display:flex;flex-wrap:wrap;gap:6px}
+.lec-ait{border:0;padding:4px 10px;border-radius:99px;background:rgba(63,126,240,.10);color:#2f66c9;
+  font-size:12px;cursor:pointer}
+.lec-ait:hover{background:#2f6fed;color:#fff}
+.lec-ait-h{margin-top:6px;font-size:11px;color:#93a0b1}
+.lec-hit .hitags{display:block;margin-top:3px;font-size:10.5px;font-style:normal;text-decoration:none;color:#7f8fa4}
+body.dark .lec-aib{border-color:rgba(255,255,255,.18);color:#9fb0c6}
+body.dark .lec-aib:hover{border-color:#5b9dff;color:#cfe0ff}
+body.dark .lec-aiterms{border-bottom-color:rgba(255,255,255,.08)}
+body.dark .lec-ait-t{color:#93a0b1}
+body.dark .lec-ait{background:rgba(91,157,255,.16);color:#bcd6ff}
+body.dark .lec-ait:hover{background:#3f7ef0;color:#fff}
+body.dark .lec-hit .hitags{color:#8b98a9}

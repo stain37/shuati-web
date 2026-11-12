@@ -271,8 +271,9 @@
           '<button data-lec="next" title="下一页（→）">›</button>' +
         '</div>' +
       '</div>' +
-      '<div class="lec-find"><input id="lecFind" type="search" placeholder="搜讲义里的字…（空格分隔＝都要有）" title="多个词用空格隔开，只出同时包含这些词的页"><button data-lec="find" title="搜一下（回车也行）">🔎</button>' +
+      '<div class="lec-find"><input id="lecFind" type="search" placeholder="搜讲义里的字…（空格分隔＝都要有）" title="多个词用空格隔开，只出同时包含这些词的页"><button data-lec="find" title="搜一下（回车也行）">🔎</button><button class="lec-aib" data-lec="aifind" title="AI 帮你把词扩成同义词、近义词、相关概念，再一起搜">✨ AI</button>' +
         '<label class="lec-fa" title="勾上＝在这套题库相关的全部讲义里找；不勾＝只找当前这份"><input type="checkbox" id="lecFindAll">全部讲义</label></div>' +
+      '<div class="lec-aiterms" id="lecAiTerms" hidden></div>' +
       '<div class="lec-hits" id="lecHits" hidden></div>' +
       '<div class="lec-body" id="lecBody"><img id="lecImg" alt="讲义原页"><div id="lecEmpty" class="lec-empty">这份讲义还没有页图，点右下角「看整本 PDF」。</div></div>' +
       '<div class="lec-foot">' +
@@ -287,7 +288,7 @@
       '<img alt="讲义原页（放大）">';
     document.body.appendChild(mask); document.body.appendChild(sheet); document.body.appendChild(zoom);
     el = { mask: mask, sheet: sheet, meta: $('#lecMeta'), sel: $('#lecFile'), page: $('#lecPage'), total: $('#lecTotal'), img: $('#lecImg'), empty: $('#lecEmpty'), zoom: zoom,
-      hits: $('#lecHits'), find: $('#lecFind'), findAll: $('#lecFindAll') };
+      hits: $('#lecHits'), find: $('#lecFind'), findAll: $('#lecFindAll'), aiTerms: $('#lecAiTerms') };
 
     /* 背景点击不关闭：避免误触退出（只认右上角 × 和 Esc） */
     sheet.addEventListener('click', function (ev) {
@@ -310,6 +311,8 @@
       if (a === 'unzoom') return unzoom();
       if (a === 'pdf') return openPdf();
       if (a === 'find') return doFind();
+      if (a === 'aifind') return aiFind();
+      if (a === 'aiterm') { var w = b.getAttribute('data-w') || ''; if (el.find) el.find.value = w; hideAiTerms(); return doFind(); }
       if (a === 'imgretry') { IMG_TRIED = {}; return paint(); }
       if (a === 'retry') return ensureIndex(true);
       if (a === 'hardreset') return hardReset();
@@ -558,6 +561,7 @@
     var all = !!(el.findAll && el.findAll.checked);
     (all ? loadText() : loadTextSubj()).then(function (rows) {
       var out = [];
+      if (!(rows || []).length) { aiTermsBox('讲义文字还没下载下来（第一次要等一会儿），再点一次「✨ AI」试试', terms); return; }
       (rows || []).forEach(function (r) {
         if (!r || !r.t) return;
         if (!all && r.src !== CUR.src) return;
@@ -578,6 +582,123 @@
       if (!HITS.length) toast('没搜到「' + terms.join(' + ') + '」' + (all ? '' : '（试试勾「全部讲义」）') + '（扫描页没有文字，只能靠 📌 手动绑）');
     }).catch(function (e) { toast('讲义文字还没准备好：' + (e.message || e)); });
   }
+  /* ---------- AI 模糊搜索：把词扩成同义词/近义词/相关概念，再合并命中 ---------- */
+  function aiMsg(e) {
+    var s = String((e && e.message) || e || '');
+    if (/401/.test(s)) return 'AI 认证失败（HTTP 401）：设置里的 API key 没填或已失效';
+    if (/403/.test(s)) return 'AI 没权限或额度用完了（HTTP 403）';
+    if (/429/.test(s)) return 'AI 太频繁了（HTTP 429），等一会儿再试';
+    if (/timeout|timed out|超时/i.test(s)) return 'AI 超时了';
+    return s || '未知错误';
+  }
+  function hideAiTerms() { if (el.aiTerms) { el.aiTerms.hidden = true; el.aiTerms.innerHTML = ''; } }
+  function aiTermsBox(html, terms) {
+    if (!el.aiTerms) return;
+    if (!html && !(terms && terms.length)) return hideAiTerms();
+    var h = '';
+    if (html) h += '<div class="lec-ait-t">' + escHtml(html) + '</div>';
+    if (terms && terms.length) {
+      h += '<div class="lec-ait-row">' + terms.map(function (w) {
+        return '<button class="lec-ait" data-lec="aiterm" data-w="' + escHtml(w) + '">' + escHtml(w) + '</button>';
+      }).join('') + '</div><div class="lec-ait-h">点一个词只搜它；再点「✨ AI」让 AI 重新扩</div>';
+    }
+    el.aiTerms.innerHTML = h;
+    el.aiTerms.hidden = false;
+  }
+  function aiParseTerms(txt, raw) {
+    var m = String(txt || '').match(/\{[\s\S]*\}/), o = null;
+    try { o = JSON.parse(m ? m[0] : txt); } catch (e) { o = null; }
+    var list = (o && (o.terms || o.t || o.list)) || [];
+    if (typeof list === 'string') list = list.split(/[,，、;；\s]+/);
+    var out = [raw], seen = {};
+    seen[String(raw).toLowerCase()] = 1;
+    list.forEach(function (w) {
+      w = String(w || '').replace(/^[\s"'“”·]+|[\s"'“”·]+$/g, '').trim();
+      if (!w || w.length > 12) return;
+      var k = w.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = 1; out.push(w);
+    });
+    return out.slice(0, 13);
+  }
+  function aiFind() {
+    var raw = (el.find && el.find.value || '').trim();
+    if (!raw) { toast('先写要搜的词，AI 再帮你扩'); return; }
+    if (typeof window.aiChat !== 'function') { toast('这个页面没加载 AI 模块（ai.js 未就绪），刷新一次再试'); return; }
+    var all = !!(el.findAll && el.findAll.checked) || !CUR.src;   /* 没打开某份讲义时按「全部讲义」搜 */
+    aiTermsBox('AI 正在想同义词…');
+    var sys = '你是医学教材检索助手。用户给一个医学名词或短语，请给出 8–12 个用于在教材里找同义或相关段落的中文词：同义词、近义词、上位概念、常见缩写、相关结构或机制名。'
+      + '只输出 JSON：{"terms":["词1","词2"]}。不要解释，不要标点，不要重复用户原词。';
+    var ask = function (mt) {
+      return Promise.resolve(window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: raw }],
+        null, null, { stream: false, temp: 0.3, maxTokens: mt }));
+    };
+    ask(700).then(function (t0) {
+      return String(t0 || '').trim() ? t0 : ask(2200);
+    }).then(function (txt) {
+      var terms = aiParseTerms(txt, raw);
+      if (terms.length < 2) throw new Error('AI 没给出可用的同义词');
+      aiUnion(raw, terms, all);
+    }).catch(function (e) {
+      aiTermsBox('AI 没扩出来：' + aiMsg(e));
+      toast('AI 没扩出来：' + aiMsg(e));
+    });
+  }
+  function aiUnion(raw, terms, all) {
+    if (!CUR.src) all = true;   /* 没打开某份讲义：直接按全部讲义搜 */
+    var widen = '';
+    aiTermsBox(all ? 'AI 想到这些词（在全站讲义里一起搜，命中越多排越前）：'
+      : 'AI 想到这些词（先在本讲义里搜，没找到会自动扩到全部）：', terms);
+    function build(rows, useAll) {
+      var out = [];
+      (rows || []).forEach(function (r) {
+        if (!r || !r.t) return;
+        if (!useAll && r.src !== CUR.src) return;
+        var t = String(r.t), low = t.toLowerCase(), hits = [], n = 0;
+        terms.forEach(function (w) {
+          var c = countOf(low, String(w).toLowerCase());
+          if (c) { hits.push(w); n += (w === raw ? 3 : 1) * c; }
+        });
+        if (!hits.length) return;
+        out.push({ src: r.src, p: r.p, f: r.f, t: t, n: n, hits: hits, same: r.src === CUR.src });
+      });
+      out.sort(function (a, b) { return (b.same ? 1 : 0) - (a.same ? 1 : 0) || b.n - a.n || a.p - b.p; });
+      return out;
+    }
+    (all ? loadText() : loadTextSubj()).then(function (rows) {
+      if (!(rows || []).length) {
+        aiTermsBox('讲义文字还没下载下来（第一次要等一会儿），再点一次「✨ AI」试试', terms);
+        return null;
+      }
+      var out = build(rows, all);
+      if (out.length || all) return out;
+      widen = '本讲义里没找到，已扩到全部讲义';
+      return loadText().then(function (allRows) { return build(allRows, true); });
+    }).then(function (out) {
+      if (!out) return;
+      HITS = out.slice(0, 40);
+      renderAiHits(raw, terms, all || !!widen, widen);
+      if (!HITS.length) toast('AI 这些词在所有讲义里都没找到');
+    }).catch(function (e) { toast('讲义文字还没准备好：' + aiMsg(e)); });
+  }
+  function renderAiHits(raw, terms, all, note) {
+    if (!el.hits) return;
+    if (!HITS.length) { el.hits.innerHTML = ''; el.hits.hidden = true; return; }
+    var h = '<div class="lec-hits-t">' + (note ? note + ' · ' : (all ? '全部讲义 · ' : '本讲义 · ')) + 'AI 模糊搜索「' + escHtml(raw) + '」找到 '
+      + HITS.length + ' 页（词表：' + terms.length + ' 个）</div>';
+    HITS.forEach(function (r, i) {
+      h += '<button class="lec-hit" data-lec="hit" data-i="' + i + '">' +
+        '<i class="hpage">第 ' + r.p + ' 页</i>' +
+        '<em class="hfile">' + (r.same ? '本讲义' : String(r.f || r.src).replace(/\.pdf$/i, '')) + '</em>' +
+        '<span class="htxt">' + snippet(r.t, r.hits) + '</span>' +
+        '<u class="hitags">' + r.hits.slice(0, 3).map(function (w) { return escHtml(w); }).join(' · ') + '</u>' +
+        '</button>';
+    });
+    el.hits.innerHTML = h;
+    el.hits.hidden = false;
+    el.hits.scrollTop = 0;
+  }
+
   function renderHits(terms, exc) {
     if (!el.hits) return;
     if (!HITS.length) { el.hits.innerHTML = ''; el.hits.hidden = true; return; }
