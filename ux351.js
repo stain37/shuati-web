@@ -15,9 +15,14 @@
   var lastY = window.scrollY || 0, lastT = performance.now();
   var vel = 0, skew = 0, vv = 0, raf = 0, rows = [];
 
-  function pick() {
+  var lastPick = 0;
+  function pick(force) {
+    var now = performance.now();
+    if (!force && now - lastPick < 1200) return rows;
+    lastPick = now;
     rows = Array.prototype.slice.call(document.querySelectorAll('#view ' + SEL)).slice(0, 60);
     rows.forEach(function (r) { r.style.transformOrigin = '50% 50%'; });
+    return rows;
   }
 
   function tick() {
@@ -48,10 +53,12 @@
     vel = vel * 0.55 + ((y - lastY) / dt) * 0.45;
     lastY = y; lastT = now;
     if (!rows.length) pick();
+    if (!rows.length) return;           /* 这页没有可倾斜的行，别每帧白跑 */
     run();
   }, { passive: true });
 
   /* 换页 / 重新渲染后重新取行 */
   document.addEventListener('click', function () { setTimeout(function () { rows = []; }, 60); }, true);
-  setInterval(function () { if (!rows.length) pick(); }, 1500);
+  setInterval(function () { if (!rows.length) pick(true); }, 1500);
+  window.addEventListener('hashchange', function () { rows = []; lastPick = 0; }, { passive: true });
 })();

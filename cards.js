@@ -39,7 +39,7 @@
   function allBanks() {
     var bs = gv('baseBanks()', null);
     if (!bs || !bs.length) bs = gv('BANKS', []) || [];
-    return (bs || []).filter(function (b) { return b && b.id && (b.questions || []).length; });
+    return (bs || []).filter(function (b) { return b && b.id; });
   }
   function bankOf(id) {
     var bs = allBanks();
@@ -305,7 +305,7 @@
   }
 
   /* ---------- 状态 ---------- */
-  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false, mode: 'card' };
+  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false, mode: 'card', bankF: 'all', bankS: 'def' };
   var POS_KEY = 'qbank.cards.pos.v1';
 
   /* ---------- 真实调度（Anki 式四档 + 到期队列） ---------- */
@@ -379,49 +379,134 @@
   }
 
   /* ---------- 页面一：题库列表 ---------- */
+  /* 相似度：用字符二元组重合率，中文不需要分词 */
+  function bigrams(t) {
+    t = String(t || '').toLowerCase().replace(/[\s\-_（）()【】\[\]·,.。/]+/g, '');
+    var out = [];
+    for (var i = 0; i < t.length - 1; i++) out.push(t.substr(i, 2));
+    return out;
+  }
+  function simScore(q, t) {
+    if (!q || !t) return 0;
+    var A = bigrams(q), B = bigrams(t), set = {}, n = 0;
+    B.forEach(function (x) { set[x] = 1; });
+    A.forEach(function (x) { if (set[x]) n++; });
+    return A.length ? n / A.length : 0;
+  }
+  function bankStats(b) {
+    var items = itemsOf(b);
+    var p = progressOf(items);
+    var dueN = 0, now = Date.now();
+    items.forEach(function (it) { if (isReady(stateOf(it))) dueN++; });
+    var pos = posMap()[b.id] || {};
+    return { items: items, p: p, dueN: dueN, ts: pos.ts || 0 };
+  }
+  /* 筛选：全部 / 未开始 / 在背 / 已背完 / 今日到期 */
+  function bankPass(st, f) {
+    var done = st.p.done, total = st.p.total;
+    if (f === 'new') return done === 0 && total > 0;
+    if (f === 'doing') return done > 0 && done < total;
+    if (f === 'done') return total > 0 && done >= total;
+    if (f === 'due') return st.dueN > 0;
+    return true;
+  }
+  function bankSort(list, mode) {
+    var arr = list.slice();
+    if (mode === 'undone') arr.sort(function (a, b) { return (b.st.p.total - b.st.p.done) - (a.st.p.total - a.st.p.done); });
+    else if (mode === 'size') arr.sort(function (a, b) { return (b.b.questions || []).length - (a.b.questions || []).length; });
+    else if (mode === 'recent') arr.sort(function (a, b) { return (b.st.ts || 0) - (a.st.ts || 0); });
+    else if (mode === 'name') arr.sort(function (a, b) { return String(a.b.title || a.b.id).localeCompare(String(b.b.title || b.b.id), 'zh'); });
+    return arr;
+  }
+  var BF = [
+    { k: 'all', t: '全部' }, { k: 'due', t: '今日到期' },
+    { k: 'new', t: '未开始' }, { k: 'doing', t: '在背' }, { k: 'done', t: '已背完' }
+  ];
+  var BS = [
+    { k: 'def', t: '默认顺序' }, { k: 'undone', t: '未背最多' },
+    { k: 'size', t: '题量最多' }, { k: 'recent', t: '最近打开' }, { k: 'name', t: '名称' }
+  ];
   function renderBankList() {
     var bs = allBanks();
+    var rows = bs.map(function (b) { return { b: b, st: bankStats(b) }; });
+    var totalPts = rows.reduce(function (n, r) { return n + r.st.items.length; }, 0);
     var h = '<div class="card cd-head">'
       + '<div class="cd-htop"><div><b>🧠 考点卡</b></div>'
-      + '<div class="cd-hnum">' + bs.length + '<i>个题库</i></div></div>'
+      + '<div class="cd-hnum">' + bs.length + '<i>个题库 · ' + totalPts + ' 个考点</i></div></div>'
       + '<div class="cd-psrch"><input id="cdBankQ" class="cd-q" placeholder="搜题库名…" value="' + esc(ST.bankQ || '') + '">'
       + '<button class="cd-shuf" id="cdBankAI">✨ AI 模糊</button></div>'
+      + '<div class="cd-btbar">'
+      + BF.map(function (f) {
+        return '<button class="cd-bf' + (ST.bankF === f.k ? ' on' : '') + '" data-bf="' + f.k + '">' + f.t + '</button>';
+      }).join('')
+      + '<select class="cd-bsort" id="cdBankSort" aria-label="排序">'
+      + BS.map(function (o) { return '<option value="' + o.k + '"' + (ST.bankS === o.k ? ' selected' : '') + '>' + o.t + '</option>'; }).join('')
+      + '</select>'
+      + '</div>'
+      + (ST.bankTerms && ST.bankTerms.length ? '<div class="cd-bterms">AI 相关词：' + ST.bankTerms.map(function (t) { return '<u>' + esc(t) + '</u>'; }).join('') + ' <button class="cd-bclr" id="cdBankClr">清掉</button></div>' : '')
       + '</div>';
     if (!bs.length) {
       h += '<div class="card"><div class="empty">还没有题库。先回首页导入一份。</div></div>';
       $('#view').innerHTML = h;
       return;
     }
-    var bq = String(ST.bankQ || '').trim().toLowerCase();
-    var bterms = (ST.bankTerms || []).map(function (t) { return String(t).toLowerCase(); });
-    if (bq) {
-      bs = bs.filter(function (b) {
-        var nm = String(b.title || b.id).toLowerCase();
-        if (nm.indexOf(bq) >= 0) return true;
-        return bterms.some(function (t) { return t && nm.indexOf(t) >= 0; });
+
+    /* 过滤 + 相似度打分 */
+    var q0 = String(ST.bankQ || '').trim();
+    var q = q0.toLowerCase();
+    var terms = (ST.bankTerms || []).map(function (t) { return String(t); });
+    var shownRows = rows.filter(function (r) {
+      if (!bankPass(r.st, ST.bankF)) return false;
+      if (!q && !terms.length) { r.score = 0; return true; }
+      var title = String(r.b.title || r.b.id);
+      var subj = r.st.items.map(function (it) { return it.subj; }).join(' ');
+      var hay = (title + ' ' + subj).toLowerCase();
+      var hit = false, score = 0;
+      if (q && hay.indexOf(q) >= 0) { hit = true; score += 60 + Math.max(0, 30 - Math.abs(hay.indexOf(q) - title.toLowerCase().indexOf(q)) * 2); }
+      terms.forEach(function (t) {
+        var tl = t.toLowerCase();
+        if (title.toLowerCase().indexOf(tl) >= 0) { hit = true; score += 26 + Math.min(14, tl.length * 3); }
+        else if (hay.indexOf(tl) >= 0) { hit = true; score += 14; }
       });
-    }
+      score += Math.round(simScore(q0 || terms.join(''), title) * 55);
+      r.score = score;
+      return hit || score >= 18;
+    });
+    shownRows = bankSort(shownRows, ST.bankS);
+    if (q || terms.length) shownRows.sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
+
     h += '<div class="cd-list">';
-    bs.forEach(function (b) {
-      var items = itemsOf(b);
-      var p = progressOf(items);
+    shownRows.forEach(function (row) {
+      var b = row.b, items = row.st.items, p = row.st.p;
       var subjN = {};
       items.forEach(function (it) { subjN[it.subj] = (subjN[it.subj] || 0) + 1; });
-      var chips = Object.keys(subjN).map(function (s) { return '<span class="cd-chip">' + esc(s) + ' ' + subjN[s] + '</span>'; }).join('');
-      var hay = (String(b.title || b.id) + ' ' + Object.keys(subjN).join(' ')).toLowerCase();
-      h += '<div class="card cd-bank" data-s="' + esc(hay) + '">'
-        + '<div class="cd-btop"><b>' + esc(b.title || b.id) + '</b><s>' + (b.questions || []).length + ' 题</s></div>'
-        + '<div class="cd-bmeta">' + items.length + ' 个考点 · 已背 ' + p.done + ' / ' + p.total + '</div>'
+      var chips = Object.keys(subjN).map(function (sj) { return '<span class="cd-chip">' + esc(sj) + ' ' + subjN[sj] + '</span>'; }).join('');
+      var empty = !items.length;
+      h += '<div class="card cd-bank' + (empty ? ' is-empty' : '') + '" data-s="' + esc((String(b.title || b.id) + ' ' + Object.keys(subjN).join(' ')).toLowerCase()) + '" data-id="' + esc(b.id) + '">'
+        + '<div class="cd-btop"><b>' + esc(b.title || b.id) + '</b>'
+        + ((row.score && (q || terms.length)) ? '<em class="cd-sim">相关 ' + Math.min(99, row.score) + '%</em>' : '')
+        + '<s>' + (b.questions || []).length + ' 题</s></div>'
+        + (empty
+          ? '<div class="cd-bmeta">还没读到题目 · 这个题库在首页能看到，但没有题目数据（题库文件还没打开／导入没完成）</div>'
+          : '<div class="cd-bmeta">' + items.length + ' 个考点 · 已背 ' + p.done + ' / ' + p.total + (row.st.dueN ? ' · <u>今日到期 ' + row.st.dueN + '</u>' : '') + '</div>')
         + '<div class="cd-chips">' + chips + '</div>'
         + '<div class="cd-bacts">'
-        + '<button class="btn primary" data-act="open" data-id="' + esc(b.id) + '">看考点 →</button>'
+        + '<button class="btn primary" data-act="open" data-id="' + esc(b.id) + '"' + (empty ? ' disabled' : '') + '>看考点 →</button>'
         + '<button class="btn" data-act="quiz" data-id="' + esc(b.id) + '">开始刷题</button>'
         + '</div></div>';
     });
+    if (!shownRows.length) {
+      h += '<div class="card"><div class="empty">这个筛选下没有题库，换个条件试试。</div></div>';
+    }
     h += '</div>';
     $('#view').innerHTML = h;
+    updateBankCount(shownRows.length, totalPts);
   }
-
+  function updateBankCount(n, totalPts) {
+    var el = document.querySelector('#view .cd-hnum');
+    if (!el) return;
+    el.innerHTML = n + '<i>个题库 · ' + totalPts + ' 个考点</i>';
+  }
   /* 题库列表：搜索 + AI 模糊（委托，重绘后仍可用） */
   /* 只切 .cd-bank 的 display，不重绘输入框 —— 否则中文输入法会被打断 */
   function filterBankCards() {
@@ -460,6 +545,18 @@
       filterBankCards();
     });
     document.addEventListener('click', function (e) {
+      var f = e.target && e.target.closest && e.target.closest('[data-bf]');
+      if (f) {
+        ST.bankF = f.getAttribute('data-bf') || 'all';
+        renderBankList();
+        return;
+      }
+      var clr = e.target && e.target.closest && e.target.closest('#cdBankClr');
+      if (clr) {
+        ST.bankTerms = []; ST.bankQ = '';
+        renderBankList();
+        return;
+      }
       var b = e.target && e.target.closest && e.target.closest('#cdBankAI');
       if (!b) return;
       var kw0 = String(ST.bankQ || '').trim();
@@ -478,11 +575,16 @@
         ST.bankTerms = list.slice(0, 12);
         b.disabled = false; b.textContent = '✨ AI 模糊';
         renderBankList();
-        toast('AI 想到 ' + ST.bankTerms.length + ' 个相关词，按这些一起筛', 2200);
+        toast('AI 找到 ' + ST.bankTerms.length + ' 个相关词 · 已按相似度排序', 2200);
       }).catch(function (err) {
         b.disabled = false; b.textContent = '✨ AI 模糊';
         toast('AI 没想出来：' + ((err && err.message) || err), 2200, 'bad');
       });
+    });
+    document.addEventListener('change', function (e) {
+      if (!e.target || e.target.id !== 'cdBankSort') return;
+      ST.bankS = e.target.value || 'def';
+      renderBankList();
     });
   }
 
