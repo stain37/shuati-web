@@ -584,7 +584,10 @@
       + '<span class="cd-nav"><button class="cd-step" data-act="prev" title="上一张">‹</button>'
       + '<b id="cdCnt">1 / 1</b>'
       + '<button class="cd-step" data-act="next" title="下一张">›</button></span>'
-      + '<button class="cd-qbtn cd-maskbtn' + (MASK_ON() ? ' on' : '') + '" data-act="mask" title="把结论和要点遮住，先自己回想">遮挡重点</button>'
+      + '<button class="cd-sw' + (MASK_ON() ? ' on' : '') + '" data-act="mask" role="switch" aria-checked="' + (MASK_ON() ? 'true' : 'false') + '" title="遮住橙色重点字，先自己回想">'
+      + '<span class="cd-sw-k"><svg viewBox="0 0 14 14" aria-hidden="true">'
+      + '<path class="cd-sw-x" d="M4 4l6 6M10 4l-6 6"/><path class="cd-sw-v" d="M3 7.2l2.6 2.6L11 4.4"/>'
+      + '</svg></span><em>遮挡重点</em></button>'
       + '<button class="cd-qbtn" data-act="quizone">看原题</button>'
       + '</div>'
       + '<div class="cd-stage" id="cdStage"></div>'
@@ -605,6 +608,11 @@
       if (a === 'quizone') return quizOne();
       if (a === 'mask') {
         var on = !MASK_ON();
+        var swb = b;
+        swb.classList.toggle('on', on);
+        swb.classList.add('is-stretch');
+        setTimeout(function () { swb.classList.remove('is-stretch'); }, 180);
+        swb.setAttribute('aria-checked', on ? 'true' : 'false');
         MASK_SET(on);
         REVEALED = false;
         paintCard();

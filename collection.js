@@ -2466,6 +2466,42 @@ function qaiToggleSearch() {
   else toast('AI 模糊已关', 1400);
 }
 
+  /* ── #248：重点题（点 ↑ 加权，按权重自动重排）── */
+  var VOTE_KEY = 'qbank.wrong.vote.v1';
+  function voteMap() { try { return JSON.parse(localStorage.getItem(VOTE_KEY) || '{}') || {}; } catch (e0) { return {}; } }
+  function voteSet(k, on) {
+    var m = voteMap();
+    if (on) m[k] = 1; else delete m[k];
+    try { localStorage.setItem(VOTE_KEY, JSON.stringify(m)); } catch (e1) {}
+  }
+  function focusRow(r, i, vm) {
+    var on = !!vm[r.k], n = r.w + (on ? 1 : 0);
+    var badge = r.due ? ['今天到期', 'var(--warn)'] : (r.w ? ['错 ' + r.w + ' 次', 'var(--sub)'] : ['没做过', 'var(--sub)']);
+    return '<div class="fb-it' + (on ? ' on' : '') + '" data-fk="' + esc(r.k) + '">'
+      + '<button type="button" class="fb-up' + (on ? ' on' : '') + '" data-vote="' + esc(r.k) + '" aria-pressed="' + on + '" title="加权 / 取消">'
+      + '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8l4-4.5L10 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      + '<span class="fb-n"><span>' + n + '</span></span></button>'
+      + '<div class="fb-tx"><b>' + esc(r.t) + '</b><span class="fb-bd" style="--c:' + badge[1] + '">' + badge[0] + '</span></div>'
+      + '<span class="fb-rk">#' + (i + 1) + '</span></div>';
+  }
+  function focusBoardHtml(list) {
+    var vm = voteMap();
+    var rows = list.map(function (it) {
+      var a = (typeof ANS !== 'undefined' && ANS[it.k]) || {};
+      var q = it.q || {};
+      return { k: it.k, t: String(q.stem || q.title || q.name || '未命名').slice(0, 60), w: +(a.wrong || 0), due: isDue(it.k) };
+    }).sort(function (x, y) {
+      var ox = !!vm[x.k], oy = !!vm[y.k];
+      if (ox !== oy) return ox ? -1 : 1;
+      if (y.w !== x.w) return y.w - x.w;
+      return (x.due === y.due) ? 0 : (x.due ? -1 : 1);
+    }).slice(0, 8);
+    if (!rows.length) return '';
+    return '<div class="card focusb" id="focusB"><div class="fb-hd"><b>重点题</b>'
+      + '<span class="small muted">点 ↑ 加权，越重要越靠上</span></div>'
+      + '<div class="fb-ls" id="fbLs">' + rows.map(function (r, i) { return focusRow(r, i, vm); }).join('') + '</div></div>';
+  }
+
 function renderWrong() { renderList('wrong'); }
 function renderFav() { renderList('fav'); }
 
@@ -2523,6 +2559,17 @@ function renderList(mode) {
   if (isWrong) wfpSave(st);                            /* web315：筛选/排序记在本机 */
 
   const dueItems = isWrong ? items.filter(it => isDue(it.k)) : [];
+  /* 每日复习上限：只把最该复习的 N 道放进今天，其余顺延（设置里也有同一个值） */
+  const capN = (function () {
+    try { if (window.SRS_CAP && typeof SRS_CAP.get === 'function') return Math.max(0, +SRS_CAP.get() || 0); } catch (e0) {}
+    try { const s0 = JSON.parse(localStorage.getItem('qbank.srs.v1') || '{}'); return Math.max(0, +(s0.daily || 0)); } catch (e1) { return 0; }
+  })();
+  const dueOfKey = function (k) {
+    try { const a0 = ANS[k]; return a0 ? (a0.due == null ? (a0.ts || 0) : a0.due) : 0; } catch (e2) { return 0; }
+  };
+  const dueSorted = dueItems.slice().sort((x, y) => dueOfKey(x.k) - dueOfKey(y.k));
+  const dueToday = capN ? dueSorted.slice(0, capN) : dueSorted;
+  const deferN = dueItems.length - dueToday.length;
   const selN = shown.filter(it => st.sel.has(it.k)).length;
   const selKeys = shown.filter(it => st.sel.has(it.k)).map(it => it.k);
 
@@ -2569,11 +2616,14 @@ function renderList(mode) {
         <div><b>${acc}%</b><span>总正确率</span></div>
       </div>
       ${isWrong ? `<div class="revbar">
-        <div class="dueinfo"><b>${dueItems.length ? dueItems.length + ' 道到期' : '今天没有到期的错题'}</b>
-          <span class="small muted">答对拉长间隔（1/3/8/20… 天），答错当天回来</span></div>
-        <button class="btn primary" id="wRevAll" ${dueItems.length ? '' : 'disabled'}>开始复习（${dueItems.length} 题）</button>
+        <div class="dueinfo"><b>${dueItems.length ? dueToday.length + ' / ' + dueItems.length + ' 道今天复习' : '今天没有到期的错题'}</b>
+          <span class="small muted">答对拉长间隔（1/3/8/20… 天），答错当天回来${deferN ? '；其余 ' + deferN + ' 道顺延到以后' : ''}</span></div>
+        <label class="small muted" for="wRevCap">今天最多</label>
+        <select id="wRevCap" class="inp tiny">${[0, 10, 20, 30, 50, 80].map(n => `<option value="${n}"${capN === n ? ' selected' : ''}>${n ? n + ' 题' : '不限'}</option>`).join('')}</select>
+        <button class="btn primary" id="wRevAll" ${dueToday.length ? '' : 'disabled'}>开始复习（${dueToday.length} 题）</button>
         <button class="btn" id="wRevSel" ${selKeys.length ? '' : 'disabled'}>复习选中的 ${selKeys.length} 题</button>
       </div>` : ''}
+      ${isWrong ? focusBoardHtml(shown) : ''}
       ${bankChips}
       ${basicChips}
       ${typeChips}
@@ -2799,7 +2849,62 @@ function renderList(mode) {
     else { st.minWrong = 0; st.onlyOpen = false; }
     render();
   });
-  on('wRevAll', () => makePaper('错题复习 · ' + dueItems.length + ' 题', dueItems.map(it => it.k)));
+  /* #248 重点题：投票 + FLIP 重排（document 委托，重渲染也不会掉） */
+  if (!window.__fbVoteBound) {
+    window.__fbVoteBound = true;
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('#fbLs [data-vote]');
+      if (!b) return;
+      var fb = document.getElementById('fbLs');
+      var k = b.getAttribute('data-vote');
+      var vm = voteMap();
+      var turnOn = !vm[k];
+      voteSet(k, turnOn);
+      var rows = Array.prototype.slice.call(fb.children);
+      var tops = {};
+      rows.forEach(function (r) { tops[r.dataset.fk] = r.getBoundingClientRect().top; });
+      var vm2 = voteMap();
+      rows.slice().sort(function (x, y) {
+        var ox = !!vm2[x.dataset.fk], oy = !!vm2[y.dataset.fk];
+        return ox === oy ? 0 : (ox ? -1 : 1);
+      }).forEach(function (r) { fb.appendChild(r); });
+      rows.forEach(function (r) {
+        var dy = tops[r.dataset.fk] - r.getBoundingClientRect().top;
+        if (Math.abs(dy) < 1) return;
+        r.style.transition = 'none';
+        r.style.transform = 'translateY(' + dy + 'px)';
+        void r.offsetWidth;
+        r.style.transition = 'transform .55s cubic-bezier(.3,1.25,.5,1)';
+        r.style.transform = '';
+      });
+      rows.forEach(function (r, i) {
+        var on = !!vm2[r.dataset.fk];
+        r.classList.toggle('on', on);
+        var btn = r.querySelector('.fb-up');
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-pressed', String(on));
+        var badge = r.querySelector('.fb-bd');
+        var m = /错\s*(\d+)/.exec(badge ? badge.textContent : '');
+        var base = m ? +m[1] : 0;
+        r.querySelector('.fb-n span').textContent = base + (on ? 1 : 0);
+        btn.classList.remove('is-pop'); void btn.offsetWidth; btn.classList.add('is-pop');
+      });
+      Array.prototype.forEach.call(fb.children, function (r, i) {
+        r.querySelector('.fb-rk').textContent = '#' + (i + 1);
+      });
+      if (turnOn) toast('已加权，越重要的越靠上');
+    });
+  }
+  on('wRevAll', () => makePaper('错题复习 · ' + dueToday.length + ' 题', dueToday.map(it => it.k)));
+  on('wRevCap', e => {
+    const v = Math.max(0, +e.target.value || 0);
+    try {
+      if (window.SRS_CAP && typeof SRS_CAP.set === 'function') SRS_CAP.set(v);
+      else { const s0 = JSON.parse(localStorage.getItem('qbank.srs.v1') || '{}'); s0.daily = v; localStorage.setItem('qbank.srs.v1', JSON.stringify(s0)); }
+    } catch (e2) {}
+    toast(v ? '今天最多复习 ' + v + ' 题，其余顺延' : '今天不限复习张数');
+    render();
+  }, 'change');
   on('wRevSel', () => makePaper('错题复习 · ' + selKeys.length + ' 题', selKeys));
   /* web315：把当前筛出来的题存成一份练习卷（套卷），之后从首页/套卷列表还能接着做 */
   on('stPaper', () => {

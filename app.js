@@ -2373,6 +2373,12 @@ function srsSetField(f, v) {
   SRS.mode = 'custom';
   srsSave();
 }
+/* 每日复习上限（0 = 不限）：设置里可改，错题本复习条也能就地改。
+   超过上限的逾期卡顺延到以后，不会丢 */
+window.SRS_CAP = {
+  get: function () { try { return Math.max(0, +srsCfg().daily || 0); } catch (e) { return 0; } },
+  set: function (n) { try { srsSetField('daily', Math.max(0, +n || 0)); } catch (e) {} try { render(); } catch (e2) {} }
+};
 /* 只算下一档，便于预览 */
 function srsNext(ivl, ease, ok, c) {
   c = c || srsCfg();
@@ -3871,19 +3877,64 @@ function renderHome() {
 
   const bytes = storageBytes();
 
+  // 统计区 error 态：云同步失败时明确说出来，避免把「拉不到云端」当成「本机 0 条」
+  function homeSyncHintHtml() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem('qbank.sync.v1') || 'null'); } catch (e) {}
+    if (!d || !d.lastErr) return '';
+    const msg = String(d.lastErr.message || d.lastErr.status || d.lastErr).slice(0, 48);
+    return '<div class="stat-err" id="homeSyncErr" role="status">'
+      + '<b>云同步失败</b><span>' + esc(msg) + '，本页数字只含本机数据</span>'
+      + '<button type="button" class="sc-mini" data-sync-retry>重试</button></div>';
+  }
+
+
+  function homeNotesHtml() {
+    let list = [];
+    try {
+      const d = JSON.parse(localStorage.getItem('qbank.lec.notes.v1') || '{"list":[]}');
+      list = (d.list || []).slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 3);
+    } catch (e) {}
+    if (!list.length) return '';
+    return '<div class="hn-wrap" aria-label="知识点笔记">'
+      + '<div class="hn-hd"><b>知识点笔记</b><a href="#/notes">全部 ›</a></div>'
+      + '<div class="hn-list">' + list.map(n => {
+          const title = (n.ov && n.ov.title) || n.sel || (n.items && n.items[0] && n.items[0].name) || '未命名笔记';
+          const src = (n.items && n.items[0]) ? (n.items[0].name || '') : '';
+          const kws = (n.keys || []).slice(0, 2).join(' · ');
+          return '<a class="hn-card" href="#/notes">'
+            + '<b>' + esc(title) + '</b>'
+            + '<span>' + esc(kws || src || '点开看正文') + '</span>'
+            + '</a>';
+        }).join('') + '</div></div>';
+  }
+
   $('view').innerHTML = `
     <div class="hero">
-      <h1>刷题站</h1>
-      <p>选择题即时判分，选错立刻出解析。错题自动进错题本，可批量收藏 / 移除 / 清空次数 / 组成套卷再做一遍，也能改解析、按需导出。</p>
-      <div class="hstat">
-        <button class="hs" data-act="banks" title="往下看我的题库"><b>${banks.length}</b>个题库</button>
-        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalQ}</b>道题</button>
-        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalDone}</b>已答</button>
-        <button class="hs" data-go="#/stats" title="学习统计"><b>${totalDone ? Math.round(totalOk / totalDone * 100) : 0}%</b>正确率</button>
-        <button class="hs" data-go="#/wrong" title="打开错题本"><b>${wrongN}</b>错题</button>
-        <button class="hs" data-go="#/fav" title="打开收藏"><b>${favN}</b>收藏</button>
-        <button class="hs${dueN ? '' : ' off'}" data-act="review" title="${dueN ? '开始今日复习' : '今天没有该复习的题'}"><b>${dueN}</b>待复习</button>
+      ${resumeHtml}
+      <div class="stat-grid">
+        <div class="stat-card" role="link" tabindex="0" data-go="#/stats" title="学习统计">
+          <div class="sc-k">正确率</div>
+          <div class="sc-row"><b class="sc-num">${totalDone ? Math.round(totalOk / totalDone * 100) : 0}<i>%</i></b>
+            <svg class="sc-ring" viewBox="0 0 40 40" aria-hidden="true"><circle class="sc-r0" cx="20" cy="20" r="16"></circle>
+              <circle class="sc-r1" cx="20" cy="20" r="16" style="--p:${totalDone ? Math.round(totalOk / totalDone * 100) : 0}"></circle></svg>
+          </div>
+        </div>
+        <div class="stat-card" role="link" tabindex="0" data-act="review" title="${dueN ? '开始每日复习' : '今天没有该复习的题'}">
+          <div class="sc-k">今日到期</div>
+          <div class="sc-row"><b class="sc-num warn">${dueN}</b><span class="sc-go">去复习 <i>›</i></span></div>
+          <a class="sc-sub" href="#/wrong" data-go="#/wrong">全库积压 ${uiDueCount()} <i>›</i></a>
+        </div>
+        <div class="stat-card wide" role="link" tabindex="0" data-go="#/stats" title="继续刷题">
+          <div class="sc-row sc-between"><span class="sc-k">已答 <b>${totalDone}</b> / ${totalQ}</span>
+            <button class="sc-mini" type="button" data-go="#/wrong" title="打开错题本">错题 ${wrongN} <i>›</i></button>
+          </div>
+          <div class="sc-bar"><i style="width:${totalQ ? (totalDone / totalQ * 100).toFixed(2) : 0}%"></i></div>
+        </div>
+        <div class="stat-foot">${banks.length} 个题库<span>·</span>${favN} 收藏<a class="sc-link" href="#/stats" data-go="#/stats" title="打开学习统计（数据中心）">学习统计 <i>›</i></a></div>
       </div>
+      ${homeSyncHintHtml()}
+      ${homeNotesHtml()}
       <div class="hstat today">
         <div><b>${TODAY.dNum}</b>今日已答</div>
         <div><b>${TODAY.dNum ? Math.round(TODAY.dOk / TODAY.dNum * 100) : 0}%</b>今日正确率</div>
@@ -3891,7 +3942,6 @@ function renderHome() {
         <div><b>${TODAY.weekN}</b>近 7 天</div>
       </div>
     </div>
-    ${resumeHtml}
     ${guideHtml}
     <div class="toolbar main">
       <button class="btn primary" id="toImport">＋ 导入 / 新建题库</button>
@@ -3941,10 +3991,20 @@ function renderHome() {
   /* 首页上调色板：统计块能直接点进去 */
   document.querySelectorAll('.hstat [data-go]').forEach(el => el.onclick = () => go(el.dataset.go));
   /* 首次引导卡上的三个按钮：走 document 上的事件委托（见 firstGuideHtml 上面），这里不用再绑 */
-  document.querySelectorAll('.hstat [data-act]').forEach(el => el.onclick = () => {
+  document.querySelectorAll('.stat-grid [data-go]').forEach(el => el.onclick = (ev) => { ev.stopPropagation(); go(el.dataset.go); });
+  const syncRetry = document.querySelector('.stat-err [data-sync-retry]');
+  if (syncRetry) syncRetry.onclick = () => {
+    if (!window.SYNC || !SYNC.now) return toast('云同步模块没加载，刷新再试');
+    syncRetry.disabled = true; syncRetry.textContent = '重试中…';
+    Promise.resolve(SYNC.now(false)).finally(() => {
+      try { localStorage.getItem('qbank.sync.v1'); } catch (e) {}
+      setTimeout(() => render(), 600);
+    });
+  };
+  document.querySelectorAll('.stat-grid [data-act], .hstat [data-act]').forEach(el => el.onclick = () => {
     const a = el.dataset.act;
     if (a === 'banks') { const s = $('secBanks'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-    else if (a === 'review') { if (dueN) startReview(60); else toast('今天没有到期的复习题，接着刷题就好'); }
+    else if (a === 'review') { if (dueN) startReview(srsCap || 60); else toast('今天没有到期的复习题，接着刷题就好'); }
   });
 
   document.querySelectorAll('[data-start]').forEach(el => el.onclick = () => startBank(el.dataset.start));
@@ -4397,26 +4457,32 @@ function catRows() {
 }
 
 /* 全量备份 / 恢复：知识库正文也一起带走（来自 知识库.js 的文件库不在里面） */
-async function exportAllData() {
+async function exportAllData(prog) {
+  const P = (typeof prog === 'function') ? prog : function () {};
   let tipCats = 0;
   const data = { app: 'shuati', version: 8, exportedAt: new Date().toISOString(), answers: ANS, banks: LOCAL, cats: catRows(), schemes: (window.SCM && SCM.raw) ? SCM.raw().schemes : null, catmap: (window.SCM && SCM.raw) ? SCM.raw().map : null, favs: FAV, notes: NOTES, papers: PAPERS, settings: SET, fixes: FIX, srs: SRS, qtn: QTN,
     aisrc: (typeof aiSrcNorm === 'function' ? aiSrcNorm() : readLS('qbank.aisrc.v1', {})),
     tags: (typeof window.tagsOf === 'function') ? window.TAGS.data() : readLS(LS.tag, {}),
     tagVocab: (typeof window.TAGS === 'object' && window.TAGS) ? window.TAGS.vocab() : readLS(LS.tagvocab, []),
     report: (window.REPORT && REPORT.data) ? REPORT.data() : readLS(LS.report, []) };
+  P(0.12, '读取本机数据');
   let tip = '';
   try {
     if (typeof kbExportAll === 'function') {
+      P(0.35, '打包知识库');
       toast('正在打包知识库…', 1200);
       const kb = await kbExportAll();
       if (kb && (kb.list || []).length) { data.kb = kb; tip = '，含 ' + kb.list.length + ' 个自己导入的知识库'; }
       if (kb && (kb.autoN || 0)) tip += '（另有 ' + kb.autoN + ' 个来自 知识库.js 的文件库不打包，换电脑后重新生成或复制那个文件即可）';
     }
   } catch (err) { tip = '（知识库打包失败：' + (err.message || err) + '）'; }
+  P(0.8, '写入文件');
   download('刷题站-全部数据-' + stamp() + '.json', JSON.stringify(data), 'application/json');
+  P(1, '完成');
   writeLS(BACKUP_KEY, Date.now());
   toast('已导出备份' + tip, 3600);
 }
+try { window.exportAllData = exportAllData; } catch (e0) {}
 function importAllData(e) {
   const f = e.target.files[0]; if (!f) return;
   const r = new FileReader();
@@ -7096,18 +7162,16 @@ function renderStats() {
     <div class="actions" style="margin:0 0 12px;justify-content:flex-start">
       <button class="btn primary" id="mvEntry">📊 掌握度复盘 · 按科目和考点看哪儿最薄</button>
     </div>
-    <div class="card">
-      <div class="stats">
-        <button class="hst" data-jump="secBanks" title="看下面各题库的正确率"><b>${recN}</b><span>累计做题</span></button>
-        <div class="hst-plain"><b>${triesN}</b><span>累计作答次数</span></div>
-        <button class="hst" data-jump="secBanks" title="看下面各题库的正确率"><b>${recN ? Math.round(okN / recN * 100) : 0}%</b><span>累计正确率</span></button>
-        <button class="hst" data-jump="secDays" title="看近 14 天的柱子"><b>${T.dNum}</b><span>今日已答</span></button>
-        <button class="hst" data-jump="secDays" title="看近 14 天的柱子"><b>${T.streak}</b><span>连续天数</span></button>
-        <button class="hst${dueN ? '' : ' off'}" ${dueN ? 'data-act="review"' : 'disabled'} title="${dueN ? '开始今日复习' : '今天没有该复习的题'}"><b>${dueN}</b><span>待复习</span></button>
-      </div>
-      ${none ? '<div class="note" style="margin-top:12px">还没有作答记录：回首页挑一个题库做几道，这里就有数据了。</div>' : ''}
-      ${undated ? `<div class="small muted" style="margin-top:8px">另有 ${undated} 条早期记录没有日期（老版本数据），不计入下面的趋势图。</div>` : ''}
+    <div class="stg">
+      <div class="stg-c"><b>${recN}</b><span>累计做题</span></div>
+      <div class="stg-c"><b>${triesN}</b><span>累计作答</span></div>
+      <div class="stg-c"><b>${recN ? Math.round(okN / recN * 100) : 0}<i>%</i></b><span>累计正确率</span></div>
+      <div class="stg-c"><b>${T.dNum}</b><span>今日已答</span></div>
+      <div class="stg-c"><b>${T.streak}</b><span>连续天数</span></div>
+      <button class="stg-c stg-go${dueN ? ' hot' : ''}" ${dueN ? 'data-act="review"' : 'disabled'} title="${dueN ? '开始今日复习' : '今天没有该复习的题'}"><b>${dueN}</b><span>待复习 <i>›</i></span></button>
     </div>
+    ${none ? '<div class="note" style="margin:0 0 12px">还没有作答记录：回首页挑一个题库做几道，这里就有数据了。</div>' : ''}
+    ${undated ? `<div class="small muted" style="margin:0 0 12px">另有 ${undated} 条早期记录没有日期（老版本数据），不计入下面的趋势图。</div>` : ''}
 
     ${typeof reportSectionHtml === 'function' ? reportSectionHtml() : ''}
 

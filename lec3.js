@@ -296,6 +296,9 @@
       var a = b.getAttribute('data-lec');
       if (a === 'close') { REOPEN_ON_CLOSE = true; return close(); }
       if (a === 'notes') { close(); location.hash = '#/notes'; return; }
+      if (a === 'aisum') return aiSum();
+      if (a === 'sumext') { var h2 = aiSumHost(); if (h2) aiSumFold(h2, !h2.querySelector('.lec-sumhid')); return; }
+      if (a === 'aisumx') { var c2 = document.getElementById('lecSumCard'); if (c2) { c2.hidden = true; c2.innerHTML = ''; } var h3 = aiSumHost(); if (h3) aiSumFold(h3, false); return; }
       if (a === 'loc') return locate();
       if (a === 'scope') return openScope();
       if (a === 'ovask') return overviewAsk();
@@ -2108,6 +2111,7 @@
     fillSelect(); paint(); applyBind(); try { scopePaint(); } catch (e) {}
   }
 
+  var NOTE_LAST = null;        /* 上一次生成的汇总笔记（「‹ 返回汇总」用；未生成前为 null） */
   var REOPEN_ON_CLOSE = false;
   function close() {
     unzoom();
@@ -2855,6 +2859,71 @@
     return h + '</div>';
   }
 
+  /* ===== #235：AI 摘要（扫光 / 高亮 / 折叠） ===== */
+  function aiSumHost() {
+    var t = document.querySelector('#lecWebMask .lec-ovtitle') || document.querySelector('#lecWebMask .lec-ovlead');
+    return t ? t.parentElement : null;
+  }
+  function aiSumText(host) {
+    var out = [];
+    host.querySelectorAll('.lec-ovh,.lec-ovp').forEach(function (el) { out.push(el.innerText.trim()); });
+    return out.join('\n');
+  }
+  function aiSumFold(host, on) {
+    if (!host) return;
+    host.querySelectorAll('.lec-ovh,.lec-ovbody,.lec-ovtoc,.lec-ovp,.lec-ovlead').forEach(function (el) { el.classList.toggle('lec-sumhid', !!on); });
+    var b = document.getElementById('lecSumMore');
+    if (b) b.textContent = on ? '展开原文 ▾' : '收起原文 ▴';
+  }
+  function aiSumRender(host, d) {
+    var card = document.getElementById('lecSumCard'); if (!card) return;
+    card.hidden = false;
+    card.innerHTML = '<div class="lec-sum-hd"><b>' + esc(d.headline || '摘要') + '</b>'
+      + '<button class="lec-sum-x" data-web="aisumx" title="收起摘要">✕</button></div>'
+      + '<ul class="lec-sum-ul">' + (d.bullets || []).slice(0, 4).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>'
+      + '<div class="lec-sum-ft"><span class="lec-sum-src">' + (d.keys && d.keys.length ? '已高亮 ' + d.keys.length + ' 处关键句' : '按全文提炼') + '</span>'
+      + '<button class="lec-sum-more" id="lecSumMore" data-web="sumext">展开原文 ▾</button></div>';
+    aiSumFold(host, true);
+  }
+  function aiSum() {
+    var host = aiSumHost(); if (!host) return;
+    var text = aiSumText(host);
+    if (text.length < 80) { toast('这段还不够长，直接看就行', 1600); return; }
+    if (!window.aiChat) { toast('这个页面没加载 AI 模块，刷新一次再试', 2200, 'bad'); return; }
+    var stEl = document.getElementById('lecSumState'); if (stEl) stEl.textContent = '正在读全文…';
+    var scan = document.getElementById('lecScan');
+    if (scan) { host.classList.add('lec-scan-host'); scan.hidden = false; scan.style.setProperty('--scanh', Math.max(240, host.scrollHeight - 40) + 'px'); scan.classList.remove('run'); void scan.offsetWidth; scan.classList.add('run'); }
+    var sys = '你是医学教材编辑。把用户给的长文缩成 3 行摘要：\n'
+      + '1) headline：一句话说清这篇讲什么（≤24 字，陈述句）；\n'
+      + '2) bullets：3 条要点，每条 ≤34 字，覆盖机制 / 判据 / 易错，不要编号、不要用「本文」开头；\n'
+      + '3) keys：从原文里挑 3–6 段必须记住的短句（必须原样出现在原文里，8–24 字）。\n'
+      + '只输出 JSON：{"headline":"…","bullets":["…","…","…"],"keys":["…"]}，不要解释、不要代码块。';
+    var ask = function (mt) {
+      return window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: text.slice(0, 6000) }], null, null, { stream: false, temp: 0.2, maxTokens: mt });
+    };
+    ask(700).then(function (t0) { return (t0 && String(t0).trim()) ? t0 : ask(1600); })
+      .then(function (raw) {
+        var d = {};
+        try { var m = /\{[\s\S]*\}/.exec(String(raw || '')); d = JSON.parse(m ? m[0] : raw); } catch (e0) { d = {}; }
+        if (!d.headline && !(d.bullets && d.bullets.length)) throw new Error('模型没有给出摘要');
+        if (scan) { scan.hidden = true; host.classList.remove('lec-scan-host'); }
+        var keys = (d.keys || []).map(String).filter(Boolean);
+        if (keys.length) {
+          host.querySelectorAll('.lec-ovp,.lec-ovlead').forEach(function (p) {
+            var hit = keys.some(function (k) { return p.innerText.indexOf(k) >= 0; });
+            if (hit) p.classList.add('lec-hit');
+          });
+        }
+        if (stEl) stEl.textContent = '';
+        aiSumRender(host, d);
+      })
+      .catch(function (e) {
+        if (scan) { scan.hidden = true; host.classList.remove('lec-scan-host'); }
+        if (stEl) stEl.textContent = '';
+        toast('摘要失败：' + (e && e.message || e), 2400, 'bad');
+      });
+  }
+
   function ovHtml(st) {
     var keys = st.keys || [], srcs = st.sources || [], h = '';
     if (st.ov && st.ov.ready) {
@@ -2888,6 +2957,12 @@
         + '<pre class="lec-ovpre">' + esc(String(st.ov.raw || '').slice(0, 1200)) + '</pre></div>';
     }
     var o = st.ov, secs = o.sections || [];
+    /* #235：长文 AI 摘要（扫光 → 高亮关键句 → 折成 3 行，可展开原文） */
+    h += '<div class="lec-sum-bar"><button class="lec-sumbtn" data-web="aisum">✨ AI 摘要</button>'
+      + '<span class="lec-sum-tip">扫一遍、标出关键句，折成 3 行</span>'
+      + '<span class="lec-sum-state" id="lecSumState"></span></div>'
+      + '<div class="lec-sumcard" id="lecSumCard" hidden></div>'
+      + '<i class="lec-scan" id="lecScan" hidden></i>';
     if (o.title) h += '<div class="lec-ovtitle">' + esc(o.title) + '</div>';
     if (o.lead) h += '<div class="lec-ovlead">' + markSents(o.lead, keys) + '</div>';
     if (secs.length > 2) {
@@ -2989,6 +3064,9 @@
       var b = ev.target.closest('[data-web]');
       if (!b) return;
       var a = b.getAttribute('data-web');
+      if (a === 'aisum') { ev.stopPropagation(); return aiSum(); }
+      if (a === 'sumext') { ev.stopPropagation(); var hs0 = aiSumHost(); if (hs0) aiSumFold(hs0, !hs0.querySelector('.lec-sumhid')); return; }
+      if (a === 'aisumx') { ev.stopPropagation(); var cs0 = document.getElementById('lecSumCard'); if (cs0) { cs0.hidden = true; cs0.innerHTML = ''; } var hs1 = aiSumHost(); if (hs1) aiSumFold(hs1, false); return; }
       if (a === 'min') { ev.stopPropagation(); OV_MIN = true; mask.style.display = 'none'; ovChip(st); toast('已挂起，后台继续写', 1400); return; }
       if (a === 'cap') {
         ev.stopPropagation();

@@ -967,6 +967,28 @@
         + '<div class="vb-line">正确率 <b>' + (TODAY.dNum ? Math.round(TODAY.dOk / TODAY.dNum * 100) : 0) + '%</b></div>'
         + '<div class="vb-line">近 7 天 <b>' + TODAY.weekN + '</b> 题</div>'
         + '</div>'
+        + (function () {
+          var pct = totalDone ? Math.round(totalOk / totalDone * 100) : 0;
+          var last7 = hm.cells.slice(-7);
+          var maxN = 1;
+          last7.forEach(function (c) { if (c.n > maxN) maxN = c.n; });
+          var bars7 = last7.map(function (c, i) {
+            return '<i style="--h:' + Math.max(6, Math.round(c.n / maxN * 100)) + ';--i:' + i + '"></i>';
+          }).join('');
+          return '<a class="vb-card span2 vb-dash" href="#/stats" data-act="go" data-hash="#/stats" title="打开学习统计（数据中心）">'
+            + '<div class="vd-hd"><b>学习统计</b><span>数据中心 <i>›</i></span></div>'
+            + '<div class="vd-grid">'
+            + '<div class="vd-t vd-a"><span class="vd-k">正确率</span>'
+            + '<div class="vd-ring" style="--p:' + pct + '"><b>' + pct + '<i>%</i></b></div></div>'
+            + '<div class="vd-t vd-b"><span class="vd-k">近 7 天</span>'
+            + '<div class="vd-bars">' + bars7 + '</div>'
+            + '<span class="vd-sub">' + TODAY.weekN + ' 题</span></div>'
+            + '<div class="vd-t vd-c"><span class="vd-k">待复习</span>'
+            + '<b class="vd-n">' + dueN + '</b><span class="vd-sub">张到期</span></div>'
+            + '<div class="vd-t vd-d"><span class="vd-k">连续</span>'
+            + '<b class="vd-n">' + TODAY.streak + '</b><span class="vd-sub">天</span></div>'
+            + '</div></a>';
+        })()
         + '<div class="vb-card span2 vb-heat">'
         + '<div class="vb-cap">' + hmLabel + '<span class="vb-cap-n">共 ' + hm.total + ' 题 '
         + '<button class="btn tiny" data-act="go" data-hash="#/cal" title="按月翻页看每天的复习卡片（复习日历）">按月看 ›</button></span></div>'
@@ -1080,7 +1102,7 @@
       body = '<div class="nb-treetoggle"><button class="btn small" data-act="expandAll">🗂 目录树</button>'
         + '<span class="small muted">展开：按「目录 › 子目录 › 题库」看全部</span></div>'
         + '<div id="nbTree" class="nb-tree"' + (TREE_OPEN ? '' : ' style="display:none"') + '>'
-        + (TREE_OPEN ? treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>' : '')
+        + (TREE_OPEN ? '<div class="small muted" style="margin:0 0 6px">点目录名跳过去；点左边的三角展开 / 收起。</div>' + treeHtml() : '')
         + '</div>'
         + (tagModeNow()
           ? '<div class="nb-tagview-bar"><b>🏷 当前方案是「考点分类」</b>'
@@ -1101,22 +1123,6 @@
     }
 
     return ''
-      + '<div class="hero">'
-      + '<div class="hstat" style="margin-top:0">'
-      + '<button class="hs" data-act="expandAll" title="展开 / 收起目录树"><b>' + bk.length + '</b>个题库</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计"><b>' + totalQ + '</b>道题</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计"><b>' + totalDone + '</b>已答</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计"><b>' + (totalDone ? Math.round(totalOk / totalDone * 100) : 0) + '%</b>正确率</button>'
-      + '<button class="hs" data-act="go" data-hash="#/wrong" title="打开错题本"><b>' + wrongN + '</b>错题</button>'
-      + '<button class="hs" data-act="go" data-hash="#/fav" title="打开收藏"><b>' + favN + '</b>收藏</button>'
-      + '<button class="hs' + (dueN ? '' : ' off') + '" data-act="review"' + (dueN ? '' : ' data-n="0"') + ' title="' + (dueN ? '开始今日复习' : '今天没有该复习的题') + '"><b>' + dueN + '</b>待复习</button>'
-      + '</div>'
-      + '<div class="hstat today">'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 今天的量"><b>' + TODAY.dNum + '</b>今日已答</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 今天的正确率"><b>' + (TODAY.dNum ? Math.round(TODAY.dOk / TODAY.dNum * 100) : 0) + '%</b>今日正确率</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 连续刷题天数"><b>' + TODAY.streak + '</b>连续天数</button>'
-      + '<button class="hs" data-act="go" data-hash="#/stats" title="学习统计 · 最近 7 天"><b>' + TODAY.weekN + '</b>近 7 天</button>'
-      + '</div></div>'
       + bentoHtml
       + ((typeof firstGuideHtml === 'function') ? firstGuideHtml() : '')
       + ((BATCH || DRAG)
@@ -1697,23 +1703,83 @@
       + '<span class="nb-backpath" title="' + hEscape(full) + '">' + hEscape(full) + '</span>'
       + '</div>';
   }
+  var TREE_CLOSED_KEY = 'qbank.tree.closed.v1';
+  function treeClosed() { try { return JSON.parse(localStorage.getItem(TREE_CLOSED_KEY) || '[]') || []; } catch (e) { return []; } }
+  function treeCount(id) {
+    var n = dirBanks(id).length, sub = kids(id).length;
+    return (sub ? sub + ' 子目录 · ' : '') + n + ' 题库';
+  }
   function treeHtml() {
     ensure();
-    function walk(pid, depth) {
-      var out = '';
-      kids(pid).forEach(function (c) {
-        out += '<div class="nb-trow" data-trow="' + E(c.id) + '" style="padding-left:' + (depth * 14) + 'px">'
-          + '<button class="btn tiny" data-act="open" data-id="' + E(c.id) + '">' + E(TITLE(c)) + '</button>'
-          + '<span class="small muted">' + dirBanks(c.id).length + ' 个题库</span>'
-          + '</div>';
-        out += walk(c.id, depth + 1);
-      });
-      return out;
+    var closed = treeClosed();
+    function node(c) {
+      var kk = kids(c.id);
+      var open = closed.indexOf(c.id) < 0;
+      var h = '<div class="nt2-n' + (CUR === c.id ? ' on' : '') + '" data-tn="' + E(c.id) + '">'
+        + '<div class="nt2-r">'
+        + (kk.length
+          ? '<button class="nt2-c' + (open ? ' open' : '') + '" data-trc="' + E(c.id) + '" aria-expanded="' + open + '" aria-label="展开或收起"></button>'
+          : '<i class="nt2-dot"></i>')
+        + '<button class="nt2-t" data-act="open" data-id="' + E(c.id) + '">' + E(TITLE(c)) + '</button>'
+        + '<span class="nt2-m">' + treeCount(c.id) + '</span>'
+        + '</div>';
+      if (kk.length) {
+        h += '<div class="nt2-k"' + (open ? '' : ' hidden') + '>'
+          + kk.map(function (x) { return node(x); }).join('') + '</div>';
+      }
+      return h + '</div>';
     }
-    var loose = dirBanks(null).length;
-    return '<div class="nb-trow nb-trow-root' + (CUR ? '' : ' on') + '" data-trow="" style="padding-left:0">' + '<button class="btn tiny' + (CUR ? '' : ' primary') + '" data-act="open" data-id="">全部题库（根目录）</button>'
-      + '<span class="small muted">' + loose + ' 个题库</span></div>'
-      + walk(null, 1);
+    var top = kids(null).map(function (c) { return node(c); }).join('');
+    return '<input id="nbTreeQ" class="nt2-q" placeholder="筛选目录名…">'
+      + '<div class="nt2" data-tree>'
+      + '<div class="nt2-n nt2-root' + (CUR ? '' : ' on') + '" data-tn="">'
+      + '<div class="nt2-r"><i class="nt2-dot"></i>'
+      + '<button class="nt2-t' + (CUR ? '' : ' on') + '" data-act="open" data-id="">全部题库（根目录）</button>'
+      + '<span class="nt2-m">' + dirBanks(null).length + ' 题库</span></div></div>'
+      + (top ? '<div class="nt2-k nt2-top">' + top + '</div>' : '')
+      + '</div>';
+  }
+
+  /* 折叠 / 展开：只改 DOM + 存偏好，不触发路由 */
+  if (!window.__nt2Bound) {
+    window.__nt2Bound = 1;
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('[data-trc]');
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      var id = b.getAttribute('data-trc');
+      var arr = treeClosed(), i = arr.indexOf(id);
+      if (i < 0) arr.push(id); else arr.splice(i, 1);
+      try { localStorage.setItem(TREE_CLOSED_KEY, JSON.stringify(arr)); } catch (er) {}
+      var host = b.closest('.nt2-n');
+      var k = host && host.querySelector(':scope > .nt2-k');
+      if (k) { k.hidden = i < 0 ? true : false; }
+      b.classList.toggle('open', !(k && k.hidden));
+      b.setAttribute('aria-expanded', String(!(k && k.hidden)));
+    }, true);
+    document.addEventListener('input', function (e) {
+      if (!e.target || e.target.id !== 'nbTreeQ') return;
+      var box = document.getElementById('nbTree'); if (!box) return;
+      var root = box.querySelector('.nt2'); if (!root) return;
+      var Q = e.target.value.trim().toLowerCase();
+      (function walk(el) {
+        var r = el.querySelector(':scope > .nt2-r');
+        var t = r && r.querySelector('.nt2-t');
+        var name = t ? t.textContent.toLowerCase() : '';
+        var hit = !!(Q && name.indexOf(Q) >= 0);
+        var sub = false;
+        Array.prototype.forEach.call(el.querySelectorAll(':scope > .nt2-k > .nt2-n'), function (ch) {
+          if (walk(ch)) sub = true;
+        });
+        var show = !Q || hit || sub;
+        el.hidden = !show;
+        if (Q && show && sub) {
+          var k = el.querySelector(':scope > .nt2-k');
+          if (k) k.hidden = false;
+        }
+        return show;
+      })(root);
+    }, true);
   }
 
   /* ---------- 渲染入口：替换首页 ============
