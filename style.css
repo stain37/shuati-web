@@ -6411,3 +6411,50 @@ html.pip-guest .cd-gap{ height: 96px; }
 .sk-back:hover{ color:var(--primary); }
 .sk-head .cd-srch{ margin-top:8px; }
 .sk-switch{ flex:none; }
+
+
+/* web932 · 卡片底部「撤销上一次评分」 + 操作栏过渡 */
+.cc-undo{ display:block; width:100%; margin-top:8px; padding:9px 10px; border:1px dashed var(--line); border-radius:10px; background:transparent; color:var(--sub); font-size:12.5px; cursor:pointer; }
+.cc-undo:hover{ color:var(--primary); border-color:var(--primary); }
+.cd-bar{ transition: bottom .22s cubic-bezier(.22,.68,.24,1); }
+
+
+/* web934 · 一天只评一次 */
+.cc-lock{ margin:10px 0 2px; padding:8px 10px; border-radius:9px; background:color-mix(in srgb, var(--warn) 14%, transparent); color:var(--text); font-size:12.5px; line-height:1.6; }
+.cd-acts.is-locked button{ opacity:.5; }
+
+
+/* web936 · 卡片全屏滚不动：把滚动交给整层（touch 手势才认），顶栏/评分栏吸边 */
+html.cd-open, html.cd-open body{ overflow:hidden !important; overscroll-behavior:none; }
+.cd-mask{ overflow-y:auto !important; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
+.cd-mask > .cd-top{ position:sticky; top:0; z-index:3; background:#eef2f8; }
+.cd-mask > .cd-acts{ position:sticky; bottom:0; z-index:3; background:#eef2f8; padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
+body.dark .cd-mask > .cd-top, body.dark .cd-mask > .cd-acts{ background:#0f151f; }
+.cd-mask .cd-stage{ overflow:visible !important; flex:0 0 auto !important; display:block !important; }
+.cd-mask .cd-stage > .cc-wrap{ margin:0 auto !important; }
+.cd-mask .cd-prog{ position:sticky; bottom:0; z-index:3; }
+
+
+/* web937 · 改回「卡片不动、卡片里的内容滚动」：整层不滚，内容区滚 */
+.cd-mask{ overflow:hidden !important; }
+.cd-mask > .cd-top{ position:static !important; background:transparent !important; }
+.cd-mask > .cd-acts{ position:static !important; background:transparent !important; padding-bottom:10px; }
+.cd-mask .cd-stage{
+  display:flex !important; flex:1 1 auto !important; min-height:0 !important;
+  overflow-y:auto !important; overflow-x:hidden !important;
+  overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch;
+}
+.cd-mask .cd-stage > .cc-wrap{ margin:0 auto !important; }
+.cd-mask .cd-prog{ position:static !important; }
+
+
+/* web938 · 真因修复：web848 把 .cc-card 的 overflow 从 auto 改成 hidden（style.css:5149），
+   长卡片超出 max-height 的部分被直接裁掉、无处可滚。这里恢复「卡片本身滚」，
+   并让外层 .cd-stage 不再抢滚动。 */
+.cd-mask .cd-stage{ overflow:hidden !important; }
+.cd-mask .cd-stage > .cc-wrap{ display:flex !important; flex-direction:column !important; min-height:0 !important; max-height:100%; }
+.cc-card{
+  overflow-y:auto !important; overflow-x:hidden !important;
+  overscroll-behavior:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch;
+}
+.cc-card::-webkit-scrollbar{ width:0; height:0; }

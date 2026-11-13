@@ -496,16 +496,33 @@
     });
   }
 
-  /* 底部导航不在时（如画中画访客页），操作栏自动贴底 */
+  /* 底部导航不在时（被滚走 / 画中画访客页），操作栏自动贴底 */
   function syncBnav() {
     var n = document.getElementById('bnav') || document.querySelector('.bnav');
     var shown = false;
     if (n) {
       var r0 = n.getBoundingClientRect();
       var cs = getComputedStyle(n);
-      shown = r0.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden';
+      shown = r0.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'
+        && r0.bottom > 6 && r0.top < (window.innerHeight || 0) - 6;   /* 被 translateY 滚出屏幕也算不在 */
     }
-    document.body.classList.toggle('has-bnav', shown);
+    if (document.body.classList.contains('nav-sink')) shown = false;   /* 站点是加这个类来藏导航的 */
+    var was = document.body.classList.contains('has-bnav');
+    if (was !== shown) document.body.classList.toggle('has-bnav', shown);
+  }
+  function bindBnavScroll() {
+    if (window.__cdBnavScroll) return;
+    window.__cdBnavScroll = 1;
+    var raf = 0;
+    function kick() {
+      if (raf) return;
+      raf = requestAnimationFrame(function () { raf = 0; try { syncBnav(); } catch (e) {} });
+    }
+    window.addEventListener('scroll', kick, { passive: true });
+    if (window.MutationObserver && !window.__cdBnavMO) {
+      window.__cdBnavMO = new MutationObserver(kick);
+      window.__cdBnavMO.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
   }
 
   /* ---------- 速记视图：一屏扫完所有考点 ---------- */
@@ -549,6 +566,7 @@
   }
 
   function renderPreview() {
+    try { normalizeSched(); } catch (eN) {}
     var bank = bankOf(ST.bankId);
     if (!bank) { location.hash = '#/cards'; return; }
     ST.items = itemsOf(bank);
@@ -766,6 +784,26 @@
         paintCard();
         return;
       }
+      if (a === 'undo') {
+        if (!UNDO) { toast('没有可撤销的评分', 1200); return; }
+        var mp = schedMap();
+        if (UNDO.st && (UNDO.st.reps || 0) > 0) mp[UNDO.key] = UNDO.st; else delete mp[UNDO.key];
+        writeLS(SCHED_KEY, mp);
+        var mm = markers();
+        if (UNDO.mark == null) delete mm[UNDO.key]; else mm[UNDO.key] = UNDO.mark;
+        writeLS(MARK_KEY, mm);
+        var key0 = UNDO.key;
+        UNDO = null;
+        try { sessionStorage.removeItem('qbank.cards.undo.v1'); } catch (eR) {}
+        ST.mode = 'card';
+        var idx0 = -1;
+        filterItems().forEach(function (x, i) { if (x.key === key0) idx0 = i; });
+        ST.i = idx0 >= 0 ? idx0 : 0;
+        try { renderPreview(); } catch (e0) {}
+        paintCard();
+        toast('已撤销，可以重新选一次', 1400);
+        return;
+      }
       if (a === 'prev') return step(-1);
       if (a === 'next') return step(1);
       if (a === 'yes') return mark(1);
@@ -886,8 +924,11 @@
       + (explain ? '<p>' + hilite(explain, kws) + '</p>' : '')
       + '<u>答案：' + esc(ans || '—') + '</u>'
       + '<button class="cc-goq" data-act="quizone">去做这道题 →</button></div>'
+      + (ratedToday(stateOf(it)) ? '<div class="cc-lock">今天已经评过这张了 · 明天再来' + (UNDO ? '；想改就点下面「↩ 撤销上一次评分」' : '') + '</div>' : '')
       + '<div class="cc-foot">出自 · ' + esc(ST.bankTitle || '') + ' 第 ' + (it.qno || '?') + ' 题'
       + ' · <span class="cc-srs">背过 ' + ((stateOf(it).reps || 0)) + ' 次 · 下次 ' + dueText(stateOf(it)) + '</span></div>'
+      + (UNDO && Date.now() - UNDO.at < 30 * 60000
+        ? '<button class="cc-undo" data-act="undo">↩ 撤销上一次评分</button>' : '')
       + '<div class="cc-kpline">'
       + (function () {
           var e = (window.KP && KP.cardEntry) ? KP.cardEntry(it.key) : null;
@@ -899,10 +940,14 @@
       + '</div>'
       + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
+    var _lk = ratedToday(stateOf(it));
+    var _acts = document.querySelector('.cd-acts');
+    if (_acts) { _acts.classList.toggle('is-locked', _lk); if (_lk) _acts.setAttribute('aria-disabled', 'true'); else _acts.removeAttribute('aria-disabled'); }
     try { kwMenuHide(); } catch (e0) {}
     $('#cdCnt').textContent = (ST.i + 1) + ' / ' + list.length;
     $('#cdProg').style.width = Math.round((ST.i + 1) * 100 / list.length) + '%';
     $('#cdMask').classList.add('on');
+    document.documentElement.classList.add('cd-open');
     savePos(ST.i);
   }
 
@@ -967,18 +1012,61 @@
     }, 2400);
   }
 
+  var DECK_CFG = {
+    learn_steps: [15, 45],
+    relearn_steps: [15],
+    graduating_interval: 1,
+    easy_interval: 4,
+    min_interval: 1,
+    max_interval: 90
+  };
+  var UNDO = null;   /* {key, st, mark, at}：撤销上一次评分 */
+  try {
+    var _u0 = sessionStorage.getItem('qbank.cards.undo.v1');
+    if (_u0) UNDO = JSON.parse(_u0);
+  } catch (eU) {}
+
+  /* 老数据里隔了 36500 天那种，一次性拉回 90 天以内 */
+  function normalizeSched() {
+    var map = schedMap(), touched = 0;
+    var today = dayNo(), crt = crtDay();
+    for (var k in map) {
+      var st = map[k];
+      if (!st || st.type !== 2) continue;
+      if ((st.ivl || 0) > 90) {
+        st.ivl = 90;
+        st.due = Math.min(st.due, (today - crt) + 90);
+        touched++;
+      }
+    }
+    if (touched) writeLS(SCHED_KEY, map);
+    return touched;
+  }
+
+  function ratedToday(st) {
+    if (!st || !st.ts) return false;
+    var a = new Date(st.ts), b = new Date();
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
   function rate(r) {
     var list = filterItems();
     var it = list[ST.i];
     if (!it) return;
     var st = stateOf(it);
+    if (ratedToday(st)) {
+      toast('这张今天已经评过了 · 明天再来' + (UNDO ? '；想改就点「撤销上一次评分」' : ''), 2000);
+      return;
+    }
     var nowSec = Math.floor(Date.now() / 1000);
     var today = dayNo();
     var crt = crtDay();
     var next = null;
     if (window.ANKI_SCHED && window.ANKI_SCHED.answer) {
       try {
-        next = window.ANKI_SCHED.answer(st, r, nowSec, window.ANKI_SCHED.DEFAULT_DECK,
+        UNDO = { key: it.key, st: st, mark: markOf(it), at: Date.now() };
+        try { sessionStorage.setItem('qbank.cards.undo.v1', JSON.stringify(UNDO)); } catch (eS) {}
+        next = window.ANKI_SCHED.answer(st, r, nowSec, DECK_CFG,
           { today: today, crtDay: crt, preLapseIvl: st.ivl || 0 });
       } catch (e) { toast('调度出错：' + (e && e.message), 2400); return; }
       next.ts = Date.now();
@@ -1021,6 +1109,7 @@
   function closeCard() {
     var d = $('#cdMask');
     if (d) d.classList.remove('on');
+    document.documentElement.classList.remove('cd-open');
     ST.card = false;
     /* 关卡片时把背后的列表重画一次：到期 / 学习中 / 复习中 的数字跟着评分开 */
     try { if (location.hash.indexOf('#/cards/') === 0) renderPreview(); } catch (e) {}
@@ -1231,6 +1320,7 @@
       });
     }
     if (!window.__cdKeyBound) { document.addEventListener('keydown', keyHandler, true); window.__cdKeyBound = 1; }
+    bindBnavScroll();
     if (!window.__cdResizeBound) { window.addEventListener('resize', function () { try { syncBnav(); } catch (e) {} }); window.__cdResizeBound = 1; }
   }
 
