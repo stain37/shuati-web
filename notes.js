@@ -269,6 +269,7 @@
       + '<div class="nt-head" data-nt-act="toggle" data-id="' + n.id + '">'
       + ((typeof U !== 'undefined' && U.sel) ? ('<button class="nt-pick" data-nt-pick="' + n.id + '">' + (U.picked[n.id] ? '☑' : '☐') + '</button>') : '')
       + '<b>' + esc(String(n.sel || '').slice(0, 46)) + (String(n.sel || '').length > 46 ? '…' : '') + '</b>'
+      + '<u class="nt-su" data-nt-act="subj" data-id="' + n.id + '" title="改这篇笔记的科目">' + esc(subjOfNote(n)) + '</u>'
       + '<span>' + fmt(n.ts) + ' · ' + (n.manual ? ('手写' + ((n.edit || '').replace(/\s/g, '').length ? ' · ' + (n.edit || '').replace(/\s/g, '').length + ' 字' : '')) : (filesOf(n) + ' 份讲义 · ' + (n.items || []).length + ' 句')) + '</span>'
       + '<i>' + (open ? '▾' : '▸') + '</i></div>';
     if (n.q) h += '<div class="nt-q">出自：' + esc(n.q) + '</div>';
@@ -338,6 +339,45 @@
     return m ? m[1] : '其他';
   }
 
+  /* 科目：默认从讲义文件名推，用户可以改（n.subjOv） */
+  var SUBJECTS = ['生理', '生化', '病理', '内科', '外科', '人文', '未分科'];
+  function subjOfNote(n) {
+    if (n && n.subjOv) return n.subjOv;
+    var it = (n && n.items && n.items[0]) || null;
+    return it ? subjOfName(it.src) : '未分科';
+  }
+  function setSubjOfNote(id, subj) {
+    var d = read();
+    d.list.forEach(function (x) { if (x.id === id) x.subjOv = subj; });
+    write(d);
+  }
+  function ntSubjMenu(btn, note) {
+    var old = document.getElementById('ntSubjMenu');
+    if (old) old.remove();
+    var m = document.createElement('div');
+    m.id = 'ntSubjMenu';
+    m.className = 'nt-sumenu';
+    m.innerHTML = SUBJECTS.map(function (s) {
+      return '<button type="button" data-subj="' + s + '"' + (s === subjOfNote(note) ? ' class="on"' : '') + '>' + s + '</button>';
+    }).join('');
+    document.body.appendChild(m);
+    var r = btn.getBoundingClientRect();
+    m.style.top = Math.round(r.bottom + 6) + 'px';
+    m.style.left = Math.round(Math.min(r.left, window.innerWidth - 200)) + 'px';
+    m.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-subj]');
+      if (!b) return;
+      setSubjOfNote(note.id, b.getAttribute('data-subj'));
+      m.remove();
+      render();
+    });
+    setTimeout(function () {
+      document.addEventListener('pointerdown', function h(ev) {
+        if (!m.contains(ev.target)) { m.remove(); document.removeEventListener('pointerdown', h); }
+      }, { passive: true });
+    }, 0);
+  }
+
   function matchQ(n, q) {
     if (!q) return true;
     var s = [n.sel, n.q, n.why].concat((n.keys || [])).join(' ') + ' ' +
@@ -350,12 +390,12 @@
     if (!v) return;
     var all = list();
     var subs = {};
-    all.forEach(function (n) { (n.items || []).forEach(function (x) { subs[subjOfName(x.src)] = 1; }); });
+    all.forEach(function (n) { subs[subjOfNote(n)] = 1; });
     var subKeys = Object.keys(subs);
     var arr = all.filter(function (n) {
       if (!matchQ(n, U.q)) return false;
       if (U.flt === 'all') return true;
-      return (n.items || []).some(function (x) { return subjOfName(x.src) === U.flt; });
+      return subjOfNote(n) === U.flt;
     });
 
     var h = '<div class="card nt-wrap"><div class="sec-head"><h2>📚 知识点笔记</h2>'
@@ -370,7 +410,7 @@
       + '</div>';
     h += '<div class="nt-chips"><button class="nt-chip' + (U.flt === 'all' ? ' on' : '') + '" data-nt-flt="all">全部 ' + all.length + '</button>';
     subKeys.forEach(function (s) {
-      var c = all.filter(function (n) { return (n.items || []).some(function (x) { return subjOfName(x.src) === s; }); }).length;
+      var c = all.filter(function (n) { return subjOfNote(n) === s; }).length;
       h += '<button class="nt-chip' + (U.flt === s ? ' on' : '') + '" data-nt-flt="' + esc(s) + '">' + esc(s) + ' ' + c + '</button>';
     });
     h += '</div>';
@@ -473,6 +513,7 @@
         var act = b.getAttribute('data-nt-act'), id = b.getAttribute('data-id');
         var note = list().filter(function (x) { return x.id === id; })[0];
         if (!note) return;
+        if (act === 'subj') { ntSubjMenu(b, note); return; }
         if (act === 'toggle') { OPEN[id] = !OPEN[id]; render(); return; }
         if (act === 'edit') { EDIT[id] = 1; render(); return; }
         if (act === 'edImg') {

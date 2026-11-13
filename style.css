@@ -6326,3 +6326,38 @@ body.dark .u011-it span { box-shadow: 0 10px 26px -16px rgba(0,0,0,.8), inset 0 
 .nt2-k{ margin-left:10px; padding-left:10px; border-left:1px dashed var(--line); }
 .nt2-top{ margin-left:4px; }
 @media (prefers-reduced-motion: reduce){ .nt2-c::before{ transition:none; } }
+
+
+/* ===== web916：题库列表搜索、重点题折叠、标签折叠 ===== */
+.cd-psrch{ display:flex; gap:8px; align-items:center; margin-top:2px; }
+.cd-psrch .cd-q{ flex:1; min-width:0; }
+.fb-fold{ flex:none; width:18px; height:18px; border:0; background:none; padding:0; cursor:pointer; position:relative; }
+.fb-fold::before{ content:""; position:absolute; left:5px; top:6px; border:5px solid transparent; border-left-color:var(--sub); transform-origin:22% 50%; transition:transform .18s var(--mo-ease, ease); }
+.focusb.is-open .fb-fold::before{ transform:rotate(90deg); }
+.focusb .fb-hd{ display:flex; align-items:center; gap:6px; }
+.tagfold{ margin:10px 0; border-radius:14px; border:1px solid var(--line); background:var(--card); overflow:hidden; }
+.tagfold>summary{ padding:10px 12px; font-weight:800; cursor:pointer; list-style:none; }
+.tagfold>summary::-webkit-details-marker{ display:none; }
+.tagfold>summary::after{ content:"▾"; float:right; color:var(--sub); transition:transform .18s var(--mo-ease, ease); }
+.tagfold[open]>summary::after{ transform:rotate(180deg); }
+.tagfold .fold-body{ padding:0 12px 12px; }
+.tagfold .card{ border:0; background:transparent; padding:0; }
+@media (prefers-reduced-motion: reduce){ .fb-fold::before,.tagfold>summary::after{ transition:none; } }
+
+/* web918：任务配方行 */
+.bd-sh-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:13px; color:var(--sub); margin:2px 0 4px; }
+.bd-sh-num{ width:74px; margin-left:4px; padding:6px 8px; border-radius:9px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; }
+.bd-sh-chk{ display:inline-flex; align-items:center; gap:6px; }
+
+
+/* web920：加任务面板别被底部导航挡住 */
+.bd-sheet{ padding-bottom:calc(78px + env(safe-area-inset-bottom)); }
+.bd-sheet-c{ max-height:calc(100vh - 120px); overflow:auto; }
+
+/* web922：笔记科目角标 + 改科目菜单；重点题折叠不生效修正 */
+#fbLs[hidden]{ display:none !important; }
+.nt-head .nt-su{ flex:none; margin-left:4px; padding:2px 8px; border-radius:999px; font-style:normal; font-size:11.5px; font-weight:800; color:var(--primary); background:color-mix(in srgb, var(--primary) 14%, transparent); border:1px solid color-mix(in srgb, var(--primary) 30%, transparent); cursor:pointer; }
+.nt-su:hover{ filter:brightness(1.05); }
+.nt-sumenu{ position:fixed; z-index:40070; display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; padding:8px; border-radius:14px; background:var(--card); border:1px solid var(--line); box-shadow:0 18px 40px -18px rgba(0,0,0,.5); }
+.nt-sumenu button{ padding:7px 12px; border-radius:9px; border:1px solid var(--line); background:transparent; color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+.nt-sumenu button.on{ background:var(--primary); color:#fff; border-color:transparent; }

@@ -7191,7 +7191,7 @@ function renderStats() {
       ${dueN ? `<div class="tools"><button class="btn primary" id="stReview">开始今日复习（${dueN} 题）</button></div>` : ''}
     </div>
 
-    <details class="fold secfold" id="secBanks" open>
+    <details class="fold secfold" id="secBanks">
       <summary>各题库正确率${rows.length ? `（${rows.length} 个题库）` : ''}</summary>
       <div class="fold-body">
         ${rows.length ? rows.map(r => `<button class="srow srow-go" data-openbank="${esc(r.b.id)}" title="去刷这个题库">

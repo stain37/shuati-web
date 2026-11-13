@@ -727,7 +727,16 @@
         if (inp) { inp.value = ''; inp.focus(); }
         return;
       }
-      if (e.target.closest('[data-tagai]')) {
+      if (e.target.closest('[data-tagtobottom]')) {
+      var box = document.getElementById('tagAiBox');
+      if (box) {
+        box.open = true;
+        box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setTimeout(function () { var g = document.getElementById('tagGo'); if (g) { try { g.focus({ preventScroll: true }); } catch (e0) {} } }, 420);
+      }
+      return;
+    }
+    if (e.target.closest('[data-tagai]')) {
         if (!TAGV.length) { if (typeof toast === 'function') toast('词表是空的：先去「学习统计 → 按考点」导入，或让 AI 起一份'); return; }
         if (JOB.running) { if (typeof toast === 'function') toast('AI 正在批量打标签，等它跑完再试'); return; }
         if (typeof toast === 'function') toast('AI 正在读这道题…', 1600);
@@ -845,6 +854,7 @@
       + '<span class="spacer-grow"></span>'
       + '<button class="btn tiny primary" data-act="tagweak"' + (weak.keys.length ? '' : ' disabled') + '>刷最弱的 3 个考点</button>'
       + '<button class="btn tiny" data-act="tagvocab">管理考点词表</button>'
+      + '<button class="btn tiny" data-tagtobottom>🏷 打标签</button>'
       + '</div>'
       + (showRows.length ? '<div class="small muted" style="margin:6px 0 4px">按正确率排（样本够的在前；已答 &lt; 5 题标「样本不足」）。点一行看这个考点下的题。</div>' + rows + pager : '')
       + empty
@@ -973,11 +983,8 @@
     banks.forEach(function (b) { (b.questions || []).forEach(function (q) { total++; if (userTagsOf(keyOf(b, q)).length) tagged++; }); });
     var todo = total - tagged;
     var userVocab = TAGV.filter(function (t) { return BASIC_TAGS.indexOf(t) < 0; });
-    return '<div class="card" id="tagAiCard"><h3 class="tag-h">让 AI 打标签 <span class="small muted">它读题，从自定义词表里挑，不会自己造词</span></h3>'
-      + '<div class="small muted" style="margin:4px 0 8px">没打自定义标签的题：<b>' + todo + '</b> 道（共 ' + total + ' 道）。'
-      + '一次给 AI 看 ' + BATCH + ' 道题，让它按上面那份自定义词表（' + userVocab.length + ' 个考点）逐题挑；'
-      + '已内置《题目→标签判别库》：按基本科在科内定位（疾病名 → 特征词 → 易混对），每批只把该科候选给模型，比把整份词表全塞进去快。'
-      + '六科基本标签走下面的「一键分六科标签」，这里不会动它。一次几十题，一个几百题的库大概十几到几十次请求 —— 用本地 Ollama 不花钱，用云模型注意余额。中途可以停，已经打完的会留着。</div>'
+    return '<details class="fold tagfold" id="tagAiBox"><summary>🏷 让 AI 打标签</summary><div class="fold-body"><div class="card" id="tagAiCard">'
+      + '<div class="small muted" style="margin:2px 0 8px">还没打的 <b>' + todo + '</b> / ' + total + ' 道 · 按你的词表逐题挑，中途可停</div>'
       + '<div class="tools" style="margin:0">'
       + bankScopeHtml('tagScope')
       + '<button class="btn tiny primary" id="tagGo"' + (todo && userVocab.length ? '' : ' disabled') + '>给没标签的题贴标签</button>'
@@ -985,7 +992,7 @@
       + '<button class="btn tiny" id="tagStop" style="display:none">停止</button>'
       + (JOB.undo ? '<button class="btn tiny" id="tagUndo" title="把这次 AI 打的标签整体撤回到开跑前（六科不动）">撤销这次打标签</button>' : '')
       + '<span class="spacer-grow"></span><span class="tl" id="tagAiState"></span></div>'
-      + '<div class="tag-aivocab" id="tagAiVocab"></div></div>';
+      + '<div class="tag-aivocab" id="tagAiVocab"></div></div></div></details>';
   }
   function basicBoxHtml() {
     var banks = [];
@@ -998,8 +1005,7 @@
       });
     });
     return '<div class="card" id="tagBasicCard"><h3 class="tag-h">一键分六科标签 <span class="small muted">AI 读题，从 生理 / 生化 / 病理 / 内科 / 外科 / 人文 里选唯一一科</span></h3>'
-      + '<div class="small muted" style="margin:4px 0 8px">还没分科：<b>' + todo + '</b> 道（共 ' + total + ' 道）。'
-      + '已内置六科分类特征库（不在界面展开）；未分科的优先分；需要时可以把已分科的也全部重分；用户考点标签会保留；中途可以停。</div>'
+      + '<div class="small muted" style="margin:2px 0 8px">没分科的优先，用户标签保留，中途可停</div>'
       + '<div class="tools" style="margin:0">'
       + bankScopeHtml('basicScope')
       + '<button class="btn tiny primary" id="basicGo"' + (todo ? '' : ' disabled') + '>' + (todo ? '一键分六科标签（' + todo + ' 题）' : '全部已分好') + '</button>'
@@ -1853,6 +1859,24 @@
   window.bindTagStats = bindStats;
   window.tagOpenInSearch = tagOpenInSearch;
   window.dropTagsOfBank = dropTagsOfBank;
+
+  /* web917：「🏷 打标签」按钮 -> 滚到最下面的 AI 打标签区并展开（document 级，避免委托找不到） */
+  if (!window.__tagToBottomDoc) {
+    window.__tagToBottomDoc = true;
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('[data-tagtobottom]');
+      if (!b) return;
+      var box = document.getElementById('tagAiBox');
+      if (!box) return;
+      box.open = true;
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e0) {}
+      setTimeout(function () {
+        var g = document.getElementById('tagGo');
+        if (g) { try { g.focus({ preventScroll: true }); } catch (e1) {} }
+      }, 420);
+    }, true);
+  }
+
   window.TAGS = {
     of: tagsOf, set: setTags, add: addTags, del: delTag, all: function () { return TAGV.slice(); },
     subOf: subOf, setSub: setSub, aiPickTags: aiPickTags,

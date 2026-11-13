@@ -382,15 +382,24 @@
   function renderBankList() {
     var bs = allBanks();
     var h = '<div class="card cd-head">'
-      + '<div class="cd-htop"><div><b>🧠 考点卡</b>'
-      + '<span>把题库里的题按考点分组，先用列表看一遍考什么，再逐张背诵</span></div>'
+      + '<div class="cd-htop"><div><b>🧠 考点卡</b></div>'
       + '<div class="cd-hnum">' + bs.length + '<i>个题库</i></div></div>'
-      + '<div class="cd-note">考点来自每道题已有的标签（题库自带 / AI 打的都算）。没标签的题会按「共用题干」分组，或者用题干当这张卡的标题。</div>'
+      + '<div class="cd-psrch"><input id="cdBankQ" class="cd-q" placeholder="搜题库名…" value="' + esc(ST.bankQ || '') + '">'
+      + '<button class="cd-shuf" id="cdBankAI">✨ AI 模糊</button></div>'
       + '</div>';
     if (!bs.length) {
       h += '<div class="card"><div class="empty">还没有题库。先回首页导入一份。</div></div>';
       $('#view').innerHTML = h;
       return;
+    }
+    var bq = String(ST.bankQ || '').trim().toLowerCase();
+    var bterms = (ST.bankTerms || []).map(function (t) { return String(t).toLowerCase(); });
+    if (bq) {
+      bs = bs.filter(function (b) {
+        var nm = String(b.title || b.id).toLowerCase();
+        if (nm.indexOf(bq) >= 0) return true;
+        return bterms.some(function (t) { return t && nm.indexOf(t) >= 0; });
+      });
     }
     h += '<div class="cd-list">';
     bs.forEach(function (b) {
@@ -410,6 +419,44 @@
     });
     h += '</div>';
     $('#view').innerHTML = h;
+  }
+
+  /* 题库列表：搜索 + AI 模糊（委托，重绘后仍可用） */
+  if (!window.__cdBankBound) {
+    window.__cdBankBound = 1;
+    document.addEventListener('input', function (e) {
+      if (!e.target || e.target.id !== 'cdBankQ') return;
+      ST.bankQ = e.target.value;
+      var pos = e.target.selectionStart;
+      renderBankList();
+      var q = document.getElementById('cdBankQ');
+      if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (e2) {} }
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('#cdBankAI');
+      if (!b) return;
+      var kw0 = String(ST.bankQ || '').trim();
+      if (!kw0) { toast('先在搜索框里写个词，AI 再帮你找相近的', 1800); return; }
+      if (typeof window.aiChat !== 'function') { toast('AI 模块没加载', 1600); return; }
+      b.disabled = true; b.textContent = '…';
+      var msgs = [
+        { role: 'system', content: '你在给一个医学刷题站的题库名做模糊检索。根据用户给的词，给出 6-10 个可能出现在题库名里的中文关键词（同义词、科目名、年份、题型、别名）。只输出 JSON：{"terms":["…"]}' },
+        { role: 'user', content: kw0 }
+      ];
+      window.aiChat(msgs, { max_tokens: 400, timeout: 20000 }).then(function (txt) {
+        var t = String(txt || ''), o = null;
+        try { o = JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); } catch (e3) {}
+        var list = (o && (o.terms || o.t)) || [];
+        if (!list.length) throw new Error('AI 没给出词');
+        ST.bankTerms = list.slice(0, 12);
+        b.disabled = false; b.textContent = '✨ AI 模糊';
+        renderBankList();
+        toast('AI 想到 ' + ST.bankTerms.length + ' 个相关词，按这些一起筛', 2200);
+      }).catch(function (err) {
+        b.disabled = false; b.textContent = '✨ AI 模糊';
+        toast('AI 没想出来：' + ((err && err.message) || err), 2200, 'bad');
+      });
+    });
   }
 
   /* ---------- 页面二：考点预览 ---------- */
@@ -529,6 +576,7 @@
       if (!b) return;
       var kind = b.getAttribute('data-kwdo'), kw = KWM.kw;
       kwMenuHide();
+      try { sessionStorage.setItem(BACK_KEY, JSON.stringify({ bankId: ST.bankId, i: ST.i, f: ST.filter, ts: Date.now() })); } catch (eb) {}
       if (kind === 'q') {
         try { window.__qbSearchPrefill = kw; } catch (e0) {}
         closeCard();

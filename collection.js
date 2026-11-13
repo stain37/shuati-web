@@ -2497,9 +2497,12 @@ function qaiToggleSearch() {
       return (x.due === y.due) ? 0 : (x.due ? -1 : 1);
     }).slice(0, 8);
     if (!rows.length) return '';
-    return '<div class="card focusb" id="focusB"><div class="fb-hd"><b>重点题</b>'
-      + '<span class="small muted">点 ↑ 加权，越重要越靠上</span></div>'
-      + '<div class="fb-ls" id="fbLs">' + rows.map(function (r, i) { return focusRow(r, i, vm); }).join('') + '</div></div>';
+    var _open = false;
+    try { _open = localStorage.getItem('qbank.wrong.focusfold.v1') === '1'; } catch (e0) {}
+    return '<div class="card focusb' + (_open ? ' is-open' : '') + '" id="focusB">'
+      + '<div class="fb-hd"><button class="fb-fold" data-fbfold type="button" aria-expanded="' + _open + '" aria-label="展开或收起重点题"></button>'
+      + '<b>重点题</b><span class="small muted">' + rows.length + '</span></div>'
+      + '<div class="fb-ls" id="fbLs"' + (_open ? '' : ' hidden') + '>' + rows.map(function (r, i) { return focusRow(r, i, vm); }).join('') + '</div></div>';
   }
 
 function renderWrong() { renderList('wrong'); }
@@ -2849,6 +2852,23 @@ function renderList(mode) {
     else { st.minWrong = 0; st.onlyOpen = false; }
     render();
   });
+  /* 重点题折叠（默认收起，记住上次） */
+  if (!window.__fbFoldBound) {
+    window.__fbFoldBound = 1;
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest && e.target.closest('[data-fbfold]');
+      if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      var box = b.closest('.focusb');
+      var ls = box && box.querySelector('.fb-ls');
+      var open = !(ls && !ls.hidden);
+      if (ls) ls.hidden = !open;
+      box.classList.toggle('is-open', open);
+      b.setAttribute('aria-expanded', String(open));
+      try { localStorage.setItem('qbank.wrong.focusfold.v1', open ? '1' : '0'); } catch (e0) {}
+    }, true);
+  }
+
   /* #248 重点题：投票 + FLIP 重排（document 委托，重渲染也不会掉） */
   if (!window.__fbVoteBound) {
     window.__fbVoteBound = true;
