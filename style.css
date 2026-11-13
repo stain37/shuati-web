@@ -6376,3 +6376,38 @@ body.dark .u011-it span { box-shadow: 0 10px 26px -16px rgba(0,0,0,.8), inset 0 
 .bd-rec-start:hover{ border-color:var(--primary); color:var(--primary); }
 .bd-rec-info{ font-size:12px; color:var(--primary); font-weight:700; }
 @media (prefers-reduced-motion: reduce){ .bd-rec i{ animation:none; } }
+
+
+/* web928 · 速记视图 */
+.sk-head .sk-back{ flex:none; }
+.sk-switch{ height:34px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:var(--card2, var(--card)); color:var(--text); font-size:13px; font-weight:700; cursor:pointer; }
+.sk-list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.sk-i{ display:flex; gap:10px; width:100%; text-align:left; padding:12px 13px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--text); cursor:pointer; transition:border-color .15s, transform .15s; }
+.sk-i:hover{ border-color:var(--primary); }
+.sk-i.ok{ opacity:.72; }
+.sk-no{ flex:none; height:22px; min-width:22px; padding:0 6px; border-radius:7px; background:var(--primary); color:#fff; font-style:normal; font-size:11.5px; font-weight:800; line-height:22px; text-align:center; }
+.sk-b{ min-width:0; flex:1; display:flex; flex-direction:column; gap:5px; }
+.sk-t{ font-size:15.5px; line-height:1.55; font-weight:700; }
+.sk-p{ font-size:12.5px; line-height:1.6; color:var(--sub); }
+.sk-todo{ color:var(--sub); }
+@media (prefers-reduced-motion: reduce){ .sk-i{ transition:none; } }
+
+
+/* web929 · 速记视图的「答案」下划线 */
+.sk-ans{ text-decoration: underline; text-decoration-color: var(--primary); text-decoration-thickness: 1.6px; text-underline-offset: 3px; color: var(--text); font-weight: 700; }
+
+
+/* web930 · 底部导航不在时，卡片操作栏贴底 */
+body.has-bnav .cd-bar{ bottom: calc(72px + env(safe-area-inset-bottom)); }
+body:not(.has-bnav) .cd-bar{ bottom: 0; }
+body:not(.has-bnav) .cd-gap{ height: 96px; }
+html.pip-guest .cd-bar{ bottom: 0; }
+html.pip-guest .cd-gap{ height: 96px; }
+
+
+/* web931 · 速记视图：把「背诵」放到标题行右侧，任何宽度都点得到 */
+.sk-tabs{ display:flex; align-items:center; gap:8px; flex:none; }
+.sk-back{ font-size:12.5px; color:var(--sub); text-decoration:none; padding:6px 2px; }
+.sk-back:hover{ color:var(--primary); }
+.sk-head .cd-srch{ margin-top:8px; }
+.sk-switch{ flex:none; }

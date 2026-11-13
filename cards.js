@@ -305,7 +305,7 @@
   }
 
   /* ---------- 状态 ---------- */
-  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false };
+  var ST = { bankId: null, card: false, i: 0, filter: 'all', items: [], q: '', shuf: false, mode: 'card' };
   var POS_KEY = 'qbank.cards.pos.v1';
 
   /* ---------- 真实调度（Anki 式四档 + 到期队列） ---------- */
@@ -487,6 +487,67 @@
   }
 
   /* ---------- 页面二：考点预览 ---------- */
+  function filterQuickRows() {
+    var q = (ST.q || '').trim().toLowerCase();
+    var rows = document.querySelectorAll('.sk-i');
+    Array.prototype.forEach.call(rows, function (r) {
+      var txt = (r.textContent || '').toLowerCase();
+      r.style.display = (!q || txt.indexOf(q) >= 0) ? '' : 'none';
+    });
+  }
+
+  /* 底部导航不在时（如画中画访客页），操作栏自动贴底 */
+  function syncBnav() {
+    var n = document.getElementById('bnav') || document.querySelector('.bnav');
+    var shown = false;
+    if (n) {
+      var r0 = n.getBoundingClientRect();
+      var cs = getComputedStyle(n);
+      shown = r0.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden';
+    }
+    document.body.classList.toggle('has-bnav', shown);
+  }
+
+  /* ---------- 速记视图：一屏扫完所有考点 ---------- */
+  function skHead(text, kws) {
+    var t = String(text || '');
+    var i = t.indexOf('：');
+    if (i > 0 && i < t.length - 2) {
+      return hilite(t.slice(0, i + 1), kws) + '<u class="sk-ans">' + hilite(t.slice(i + 1), kws) + '</u>';
+    }
+    return hilite(t, kws);
+  }
+
+  function quickHtml(bank, list) {
+    var mAll = markers();
+    var h = '<div class="card cd-head sk-head">'
+      + '<div class="cd-htop"><div><b>' + esc(bank.title || bank.id) + '</b>'
+      + '<span>' + list.length + ' 条速记</span></div>'
+      + '<div class="sk-tabs"><a class="sk-back" href="#/cards">← 题库</a>'
+      + '<button class="sk-switch" data-act="cardview">🎴 背诵</button></div></div>'
+      + '<div class="cd-srch"><input id="cdQ" class="cd-q" placeholder="搜考点 / 题干关键字…" value="' + esc(ST.q || '') + '"></div>'
+      + '</div><div class="sk-list">';
+    list.forEach(function (it, idx) {
+      var g = genMap()[it.key];
+      var t = g && g.t;
+      var kws = kwList(it);
+      h += '<button class="sk-i' + (mAll[it.key] === 1 ? ' ok' : '') + '" data-act="qcard" data-i="' + idx + '">'
+        + '<em class="sk-no">' + (idx + 1) + '</em><div class="sk-b">';
+      if (!t) {
+        h += '<b class="sk-t sk-todo">' + esc(it.tag) + '</b><span class="sk-p">还没写结论，点开可生成</span>';
+      } else {
+        var parts = oneParts(t);
+        h += '<b class="sk-t">' + skHead(parts.head, kws) + '</b>';
+        if (parts.pts.length) {
+          h += '<span class="sk-p">' + parts.pts.slice(0, 3).map(function (x) { return '· ' + hilite(x, kws); }).join('<br>') + '</span>';
+        }
+      }
+      h += '</div></button>';
+    });
+    h += '</div><div class="cd-gap"></div>';
+    return h;
+  }
+
   function renderPreview() {
     var bank = bankOf(ST.bankId);
     if (!bank) { location.hash = '#/cards'; return; }
@@ -494,6 +555,11 @@
     if (ST.shuf) ST.items = shuffleArr(ST.items.slice());
     var p = progressOf(ST.items);
     var list = filterItems();
+    if (ST.mode === 'quick') {
+      $('#view').innerHTML = quickHtml(bank, list);
+      requestAnimationFrame(function () { try { moveFltInd(); } catch (e0) {} });
+      return;
+    }
     var groups = groupsOf(list);
     var mAll = markers();
     var cnt = {
@@ -534,7 +600,7 @@
       + '<button class="cd-fbtn' + (ST.filter === 'learn' ? ' on' : '') + '" data-act="flt" data-f="learn">学习中 ' + cnt.learn + '</button>'
       + '<button class="cd-fbtn' + (ST.filter === 'review' ? ' on' : '') + '" data-act="flt" data-f="review">复习中 ' + cnt.review + '</button>'
       + '</div>'
-      + '<div class="cd-tools"><button class="cd-link" data-act="kpall">🧩 整库挂到知识点（' + ST.items.length + '）</button><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
+      + '<div class="cd-tools"><button class="cd-link" data-act="quick">📜 速记视图</button><button class="cd-link" data-act="kpall">🧩 整库挂到知识点（' + ST.items.length + '）</button><button class="cd-link" data-act="regenall">🔄 整库重新总结</button></div>'
       + '<div class="cd-kphint">挂好的考点会进「知识点管理」（首页底部入口），可再分层、加编码和标签。</div>'
       + '</div>';
 
@@ -582,6 +648,7 @@
     }
 
     $('#view').innerHTML = h;
+    syncBnav();
     requestAnimationFrame(function () { try { moveFltInd(); } catch (e0) {} });
   }
 
@@ -763,6 +830,7 @@
   }
   var MASK_KEY = 'qbank.cards.mask.v1';
   var REVEALED = false;   // 这一张是否已经点开看答案（不落盘，换卡重置）
+  var LAST_PAINT = -1;    // 上一次画的是哪一张，用来在换卡时重置揭晓状态
   function MASK_ON() { try { return localStorage.getItem(MASK_KEY) === '1'; } catch (e) { return false; } }
   function MASK_SET(v) { try { localStorage.setItem(MASK_KEY, v ? '1' : '0'); } catch (e) {} }
 
@@ -794,6 +862,7 @@
     }
     if (ST.i >= list.length) ST.i = list.length - 1;
     if (ST.i < 0) ST.i = 0;
+    if (ST.i !== LAST_PAINT) { REVEALED = false; LAST_PAINT = ST.i; }
     var it = list[ST.i];
     var one = oneOf(it);
     var kws = kwList(it);
@@ -1086,6 +1155,9 @@
       renderPreview();
       return;
     }
+    if (a === 'quick') { ST.mode = 'quick'; ST.i = 0; renderPreview(); return; }
+    if (a === 'cardview') { ST.mode = 'card'; ST.i = 0; renderPreview(); return; }
+    if (a === 'qcard') { ST.i = parseInt(b.getAttribute('data-i') || '0', 10) || 0; ST.mode = 'card'; paintCard(); return; }
     if (a === 'shuf') {
       ST.shuf = !ST.shuf;
       ST.i = 0;
@@ -1148,7 +1220,9 @@
       v.addEventListener('click', onViewClick);
       v.addEventListener('input', function (e) {
         if (e.target && e.target.id === 'cdQ') {
+          if (e.target.isComposing) { ST.q = e.target.value || ''; return; }
           ST.q = e.target.value || '';
+          if (ST.mode === 'quick') { filterQuickRows(); return; }
           var caret = e.target.selectionStart;
           renderPreview();
           var q = $('#cdQ');
@@ -1157,6 +1231,7 @@
       });
     }
     if (!window.__cdKeyBound) { document.addEventListener('keydown', keyHandler, true); window.__cdKeyBound = 1; }
+    if (!window.__cdResizeBound) { window.addEventListener('resize', function () { try { syncBnav(); } catch (e) {} }); window.__cdResizeBound = 1; }
   }
 
   function openCard(bankId, i, f) {
