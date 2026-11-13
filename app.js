@@ -3956,14 +3956,13 @@ function renderHome() {
       <button class="btn" id="toSearch">搜索题目<span class="kbd">/</span></button>
       <button class="btn" id="toStats">学习统计</button>
       <button class="btn" id="toHelp">快捷键<span class="kbd">?</span></button>
-      <span class="small muted" id="storeUse" style="flex:1;min-width:180px">数据存在本机浏览器，共占用约 ${(bytes / 1024 / 1024).toFixed(2)} MB（本地估算，正在算真实占用…）。</span>
+      <span class="small muted" id="storeUse" style="flex:1;min-width:180px">本机占用约 ${(bytes / 1024 / 1024).toFixed(2)} MB</span>
     </div>
     ${papers.length ? `<h2 class="sec">临时套卷</h2>${paperList}` : ''}
     <h2 class="sec" id="secBanks">我的题库</h2>
     ${list || '<div class="card"><div class="empty">还没有题库，点上面的按钮加一个吧。</div></div>'}
     <div class="card" style="margin-top:16px">
       <div class="name" style="font-weight:700;margin-bottom:6px">数据备份</div>
-      <div class="small muted" style="margin-bottom:10px">作答记录、错题、收藏、自定义解析都存在本机浏览器里。换电脑或清缓存前，建议导出备份。</div>
       ${backupHint()}
       <div class="row-inline">
         <button class="btn" id="expAll">导出全部数据</button>
@@ -7160,7 +7159,7 @@ function renderStats() {
   /* web258：统计页顶部给「掌握度复盘」一个入口（按科目 / 考点看哪儿最薄） */
   $('view').innerHTML = `
     <div class="actions" style="margin:0 0 12px;justify-content:flex-start">
-      <button class="btn primary" id="mvEntry">📊 掌握度复盘 · 按科目和考点看哪儿最薄</button>
+      <button class="btn primary" id="mvEntry">📊 掌握度复盘</button>
     </div>
     <div class="stg">
       <div class="stg-c"><b>${recN}</b><span>累计做题</span></div>

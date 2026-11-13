@@ -1161,7 +1161,6 @@
       + '<div id="bfBoot"></div>'
       + '<div class="card" id="secBackup" style="margin-top:16px">'
       + '<div class="name" style="font-weight:700;margin-bottom:6px">数据备份</div>'
-      + '<div class="small muted" style="margin-bottom:10px">作答记录、错题、收藏、自定义解析存在本机浏览器里；题库和分类可以另存成本机文件（见上面的「本机题库文件」）。</div>'
       + (typeof backupHint === 'function' ? backupHint() : '')
       + '<div class="row-inline">'
       + '<button class="btn" id="expAll">导出全部数据</button>'
@@ -2312,7 +2311,7 @@
           TREE_OPEN = open;
           t.style.display = open ? 'block' : 'none';
           if (open) {
-            if (!t.innerHTML) t.innerHTML = treeHtml() + '<div class="small muted" style="margin-top:6px">点一个目录就能跳过去（含它下面的子目录）。</div>';
+            if (!t.innerHTML) t.innerHTML = treeHtml();
             /* 打开目录树也不滚页面（原来 scrollIntoView 会自己滑一段） */
           }
           try { if (host && host.blur) host.blur(); } catch (e3) {}

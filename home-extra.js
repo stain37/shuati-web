@@ -101,7 +101,7 @@
       { id: 'rand', subject: '套卷', title: '随机 30 题', meta: '抽一遍当热身', href: '#/bank', ico: '🎲', estimate: 15, autoDone: false, subs: [] },
       { id: 'notes', subject: '笔记', title: '复习知识点笔记', meta: '把标记过的笔记过一遍', href: '#/notes', ico: '📒', estimate: 10, autoDone: false, subs: [] }
     ].concat(customTasks().map(function (c) {
-      return { id: c.id, subject: c.subject || '自定义', title: c.title, meta: c.meta || '自己加的', href: c.href || '', ico: c.ico || '📌', estimate: c.min || 0, autoDone: false, subs: [], custom: 1, recipe: c.recipe || null };
+      return { id: c.id, subject: c.subject || '自定义', title: c.title, meta: c.meta || '自己加的', href: c.href || '', ico: c.ico || '📌', estimate: c.min || 0, autoDone: false, subs: [], custom: 1, recipe: c.recipe || null, steps: c.steps || null };
     })).filter(function (t) { return !hiddenIds().length || hiddenIds().indexOf(t.id) < 0; });
   }
   function cdc(n) { return n ? Math.min(40, n * 2) : 0; }
@@ -142,7 +142,7 @@
     var dueSoon = t.dueAt && t.dueAt > Date.now() && t.dueAt - Date.now() < 3 * 3600e3 && e.status !== 'done';
     var pr = t.progress;
     var prog = pr && pr.total ? Math.round(pr.done / pr.total * 100) : 0;
-    return '<div class="bd-card' + (e.status === 'done' ? ' done' : '') + '" data-id="' + t.id + '" data-hash="' + t.href + '" data-rc="' + (t.recipe && t.recipe.auto ? 1 : '') + '" data-rn="' + ((t.recipe && t.recipe.n) || '') + '" tabindex="0" role="button" aria-label="' + t.title + '">'
+    return '<div class="bd-card' + (e.status === 'done' ? ' done' : '') + '" data-id="' + t.id + '" data-hash="' + t.href + '" data-rc="' + (t.recipe && t.recipe.auto ? 1 : '') + '" data-rn="' + ((t.recipe && t.recipe.n) || '') + '" data-steps="' + (t.steps && t.steps.length ? encodeURIComponent(JSON.stringify(t.steps)) : '') + '" tabindex="0" role="button" aria-label="' + t.title + '">'
       + '<button class="bd-send" type="button" tabindex="-1" aria-label="快捷改状态">⋯</button>'
       + '<div class="bd-l1"><i class="bd-dot' + (checked ? ' on' : '') + '" aria-hidden="true"></i><u class="bd-subj">' + t.subject + '</u><span class="bd-ico">' + t.ico + '</span></div>'
       + '<div class="bd-tx"><b>' + t.title + (t.sys ? '<em class="bd-sys" title="系统按你的复习计划生成">系统</em>' : '') + '</b><span>' + t.meta + '</span></div>'
@@ -289,8 +289,91 @@
     });
   }
 
-  /* 任务配方：点卡片时按配方执行（目前支持「错题本 + 直接开始」） */
+  /* ===== 宏录制：只录「路由跳转 / 有 id 的按钮点击 / 下拉选择」===== */
+  var REC = null, DRAFT = null, DRAFT_FORM = null;
+  function recBar(box, on) {
+    var bar = document.getElementById('bdRec');
+    if (!on) { if (bar) bar.remove(); return; }
+    if (bar) return;
+    bar = document.createElement('div');
+    bar.id = 'bdRec';
+    bar.className = 'bd-rec';
+    bar.innerHTML = '<i></i><b>录制中</b><span class="bd-rec-n">0 步</span>'
+      + '<button type="button" class="bd-rec-ok">停止并保存</button>'
+      + '<button type="button" class="bd-rec-x">取消</button>';
+    document.body.appendChild(bar);
+    bar.querySelector('.bd-rec-ok').onclick = function () { stopRec(box, true); };
+    bar.querySelector('.bd-rec-x').onclick = function () { stopRec(box, false); };
+  }
+  function recPush(step) {
+    if (!REC || !REC.on) return;
+    REC.steps.push(step);
+    var n = document.querySelector('#bdRec .bd-rec-n');
+    if (n) n.textContent = REC.steps.length + ' 步';
+  }
+  function startRec(box) {
+    var sh0 = document.querySelector('.bd-sheet');
+    if (sh0) {
+      var ti = sh0.querySelector('.bd-sh-in');
+      var hb = sh0.querySelector('.bd-chips[data-pick="href"] button.on');
+      var ib = sh0.querySelector('.bd-chips[data-pick="ico"] button.on');
+      DRAFT_FORM = {
+        title: ti ? ti.value : '',
+        href: hb && hb.dataset.h ? hb.dataset.h : '',
+        ico: ib && ib.dataset.i ? ib.dataset.i : '📌'
+      };
+    }
+    closeSheet(box);
+    REC = { on: 1, steps: [] };
+    recBar(box, true);
+    REC.h = function () { recPush({ t: 'route', v: location.hash || '#/' }); };
+    REC.c = function (ev) {
+      if (ev.target.closest && ev.target.closest('#bdRec')) return;
+      var el = ev.target.closest && ev.target.closest('button[id], a[id], [data-go]');
+      if (!el) return;
+      if (el.id) recPush({ t: 'click', id: el.id });
+    };
+    REC.ch = function (ev) {
+      var el = ev.target;
+      if (el && el.id && (el.tagName === 'SELECT' || el.type === 'number')) recPush({ t: 'select', id: el.id, v: el.value });
+    };
+    window.addEventListener('hashchange', REC.h);
+    document.addEventListener('click', REC.c, true);
+    document.addEventListener('change', REC.ch, true);
+    if (window.toast) toast('开始录制：点按钮 / 跳页面，都会记下来', 2600);
+  }
+  function stopRec(box, save) {
+    if (!REC) return;
+    window.removeEventListener('hashchange', REC.h);
+    document.removeEventListener('click', REC.c, true);
+    document.removeEventListener('change', REC.ch, true);
+    var steps = REC.steps.slice();
+    REC = null;
+    recBar(box, false);
+    if (!save) { if (window.toast) toast('已取消录制', 1600); return; }
+    DRAFT = steps;
+    addTaskFlow(box);
+  }
+  function playSteps(steps) {
+    var i = 0;
+    (function next() {
+      if (i >= steps.length) return;
+      var s = steps[i++];
+      if (s.t === 'route') { location.hash = s.v; setTimeout(next, 700); return; }
+      if (s.t === 'select') { var a = document.getElementById(s.id); if (a) { a.value = s.v; a.dispatchEvent(new Event('change', { bubbles: true })); } setTimeout(next, 400); return; }
+      if (s.t === 'click') { var b = document.getElementById(s.id); if (b) { try { b.click(); } catch (e) {} } setTimeout(next, 900); return; }
+      next();
+    })();
+  }
+
+  /* 任务配方：点卡片时按配方执行（错题本 + 直接开始 / 录制的宏） */
   function runTask(el) {
+    var st = el.dataset.steps;
+    if (st) {
+      var steps = [];
+      try { steps = JSON.parse(decodeURIComponent(st)); } catch (e) {}
+      if (steps && steps.length) { playSteps(steps); return; }
+    }
     var h = el.dataset.hash || '';
     var auto = el.dataset.rc === '1';
     var n = parseInt(el.dataset.rn, 10) || 0;
@@ -318,6 +401,9 @@
       + '<button type="button" data-h="#/cards">考点卡</button>'
       + '<button type="button" data-h="#/kp">知识点</button>'
       + '<button type="button" data-h="#/notes">笔记</button></div>'
+      + '<div class="bd-sh-lb">宏（可选）</div>'
+      + '<div class="bd-sh-rows"><button type="button" class="bd-rec-start">● 录制一段操作</button>'
+      + '<span class="bd-rec-info">' + (DRAFT ? ('已录 ' + DRAFT.length + ' 步') : '') + '</span></div>'
       + '<div class="bd-sh-lb">配方（可选）</div>'
       + '<div class="bd-sh-row"><label>题数 <input class="bd-sh-num" type="number" min="5" max="100" step="5" value="20"></label>'
       + '<label class="bd-sh-chk"><input type="checkbox" class="bd-sh-auto"> 错题本直接开始</label></div>'
@@ -334,7 +420,15 @@
       + '<button type="button" class="bd-sh-ok" disabled>加入看板</button></div></div>';
     document.body.appendChild(sh);
     var inp = sh.querySelector('.bd-sh-in'), ok = sh.querySelector('.bd-sh-ok');
-    var href = '', ico = '📌';
+    if (DRAFT_FORM && DRAFT) {
+      inp.value = DRAFT_FORM.title || '';
+      ok.disabled = !inp.value.trim();
+      sh.querySelectorAll('.bd-chips[data-pick="href"] button').forEach(function (x) { x.classList.toggle('on', (x.dataset.h || '') === (DRAFT_FORM.href || '')); });
+      sh.querySelectorAll('.bd-chips[data-pick="ico"] button').forEach(function (x) { x.classList.toggle('on', x.dataset.i === DRAFT_FORM.ico); });
+    }
+    var recBtn = sh.querySelector('.bd-rec-start');
+    if (recBtn) recBtn.onclick = function () { startRec(box); };
+    var href = (DRAFT_FORM && DRAFT && DRAFT_FORM.href) || '', ico = (DRAFT_FORM && DRAFT && DRAFT_FORM.ico) || '📌';
     inp.focus();
     inp.addEventListener('input', function () { ok.disabled = !inp.value.trim(); });
     inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' && !ok.disabled) ok.click(); });
@@ -356,10 +450,14 @@
       var num = sh.querySelector('.bd-sh-num'), autoEl = sh.querySelector('.bd-sh-auto');
       var n = Math.max(5, Math.min(100, parseInt(num && num.value, 10) || 20));
       var auto = !!(autoEl && autoEl.checked && href === '#/wrong');
-      a.push({ id: 'u_' + Date.now().toString(36), title: title, href: href, ico: ico, subject: '自定义', meta: auto ? ('直接开始 · ' + n + ' 题') : (href ? '点开直达' : '自己加的'), min: 10, recipe: { n: n, auto: auto ? 1 : 0 } });
+      var steps = DRAFT || [];
+      DRAFT = null;
+      a.push({ id: 'u_' + Date.now().toString(36), title: title, href: href, ico: ico, subject: '自定义', steps: steps, meta: steps.length ? ('宏 · ' + steps.length + ' 步') : (auto ? ('直接开始 · ' + n + ' 题') : (href ? '点开直达' : '自己加的')), min: 10, recipe: { n: n, auto: auto ? 1 : 0 } });
       saveCustom(a);
       closeSheet(box);
-      box.dataset.sig = ''; render(box);
+      var homeBox = document.getElementById('homeExtra');
+      if (homeBox) { homeBox.dataset.sig = ''; render(homeBox); location.hash = '#/'; }
+      else { location.hash = '#/'; }
     });
   }
 

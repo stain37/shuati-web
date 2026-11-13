@@ -275,7 +275,7 @@
         '<label class="lec-fa" title="勾上＝在这套题库相关的全部讲义里找；不勾＝只找当前这份"><input type="checkbox" id="lecFindAll">全部讲义</label></div>' +
       '<div class="lec-aiterms" id="lecAiTerms" hidden></div>' +
       '<div class="lec-hits" id="lecHits" hidden></div>' +
-      '<div class="lec-body" id="lecBody"><img id="lecImg" alt="讲义原页"><div id="lecEmpty" class="lec-empty">这份讲义还没有页图，点右下角「看整本 PDF」。</div></div>' +
+      '<div class="lec-body" id="lecBody"><img id="lecImg" alt="讲义原页"><div id="lecEmpty" class="lec-empty">暂无页图</div></div>' +
       '<div class="lec-foot">' +
         '<button class="btn" data-lec="zoom">⤢ 放大看</button>' +
         '<button class="btn" data-lec="pdf">📄 看整本 PDF</button>' +
@@ -436,7 +436,7 @@
     else {
       el.img.removeAttribute('src');
       el.img.style.display = 'none';
-      showEmpty('这份讲义还没有页图，点右下角「看整本 PDF」。');
+      showEmpty('暂无页图');
     }
     remember();
     paintPin(); paintBinds();
@@ -582,7 +582,7 @@
       out.sort(function (a, b) { return (b.same ? 1 : 0) - (a.same ? 1 : 0) || b.n - a.n || a.p - b.p; });
       HITS = out.slice(0, 30);
       renderHits(terms, exc);
-      if (!HITS.length) toast('没搜到「' + terms.join(' + ') + '」' + (all ? '' : '（试试勾「全部讲义」）') + '（扫描页没有文字，只能靠 📌 手动绑）');
+      if (!HITS.length) toast('没搜到「' + terms.join(' + ') + '」' + (all ? '' : '') + '（扫描页没有文字，只能靠 📌 手动绑）');
     }).catch(function (e) { toast('讲义文字还没准备好：' + (e.message || e)); });
   }
   /* ---------- AI 模糊搜索：把词扩成同义词/近义词/相关概念，再合并命中 ---------- */

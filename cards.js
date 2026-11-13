@@ -408,7 +408,8 @@
       var subjN = {};
       items.forEach(function (it) { subjN[it.subj] = (subjN[it.subj] || 0) + 1; });
       var chips = Object.keys(subjN).map(function (s) { return '<span class="cd-chip">' + esc(s) + ' ' + subjN[s] + '</span>'; }).join('');
-      h += '<div class="card cd-bank">'
+      var hay = (String(b.title || b.id) + ' ' + Object.keys(subjN).join(' ')).toLowerCase();
+      h += '<div class="card cd-bank" data-s="' + esc(hay) + '">'
         + '<div class="cd-btop"><b>' + esc(b.title || b.id) + '</b><s>' + (b.questions || []).length + ' 题</s></div>'
         + '<div class="cd-bmeta">' + items.length + ' 个考点 · 已背 ' + p.done + ' / ' + p.total + '</div>'
         + '<div class="cd-chips">' + chips + '</div>'
@@ -422,15 +423,41 @@
   }
 
   /* 题库列表：搜索 + AI 模糊（委托，重绘后仍可用） */
+  /* 只切 .cd-bank 的 display，不重绘输入框 —— 否则中文输入法会被打断 */
+  function filterBankCards() {
+    var q = String(ST.bankQ || '').trim().toLowerCase();
+    var terms = (ST.bankTerms || []).map(function (t) { return String(t).toLowerCase(); }).filter(Boolean);
+    var cards = document.querySelectorAll('#view .cd-bank');
+    var shown = 0;
+    for (var i = 0; i < cards.length; i++) {
+      var el = cards[i], hay = el.getAttribute('data-s') || '';
+      var hit = !q || hay.indexOf(q) >= 0 || terms.some(function (t) { return hay.indexOf(t) >= 0; });
+      el.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    }
+    var box = document.getElementById('cdBankEmpty');
+    if (q || terms.length) {
+      if (!shown && !box) {
+        box = document.createElement('div');
+        box.id = 'cdBankEmpty';
+        box.className = 'card';
+        box.innerHTML = '<div class="empty">没有匹配的题库</div>';
+        var list = document.querySelector('#view .cd-list');
+        if (list) list.parentNode.insertBefore(box, list.nextSibling);
+      } else if (shown && box) box.remove();
+    } else if (box) box.remove();
+  }
   if (!window.__cdBankBound) {
     window.__cdBankBound = 1;
     document.addEventListener('input', function (e) {
       if (!e.target || e.target.id !== 'cdBankQ') return;
       ST.bankQ = e.target.value;
-      var pos = e.target.selectionStart;
-      renderBankList();
-      var q = document.getElementById('cdBankQ');
-      if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (e2) {} }
+      filterBankCards();
+    });
+    document.addEventListener('compositionend', function (e) {
+      if (!e.target || e.target.id !== 'cdBankQ') return;
+      ST.bankQ = e.target.value;
+      filterBankCards();
     });
     document.addEventListener('click', function (e) {
       var b = e.target && e.target.closest && e.target.closest('#cdBankAI');

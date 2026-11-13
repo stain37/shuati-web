@@ -315,11 +315,9 @@
     return '<div class="small muted">'
       + '当前地址：' + E(originTxt()) + '　·　本机存储：' + (can ? '可写 ✓' : '写不进 ✗')
       + '　·　已占 ' + (bytesOf() / 1024 / 1024).toFixed(2) + ' MB'
-      + '（浏览器一般只给 5 MB 左右；自建题库 ' + total + ' 个）'
+      + '（自建题库 ' + total + ' 个）'
       + '</div>'
-      + bad
-      + '<div class="small muted" style="margin-top:6px">小提示：<b>file:// 打开</b>和 <b>http://localhost:5173</b> 打开是两套互不相通的数据。'
-      + '想让题库「跨地址都在」，就存成下面的题库文件，两边都读它。</div>';
+      + bad;
   }
 
   /* ---------- 设置面板 ---------- */
@@ -332,7 +330,7 @@
       t.innerHTML = S.linked
         ? ('已链接：<b>' + E(S.name || '题库文件') + '</b>　·　最近保存 ' + E(timeTxt(S.lastSave))
            + (S.needPerm ? '　<span class="warn">（浏览器需要你点一次「保存到本机文件」重新授权）</span>' : ''))
-        : '还没有链接题库文件。链接一次之后，自建题库和分类就不怕清缓存、换地址了。';
+        : '未链接题库文件';
     }
     var cb = host.querySelector('#bfAuto');
     if (cb && cb.checked !== !!S.auto) cb.checked = !!S.auto;
@@ -357,9 +355,6 @@
       + '<label class="chk" style="margin-left:2px"><input type="checkbox" id="bfAuto"> 自动保存（改动后自动写回文件）</label>'
       + '</div>'
       + '<div id="bfDiag" style="margin-top:10px">' + diagHtml() + '</div>'
-      + '<div class="small muted" style="margin-top:8px">题库文件的用途：把这台电脑上的「自建题库 + 分类 + 临时套卷」存成一个 .json，'
-      + '换电脑、换浏览器、清缓存后读回来；也可以放进网盘同步。<b>作答记录 / 错题 / 收藏</b>不在里面，'
-      + '那些用下面「数据备份 → 导出全部数据」。</div>'
       + '</div></div>';
 
     var saveBtn = host.querySelector('#bfSave');
