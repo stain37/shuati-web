@@ -60,6 +60,23 @@
     }
   }
 
+  /* file:// 下动态 import() 会被 CORS 拦，所以用普通 <script> 加载全局版 lens */
+  var lensLoading = false;
+  function loadLens(done) {
+    if (window.LiquidGlass) { lensMod = window.LiquidGlass; done(); return; }
+    if (lensLoading) return;
+    lensLoading = true;
+    var s = document.createElement('script');
+    s.src = 'glass-lens-global.js?v=20261114a';
+    s.onload = function () {
+      lensLoading = false;
+      if (window.LiquidGlass) { lensMod = window.LiquidGlass; done(); }
+      else lensFail = true;
+    };
+    s.onerror = function () { lensLoading = false; lensFail = true; };
+    document.head.appendChild(s);
+  }
+
   function unmountAll() {
     mounted.forEach(function (h) {
       try { h && h.destroy && h.destroy(); } catch (e) {}
@@ -105,10 +122,7 @@
     });
 
     if (wantLens && !lensMod && !lensFail) {
-      import('./glass-lens.js').then(function (m) {
-        lensMod = m;
-        apply();
-      }).catch(function () { lensFail = true; });
+      loadLens(function () { apply(); });
     }
 
     var wantDark = !light();
