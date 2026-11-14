@@ -6652,3 +6652,326 @@ body.dark .cd-mask > .cd-top, body.dark .cd-mask > .cd-acts{ background:#0f151f;
   html[data-style="neontokyo"] .wrap,
   html[data-style="neon"] .wrap{ max-width:1180px; }
 }
+
+/* ===== web947：讲义搜索结果按讲义分组折叠 ===== */
+.lec-hgrp{ margin:0 0 6px; border:1px solid color-mix(in srgb,var(--primary,#2563eb) 14%,transparent); border-radius:10px; overflow:hidden; background:color-mix(in srgb,var(--card,#fff) 88%, transparent); }
+.lec-hgrp>summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; padding:7px 10px; font-size:12.5px; color:var(--text,#0f172a); }
+.lec-hgrp>summary::-webkit-details-marker{ display:none; }
+.lec-hgrp>summary::before{ content:'▸'; font-size:11px; color:var(--sub,#64748b); transition:transform .16s ease; }
+.lec-hgrp[open]>summary::before{ transform:rotate(90deg); }
+.lec-hgrp>summary b{ font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lec-hgrp>summary em{ font-style:normal; font-size:11px; color:var(--sub,#64748b); white-space:nowrap; }
+.lec-hgrp[open]>summary{ border-bottom:1px solid color-mix(in srgb,var(--primary,#2563eb) 12%,transparent); }
+.lec-hgrp .lec-hit{ margin:2px 4px; }
+.lec-hgrp .lec-hit .hfile{ display:none; }
+body.dark .lec-hgrp{ background:rgba(18,26,40,.6); border-color:rgba(120,160,220,.18); }
+body.dark .lec-hgrp>summary{ color:#dbe6f8; }
+
+/* web947 修正：上面那条高亮底只该给 AI 摘要里的高亮词，不该铺满搜索结果整行 */
+.lec-sumcard .lec-hit{ background:linear-gradient(180deg, transparent 58%, rgba(255,206,84,.42) 58%); border-radius:3px; }
+#lecHits .lec-hit, #lecHits .lec-hit:hover{ background:transparent; }
+
+/* lec-search-flat: 搜索结果行不要整行黄底（只保留 AI 摘要里的高亮） */
+#lecHits .lec-hit{ background-image:none !important; background-color:transparent !important; }
+#lecHits .lec-hit .htxt b.hl{ background:rgba(250,204,21,.55) !important; }
+
+
+/* ===== web971：玻璃拟态改用 Glasswork 液态玻璃材质 =====
+   玻璃拟态皮肤（skins.css 的 glass v8）原来是大半径模糊 + 渐变填充。
+   这里把主要表面换成 Glasswork 的材质：极轻模糊 + 提亮、一圈边缘光、下方投影，
+   边缘折射由 glasswork.js 调 lens.js 写进 --glass-lens（仅 Chromium 桌面端）。
+   选择器带 #view 是为了压过 skins.css 里 .card:nth-child(2n) 那批 !important。 */
+html[data-style="glass"]{--gw-a:.20;--gw-a-d:.34;--gw-tint:linear-gradient(180deg,rgba(255,255,255,calc(var(--gw-a) * 1.45)),rgba(255,255,255,var(--gw-a)))}
+html[data-style="glass"] body.dark{--gw-tint:linear-gradient(180deg,rgba(30,40,62,calc(var(--gw-a-d) * 1.15)),rgba(22,30,46,var(--gw-a-d)))}
+
+html[data-style="glass"] #view .gwl,
+html[data-style="glass"] .top.gwl,
+html[data-style="glass"] .bnav.gwl{
+  background:var(--gw-tint)!important;
+  -webkit-backdrop-filter:blur(2px) saturate(1.7) brightness(1.05)!important;
+  backdrop-filter:blur(2px) saturate(1.7) brightness(1.05) var(--glass-lens, )!important;
+  border-color:rgba(255,255,255,.55)!important;
+  box-shadow:
+    inset 1.5px 1.5px 1px -1px rgba(255,255,255,.95),
+    inset -1.5px -1.5px 1px -1px rgba(255,255,255,.55),
+    inset 0 0 0 .5px rgba(255,255,255,.5),
+    0 0 0 .5px rgba(15,23,42,.10),
+    0 12px 30px -10px rgba(15,23,42,.28),
+    inset 0 6px 8px -6px rgba(255,255,255,.42)!important;
+}
+html[data-style="glass"] body.dark #view .gwl,
+html[data-style="glass"] body.dark .top.gwl,
+html[data-style="glass"] body.dark .bnav.gwl{
+  background:var(--gw-tint)!important;
+  -webkit-backdrop-filter:blur(2px) saturate(1.55) brightness(.98)!important;
+  backdrop-filter:blur(2px) saturate(1.55) brightness(.98) var(--glass-lens, )!important;
+  border-color:rgba(255,255,255,.12)!important;
+  box-shadow:
+    inset 1px 1px .5px -.5px rgba(255,255,255,.40),
+    inset -1px -1px .5px -.5px rgba(255,255,255,.16),
+    inset 0 0 0 .5px rgba(255,255,255,.07),
+    0 0 0 .5px rgba(0,0,0,.32),
+    0 14px 32px -12px rgba(0,0,0,.55),
+    inset 0 6px 8px -6px rgba(255,255,255,.14)!important;
+}
+/* 通栏（顶栏/底栏）只留一条直线高光，避免内侧高光被拉成横纹 */
+html[data-style="glass"] .top.gwl,
+html[data-style="glass"] .bnav.gwl{
+  box-shadow:
+    inset 0 .5px 0 0 rgba(255,255,255,.85),
+    0 .5px 0 0 rgba(15,23,42,.10),
+    0 10px 26px -10px rgba(15,23,42,.28)!important;
+}
+html[data-style="glass"] body.dark .top.gwl,
+html[data-style="glass"] body.dark .bnav.gwl{
+  box-shadow:
+    inset 0 .5px 0 0 rgba(255,255,255,.14),
+    0 .5px 0 0 rgba(0,0,0,.4),
+    0 10px 26px -10px rgba(0,0,0,.6)!important;
+}
+/* 玻璃皮肤原来给卡片加了一层斜向高光，和边缘光叠在一起发浑，去掉 */
+html[data-style="glass"] #view .gwl::before{background:none!important}
+
+@media (prefers-reduced-transparency: reduce){
+  html[data-style="glass"] #view .gwl,
+  html[data-style="glass"] .top.gwl,
+  html[data-style="glass"] .bnav.gwl{background:rgba(255,255,255,.96)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  html[data-style="glass"] body.dark #view .gwl,
+  html[data-style="glass"] body.dark .top.gwl,
+  html[data-style="glass"] body.dark .bnav.gwl{background:rgba(20,26,40,.96)!important}
+}
+
+/* ===== web972：玻璃内不再套毛玻璃（消除格纹） ===== */
+
+/* 玻璃里面再套毛玻璃（底栏按钮、卡内药丸）会互相采样出格子纹，而且很贵：
+   玻璃表面内部的元素一律不再做 backdrop-filter，只留自己的底色。 */
+html[data-style="glass"] .gwl .gwl,
+html[data-style="glass"] .gwl .btn,
+html[data-style="glass"] .gwl .bnav-ind,
+html[data-style="glass"] .gwl .hs,
+html[data-style="glass"] .gwl .chip{
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+/* 玻璃表面自己的底色已经够，别再叠一层不透明度很高的白 */
+html[data-style="glass"] .gwl .btn{background-color:rgba(255,255,255,.12)!important}
+html[data-style="glass"] body.dark .gwl .btn{background-color:rgba(255,255,255,.06)!important}
+
+/* 顶栏/底栏背后是内容而不是壁纸，2px 模糊会让字压在花图上：这两条单独加厚模糊与着色 */
+html[data-style="glass"] .top.gwl,
+html[data-style="glass"] .bnav.gwl{
+  background:linear-gradient(180deg,rgba(255,255,255,.36),rgba(255,255,255,.26))!important;
+  -webkit-backdrop-filter:blur(22px) saturate(1.6) var(--glass-lens, )!important;
+  backdrop-filter:blur(22px) saturate(1.6) var(--glass-lens, )!important;
+}
+html[data-style="glass"] body.dark .top.gwl,
+html[data-style="glass"] body.dark .bnav.gwl{
+  background:linear-gradient(180deg,rgba(20,26,42,.34),rgba(12,18,30,.26))!important;
+  -webkit-backdrop-filter:blur(22px) saturate(1.4) var(--glass-lens, )!important;
+  backdrop-filter:blur(22px) saturate(1.4) var(--glass-lens, )!important;
+}
+/* 深色玻璃下文字压在花哨壁纸上，加一点点描边阴影提可读性（只作用玻璃块内部） */
+html[data-style="glass"] body.dark .gwl{ text-shadow:0 1px 2px rgba(0,0,0,.45) }
+html[data-style="glass"] body.dark .gwl .btn,
+html[data-style="glass"] body.dark .gwl .card,
+html[data-style="glass"] body.dark .gwl .vb-card{ text-shadow:none }
+/* ===== web977：统计数字块搬进「近 7 天」卡片右侧 ===== */
+.u099-top{ flex-wrap:wrap; }
+.stg-in-top{ margin:0; }
+@media (min-width:760px){
+  .u099-top{ display:grid; grid-template-columns:150px minmax(140px,max-content) minmax(0,1fr); align-items:center; gap:14px; }
+  .u099-top .stg-in-top{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:0; }
+  .u099-top .stg-in-top .stg-c{ padding:9px 10px; border-radius:13px; border:1px solid var(--line); background:var(--bg2,rgba(255,255,255,.05)); }
+  .u099-top .stg-in-top .stg-c b{ font-size:18px; }
+  .u099-top .stg-in-top .stg-c b i{ font-size:11px; }
+  .u099-top .stg-in-top .stg-c span{ font-size:11px; }
+}
+/* 底栏 / 顶栏按钮也给一点玻璃质感（不再叠 backdrop-filter，避免格纹） */
+html[data-style="glass"] .bnav .btn,
+html[data-style="glass"] .top .btn{
+  background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.14))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55), inset 0 0 0 1px rgba(255,255,255,.22), 0 1px 2px rgba(16,24,40,.10)!important;
+}
+html[data-style="glass"] body.dark .bnav .btn,
+html[data-style="glass"] body.dark .top .btn{
+  background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.05))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.25)!important;
+}
+/* ===== web978：玻璃皮肤下「答对 / 答错 / 选中」必须一眼看得出来 =====
+   之前 skins.css 里 .opt/.btn 的统一玻璃底（!important）把 .right/.wrong 压掉了，
+   做题时四个选项长得一模一样。这里用更高特异度 + !important 补回状态色。 */
+html[data-style="glass"] #view .opts .opt.right{
+  background:linear-gradient(180deg,rgba(52,211,153,.38),rgba(5,150,105,.24))!important;
+  border-color:rgba(16,185,129,.95)!important;
+  color:#062a1f!important;
+  box-shadow:0 0 0 2.5px rgba(16,185,129,.40),0 10px 24px -14px rgba(5,150,105,.9),inset 0 1px 0 rgba(255,255,255,.9)!important;
+}
+html[data-style="glass"] #view .opts .opt.right .k{
+  background:linear-gradient(180deg,#34d399,#059669)!important;color:#fff!important;border-color:transparent!important;
+}
+html[data-style="glass"] #view .opts .opt.wrong{
+  background:linear-gradient(180deg,rgba(248,113,113,.40),rgba(220,38,38,.24))!important;
+  border-color:rgba(239,68,68,.95)!important;
+  color:#2a0808!important;
+  box-shadow:0 0 0 2.5px rgba(239,68,68,.40),0 10px 24px -14px rgba(220,38,38,.9),inset 0 1px 0 rgba(255,255,255,.9)!important;
+}
+html[data-style="glass"] #view .opts .opt.wrong .k{
+  background:linear-gradient(180deg,#f87171,#dc2626)!important;color:#fff!important;border-color:transparent!important;
+}
+html[data-style="glass"] body.dark #view .opts .opt.right{
+  background:linear-gradient(180deg,rgba(52,211,153,.30),rgba(5,150,105,.18))!important;
+  border-color:rgba(110,231,183,.95)!important;color:#eafff5!important;
+  box-shadow:0 0 0 2.5px rgba(52,211,153,.42),inset 0 1px 0 rgba(255,255,255,.30)!important;
+}
+html[data-style="glass"] body.dark #view .opts .opt.wrong{
+  background:linear-gradient(180deg,rgba(248,113,113,.32),rgba(220,38,38,.20))!important;
+  border-color:rgba(252,165,165,.95)!important;color:#ffecec!important;
+  box-shadow:0 0 0 2.5px rgba(248,113,113,.42),inset 0 1px 0 rgba(255,255,255,.30)!important;
+}
+html[data-style="glass"] body.dark #view .opts .opt.right .k{background:linear-gradient(180deg,#34d399,#059669)!important;color:#04231a!important}
+html[data-style="glass"] body.dark #view .opts .opt.wrong .k{background:linear-gradient(180deg,#f87171,#dc2626)!important;color:#2a0606!important}
+/* 统计数字块在玻璃卡片里也跟着透一点，别像 6 块黑板 */
+html[data-style="glass"] .u099 .stg-c{
+  background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.07))!important;
+  border-color:rgba(255,255,255,.28)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45)!important;
+}
+html[data-style="glass"] body.dark .u099 .stg-c{
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03))!important;
+  border-color:rgba(255,255,255,.12)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16)!important;
+}
+/* ===== web981：顶栏/底栏真正透出来（之前 .7 的底色等于实心） ===== */
+html[data-style="glass"] .top.gwl{
+  border-bottom:1px solid rgba(255,255,255,.14)!important;
+  box-shadow:0 6px 20px -14px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.18)!important;
+}
+html[data-style="glass"] .bnav.gwl{
+  border-top:1px solid rgba(255,255,255,.16)!important;
+  box-shadow:0 -8px 24px -16px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.16)!important;
+}
+html[data-style="glass"] body.dark .top.gwl{border-bottom-color:rgba(255,255,255,.10)!important}
+html[data-style="glass"] body.dark .bnav.gwl{border-top-color:rgba(255,255,255,.12)!important}
+html[data-style="glass"] .bnav-ind{
+  background:linear-gradient(180deg,rgba(147,197,253,.55),rgba(37,99,235,.38))!important;
+  border:1px solid rgba(191,219,254,.55)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 8px 20px -10px rgba(37,99,235,.65)!important;
+  backdrop-filter:none!important;
+}
+html[data-style="glass"] body.dark .bnav-ind{
+  background:linear-gradient(180deg,rgba(96,165,250,.42),rgba(37,99,235,.26))!important;
+  border-color:rgba(147,197,253,.35)!important;
+}
+/* ===== web982：按 Glasswork 的 glass.css 原样移植材质 =====
+   .glass 的四条声明：background 用 color-mix 算 tint、backdrop-filter 是
+   blur+saturate+contrast+brightness 再接折射、box-shadow 九层（边缘受光 +
+   斜角反光 + 发丝线 + 外投影 + 四条内侧倒角），这才是「厚玻璃板」的观感。 */
+html[data-style="glass"]{
+  --gw-thin:.16; --gw-dense:.34;
+  --gw-blur:2; --gw-sat:1.8; --gw-bri:1.06;
+  --gw-density:.35;
+  --gw-tint-a:calc(var(--gw-thin) + (var(--gw-dense) - var(--gw-thin)) * var(--gw-density));
+}
+html[data-style="glass"] body.dark{
+  --gw-thin:.22; --gw-dense:.48;
+  --gw-sat:1.6; --gw-bri:.82;
+  /* --gw-tint-a 在 html 上已按浅色算过一次，深色必须在本层重算，否则沿用浅色值 */
+  --gw-tint-a:calc(var(--gw-thin) + (var(--gw-dense) - var(--gw-thin)) * var(--gw-density));
+}
+html[data-style="glass"] .gwl{
+  background:color-mix(in srgb, #ffffff calc(var(--gw-tint-a) * 100%), transparent)!important;
+  -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
+  backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
+  border-color:transparent!important;
+  box-shadow:
+    inset 1.5px 1.5px 1px -1px rgba(255,255,255,1),
+    inset -1.5px -1.5px 1px -1px rgba(255,255,255,.6),
+    inset 0 0 0 .5px rgba(255,255,255,.3),
+    0 0 0 .5px rgba(0,0,0,.12),
+    0 4px 16px rgba(0,0,0,.1),
+    inset 0 6px 8px -6px rgba(255,255,255,.5),
+    inset 4px 0 8px -6px rgba(255,255,255,.22),
+    inset -4px 0 8px -6px rgba(255,255,255,.12),
+    inset 0 -6px 8px -6px rgba(0,0,0,.06)!important;
+}
+html[data-style="glass"] body.dark .gwl{
+  background:color-mix(in srgb, #1e1e22 calc(var(--gw-tint-a) * 100%), transparent)!important;
+  box-shadow:
+    inset 1px 1px .5px -.5px rgba(255,255,255,.46),
+    inset -1px -1px .5px -.5px rgba(255,255,255,.18),
+    inset 0 0 0 .5px rgba(255,255,255,.06),
+    0 0 0 .5px rgba(0,0,0,.28),
+    0 4px 14px rgba(0,0,0,.22),
+    inset 0 6px 8px -6px rgba(255,255,255,.18),
+    inset 4px 0 8px -6px rgba(255,255,255,.07),
+    inset -4px 0 8px -6px rgba(255,255,255,.04),
+    inset 0 -6px 8px -6px rgba(0,0,0,.08)!important;
+}
+/* ===== web983：把 Glasswork 的四条声明真正压到卡片/顶栏/底栏上 =====
+   之前 .gwl 的选择器比 #view .gwl 低一级，材质压根没生效，还是老渐变。
+   这里用同/更高特异度 + 后置，确保 background / backdrop-filter / box-shadow
+   三层都按 glass.css 来；顶栏底栏为了字可读把 blur 加到 12px。 */
+html[data-style="glass"] #view .gwl{
+  background:color-mix(in srgb, #ffffff calc(var(--gw-tint-a) * 100%), transparent)!important;
+  -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
+  backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
+  border-color:transparent!important;
+  box-shadow:
+    inset 1.5px 1.5px 1px -1px rgba(255,255,255,1),
+    inset -1.5px -1.5px 1px -1px rgba(255,255,255,.6),
+    inset 0 0 0 .5px rgba(255,255,255,.3),
+    0 0 0 .5px rgba(0,0,0,.12),
+    0 4px 16px rgba(0,0,0,.1),
+    inset 0 6px 8px -6px rgba(255,255,255,.5),
+    inset 4px 0 8px -6px rgba(255,255,255,.22),
+    inset -4px 0 8px -6px rgba(255,255,255,.12),
+    inset 0 -6px 8px -6px rgba(0,0,0,.06)!important;
+}
+html[data-style="glass"] body.dark #view .gwl{
+  background:color-mix(in srgb, #1e1e22 calc(var(--gw-tint-a) * 100%), transparent)!important;
+  -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
+  backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
+  box-shadow:
+    inset 1px 1px .5px -.5px rgba(255,255,255,.46),
+    inset -1px -1px .5px -.5px rgba(255,255,255,.18),
+    inset 0 0 0 .5px rgba(255,255,255,.06),
+    0 0 0 .5px rgba(0,0,0,.28),
+    0 4px 14px rgba(0,0,0,.22),
+    inset 0 6px 8px -6px rgba(255,255,255,.18),
+    inset 4px 0 8px -6px rgba(255,255,255,.07),
+    inset -4px 0 8px -6px rgba(255,255,255,.04),
+    inset 0 -6px 8px -6px rgba(0,0,0,.08)!important;
+}
+/* 顶栏 / 底栏：同样材质，但背后是滚动内容，模糊加厚到 12px、tint 再厚一点 */
+html[data-style="glass"] .top.gwl,
+html[data-style="glass"] .bnav.gwl{
+  background:color-mix(in srgb, #ffffff calc(min(.95, var(--gw-tint-a) + .10) * 100%), transparent)!important;
+  -webkit-backdrop-filter:blur(12px) saturate(1.7) contrast(1) brightness(1.04) saturate(1)!important;
+  backdrop-filter:blur(12px) saturate(1.7) contrast(1) brightness(1.04) saturate(1) var(--glass-lens,)!important;
+  box-shadow:
+    inset 1.5px 1.5px 1px -1px rgba(255,255,255,.95),
+    inset -1.5px -1.5px 1px -1px rgba(255,255,255,.5),
+    inset 0 0 0 .5px rgba(255,255,255,.28),
+    0 0 0 .5px rgba(0,0,0,.10),
+    0 6px 20px rgba(0,0,0,.10),
+    inset 0 6px 8px -6px rgba(255,255,255,.45)!important;
+}
+html[data-style="glass"] body.dark .top.gwl,
+html[data-style="glass"] body.dark .bnav.gwl{
+  background:color-mix(in srgb, #1e1e22 calc(min(.6, var(--gw-tint-a) + .10) * 100%), transparent)!important;
+  -webkit-backdrop-filter:blur(12px) saturate(1.5) contrast(1) brightness(.9) saturate(1)!important;
+  backdrop-filter:blur(12px) saturate(1.5) contrast(1) brightness(.9) saturate(1) var(--glass-lens,)!important;
+  box-shadow:
+    inset 1px 1px .5px -.5px rgba(255,255,255,.4),
+    inset -1px -1px .5px -.5px rgba(255,255,255,.16),
+    inset 0 0 0 .5px rgba(255,255,255,.05),
+    0 0 0 .5px rgba(0,0,0,.3),
+    0 6px 18px rgba(0,0,0,.25),
+    inset 0 6px 8px -6px rgba(255,255,255,.14)!important;
+}
+/* 浅色玻璃下文字压在高饱和壁纸上会发飘，给玻璃内部文字一点点白描边 */
+html[data-style="glass"] .gwl{ text-shadow:0 1px 1px rgba(255,255,255,.45) }
+html[data-style="glass"] body.dark .gwl{ text-shadow:0 1px 2px rgba(0,0,0,.45) }
+/* 玻璃里的文字用材质自己的 ink：浅色深字、深色浅字，别沿用皮肤的白字 */
+html[data-style="glass"] #view .gwl{ color:rgba(0,0,0,.86) }
+html[data-style="glass"] body.dark #view .gwl{ color:rgba(255,255,255,.94) }

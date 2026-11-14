@@ -2355,6 +2355,8 @@ function srsCfg() {
   const p = SRS_PRESETS[mode];
   const c = { mode: mode, label: p.label, desc: p.desc };
   SRS_FIELDS.forEach(k => { c[k] = (SRS[k] == null ? p[k] : SRS[k]); });
+  /* 当天最多重入几次（0~3）：答错/模糊的题同一天回到队列的次数 */
+  c.requeue = (SRS.requeue == null ? 1 : Math.max(0, Math.min(3, +SRS.requeue || 0)));
   return c;
 }
 function srsSave() { writeLS(LS.srs, SRS); }
@@ -5865,7 +5867,7 @@ function srsApplyGrade(rec, grade, now) {
     rec.due = dayAdd(now, Math.max(1, ivl));
   } else {
     const rq = (rec.rq && rec.rq.d === today) ? rec.rq : { d: today, n: 0 };
-    const canToday = (c.wrongToday !== false) && (rq.n < 1);     // 锁定①：当天最多重入 1 次
+    const canToday = (c.wrongToday !== false) && (rq.n < (+c.requeue || 0));   // 当天重入次数（设置里 0~3，默认 1）
     if (canToday) {
       requeue = true;
       rq.n = 1;
@@ -7397,6 +7399,7 @@ function srsPaintEls() {
     f.appendChild(o); f.value = String(c.factor);
   }
   const wt = $('srsWrongToday'); if (wt) wt.checked = !!c.wrongToday;
+  const rq = $('srsRequeue'); if (rq) rq.value = String(c.requeue);
   const pl = $('srsPile'); if (pl) pl.checked = srsPileOn();
   if ($('srsDesc')) $('srsDesc').textContent = c.desc;
   if ($('srsPreview')) $('srsPreview').textContent = srsPreviewText(c);
@@ -7407,6 +7410,7 @@ function srsRepaint() {
   if ($('srsDesc')) $('srsDesc').textContent = c.desc;
   if ($('srsPreview')) $('srsPreview').textContent = srsPreviewText(c);
   const sel = $('srsMode'); if (sel && sel.value !== c.mode) sel.value = c.mode;
+  const rq2 = $('srsRequeue'); if (rq2 && rq2.value !== String(c.requeue)) rq2.value = String(c.requeue);
 }
 /* 设置里「界面风格」的选中项与一句说明（皮肤只管观感，不碰任何数据） */
 function paintGlowEls() {
@@ -7721,6 +7725,11 @@ Object.keys(SRS_UI).forEach(id => on(id, e => {
   srsRepaint();
 }, 'change'));
 on('srsWrongToday', e => { srsSetField('wrongToday', !!e.target.checked); srsRepaint(); }, 'change');
+on('srsRequeue', e => {
+  SRS.requeue = Math.max(0, Math.min(3, +e.target.value || 0));
+  srsSave(); srsRepaint();
+  toast('答错/模糊的题，当天最多重入 ' + SRS.requeue + ' 次', 1600);
+}, 'change');
 /* 功能四（web184）：逾期卡片堆不堆到当天 —— 默认堆；改完立刻重算「今日复习」的数量 */
 on('srsPile', e => {
   SRS.pile = !!e.target.checked;

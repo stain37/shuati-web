@@ -217,10 +217,14 @@
       else view.insertBefore(box, view.firstChild);
     }
     var sig = location.hash + '|' + (localStorage.getItem('qbank.answers.v2') || '').length;
-    if (box.dataset.sig === sig && box.querySelector('.u099-rg')) return;
-    box.dataset.sig = sig;
-    var days = days7();
-    build(box, days, collect());
+    if (!(box.dataset.sig === sig && box.querySelector('.u099-rg'))) {
+      box.dataset.sig = sig;
+      var days = days7();
+      build(box, days, collect());
+    }
+    /* 统计数字块搬进「近 7 天」卡片右侧空白处 */
+    var stg = view.querySelector('.stg'), top = box.querySelector('.u099-top');
+    if (stg && top && stg.parentNode !== top) { stg.classList.add('stg-in-top'); top.appendChild(stg); }
   }
 
   var t = 0;
