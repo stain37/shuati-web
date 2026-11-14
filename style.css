@@ -6975,3 +6975,35 @@ html[data-style="glass"] body.dark .gwl{ text-shadow:0 1px 2px rgba(0,0,0,.45) }
 /* 玻璃里的文字用材质自己的 ink：浅色深字、深色浅字，别沿用皮肤的白字 */
 html[data-style="glass"] #view .gwl{ color:rgba(0,0,0,.86) }
 html[data-style="glass"] body.dark #view .gwl{ color:rgba(255,255,255,.94) }
+
+/* ===== web1000 流畅模式（可选，html[data-smooth="1"]）：静态降级，不随滚动来回切 =====
+   玻璃主题下每个面板一个 SVG 位移滤镜（边缘折射）+ 9 层阴影，滚动时最贵；这里一次性换成
+   「普通模糊 + 单层阴影」，不再做滚动期开关（来回切反而触发整层重栅格化）。 */
+html[data-smooth="1"] #view .gwl,
+html[data-smooth="1"] .top.gwl,
+html[data-smooth="1"] #bnav.gwl{
+  backdrop-filter:blur(6px) saturate(1.35)!important;
+  -webkit-backdrop-filter:blur(6px) saturate(1.35)!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.12)!important;
+}
+html[data-smooth="1"] #view .card,
+html[data-smooth="1"] #view .vb-card,
+html[data-smooth="1"] #view .u099,
+html[data-smooth="1"] #view .gwl{
+  box-shadow:0 1px 2px rgba(0,0,0,.10)!important;
+}
+html[data-smooth="1"] .gwl::before,
+html[data-smooth="1"] .gwl::after{ display:none!important }
+html[data-smooth="1"]{ scroll-behavior:auto }
+html[data-smooth="1"] *{ scroll-behavior:auto!important }
+/* 提高一级特异度：skins.css 里 body.dark #view .gwl 带 !important，必须加 [data-style] 才压得住 */
+html[data-smooth="1"][data-style] body #view .gwl,
+html[data-smooth="1"][data-style] body.dark #view .gwl,
+html[data-smooth="1"][data-style] body .top.gwl,
+html[data-smooth="1"][data-style] body.dark .top.gwl,
+html[data-smooth="1"][data-style] body #bnav.gwl,
+html[data-smooth="1"][data-style] body.dark #bnav.gwl{
+  backdrop-filter:blur(6px) saturate(1.35)!important;
+  -webkit-backdrop-filter:blur(6px) saturate(1.35)!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.12)!important;
+}

@@ -13,7 +13,7 @@
   var STORE = 'themes/index.json';
 
   /* 会被主题包记录的外观字段（其余设置不属于「外观」，不动） */
-  var LOOK_KEYS = ['style', 'styleAuto', 'color', 'theme', 'bg', 'fs', 'frost', 'frostPx',
+  var LOOK_KEYS = ['style', 'styleAuto', 'color', 'theme', 'bg', 'fs', 'frost', 'frostPx', 'smooth',
     'uiAlpha', 'glowMode', 'glowColor', 'autoContrast', 'uiText', 'uiTextPick', 'reduceMotion'];
 
   function $(s, r) { return (r || document).querySelector(s); }

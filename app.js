@@ -547,7 +547,7 @@ try { Object.defineProperty(window, 'LS', { get: function () { return LS; }, con
 let FIX = readLS(LS.fix, {});          // 手动修正的正确答案（只在本机生效，题库文件不动）
 let SRS = readLS(LS.srs, {});          // 复习曲线：模式 + 初始参数
 /* 新增的外观设置：老数据里没有这两项，读出来补上默认值 */
-const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220', qtime: true, lockMode: true };
+const SET_DEF = { fxSpd: 1, expOnOk: true, autoNext: false, shuffle: false, theme: 'auto', fs: 'm', big: 0, color: 'teal', bg: 'default', style: 'default', styleAuto: true, glowMode: 'auto', glowColor: '', uiAlpha: 1, frost: true, frostPx: 14, fxConfetti: true, fxNormalBank: false, focus: false, reduceMotion: false, quizMode: 'normal', speedSec: 0, minimal: false, smooth: false, autoContrast: true, uiText: 'auto', uiTextPick: '#0b1220', qtime: true, lockMode: true };
 Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
 /* 方案九：刷题模式（'normal' 普通 / 'speed' 速刷 / 'recite' 背题）—— 存 SET 里，不新增 key。
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
@@ -1880,8 +1880,9 @@ function applyLook() {
   /* 界面风格（皮肤层）：只打一个属性；通用样式在 style.css，123 套皮肤在 skins.css（web312 拆出去的）。
      不认识的值一律落回 default —— default 不需要 skins.css，所以默认皮肤一点都不多下。 */
   const style = UI_STYLES.indexOf(SET.style) >= 0 ? SET.style : 'default';
-  if (document.documentElement) document.documentElement.setAttribute('data-style', style);
+  if (document.documentElement) { document.documentElement.setAttribute('data-style', style); document.documentElement.setAttribute('data-smooth', SET.smooth ? '1' : ''); }
   try { ensureSkinsCss(style); } catch (e) {}
+  if (SET.fast) { try { window.GW && window.GW.off && window.GW.off(); } catch (e) {} }
   try{ ntSigns(SET.style==='neontokyo'); }catch(e){}
   try{ ntDrops(SET.style==='neontokyo'); }catch(e){}
   /* 明暗锁定（web291）：有一批皮肤天生只有浅色版（卡片是白的，深色模式只把正文翻成近白
@@ -7508,6 +7509,7 @@ function openSettings() {
   if ($('setReduceMotion')) $('setReduceMotion').checked = !!SET.reduceMotion;
   if ($('fxSpd')) $('fxSpd').value = String(SET.fxSpd || 1);
   if ($('setMinimal')) $('setMinimal').checked = !!SET.minimal;
+  if ($('setSmooth')) $('setSmooth').checked = !!SET.smooth;
   if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setBig')) $('setBig').value = String(+SET.big === 2 ? 2 : (+SET.big === 1 ? 1 : 0));
@@ -7680,7 +7682,8 @@ on('setUiAlpha', e => {
   if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = e.target.value + '%';
 }, 'input');
 on('setFrost', e => { SET.frost = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
-on('setMinimal', e => { SET.minimal = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
+  on('setSmooth', e => { SET.smooth = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
+  on('setMinimal', e => { SET.minimal = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
 on('setBgClear', bgClearImage);
 on('setBgFile', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromFile(f); }, 'change');
 on('closeSet', closeAll);
