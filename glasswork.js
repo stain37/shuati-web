@@ -80,36 +80,49 @@
   function apply() {
     timer = 0;
     syncDensity();
-    if (!glassOn() || cheapDevice()) { unmountAll(); return; }
-    var list = Array.prototype.slice.call(document.querySelectorAll(SEL)).filter(bigEnough);
-    if (list.length > MAX) list = list.slice(0, MAX);
-    var keep = new Set(list);
+    if (!glassOn()) { unmountAll(); return; }
+
+    /* 材质（底色 + 边缘光）窄屏也要有，否则小窗一缩就退回旧皮肤的实色；
+       只有「折射」这一层按设备能力关掉。 */
+    var wantLens = !cheapDevice();
+    var all = Array.prototype.slice.call(document.querySelectorAll(SEL));
+    var lensList = all.filter(bigEnough).slice(0, MAX);
+    var lensSet = new Set(lensList);
+
+    /* 明确不该再挂折射的（变小了 / 换设备了）先拆掉 */
     mounted.forEach(function (h, el) {
-      if (!keep.has(el) || !document.contains(el)) {
+      if (!wantLens || !lensSet.has(el) || !document.contains(el)) {
         try { h && h.destroy && h.destroy(); } catch (e) {}
         mounted.delete(el);
-        el.classList.remove('gwl');
       }
     });
-    if (!lensMod && !lensFail) {
+
+    all.forEach(function (el) {
+      if (wantLens && lensSet.has(el)) return;
+      el.classList.add('gwl');
+      el.removeAttribute('data-kind');
+    });
+
+    if (wantLens && !lensMod && !lensFail) {
       import('./glass-lens.js').then(function (m) {
         lensMod = m;
         apply();
       }).catch(function () { lensFail = true; });
-      list.forEach(function (el) { if (!mounted.has(el)) el.classList.add('gwl'); });
-      return;
     }
-    list.forEach(function (el) {
-      if (!mounted.has(el)) mount(el, lensMod);
-    });
-    /* 深浅色切换时，折射参数跟着重算一遍 */
+
     var wantDark = !light();
-    list.forEach(function (el) {
-      var d = el.getAttribute('data-kind') === 'dark';
-      if (d !== wantDark) {
-        el.setAttribute('data-kind', wantDark ? 'dark' : 'light');
-        var h = mounted.get(el);
-        try { h && h.refresh && h.refresh(); } catch (e) {}
+    lensList.forEach(function (el) {
+      if (wantLens && lensMod) {
+        if (!mounted.has(el)) mount(el, lensMod);
+        var d = el.getAttribute('data-kind') === 'dark';
+        if (d !== wantDark) {
+          el.setAttribute('data-kind', wantDark ? 'dark' : 'light');
+          var h = mounted.get(el);
+          try { h && h.refresh && h.refresh(); } catch (e) {}
+        }
+      } else {
+        el.classList.add('gwl');
+        el.removeAttribute('data-kind');
       }
     });
   }
