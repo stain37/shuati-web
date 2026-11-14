@@ -21,10 +21,11 @@
     return !document.body.classList.contains('dark');
   }
   function cheapDevice() {
+    /* 只按「真的画不动」的两种情况降级：低动效偏好、触屏（手机）。
+       窄窗口不再算弱设备——小窗也是桌面，用户要的是折射效果。 */
     try {
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
       if (matchMedia('(pointer: coarse)').matches) return true;
-      if (matchMedia('(max-width: 900px)').matches) return true;
     } catch (e) {}
     return false;
   }
