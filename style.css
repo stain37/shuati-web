@@ -6879,7 +6879,7 @@ html[data-style="glass"] body.dark{
   --gw-tint-a:calc(var(--gw-thin) + (var(--gw-dense) - var(--gw-thin)) * var(--gw-density));
 }
 html[data-style="glass"] .gwl{
-  background:color-mix(in srgb, #ffffff calc(var(--gw-tint-a) * 100%), transparent)!important;
+  background:rgba(255,255,255,var(--gw-tint-a))!important;
   -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
   backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
   border-color:transparent!important;
@@ -6895,7 +6895,7 @@ html[data-style="glass"] .gwl{
     inset 0 -6px 8px -6px rgba(0,0,0,.06)!important;
 }
 html[data-style="glass"] body.dark .gwl{
-  background:color-mix(in srgb, #1e1e22 calc(var(--gw-tint-a) * 100%), transparent)!important;
+  background:rgba(30,30,34,var(--gw-tint-a))!important;
   box-shadow:
     inset 1px 1px .5px -.5px rgba(255,255,255,.46),
     inset -1px -1px .5px -.5px rgba(255,255,255,.18),
@@ -6912,7 +6912,7 @@ html[data-style="glass"] body.dark .gwl{
    这里用同/更高特异度 + 后置，确保 background / backdrop-filter / box-shadow
    三层都按 glass.css 来；顶栏底栏为了字可读把 blur 加到 12px。 */
 html[data-style="glass"] #view .gwl{
-  background:color-mix(in srgb, #ffffff calc(var(--gw-tint-a) * 100%), transparent)!important;
+  background:rgba(255,255,255,var(--gw-tint-a))!important;
   -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
   backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
   border-color:transparent!important;
@@ -6928,7 +6928,7 @@ html[data-style="glass"] #view .gwl{
     inset 0 -6px 8px -6px rgba(0,0,0,.06)!important;
 }
 html[data-style="glass"] body.dark #view .gwl{
-  background:color-mix(in srgb, #1e1e22 calc(var(--gw-tint-a) * 100%), transparent)!important;
+  background:rgba(30,30,34,var(--gw-tint-a))!important;
   -webkit-backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1)!important;
   backdrop-filter:blur(calc(var(--gw-blur) * 1px)) saturate(var(--gw-sat)) contrast(1) brightness(var(--gw-bri)) saturate(1) var(--glass-lens,)!important;
   box-shadow:
@@ -6945,7 +6945,7 @@ html[data-style="glass"] body.dark #view .gwl{
 /* 顶栏 / 底栏：同样材质，但背后是滚动内容，模糊加厚到 12px、tint 再厚一点 */
 html[data-style="glass"] .top.gwl,
 html[data-style="glass"] .bnav.gwl{
-  background:color-mix(in srgb, #ffffff calc(min(.95, var(--gw-tint-a) + .10) * 100%), transparent)!important;
+  background:rgba(255,255,255,calc(min(.95, var(--gw-tint-a) + .10)))!important;
   -webkit-backdrop-filter:blur(12px) saturate(1.7) contrast(1) brightness(1.04) saturate(1)!important;
   backdrop-filter:blur(12px) saturate(1.7) contrast(1) brightness(1.04) saturate(1) var(--glass-lens,)!important;
   box-shadow:
@@ -6958,7 +6958,7 @@ html[data-style="glass"] .bnav.gwl{
 }
 html[data-style="glass"] body.dark .top.gwl,
 html[data-style="glass"] body.dark .bnav.gwl{
-  background:color-mix(in srgb, #1e1e22 calc(min(.6, var(--gw-tint-a) + .10) * 100%), transparent)!important;
+  background:rgba(30,30,34,calc(min(.6, var(--gw-tint-a) + .10)))!important;
   -webkit-backdrop-filter:blur(12px) saturate(1.5) contrast(1) brightness(.9) saturate(1)!important;
   backdrop-filter:blur(12px) saturate(1.5) contrast(1) brightness(.9) saturate(1) var(--glass-lens,)!important;
   box-shadow:
