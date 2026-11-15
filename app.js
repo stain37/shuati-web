@@ -1627,6 +1627,10 @@ function bindRipple() {
     '.stat b', '.stat .lbl', '.tile b', '.tile .t', '.empty', '.list-row .t'];
 
   function contrastFix() {
+    /* 已彻底停用（用户反馈答题页文字不停闪动）：保留函数空壳，避免外部调用报错 */
+    return null;
+  }
+  function contrastFixOff() {
     if (!document.body) return null;
     var S = (typeof SET === 'object' && SET) || {};
     if (S.autoContrast === false) { clearSurfaces(); return clearContrastFix(); }
@@ -1796,18 +1800,19 @@ function bindRipple() {
   var _cxT = 0;
   var _cxT2 = 0, _cxT3 = 0;
   function afterRender() {
-    clearTimeout(_cxT);
-    _cxT = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 70);
-    /* 有些页面首帧之后还会异步重画一次（换成新节点），补两刀，别让刚写好的内联色被冲掉 */
-    clearTimeout(_cxT2); _cxT2 = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 430);
-    clearTimeout(_cxT3); _cxT3 = setTimeout(function () { try { contrastFix(); } catch (e) {} }, 1250);
+    /* 自动对比度整套停用：不再逐元素改颜色/描边（正是它让答题页文字一直闪） */
   }
   function hook() {
-    var v = document.getElementById('view');
-    if (!v || v.dataset.cxHooked === '1') return;
-    v.dataset.cxHooked = '1';
-    new MutationObserver(afterRender).observe(v, { childList: true, subtree: true });
+    /* 不再挂 MutationObserver */
   }
+  /* 清掉历史版本可能留在 DOM 上的对比度类名 */
+  try {
+    Array.prototype.forEach.call(document.querySelectorAll('.cx-ink,.cx-paper,.cx-mid'), function (el) {
+      el.classList.remove('cx-ink', 'cx-paper', 'cx-mid');
+      el.style.removeProperty('text-shadow');
+    });
+    document.documentElement.removeAttribute('data-cx');
+  } catch (e0) {}
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hook);
   else hook();
   window.addEventListener('hashchange', afterRender);

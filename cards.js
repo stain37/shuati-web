@@ -253,16 +253,31 @@
     return s.length > 14 ? s.slice(0, 14) + '…' : (s || '（无题干）');
   }
   function itemsOf(bank) {
-    var out = [], seen = {};
-    (bank.questions || []).forEach(function (q, qi) {
+    var out = [], seen = {}, qs0 = bank.questions || [];
+    /* 只有「同一组里题干完全一样」才算共用题干（一道大题带几个小问）；
+       其它情况一律一题一卡，避免 26 道题被并成 5 张 */
+    var gstat = {};
+    qs0.forEach(function (q) {
+      var g = String(q.groupTitle || q.group || '').trim();
+      if (!g) return;
+      var st = String(q.stem || q.gstem || '').replace(/\s+/g, '');
+      var o = gstat[g] || (gstat[g] = { n: 0, stems: {} });
+      o.n++; o.stems[st] = (o.stems[st] || 0) + 1;
+    });
+    qs0.forEach(function (q, qi) {
       var k = kOf(bank, q);
       var tags = tagsOf(q, k);
       var subj = subjectOf(tags);
       var pts = pointOf(tags);
-      /* 没有考点标签的题：同一「共用题干」并成一张卡；连章节也没有，就一题一卡（用题干当标题） */
       var grp = String(q.groupTitle || q.group || '').trim();
-      var tag = pts[0] || grp || shortStem(q);
-      var key = pts.length ? ('t:' + tag) : (grp ? ('g:' + subj + '|' + grp) : ('q:' + k));
+      var shared = false;
+      if (grp && gstat[grp]) {
+        var gs = gstat[grp];
+        shared = gs.n > 1 && Object.keys(gs.stems).length === 1;
+      }
+      var tag = pts[0] || (shared ? grp : '') || shortStem(q);
+      /* 一题一卡：只有真正的「共用题干」才并成一张，不再按考点合并（合并会让 26 题只剩 5 张） */
+      var key = shared ? ('g:' + subj + '|' + grp) : ('q:' + k);
       if (!seen[key]) {
         seen[key] = { key: key, tag: tag, subj: subj, q: q, k: k, qno: qi + 1, qs: [], kw: [], stems: [] };
         out.push(seen[key]);
@@ -457,7 +472,7 @@
     var totalPts = rows.reduce(function (n, r) { return n + r.st.items.length; }, 0);
     var h = '<div class="card cd-head">'
       + '<div class="cd-htop"><div><b>🧠 考点卡</b></div>'
-      + '<div class="cd-hnum">' + bs.length + '<i>个题库 · ' + totalPts + ' 个考点</i></div></div>'
+      + '<div class="cd-hnum">' + bs.length + '<i>个题库 · ' + totalPts + ' 张卡</i></div></div>'
       + '<div class="cd-psrch"><input id="cdBankQ" class="cd-q" placeholder="搜题库名…" value="' + esc(ST.bankQ || '') + '">'
       + '<button class="cd-shuf" id="cdBankAI">✨ AI 模糊</button></div>'
       + '<div class="cd-btbar">'
@@ -513,7 +528,7 @@
         + '<s>' + (b.questions || []).length + ' 题</s></div>'
         + (empty
           ? '<div class="cd-bmeta">还没读到题目 · 这个题库在首页能看到，但没有题目数据（题库文件还没打开／导入没完成）</div>'
-          : '<div class="cd-bmeta">' + items.length + ' 个考点 · 已背 ' + p.done + ' / ' + p.total + (row.st.dueN ? ' · <u>今日到期 ' + row.st.dueN + '</u>' : '') + '</div>')
+          : '<div class="cd-bmeta">' + items.length + ' 张卡 · 已背 ' + p.done + ' / ' + p.total + (row.st.dueN ? ' · <u>今日到期 ' + row.st.dueN + '</u>' : '') + '</div>')
         + '<div class="cd-chips">' + chips + '</div>'
         + '<div class="cd-bacts">'
         + '<button class="btn primary" data-act="open" data-id="' + esc(b.id) + '"' + (empty ? ' disabled' : '') + '>看考点 →</button>'
@@ -531,7 +546,7 @@
   function updateBankCount(n, totalPts) {
     var el = document.querySelector('#view .cd-hnum');
     if (!el) return;
-    el.innerHTML = n + '<i>个题库 · ' + totalPts + ' 个考点</i>';
+    el.innerHTML = n + '<i>个题库 · ' + totalPts + ' 张卡</i>';
   }
   /* 题库列表：搜索 + AI 模糊（委托，重绘后仍可用） */
   /* 只切 .cd-bank 的 display，不重绘输入框 —— 否则中文输入法会被打断 */
@@ -720,7 +735,7 @@
     };
     var h = '<div class="card cd-head">'
       + '<div class="cd-htop"><div><b>' + esc(bank.title || bank.id) + '</b>'
-      + '<span>共 ' + (bank.questions || []).length + ' 题 · ' + ST.items.length + ' 个考点</span></div>'
+      + '<span>共 ' + (bank.questions || []).length + ' 题 · ' + ST.items.length + ' 张卡</span></div>'
       + (function () {
           var done = doneToday();
           var dueLeft = (ST.items || []).filter(function (it) { return isReady(stateOf(it)); }).length;
@@ -751,7 +766,7 @@
       + '</div>';
 
     groups.forEach(function (g) {
-      h += '<div class="cd-grp"><div class="cd-ghead"><span>' + esc(g.subj) + '</span><i>' + g.list.length + ' 个考点</i></div>';
+      h += '<div class="cd-grp"><div class="cd-ghead"><span>' + esc(g.subj) + '</span><i>' + g.list.length + ' 张卡</i></div>';
       g.list.forEach(function (it, i) {
         var idx = list.indexOf(it);
         var v = markOf(it);
