@@ -553,6 +553,13 @@ Object.keys(SET_DEF).forEach(k => { if (SET[k] == null) SET[k] = SET_DEF[k]; });
    speedSec = 速刷每题限时秒数，0 = 不限时（用户拍板：默认关，要限时自己去设置里开）。 */
 if (['normal', 'speed', 'recite'].indexOf(SET.quizMode) < 0) SET.quizMode = 'normal';
 SET.speedSec = Math.max(0, Math.min(300, Math.round(+SET.speedSec || 0)));
+/* 2026-11 精简：这四项已从界面移除，旧存档里的值也归零/复位，否则用户无从改回 */
+SET.speedSec = 0;
+SET.minimal = false;
+SET.fxSpd = 1;
+SET.lockMode = true;   /* 明暗锁：固定按皮肤原本的明暗，界面不再提供开关 */
+SET.autoContrast = true;
+SET.offline = false;
 /* 小窗启动：套回本窗上次的会话设置；第一次开就以当前全局值当起点，之后各走各的 */
 if (PIP_CTX) {
   const p = pipStore();
@@ -1020,11 +1027,9 @@ function applyBgMedia() {
     if (SET.bg === 'custom') root.style.setProperty('--bg-img', 'url("' + d + '")');
   });
 }
-/* 磨砂强度：默认 14px，只作用在开了「面板磨砂」的卡片 / 弹层上 */
+/* 磨砂已下线：面板一律纯半透明，不再产生 backdrop blur */
 function frostPx() {
-  var n = +SET.frostPx;
-  if (!isFinite(n) || n <= 0 || SET.frost === false) return 0;
-  return Math.max(0, Math.min(40, n));
+  return 0;
 }
 /* ---------- 视频背景：一个固定的 <video> 垫在最底层，object-fit:cover 自适应 ---------- */
 var BG_VIDEO_URL = '';
@@ -1860,6 +1865,8 @@ function applyLook() {
     }
   } catch (e) {}
   const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  /* 选中框颜色：全局一个变量，选项 / 多选 / 文字选中都吃它 */
+  try { document.documentElement.style.setProperty('--pick', SET.pickColor || ''); } catch (eP) {}
   const dark = (SET.theme === 'dark') || (SET.theme !== 'light' && sysDark);
   document.body.classList.toggle('dark', dark);
   bindRipple();
@@ -3259,7 +3266,7 @@ function route() {
   if (parts[0] === 'search') return { name: 'search' };
   if (parts[0] === 'kb') return { name: 'kb' };
   if (parts[0] === 'sync') return { name: 'sync' };
-  if (parts[0] === 'kp') return { name: 'kp' };   /* 知识点管理器 */   /* 云同步（sync.js）：电脑 ↔ 手机共用一份记录 */
+  if (parts[0] === 'kp') return { name: 'home' };   /* 知识点树已下线 */
   if (parts[0] === 'stats') return { name: 'stats' };
   if (parts[0] === 'mastery') return { name: 'mastery' };   /* 掌握度复盘（mastery.js，web258） */
   if (parts[0] === 'cal') return { name: 'cal' };             /* 复习日历（web184）：按月翻页看哪天到期 */
@@ -4981,6 +4988,7 @@ function renderQuiz(bankId) {
     if (pos >= pool.length) { fbNext.disabled = true; fbNext.textContent = '已经是最后一题'; }
     else on('fbNext', () => step(1));
   }
+  if ($('fbUndo')) on('fbUndo', undoJudge);
   /* 候补池 A：手机上左右滑动翻题（触屏才启用；位移 > 30px 且横向为主才算） */
   uiBindSwipe(bank);
   /* 候补池 H：长按题干弹「复制 / AI 解析 / 收藏」 */
@@ -5045,7 +5053,7 @@ function applyHandMode() {
 }
 /* 单手模式 · 浮动条拖动（web630）：速选条和翻页钮都能按住拖到顺手的位置，
    位置记在设置里，下次进来还在原地。 */
-function uiMakeDraggable(el, key) {
+function uiMakeDraggable(el, key, handleSel) {
   if (!el || el.__drag) return;
   el.__drag = 1;
   /* web632：必须「按住不动约 0.35 秒」才进入拖动，普通点按照样是点按钮 ——
@@ -5062,6 +5070,9 @@ function uiMakeDraggable(el, key) {
   };
   const clear = () => { try { clearTimeout(tmr); } catch (e) {} tmr = null; st = null; };
   el.addEventListener('pointerdown', ev => {
+    /* 指定了拖动把手（比如速选条顶部的 ⋮）时，只有按在把手上才算拖，
+       按在按钮上照常是点选项 / 上下滚动。 */
+    if (handleSel && !(ev.target.closest && ev.target.closest(handleSel))) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     const r = el.getBoundingClientRect();
     st = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, left: r.left, top: r.top };
@@ -5168,7 +5179,7 @@ function uiOptRail() {
     document.body.appendChild(rail);
   }
   rail.setAttribute('data-side', (SET.hand === 'left') ? 'left' : 'right');
-  try { uiMakeDraggable(rail, 'railPos'); } catch (eD1) {}
+  try { uiMakeDraggable(rail, 'railPos', '.orgrip'); } catch (eD1) {}
   const rows = opts.querySelectorAll('.opt');
   let html = '';
   rows.forEach((r, i) => {
@@ -5177,7 +5188,7 @@ function uiOptRail() {
     const picked = r.classList.contains('on') || r.classList.contains('sel') || r.classList.contains('checked');
     html += '<button type="button" class="orq' + (picked ? ' on' : '') + '" data-oi="' + i + '" title="选 ' + letter + '">' + letter + '</button>';
   });
-  rail.innerHTML = html;
+  rail.innerHTML = '<div class="orgrip" title="按住这里上下拖">⋮</div>' + html;
   rail.classList.toggle('two', rows.length > 6);
   /* web634：按钮跟着选项数量「伸缩」——选项多就分列并缩小，选项少就长回来，
      保证整条永远夹在顶栏与底栏之间，不会顶出屏幕。 */
@@ -5951,6 +5962,10 @@ function judge(bank, q, sel) {
   sel = (sel || []).filter(K => (QZ.excl[q.id] || []).indexOf(K) < 0);   /* 长按排除的选项不参与判分 */
   const k = kOf(bank, q);
   const ans = ansOf(favKey(bank, q), q);      // 手工修正过的答案优先
+  /* 撤销上次回答用的快照：答题记录可能原本就不存在（第一次答） */
+  const prevK0 = ANS[k] ? JSON.parse(JSON.stringify(ANS[k])) : null;
+  const paperKey0 = (bank.paper && q._srcKey) ? q._srcKey : null;
+  const prevS0 = (paperKey0 && ANS[paperKey0]) ? JSON.parse(JSON.stringify(ANS[paperKey0])) : null;
   const ok = commitAnswer(k, sel, ans);
   /* 套卷 / 模考：把这次对错累加到原题上（SRS 一并生效） */
   if (bank.paper && q._srcKey) commitAnswer(q._srcKey, sel, ans);
@@ -5963,6 +5978,7 @@ function judge(bank, q, sel) {
   }
   delete QZ.pending[q.id];
   saveAns();
+  LAST_JUDGE = { k: k, prevK: prevK0, src: paperKey0, prevS: prevS0, bankId: bank.id, qid: q.id, at: Date.now() };
   render();
   /* 候补池 B：判完立刻给反馈（触屏震一下 + 选项脉冲 + 答错一句提示） */
   uiFeedbackPulse(bank, q, ANS[k] || { ok: ok }, sel);
@@ -5978,6 +5994,20 @@ function judge(bank, q, sel) {
   }
   /* 速刷模式下不叠加 SET.autoNext 那次跳（否则两道跳会连跳两题）—— autoNext 本身的行为没动 */
   if (ok && SET.autoNext && SET.quizMode !== 'speed') setTimeout(() => step(1), 650);
+}
+
+/* 手机端答错后可以「撤销上一次回答」：把上一次判分前的答题记录原样放回去 */
+var LAST_JUDGE = null;
+function undoJudge() {
+  const u = LAST_JUDGE;
+  if (!u) { toast('没有可撤销的回答', 1400); return; }
+  LAST_JUDGE = null;
+  if (u.prevK) ANS[u.k] = u.prevK; else delete ANS[u.k];
+  if (u.src) { if (u.prevS) ANS[u.src] = u.prevS; else delete ANS[u.src]; }
+  saveAns();
+  try { invalidateBanks(); } catch (e) {}
+  try { render(); } catch (e) {}
+  toast('已撤销上一次回答', 1600);
 }
 
 function redo(bank, q) {
@@ -6174,7 +6204,7 @@ function uiReciteFb(bank, q) {
   fb.innerHTML = `
     <div class="res">📖 背题：正确答案 <b>${ansOf(fk, q).join('') || '—'}</b></div>
     ${richBox(fk, explainOf(fk, q), custom, '解析')}
-    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
+    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button>${(LAST_JUDGE && String(LAST_JUDGE.qid) === String(q.id)) ? '<button class="btn" id="fbUndo" title="把这道题恢复成没答过的样子">↩ 撤销上次回答</button>' : ''}</div>`;
   if (typeof richBindAll === 'function') richBindAll(fb);
   uiOptLink(fb);                                                       // §3.6-P1⑤：背题态也能点字母跳选项
 }
@@ -6275,7 +6305,7 @@ function showFb(bank, q) {
     ${showExp
       ? richBox(fk, explainOf(fk, q), custom, '解析')
       : `<div class="exp muted">（已答对，解析已隐藏，可在「设置」中开启）</div>`}
-    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button></div>`;
+    <div class="fbnext"><button class="btn primary" id="fbNext" title="和底部那个「下一题」一样（Enter 也行）">下一题 →</button>${(LAST_JUDGE && String(LAST_JUDGE.qid) === String(q.id)) ? '<button class="btn" id="fbUndo" title="把这道题恢复成没答过的样子">↩ 撤销上次回答</button>' : ''}</div>`;
   try { fbAutoHide(fb); } catch (e) {}
   if (showExp && typeof richBindAll === 'function') richBindAll(fb);   // 方案十：解析块就地可改
   uiOptLink(fb);                                                       // §3.6-P1⑤：解析里的 A/B/C/D 与选项联动
@@ -7175,8 +7205,6 @@ function renderStats() {
     ${none ? '<div class="note" style="margin:0 0 12px">还没有作答记录：回首页挑一个题库做几道，这里就有数据了。</div>' : ''}
     ${undated ? `<div class="small muted" style="margin:0 0 12px">另有 ${undated} 条早期记录没有日期（老版本数据），不计入下面的趋势图。</div>` : ''}
 
-    ${typeof reportSectionHtml === 'function' ? reportSectionHtml() : ''}
-
     <h2 class="sec" id="secDays">近 14 天</h2>
     <div class="card">
       <div class="tools" style="margin-top:0">
@@ -7450,6 +7478,15 @@ function styleTabsBuild() {
     if (!b) return;
     STYLE_TAB = b.getAttribute('data-cat') || 'all';
     paintStyleGrid();
+    const grid = $('styleGrid');
+    if (!grid) return;
+    if (STYLE_TAB === 'all') {
+      Array.prototype.forEach.call(grid.querySelectorAll('.sty-grp'), g => g.classList.remove('closed'));
+    } else {
+      const g = grid.querySelector('.sty-grp[data-grp="' + STYLE_TAB + '"]');
+      if (g) { g.classList.remove('closed'); try { g.scrollIntoView({ block: 'nearest' }); } catch (eS) {} }
+    }
+    styleSaveOpen();
   });
 }
 /* 风格缩略图卡：点一下就切（等价于下拉框 change），选中的加 .on */
@@ -7465,18 +7502,32 @@ function paintStyleGrid() {
     selBox.innerHTML = UI_STYLES.map(id => '<option value="' + id + '">' + (UI_STYLE_NAME[id] || id) + '</option>').join('');
   }
   if (!host.__built) {
-    host.innerHTML = UI_STYLES.map(id => {
-      const sw = UI_STYLE_SWATCH[id] || UI_STYLE_SWATCH.default;
-      return '<button type="button" class="sty-card" data-style-v="' + id + '" data-cat="' + (UI_STYLE_CAT[id] || 'base') + '" title="' + (UI_STYLE_DESC[id] || '') + '">' +
-        '<span class="sty-mini" style="border-radius:' + sw.r + ';border:' + sw.bd + ';box-shadow:' + sw.sh + ';background:' + sw.bg + '">' +
-        '<i class="sty-bar" style="background:' + sw.ac + ';border-radius:' + sw.r + '"></i>' +
-        '<i class="sty-line" style="background:' + sw.ac + '"></i>' +
-        '<i class="sty-line s" style="background:' + sw.ac + '"></i>' +
-        '<i class="sty-btn" style="background:' + sw.cd + ';border:1px solid ' + sw.ac + '"></i>' +
-        '</span><b>' + (UI_STYLE_NAME[id] || id) + '</b></button>';
+    /* web1011：42 张主题卡按分类折叠（每组一个可点标题），不再靠标签过滤 */
+    host.innerHTML = UI_STYLE_CATS.filter(c => c.id !== 'all').map(c => {
+      const ids = UI_STYLES.filter(id => (UI_STYLE_CAT[id] || 'base') === c.id);
+      if (!ids.length) return '';
+      const cards = ids.map(id => {
+        const sw = UI_STYLE_SWATCH[id] || UI_STYLE_SWATCH.default;
+        return '<button type="button" class="sty-card" data-style-v="' + id + '" data-cat="' + (UI_STYLE_CAT[id] || 'base') + '" title="' + (UI_STYLE_DESC[id] || '') + '">' +
+          '<span class="sty-mini" style="border-radius:' + sw.r + ';border:' + sw.bd + ';box-shadow:' + sw.sh + ';background:' + sw.bg + '">' +
+          '<i class="sty-bar" style="background:' + sw.ac + ';border-radius:' + sw.r + '"></i>' +
+          '<i class="sty-line" style="background:' + sw.ac + '"></i>' +
+          '<i class="sty-line s" style="background:' + sw.ac + '"></i>' +
+          '<i class="sty-btn" style="background:' + sw.cd + ';border:1px solid ' + sw.ac + '"></i>' +
+          '</span><b>' + (UI_STYLE_NAME[id] || id) + '</b></button>';
+      }).join('');
+      return '<div class="sty-grp" data-grp="' + c.id + '">'
+        + '<button type="button" class="sty-gh" data-gt="' + c.id + '"><i class="sty-gv">▾</i>' + c.name + '<em>' + ids.length + '</em></button>'
+        + '<div class="sty-gbody">' + cards + '</div></div>';
     }).join('');
     host.__built = true;
     host.addEventListener('click', e => {
+      const gh = e.target.closest && e.target.closest('[data-gt]');
+      if (gh) {
+        const grp = gh.closest('.sty-grp');
+        if (grp) { grp.classList.toggle('closed'); styleSaveOpen(); }
+        return;
+      }
       const card = e.target.closest && e.target.closest('[data-style-v]');
       if (!card) return;
       const sel = $('setStyle');
@@ -7484,12 +7535,23 @@ function paintStyleGrid() {
       sel.value = card.getAttribute('data-style-v');
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     });
+    /* 默认只展开当前风格所在那组，其余收起；用户手动开合过就沿用上次 */
+    const curCat = UI_STYLE_CAT[cur] || 'base';
+    Array.prototype.forEach.call(host.querySelectorAll('.sty-grp'), g => {
+      g.classList.toggle('closed', g.getAttribute('data-grp') !== curCat);
+    });
+    try {
+      const sv = JSON.parse(localStorage.getItem('qbank.styles.open.v1') || 'null');
+      if (sv && typeof sv === 'object') {
+        Array.prototype.forEach.call(host.querySelectorAll('.sty-grp'), g => {
+          const k = g.getAttribute('data-grp');
+          if (Object.prototype.hasOwnProperty.call(sv, k)) g.classList.toggle('closed', !sv[k]);
+        });
+      }
+    } catch (eS0) {}
   }
   Array.prototype.forEach.call(host.querySelectorAll('[data-style-v]'), el => {
-    const id = el.getAttribute('data-style-v');
-    el.classList.toggle('on', id === cur);
-    const hidden = STYLE_TAB !== 'all' && el.getAttribute('data-cat') !== STYLE_TAB;
-    el.style.display = hidden ? 'none' : '';
+    el.classList.toggle('on', el.getAttribute('data-style-v') === cur);
   });
   const tabs = $('styleTabs');
   if (tabs) {
@@ -7497,6 +7559,13 @@ function paintStyleGrid() {
       b.classList.toggle('on', b.getAttribute('data-cat') === STYLE_TAB);
     });
   }
+}
+function styleSaveOpen() {
+  try {
+    const open = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#styleGrid .sty-grp'), g => { open[g.getAttribute('data-grp')] = !g.classList.contains('closed'); });
+    localStorage.setItem('qbank.styles.open.v1', JSON.stringify(open));
+  } catch (e) {}
 }
 function openSettings() {
   $('setExpOnOk').checked = SET.expOnOk;
@@ -7510,7 +7579,6 @@ function openSettings() {
   if ($('fxSpd')) $('fxSpd').value = String(SET.fxSpd || 1);
   if ($('setMinimal')) $('setMinimal').checked = !!SET.minimal;
   if ($('setSmooth')) $('setSmooth').checked = !!SET.smooth;
-  if ($('setFrost')) $('setFrost').checked = SET.frost !== false;
   if ($('setFs')) $('setFs').value = SET.fs || 'm';
   if ($('setBig')) $('setBig').value = String(+SET.big === 2 ? 2 : (+SET.big === 1 ? 1 : 0));
   if ($('setTextColor')) $('setTextColor').value = SET.textColor || 'auto';
@@ -7521,8 +7589,6 @@ function openSettings() {
   paintGlowEls();
   const uiA = Math.round((isFinite(+SET.uiAlpha) && SET.uiAlpha != null ? +SET.uiAlpha : 1) * 100);
   if ($('setUiAlpha')) { $('setUiAlpha').value = uiA; if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = uiA + '%'; }
-  const fpx = isFinite(+SET.frostPx) && SET.frostPx != null ? +SET.frostPx : 14;
-  if ($('setFrostPx')) { $('setFrostPx').value = fpx; if ($('setFrostPxVal')) $('setFrostPxVal').textContent = fpx + 'px'; }
   if (!SRS_PRESETS[SRS.mode]) SRS.mode = 'sm2';
   srsPaintEls();
   $('setMask').classList.add('show');
@@ -7548,6 +7614,13 @@ if ($('setUiTextPick')) $('setUiTextPick').value = SET.uiTextPick || '#0b1220';
 if ($('setAutoContrast')) $('setAutoContrast').checked = SET.autoContrast !== false;
 on('setUiText', e => setLook('uiText', e.target.value), 'change');
 on('setUiTextPick', e => { SET.uiTextPick = e.target.value; setLook('uiText', 'custom'); }, 'input');
+if ($('setPickColor')) $('setPickColor').value = SET.pickColor || '#3f7ef0';
+on('setPickColor', e => {
+  SET.pickColor = e.target.value;
+  try { document.documentElement.style.setProperty('--pick', SET.pickColor); } catch (eP0) {}
+  try { writeLS(LS.set, SET); } catch (eP1) {}
+  toast('选中色已改成 ' + SET.pickColor.toUpperCase(), 1400);
+}, 'input');
 on('setAutoContrast', e => { SET.autoContrast = !!e.target.checked; setLook('autoContrast', SET.autoContrast); }, 'change');
 
 /* ---------- 皮肤锁明暗（web716） ---------- */
@@ -7669,19 +7742,12 @@ on('setGlowReset', () => {
 on('setBgPick', bgPick);
 on('setBgVideoPick', () => { const f = $('setBgVideo'); if (f) { f.value = ''; f.click(); } });
 on('setBgVideo', e => { const f = e.target.files && e.target.files[0]; if (f) bgSetFromVideo(f); }, 'change');
-on('setFrostPx', e => {
-  SET.frostPx = +e.target.value;
-  writeLS(LS.set, SET);
-  applyLook();
-  if ($('setFrostPxVal')) $('setFrostPxVal').textContent = e.target.value + 'px';
-}, 'input');
 on('setUiAlpha', e => {
   SET.uiAlpha = (+e.target.value) / 100;
   writeLS(LS.set, SET);
   applyLook();
   if ($('setUiAlphaVal')) $('setUiAlphaVal').textContent = e.target.value + '%';
 }, 'input');
-on('setFrost', e => { SET.frost = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
   on('setSmooth', e => { SET.smooth = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
   on('setMinimal', e => { SET.minimal = e.target.checked; writeLS(LS.set, SET); applyLook(); }, 'change');
 on('setBgClear', bgClearImage);
@@ -7974,3 +8040,20 @@ document.addEventListener('keydown', e => {
   });
   sync();
 })();
+
+/* web1011：第一次升级后，侧边栏默认切到「按考点分」（大科目 › 小考点），
+   不动用户已有的方案：新建一个方案并设为默认，原来的「默认方案」还在。 */
+setTimeout(function () {
+  try {
+    var DONE = 'qbank.scheme.kpdef.v1';
+    if (localStorage.getItem(DONE)) return;
+    if (localStorage.getItem('qbank.scheme.def.v1')) { localStorage.setItem(DONE, '1'); return; }
+    if (!window.SCM || !SCM.smallTags || !SCM.makeTagScheme || !SCM.setDefault) return;
+    var tags = SCM.smallTags() || [];
+    if (!tags.length) return;                       /* 还没有考点标签：保持现状 */
+    var id = SCM.makeTagScheme('考点分类', true);    /* true = 大科目 › 小考点 两层 */
+    if (id) { SCM.setDefault(id); if (SCM.reload) SCM.reload(); }
+    localStorage.setItem(DONE, '1');
+    try { toast('侧边栏已按考点重新分组：大科目 › 小考点（方案可在右上角切换）', 4200, 'ok'); } catch (e1) {}
+  } catch (e) {}
+}, 2600);

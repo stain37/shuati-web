@@ -65,10 +65,7 @@ body.dark .bank:hover,
 body.dark .resume:hover,
 body.dark .kbcard:hover,
 body.dark .card:hover{
-  box-shadow:
-    var(--sh-2),
-    0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent),
-    0 0 58px -20px var(--glow-1);
+  box-shadow:var(--sh-2);
 }
 
 /* ---------- 主按钮 / 发送键：轻微光晕 ---------- */
@@ -92,18 +89,7 @@ body.dark .hero .hstat>button.hs:hover{
   .btn:active:not(:disabled){transform:translateY(0) scale(.985)}
 }
 
-/* ---------- 所有面板：指针经过时有柔光 + 外扩 ---------- */
-.card:hover,.vb-card:hover,.nb-card:hover,.bank:hover,.kbcard:hover{
-  background-image:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--primary) 16%,transparent),transparent 70%);
-  background-repeat:no-repeat;
-  box-shadow:var(--sh-2),0 0 0 1px color-mix(in srgb,var(--primary) 26%,transparent),0 0 48px -16px var(--glow-1);
-}
-/* 「继续刷题」自己带渐变，柔光叠在最上面，不要把渐变盖没 */
-.resume:hover{
-  background-image:radial-gradient(360px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--primary) 16%,transparent),transparent 70%),linear-gradient(135deg,var(--primary-weak),var(--card) 70%);
-  background-repeat:no-repeat;
-  box-shadow:var(--sh-2),0 0 0 1px color-mix(in srgb,var(--primary) 26%,transparent),0 0 48px -16px var(--glow-1);
-}
+/* ---------- 指针柔光已下线：面板/按钮 hover 不再有跟随光斑与金属描边 ---------- */
 
 /* ---------- 首屏轻量入场 ---------- */
 @keyframes motionRise{

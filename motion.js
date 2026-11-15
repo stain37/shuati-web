@@ -9,8 +9,8 @@
   if (reduce) return;
   try { document.documentElement.classList.add('motion-ok'); } catch (e) {}
   var active = null, raf = 0, mx = 50, my = 0;
-  /* 除了 hero，所有面板（卡片 / bento 卡 / 目录卡 / 继续刷题）也要有指针柔光 */
-  var PANEL = '.card,.vb-card,.nb-card,.resume,.bank,.kbcard,.sheet';
+  /* 面板跟随光斑已下线：只保留首屏 hero 的柔光 */
+  var PANEL = '';
   function heroOf(t) {
     try { return t && t.closest ? t.closest('.hero') : null; } catch (e) { return null; }
   }

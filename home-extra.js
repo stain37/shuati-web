@@ -96,7 +96,6 @@
     return [
       { id: 'review', sys: 1, subject: '复习', title: '每日复习', meta: rv ? rv + ' 道到期' : '今天没有到期', href: '#/wrong', ico: '🔁', estimate: rv ? Math.min(30, rv * 2) : 0, autoDone: rv === 0, subs: [] },
       { id: 'cards', sys: 1, subject: '考点卡', title: '背考点卡', meta: cd ? cd + ' 张待背' : '都背完了', href: '#/cards', ico: '🃏', estimate: cdc(cd), autoDone: cd === 0, subs: csubs },
-      { id: 'kp', subject: '知识点', title: '整理 / 练知识点', meta: '从最弱的子树出 30 题', href: '#/kp', ico: '🧩', estimate: 20, autoDone: false, subs: [{ id: 'k0', label: '看一眼盲区（没挂卡的考点）' }, { id: 'k1', label: '从最弱子树出 30 题' }] },
       { id: 'redo', sys: 1, subject: '错题', title: '错题重做 20 题', meta: '只看做错过的，答对就订正', href: '#/wrong', ico: '📕', estimate: 12, autoDone: false, subs: [] },
       { id: 'rand', subject: '套卷', title: '随机 30 题', meta: '抽一遍当热身', href: '#/bank', ico: '🎲', estimate: 15, autoDone: false, subs: [] },
       { id: 'notes', subject: '笔记', title: '复习知识点笔记', meta: '把标记过的笔记过一遍', href: '#/notes', ico: '📒', estimate: 10, autoDone: false, subs: [] }
@@ -399,7 +398,6 @@
       + '<button type="button" data-h="" class="on">不跳转</button>'
       + '<button type="button" data-h="#/wrong">错题本</button>'
       + '<button type="button" data-h="#/cards">考点卡</button>'
-      + '<button type="button" data-h="#/kp">知识点</button>'
       + '<button type="button" data-h="#/notes">笔记</button></div>'
       + '<div class="bd-sh-lb">宏（可选）</div>'
       + '<div class="bd-sh-rows"><button type="button" class="bd-rec-start">● 录制一段操作</button>'

@@ -12,14 +12,14 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="刷题站">
 <meta name="application-name" content="刷题站">
-<link rel="stylesheet" href="style.css?v=20261114gwp16">
+<link rel="stylesheet" href="style.css?v=20261115e">
 <link rel="stylesheet" href="bfui.css?v=20261014e">
 <link rel="stylesheet" href="cat.css?v=20261110b">
 <link rel="stylesheet" href="map.css?v=20261112zzj">
 <link rel="stylesheet" href="guide.css?v=20261022a">
 <link rel="stylesheet" href="chat.css?v=20261105c">
 <link rel="stylesheet" href="diagram.css?v=20261031a">
-<link rel="stylesheet" href="motion.css?v=20261030c">
+<link rel="stylesheet" href="motion.css?v=20261115a">
 <link rel="stylesheet" href="anim.css?v=20261105b">
 <link rel="stylesheet" href="fxs.css?v=20261105e">
 <link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
@@ -35,7 +35,7 @@
       var st = s && s.style;
       if (!st || st === 'default' || document.getElementById('skinsCss')) return;
       var l = document.createElement('link');
-      l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261107b';
+      l.id = 'skinsCss'; l.rel = 'stylesheet'; l.href = 'skins.css?v=20261115a';
       (document.head || document.documentElement).appendChild(l);
     } catch (e) {}
   })();
@@ -182,17 +182,8 @@ var iv=setInterval(function(){n++;
       <option value="custom">自定义…</option>
     </select>
     <input type="color" id="setUiTextPick" value="#0b1220" title="自定义界面文字色">
-    <label class="tl" for="setAutoContrast" title="关掉后完全按皮肤原样，看不清也不管"
-      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-      <input type="checkbox" id="setAutoContrast" checked>自动保证文字看得清
-    <label class="chk" title="每套皮肤只有浅色版或只有深色版：勾上后换皮肤会自动切到它自己的明暗，避免白字压白卡"><input type="checkbox" id="setLockMode" checked>皮肤锁明暗</label>
-    <button class="btn small" id="btnModeMap" title="逐套设定：浅色 / 深色 / 两版都行">明暗逐套设定…</button>
-    <span class="small muted" id="modeLockHint"></span>
-    </label>
-    <label class="tl" for="setOffline" title="打开后除了本站自己的静态文件，任何联网请求（AI、云同步、外部接口）都会被拦下并提示；读 PDF、刷题、本地抽题照常"
-      style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-      <input type="checkbox" id="setOffline">🔌 离线模式（不联网）
-    </label>
+    <span class="tl" title="选项选中 / 多选框 / 文字选中时用的颜色">选中色</span>
+    <input type="color" id="setPickColor" value="#3f7ef0" title="选中框、选中文字的颜色">
     <span class="tl">主题色</span>
     <select class="num" id="setColor" title="按钮 / 链接 / 进度条 / 高亮 / 热力图 / 首页主卡都会跟着变">
       <option value="teal">冷静青（默认）</option>
@@ -250,7 +241,6 @@ var iv=setInterval(function(){n++;
   <div class="tools" style="margin-top:6px">
     <button class="btn small" id="thSave" title="把当前外观存成主题包，并下载一份 .theme.json">💾 存成主题包</button>
     <button class="btn small" id="thImport" title="选一个 .theme.json 套用">📥 导入主题包</button>
-    <button class="btn small" id="thStore" title="看商店里有哪些主题（只下你想用的那一个）">🛍 主题商店</button>
     <button class="btn small" id="thReset" title="清掉主题包，回到官方默认外观">↩ 恢复官方外观</button>
     <input type="file" id="thFile" accept=".json,application/json" hidden>
   </div>
@@ -262,9 +252,6 @@ var iv=setInterval(function(){n++;
     <span class="tl">面板不透明度</span>
     <input type="range" id="setUiAlpha" min="30" max="100" step="5" value="100" style="width:120px;vertical-align:middle">
     <span class="small muted" id="setUiAlphaVal">100%</span>
-    <span class="tl" id="setFrostPxLabel">磨砂强度</span>
-    <input type="range" id="setFrostPx" min="0" max="30" step="2" value="14" style="width:100px;vertical-align:middle">
-    <span class="small muted" id="setFrostPxVal">14px</span>
   </div>
     <div class="tools" style="margin-top:6px">
       <span class="tl">卡片/首屏外发光</span>
@@ -280,29 +267,12 @@ var iv=setInterval(function(){n++;
       <button class="btn small" type="button" id="setGlowReset">跟随主色</button>
       <span class="hint" id="glowHint" style="margin-top:0"></span>
     </div>
-  <label class="chk"><input type="checkbox" id="setFrost" checked> 面板磨砂（背景模糊，关掉就是纯半透明）</label>
   <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
   <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
-  <div class="tools" style="margin-top:6px">
-    <span class="tl">⚡ 速刷限时</span>
-    <input class="num" type="number" id="setSpeedSec" min="0" max="300" step="5" style="width:78px">
-    <span class="small muted">秒 / 题（0 = 不限时）—— 只在「⚡ 速刷模式」生效，超时算答错并自动跳</span>
-  </div>
   <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
   <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
-  <label class="chk"><input type="checkbox" id="setMinimal"> 极简模式（关掉背景氛围 / 动效 / 首页引导卡，只留刷题和管理的界面）</label>
 <label class="chk"><input type="checkbox" id="setSmooth"> 流畅模式（玻璃换成普通模糊、去掉多层阴影与折射，减少重绘开销）</label>
   <label class="chk"><input type="checkbox" id="setReduceMotion"> 减少动态效果（关掉全站动画 / 过渡 / 彩带，和系统「减少动态效果」同效）</label>
-  <div class="tools" style="margin-top:6px">
-    <span class="tl">动效速度</span>
-    <select class="num" id="fxSpd">
-      <option value="0.7">慢一点</option>
-      <option value="1">标准</option>
-      <option value="1.4">快一点</option>
-      <option value="1.8">很快</option>
-    </select>
-    <span class="small muted">影响换页、换题、弹窗、入场这些动画的时长（上面勾了「减少动态效果」就不播）</span>
-  </div>
   <div class="tools" style="margin-top:12px">
     <span class="tl">复习曲线</span>
     <select class="num" id="srsMode"></select>
@@ -382,7 +352,7 @@ var iv=setInterval(function(){n++;
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261114f"></script>
+<script src="app.js?v=20261115f"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
@@ -398,15 +368,14 @@ var iv=setInterval(function(){n++;
   <script src="kp.js?v=20261112e"></script>
   <script src="kp-ui.js?v=20261112k"></script>
   <script src="ux228.js?v=20261113a"></script>
-  <script src="ux004.js?v=20261113a"></script>
   <script src="ux011.js?v=20261113d"></script>
   <script src="ux010.js?v=20261113d"></script>
   <script src="ux351.js?v=20261114a"></script>
-  <script src="home-extra.js?v=20261113o"></script>
+  <script src="home-extra.js?v=20261115a"></script>
 <script src="ux201.js?v=20261113d"></script>
 <script src="ux216.js?v=20261113b"></script>
 <script src="ux099.js?v=20261114a"></script>
-<script src="cards.js?v=20261113r"></script>
+<script src="cards.js?v=20261115d"></script>
   <script src="notes.js?v=20261112zo"></script>
 <script src="ai.js?v=20261112d"></script>
 
@@ -415,7 +384,7 @@ var iv=setInterval(function(){n++;
      用 window.CAT / window.BF 暴露接口，app.js 里只做了几行最小改动。 -->
 <script src="bfui.js?v=20261014e"></script>
 <script src="scheme.js?v=20261111b"></script>
-<script src="cat.js?v=20261113ze"></script>
+<script src="cat.js?v=20261115a"></script>
 <script src="bf.js?v=20261109b"></script>
 <link rel="stylesheet" href="bf-folder.css?v=20261014e">
 <script src="bf-folder.js?v=20261104a"></script>
@@ -445,7 +414,7 @@ var iv=setInterval(function(){n++;
 <script src="chat.js?v=20261106a"></script>
 <script src="skills.js?v=20261031c"></script>
 <script src="ai-ops.js?v=20261105c"></script>
-<script src="motion.js?v=20261030b"></script>
+<script src="motion.js?v=20261115a"></script>
 <script src="pip.js?v=20261106c"></script>
 <script src="ink.js?v=20261106e"></script>
 <script src="voice.js?v=20261110i"></script>

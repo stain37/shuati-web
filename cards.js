@@ -226,6 +226,26 @@
   }
 
 
+  /* 从题库列表点「✨ AI 结论」跳过来：进来后自动开跑一次（只跑一次） */
+  function autoGenReq(bankId) {
+    try {
+      var k = 'qbank.cards.genreq.v1';
+      if (sessionStorage.getItem(k) !== bankId) return;
+      sessionStorage.removeItem(k);
+      var bk = bankOf(bankId);
+      if (!bk) return;
+      var items = itemsOf(bk), gm = genMap();
+      var miss = items.filter(function (it) { return !(gm[it.key] && gm[it.key].t); });
+      setTimeout(function () {
+        try {
+          if (!miss.length) {
+            if (confirm('这个题库的结论都写过了，要重新生成一遍吗？')) genAll(true);
+          } else genAll(false);
+        } catch (e) {}
+      }, 450);
+    } catch (e) {}
+  }
+
   /* ---------- 组装某个题库的考点条目 ---------- */
   function shortStem(q) {
     var s = String((q && q.stem) || '').replace(/\s+/g, '');
@@ -412,7 +432,12 @@
   }
   function bankSort(list, mode) {
     var arr = list.slice();
-    if (mode === 'undone') arr.sort(function (a, b) { return (b.st.p.total - b.st.p.done) - (a.st.p.total - a.st.p.done); });
+    if (mode === 'added') arr.sort(function (a, b) {
+      /* 最近添加的题库排前面；老数据没有 createdAt 就按「最后动过」兜底 */
+      var ta = +a.b.createdAt || +a.st.ts || 0, tb = +b.b.createdAt || +b.st.ts || 0;
+      return tb - ta;
+    });
+    else if (mode === 'undone') arr.sort(function (a, b) { return (b.st.p.total - b.st.p.done) - (a.st.p.total - a.st.p.done); });
     else if (mode === 'size') arr.sort(function (a, b) { return (b.b.questions || []).length - (a.b.questions || []).length; });
     else if (mode === 'recent') arr.sort(function (a, b) { return (b.st.ts || 0) - (a.st.ts || 0); });
     else if (mode === 'name') arr.sort(function (a, b) { return String(a.b.title || a.b.id).localeCompare(String(b.b.title || b.b.id), 'zh'); });
@@ -423,7 +448,7 @@
     { k: 'new', t: '未开始' }, { k: 'doing', t: '在背' }, { k: 'done', t: '已背完' }
   ];
   var BS = [
-    { k: 'def', t: '默认顺序' }, { k: 'undone', t: '未背最多' },
+    { k: 'def', t: '默认顺序' }, { k: 'added', t: '最近添加题库' }, { k: 'undone', t: '未背最多' },
     { k: 'size', t: '题量最多' }, { k: 'recent', t: '最近打开' }, { k: 'name', t: '名称' }
   ];
   function renderBankList() {
@@ -493,6 +518,7 @@
         + '<div class="cd-bacts">'
         + '<button class="btn primary" data-act="open" data-id="' + esc(b.id) + '"' + (empty ? ' disabled' : '') + '>看考点 →</button>'
         + '<button class="btn" data-act="quiz" data-id="' + esc(b.id) + '">开始刷题</button>'
+        + '<button class="btn" data-act="genbank" data-id="' + esc(b.id) + '"' + (empty ? ' disabled' : '') + ' title="按考点一键生成背诵结论（先写结论，再进背诵）">✨ AI 结论</button>'
         + '</div></div>';
     });
     if (!shownRows.length) {
@@ -796,7 +822,7 @@
         closeCard();
         location.hash = '#/search';
       } else if (kind === 'lec') {
-        closeCard();
+        /* 别再先 closeCard()：讲义面板关掉（❌）以后要能回到这张卡片 */
         setTimeout(function () {
           try {
             if (!window.LECTURE) return toast('讲义模块没加载', 1600);
@@ -882,8 +908,9 @@
         return;
       }
       if (a === 'reveal') {
-        REVEALED = true;
-        paintCard();
+        /* 只揭开点的这一块：以前是 REVEALED=true 后整张卡重画，所有遮挡一起消失 */
+        b.classList.remove('hid');
+        b.removeAttribute('data-act');
         return;
       }
       if (a === 'undo') {
@@ -912,18 +939,6 @@
       if (a === 'no') return mark(-1);
       if (a === 'rate') return rate(Number(b.getAttribute('data-r')) || 3);
       if (a === 'ai') return genOne();
-      if (a === 'kp') {
-        var itk = filterItems()[ST.i];
-        if (!itk) return;
-        if (!window.KP || !window.KP.attachCard) { toast('知识点模块没加载，刷新一次再试', 2000); return; }
-        var nm1 = cardName(itk);
-        toast('正在挂到知识点…', 1000);
-        window.KP.attachCard({ key: itk.key, name: nm1, subj: ST.bankTitle || '' }).then(function (node) {
-          toast('已挂到「' + node.name + '」', 1800);
-          paintCard();
-        }).catch(function (e2) { toast('挂不上：' + (e2 && e2.message || e2), 2400); });
-        return;
-      }
       if (a === 'kw') return kwMenuShow(b, b.getAttribute('data-kw') || b.textContent || '');
       if (a === 'stem') {
         var s = $('#cdStem');
@@ -1031,14 +1046,6 @@
       + ' · <span class="cc-srs">背过 ' + ((stateOf(it).reps || 0)) + ' 次 · 下次 ' + dueText(stateOf(it)) + '</span></div>'
       + (UNDO && Date.now() - UNDO.at < 30 * 60000
         ? '<button class="cc-undo" data-act="undo">↩ 撤销上一次评分</button>' : '')
-      + '<div class="cc-kpline">'
-      + (function () {
-          var e = (window.KP && KP.cardEntry) ? KP.cardEntry(it.key) : null;
-          return e
-            ? '<u class="cc-kptag">🧩 已挂：' + esc(e.name || '知识点') + '</u><button class="cc-kpbtn ghost" data-act="kp">换一个</button>'
-            : '<button class="cc-kpbtn" data-act="kp">🧩 挂到知识点</button>';
-        })()
-      + '</div>'
       + '</div>'
       + '<button class="cc-ai" data-act="ai">✨ ' + (one.ai ? '重新生成本卡' : '让 AI 写这张卡') + '</button></div>';
     $('#cdStage').innerHTML = html;
@@ -1300,6 +1307,18 @@
       location.hash = '#/bank/' + encodeURIComponent(id);
       return;
     }
+    if (a === 'genbank') {
+      var gid = b.getAttribute('data-id');
+      var gb = bankOf(gid);
+      if (!gb) return;
+      ST.bankId = gid;
+      ST.bankTitle = gb.title || gb.id;
+      ST.items = itemsOf(gb);
+      ST.i = 0;
+      try { sessionStorage.setItem('qbank.cards.genreq.v1', gid); } catch (e1) {}
+      location.hash = '#/cards/' + encodeURIComponent(gid);
+      return;
+    }
     if (a === 'card') {
       ST.i = parseInt(b.getAttribute('data-i'), 10) || 0;
       paintCard();
@@ -1391,6 +1410,7 @@
             clearInterval(timer);
             ST.bankTitle = b2.title || b2.id;
             renderPreview();
+            autoGenReq(bankId);
           } else if (++tries > 12) {
             clearInterval(timer);
             if (location.hash.indexOf('/cards/') < 0) return;
@@ -1401,6 +1421,7 @@
       }
       ST.bankTitle = bk.title || bk.id;
       renderPreview();
+      autoGenReq(bankId);
     } else {
       ST.bankId = null;
       renderBankList();
