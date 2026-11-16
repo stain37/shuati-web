@@ -25,7 +25,7 @@
      线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
      现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
            ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
-  var IDX_CACHE = 'qbank.lec.idx.v3';
+  var IDX_CACHE = 'qbank.lec.idx.v4';
   function parseCompact(j) {
     IDX = j; BYKEY = {};
     var map = {}, srcs = j.s || [];
@@ -60,7 +60,7 @@
   /* 注意：404 也是可缓存响应。之前用 ?t=<今天日期> + force-cache，
      站点重建那几分钟里拿到过一次 404，就会被浏览器缓存一整天 → 一直“目录没读出来”。
      现在：版本号做 key；重试时带随机数 + no-store，绝不吃坏缓存。 */
-  var LEC_VER = '20261112a';
+  var LEC_VER = '20261116b';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -89,7 +89,6 @@
   var GH_RAW = 'https://raw.githubusercontent.com/stain37/shuati-web/main/';
   var COS = 'https://123ttt-1312809820.cos.ap-guangzhou.myqcloud.com/';
   var BASES = [
-    { id: 'cos', pre: COS },
     { id: 'ghproxy', pre: 'https://gh-proxy.com/' + GH_RAW },
     { id: 'ghfast', pre: 'https://ghfast.top/' + GH_RAW },
     { id: 'origin', pre: '' }
