@@ -323,5 +323,5 @@
     open(nm, d ? (d.text || '') : '');
   }, true);
 
-  window.KbDoc = { open: open, close: close, findDoc: findDoc, tab: switchTab };
+  window.KbDoc = { open: open, openTag: openTag, close: close, findDoc: findDoc, tab: switchTab };
 })();

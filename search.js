@@ -18,14 +18,28 @@
     return '其他';
   }
 
+  function niceName(raw) {
+    var s = String(raw || '');
+    for (var i = 0; i < 3; i++) {
+      try { var d = decodeURIComponent(s); if (d === s) break; s = d; } catch (e) { break; }
+    }
+    s = s.replace(/^#\/?(tag|bank)?\/?/, '').replace(/^tg[:%]?3?A?/i, '');
+    try { s = decodeURIComponent(s); } catch (e2) {}
+    return s || raw;
+  }
+
   function pushNoteItems() {
     for (var i = 0; i < localStorage.length; i++) {
       var k = localStorage.key(i);
-      if (k && k.indexOf('kbdoc.tag.') === 0) {
+      if (!k) continue;
+      var md = localStorage.getItem(k) || '';
+      if (k.indexOf('kbdoc.tag.') === 0) {
         var tag = k.slice(10);
-        var md = localStorage.getItem(k) || '';
         if (!md.trim()) continue;
-        ITEMS.push({ id: 'note:' + tag, t: tag, s: '我的笔记', g: '知识点笔记', x: md, src: '我的笔记' });
+        ITEMS.push({ id: 'note:' + k, t: niceName(tag), s: '我的笔记', g: '知识点笔记', x: md, src: '我的笔记', kind: 'tag', key: k, tagId: tag });
+      } else if (k.indexOf('kbdoc.doc.') === 0) {
+        var title = k.slice(10);
+        ITEMS.push({ id: 'note:' + k, t: title, s: '我的笔记', g: '自由笔记', x: md, src: '我的笔记', kind: 'doc', key: k, tagId: '' });
       }
     }
   }
@@ -288,6 +302,35 @@
   }
   function esc2(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 
+
+  function openNote(item) {
+    close();
+    if (!window.KbDoc) { alert('编辑器还没加载好，稍等一秒再点'); return; }
+    if (item.kind === 'tag') window.KbDoc.openTag(item.tagId, item.t, item.x);
+    else window.KbDoc.open(item.t, item.x);
+  }
+
+  function delNote(item, ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    if (!confirm('删除笔记「' + item.t + '」？删了就找不回来了。')) return;
+    try { localStorage.removeItem(item.key); } catch (e) {}
+    ITEMS = ITEMS.filter(function (x) { return x.key !== item.key; });
+    run();
+  }
+
+  function newNote() {
+    var title = prompt('新笔记的标题（保存后可在「我的笔记」里找到）', '未命名笔记');
+    if (title == null) return;
+    title = String(title).trim();
+    if (!title) return;
+    var key = 'kbdoc.doc.' + title;
+    if (localStorage.getItem(key) != null) { alert('已经有同名笔记了'); return; }
+    localStorage.setItem(key, '');
+    var item = { id: 'note:' + key, t: title, s: '我的笔记', g: '自由笔记', x: '', src: '我的笔记', kind: 'doc', key: key, tagId: '' };
+    ITEMS.push(item);
+    openNote(item);
+  }
+
   function run() {
     if (!list) return;
     var q = (input.value || '').trim().toLowerCase();
@@ -304,16 +347,32 @@
     } else {
       res = res.slice(0, 30);
     }
+    list.innerHTML = '';
+    if (CUR_SUBJ === '我的笔记') {
+      var bar = el('div', 'gsItem');
+      bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid #f1f5f9';
+      bar.innerHTML = '<b style="font-size:13px">我的笔记 · ' + res.length + ' 篇</b><span style="flex:1"></span>';
+      var add = el('span', null, '＋ 新建笔记');
+      add.style.cssText = 'background:#2563eb;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer';
+      add.onclick = function (e) { e.stopPropagation(); newNote(); };
+      bar.appendChild(add);
+      list.appendChild(bar);
+    }
     if (!res.length) {
-      list.innerHTML = '<div id="gsEmpty">' + (READY ? '没有匹配的笔记' : '正在加载笔记…') + '</div>';
+      list.appendChild(el('div', null, '<div id="gsEmpty">' + (READY ? '还没有笔记，点上面的「＋ 新建笔记」写一篇' : '正在加载笔记…') + '</div>'));
       return;
     }
-    list.innerHTML = '';
     res.forEach(function (it) {
       var d = el('div', 'gsItem');
+      var note = it.kind === 'tag' || it.kind === 'doc';
       d.innerHTML = '<b>' + esc2(it.t) + '</b><i>' + esc2(it.src + (it.page ? ' · ' + it.page : '')) + '</i>'
+        + (note ? '<i style="float:right;color:#ef4444;cursor:pointer;font-size:12px" data-del="1">删除</i>' : '')
         + '<p>' + esc2(q ? snippet(it, q, 90) : it.x.replace(/\s+/g, ' ').slice(0, 90)) + '</p>';
-      d.onclick = function () { openPeek(it); };
+      d.onclick = function (e) {
+        if (e.target && e.target.getAttribute && e.target.getAttribute('data-del')) { delNote(it, e); return; }
+        if (note) { openNote(it); return; }
+        openPeek(it);
+      };
       list.appendChild(d);
     });
   }
