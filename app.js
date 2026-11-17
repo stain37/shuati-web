@@ -4651,9 +4651,13 @@ function renderQuiz(bankId) {
         return;
       }
     }
-    $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。</div></div>`;
+    $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
+      + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=${(bank.questions || []).length} · filter=${esc(QZ.filter)} · subj=${esc(QZ.subject || 'all')} · SCM=${window.SCM ? 'yes' : 'no'}</small><br>`
+      + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
     $('stat').textContent = ''; $('bar').style.width = '0%';
     renderChips(bank);
+    var rb = document.getElementById('qzReload');
+    if (rb) rb.onclick = function () { location.reload(); };
     return;
   }
   bank._retryLoad = false;
