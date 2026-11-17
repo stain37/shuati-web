@@ -1186,7 +1186,8 @@
     return out.join('\n');
   }
   function _safe(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
-  function exportFolderQs(cid) {
+  function exportFolderQs(cid, fmt) {
+    fmt = fmt === 'json' ? 'json' : 'md';
     var sub = catSubtree(cid);
     var all = banks() || [];
     var map = {}; all.forEach(function (b) { map[b.id] = b; });
@@ -1195,11 +1196,8 @@
       if (b && (b.questions || []).length) return b;
       try { if (window.__PIP_BANK) { var f = window.__PIP_BANK(id); if (f && (f.questions || []).length) return f; } } catch (e) {}
       try { if (typeof bankById === 'function') { var g = bankById(id); if (g && (g.questions || []).length) return g; } } catch (e2) {}
-      try { if (CAT.bankOf) { var h = CAT.bankOf(id); if (h && (h.questions || []).length) return h; } } catch (e3) {}
       return b;
     }
-    var pickedCat = sub.banks.map(fullBank).filter(function (b) { return b && (b.questions || []).length; });
-    var files = [];
     var c0 = CAT.get ? CAT.get(cid) : null;
     var top = _safe((c0 && c0.title) || '考点');
     function relPath(catId) {
@@ -1207,12 +1205,32 @@
       while (cur && cur.id !== cid && guard++ < 12) { parts.unshift(_safe(cur.title || cur.id)); cur = CAT.get(cur.parent || null); }
       return parts;
     }
-    pickedCat.forEach(function (b) {
-      files.push({ name: [top].concat(relPath(b.cat || null), [_safe(b.title || b.id)]).join('/') + '.md', text: _qsMd(b) });
+
+    var seen = {}, records = [];
+    function rec(q, tag, bank) {
+      var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      if (!stem) return;
+      var key = bank + '|' + stem.slice(0, 60);
+      if (seen[key]) return;
+      seen[key] = 1;
+      var opts = (q.options || q.opts || q.choices || q.items || []).map(function (o) {
+        return String(o).replace(/^\s*[A-Z][\.．、]\s*/, '').replace(/\s+/g, ' ').trim();
+      });
+      var ans = q.answer != null ? q.answer : (q.ans != null ? q.ans : (q.correct != null ? q.correct : ''));
+      if (Array.isArray(ans)) ans = ans.join('');
+      ans = String(ans).trim();
+      var type = q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : ''));
+      records.push({ tag: tag || '', bank: bank || '', type: type, stem: stem, options: opts, answer: ans,
+        explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() });
+    }
+
+    /* 普通题库文件夹 */
+    sub.banks.map(fullBank).filter(function (b) { return b && (b.questions || []).length; }).forEach(function (b) {
+      var label = [relPath(b.cat || null).join(' › '), b.title || ''].filter(Boolean).join(' › ');
+      (b.questions || []).forEach(function (q) { rec(q, label, b.title || ''); });
     });
 
-    /* 方案「三级索引」里的标签文件夹（tgcat:/tgb:）：题目挂在 SCM 的标签索引上 */
-    var tagCount = 0;
+    /* 方案「三级索引」的标签文件夹（tgcat:/tgb:） */
     try {
       var idSet = [cid];
       try { if (typeof descIds === 'function') idSet = idSet.concat(descIds(cid)); } catch (e0) {}
@@ -1223,51 +1241,49 @@
         var rows = [];
         try { rows = SCM.tagQList(sid) || []; } catch (e1) { rows = []; }
         if (!rows.length) return;
-        var cnode = CAT.get ? CAT.get(nid) : null;
-        var sub = _safe((cnode && cnode.title) || sid.slice(0, 12));
+        var tagName = '';
         if (sid.indexOf('tgcat:') === 0) {
-          try { sub = _safe(decodeURIComponent(sid.slice(6)).replace(/[\\/]+/g, ' › ').slice(0, 60)); } catch (eD) {}
+          try { tagName = decodeURIComponent(sid.slice(6)).replace(/[\\/]+/g, ' › '); } catch (eD) { tagName = sid.slice(6); }
+        } else {
+          var cn = CAT.get ? CAT.get(nid) : null;
+          tagName = (cn && cn.title) || sid.slice(0, 12);
         }
-        var byBank = {};
-        rows.forEach(function (r) {
-          var bn = _safe(r.bankName || r._bname || '题目');
-          (byBank[bn] = byBank[bn] || []).push(r);
-        });
-        Object.keys(byBank).forEach(function (bn) {
-          var arr = byBank[bn];
-          var out = ['# ' + sub + ' · ' + bn, ''];
-          arr.forEach(function (row, i) {
-            var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
-            var stem = String(q.stem || q.title || q.q || q.name || row.title || '').replace(/\s+/g, ' ').trim();
-            out.push('## ' + (i + 1) + '. ' + stem);
-            var opts = q.options || q.opts || q.choices || q.items || [];
-            opts.forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
-            var ans = q.answer != null ? q.answer : (q.ans != null ? q.ans : (q.correct != null ? q.correct : ''));
-            if (Array.isArray(ans)) ans = ans.join('');
-            ans = String(ans).trim();
-            var type = q.type || row.type || '';
-            if (!type) type = (ans.length > 1) ? '多选' : (ans ? '单选' : '');
-            if (type) out.push('题型：' + type);
-            if (ans) out.push('答案：' + ans);
-            var ex = q.explain || q.exp || q.analysis || q.why || '';
-            if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
-            out.push('');
-          });
-          tagCount += arr.length;
-          files.push({ name: top + '/' + sub + '/' + bn + '.md', text: out.join('\n') });
+        rows.forEach(function (row) {
+          var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
+          rec(q, tagName, row.bankName || row._bname || '');
         });
       });
     } catch (eT) {}
 
-    if (!files.length) {
-      try { toast('这个文件夹下没有可导出的题目（题库 ' + sub.banks.length + ' 个，标签题 0 道）', 2600); } catch (e) {}
+    if (!records.length) {
+      try { toast('这个文件夹下没有可导出的题目（题库 ' + sub.banks.length + ' 个）', 2600); } catch (e) {}
       return;
     }
-    var blob = _zipStore(files);
+
+    var nameBase = top + '-题目', blob, fname;
+    if (fmt === 'json') {
+      var data = { folder: (c0 && c0.title) || top, count: records.length, items: records };
+      blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json;charset=utf-8' });
+      fname = nameBase + '.json';
+    } else {
+      var out = ['# ' + ((c0 && c0.title) || top) + ' · 题目（共 ' + records.length + ' 题）', ''];
+      var lastTag = null;
+      records.forEach(function (r, i) {
+        if (r.tag && r.tag !== lastTag) { out.push('## ' + r.tag, ''); lastTag = r.tag; }
+        out.push('### ' + (i + 1) + '. ' + r.stem);
+        if (r.type) out.push('题型：' + r.type);
+        r.options.forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + o); });
+        if (r.answer) out.push('答案：' + r.answer);
+        if (r.explain) out.push('解析：' + r.explain);
+        out.push('');
+      });
+      blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
+      fname = nameBase + '.md';
+    }
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = top + '-题目.zip';
+    a.href = URL.createObjectURL(blob); a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
-    try { toast('已导出 ' + files.length + ' 个文件' + (tagCount ? '（标签题 ' + tagCount + ' 道）' : ''), 2200, 'ok'); } catch (e) {}
+    try { toast('已导出 ' + records.length + ' 题 → ' + fname, 2400, 'ok'); } catch (e) {}
   }
 
   function catMenu(cid, anchor) {
@@ -1275,7 +1291,8 @@
     var m = document.createElement('div');
     m.className = 'qs-menu';
     m.id = 'qsMenu';
-    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点下所有题目（ZIP）</button>'
+    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（单个 .md）</button>'
+      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（单个 .json）</button>'
       + '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
       + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'
@@ -1288,7 +1305,8 @@
       var t = ev.target.closest('[data-m]'); if (!t) return;
       var act = t.dataset.m; closeMenu();
       var c = CAT.get ? CAT.get(cid) : null;
-      if (act === 'exp') exportFolderQs(cid);
+      if (act === 'exp') exportFolderQs(cid, 'md');
+      else if (act === 'expjson') exportFolderQs(cid, 'json');
       else if (act === 'sub') newFolder(cid);
       else if (act === 'ren') {
         var v = window.prompt('文件夹名', (c && c.title) || ''); if (v == null) return;
