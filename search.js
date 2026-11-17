@@ -138,7 +138,7 @@
 
   /* ---------- UI ---------- */
   var CSS = [
-    '#gsBtn{display:none!important;position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
+    '#gsBtn{position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
     '#gsWrap{position:fixed;inset:0;z-index:20010;display:none;background:rgba(15,23,42,.35);backdrop-filter:blur(3px)}',
     '#gsWrap.on{display:block}',
     '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',

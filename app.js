@@ -4918,23 +4918,6 @@ function renderQuiz(bankId) {
   bank._retryLoad = false;
   try { sessionStorage.removeItem('__op'); } catch (eOp0) {}
 
-  try {
-    var _P = window.__P || {};
-    var _txt = 'PERF idx=' + (_P.idx == null ? '-' : _P.idx + '/' + (_P.idxsrc || '?'))
-      + ' sig=' + (_P.t_sig == null ? '-' : _P.t_sig)
-      + ' loop=' + (_P.t_loop == null ? '-' : _P.t_loop)
-      + ' sort=' + (_P.t_sort == null ? '-' : _P.t_sort)
-      + ' save=' + (_P.t_save == null ? '-' : _P.t_save)
-      + ' now=' + Math.round(((window.performance && performance.now) ? performance.now() : Date.now()));
-    document.title = _txt;
-    var _bd = document.getElementById('__perf');
-    if (!_bd) {
-      _bd = document.createElement('div'); _bd.id = '__perf';
-      _bd.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:2147482000;background:#0f172a;color:#a7f3d0;font:11px/1.4 monospace;padding:4px 8px;border-radius:8px;opacity:.9;pointer-events:none';
-      document.body.appendChild(_bd);
-    }
-    _bd.textContent = _txt;
-  } catch (eP) {}
 
   /* 合并题集（聚合层）里可能掺进没题目的空行，过滤掉再取当前题，避免读 undefined.id */
   pool = (pool || []).filter(function (q) { return q && q.id != null; });
