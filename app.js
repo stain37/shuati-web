@@ -4607,6 +4607,7 @@ const stemHtml = t => {
   return (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
 };
 function renderQuiz(bankId) {
+  try { sessionStorage.setItem('__op', 'open:' + String(bankId).slice(0, 40)); } catch (eOp1) {}
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
   const bank = bankById(bankId);
   if (!bank) {
@@ -4757,6 +4758,8 @@ function renderQuiz(bankId) {
     return;
   }
   bank._retryLoad = false;
+  try { sessionStorage.removeItem('__op'); } catch (eOp0) {}
+
   try {
     var _P = window.__P || {};
     var _txt = 'PERF idx=' + (_P.idx == null ? '-' : _P.idx + '/' + (_P.idxsrc || '?'))

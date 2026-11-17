@@ -82,6 +82,24 @@
   });
 })();
 </script>
+<script>
+/* 崩溃/重载探测：重操作前打标记，正常渲染完清掉；下次加载若标记还在，说明上一次是被系统/浏览器弄掉的 */
+(function () {
+  try {
+    var dirty = sessionStorage.getItem('__op');
+    if (dirty) {
+      sessionStorage.removeItem('__op');
+      window.addEventListener('load', function () {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483001;background:#7c2d12;color:#fff;font:12px/1.5 monospace;padding:6px 10px;border-radius:8px;max-width:70vw';
+        d.textContent = '上次操作（' + dirty + '）时页面被重新加载/回收了，不是正常渲染完成';
+        d.onclick = function () { d.remove(); };
+        document.body.appendChild(d);
+      });
+    }
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 <script>(function(){try{if(/[?&]pip=1/.test(location.search)){document.documentElement.className+=" pip-guest";document.addEventListener("DOMContentLoaded",function(){document.body.classList.add("pip-guest-body");var snap=null;try{snap=JSON.parse(localStorage.getItem("qbank.pip.snap.v1")||"null");}catch(e){}
@@ -386,7 +404,7 @@ var iv=setInterval(function(){n++;
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261118d5"></script>
+<script src="app.js?v=20261118d6"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
