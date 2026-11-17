@@ -667,6 +667,7 @@
             : '<button type="button" class="qs-tg" data-t="default">★ 设为默认方案（每次打开都用它）</button>')
         + '<button type="button" class="qs-tg" data-t="sync">↻ 同步新标签到当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
+        + '<button type="button" class="qs-tg" data-t="expall">⬇ 导出现有所有二级标签（.md；多个打 ZIP）</button>'
         + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
         + (isDef ? '' : '<button type="button" class="qs-tg" data-t="del">删除当前方案（题库不受影响）</button>')
         + '</div>'
@@ -726,6 +727,8 @@
         var a0 = SCM.syncTagTree ? SCM.syncTagTree() : 0;
         schemeReload();
         try { toast(a0 ? ('补了 ' + a0 + ' 个新标签文件夹') : '没有新标签，文件夹已是最新', 2000, 'ok'); } catch (e) {}
+      } else if (r.act === 'expall') {
+        exportAllTags();
       } else if (r.act === 'exp') {
         schemeExport();
       } else if (r.act === 'imp') {
@@ -1327,6 +1330,90 @@
     a.href = URL.createObjectURL(blob); a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     try { toast('已导出 ' + total + ' 题 → ' + fname + (multi ? '（' + order.length + ' 个标签分文件）' : ''), 2400, 'ok'); } catch (e) {}
+  }
+
+
+  /* ---------- 导出全部二级标签 ---------- */
+  function exportAllTags() {
+    if (!window.SCM || !SCM.tagQList) { try { toast('当前方案不是按考点分组，没有二级标签可导出', 2600); } catch (e) {} return; }
+    var tags = [], seen = {}, stack = [null], guard = 0;
+    while (stack.length && guard++ < 20000) {
+      var pid = stack.pop();
+      (kids(pid) || []).forEach(function (c) {
+        if (!c || seen[c.id]) return;
+        seen[c.id] = 1;
+        var id = String(c.id || '');
+        if (id.indexOf('tgcat:') === 0) tags.push({ id: id, title: c.title || '' });
+        stack.push(c.id);
+      });
+    }
+    if (!tags.length) { try { toast('没找到二级标签（当前方案 ' + tags.length + ' 个）', 3000); } catch (e) {} return; }
+
+    function mdOf(title, list) {
+      var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      var no = 0;
+      list.forEach(function (r) {
+        no++;
+        out.push('### ' + no + '. ' + r.stem);
+        if (r.type) out.push('题型：' + r.type);
+        (r.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + o); });
+        if (r.answer) out.push('答案：' + r.answer);
+        if (r.explain) out.push('解析：' + r.explain);
+        out.push('');
+      });
+      return out.join('\n');
+    }
+
+    var groups = [], total = 0, diagTags = 0, diagRows = 0;
+    tags.forEach(function (tg) {
+      var name = tg.title;
+      if (!name) { try { name = decodeURIComponent(tg.id.slice(6)); } catch (e) { name = tg.id.slice(6); } }
+      name = String(name).replace(/[\\/]+/g, ' › ');
+      var rows = [];
+      try { rows = SCM.tagQList(tg.id) || []; } catch (e0) { rows = []; }
+      diagTags++; diagRows += rows.length;
+      var list = [], seenQ = {};
+      rows.forEach(function (row) {
+        var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
+        if (!q) return;
+        var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+        if (!stem || seenQ[stem]) return;
+        seenQ[stem] = 1;
+        var opts = (q.options || q.opts || q.choices || q.items || []).map(function (o) {
+          return String(o).replace(/^\s*[A-Z][\.．、]\s*/, '').replace(/\s+/g, ' ').trim();
+        });
+        var ans = q.answer != null ? q.answer : (q.ans != null ? q.ans : (q.correct != null ? q.correct : ''));
+        if (Array.isArray(ans)) ans = ans.join('');
+        ans = String(ans).trim();
+        list.push({ stem: stem, type: q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : '')),
+          options: opts, answer: ans,
+          explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() });
+      });
+      if (list.length) { groups.push({ name: name, list: list }); total += list.length; }
+    });
+
+    if (!total) {
+      try { toast('没导出：二级标签 ' + tags.length + ' 个（有题 0）· 命中行 ' + diagRows, 5000); } catch (e) {}
+      return;
+    }
+    groups.sort(function (a, b) { return a.name.localeCompare(b.name, 'zh'); });
+
+    var blob, fname;
+    if (groups.length === 1) {
+      blob = new Blob([mdOf(groups[0].name, groups[0].list)], { type: 'text/markdown;charset=utf-8' });
+      fname = '二级标签-' + _safe(groups[0].name) + '.md';
+    } else {
+      var files = groups.map(function (g) { return { name: _safe(g.name) + '.md', text: mdOf(g.name, g.list) }; });
+      var idx = ['# 二级标签索引（共 ' + groups.length + ' 个 · ' + total + ' 题）', ''];
+      groups.forEach(function (g) { idx.push('- ' + g.name + '：' + g.list.length + ' 题'); });
+      files.unshift({ name: '00-索引.md', text: idx.join('\n') });
+      blob = _zipStore(files);
+      fname = '二级标签-全部（' + groups.length + '个）.zip';
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    try { toast('已导出 ' + groups.length + ' 个二级标签 / ' + total + ' 题 → ' + fname, 2600, 'ok'); } catch (e) {}
   }
 
   function catMenu(cid, anchor) {
