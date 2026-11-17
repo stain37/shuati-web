@@ -1194,7 +1194,15 @@
     if (!picked.length) { try { toast('这个文件夹下还没有题目', 1800); } catch (e) {} return; }
     var c = CAT.get ? CAT.get(cid) : null;
     var top = _safe((c && c.title) || '考点');
-    var files = picked.map(function (b) { return { name: top + '/' + _safe(b.title || b.id) + '.md', text: _qsMd(b) }; });
+    function relPath(catId) {
+      var parts = [], cur = (CAT.get ? CAT.get(catId) : null), guard = 0;
+      while (cur && cur.id !== cid && guard++ < 12) { parts.unshift(_safe(cur.title || cur.id)); cur = CAT.get(cur.parent || null); }
+      return parts;
+    }
+    var files = picked.map(function (b) {
+      var name = [top].concat(relPath(b.cat || null), [_safe(b.title || b.id)]).join('/') + '.md';
+      return { name: name, text: _qsMd(b) };
+    });
     var blob = _zipStore(files);
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = top + '-题目.zip';
