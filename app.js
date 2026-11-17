@@ -4753,6 +4753,12 @@ function renderQuiz(bankId) {
     return;
   }
   bank._retryLoad = false;
+  /* 合并题集（聚合层）里可能掺进没题目的空行，过滤掉再取当前题，避免读 undefined.id */
+  pool = (pool || []).filter(function (q) { return q && q.id != null; });
+  if (!pool.length) {
+    view.innerHTML = '<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br><small style="color:#94a3b8">合并题集是空的：这个分类下面的考点都没有匹配到题</small></div></div>';
+    return;
+  }
   if (QZ.cur == null || !pool.some(q => String(q.id) === String(QZ.cur))) QZ.cur = pool[0].id;
   const q = pool.find(x => String(x.id) === String(QZ.cur));
   const k = kOf(bank, q);
