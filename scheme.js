@@ -697,7 +697,12 @@
     var _pt = (window.performance && performance.now) ? performance.now() : Date.now();
     var _pp = (window.__P = window.__P || {});
     var sig = banksSig();
-    if (TG_IDX.byTag && TG_IDX.sig === sig) return TG_IDX;
+    /* 索引一旦建成会按 banksSig 复用，但 iPad / 手机上题库常分几批到位：
+       「题库数+题数」没变、题目的 tags 却还在补，这时 sig 相同而索引是残的
+       （表现：tagList=1、点考点 n=0）。所以索引过小时不认缓存，重扫一次（3 秒内不重复扫）。 */
+    var thin = !TG_IDX.list || TG_IDX.list.length < 5;
+    var recently = TG_IDX.builtAt && (Date.now() - TG_IDX.builtAt < 3000);
+    if (TG_IDX.byTag && TG_IDX.sig === sig && !(thin && !recently)) return TG_IDX;
     _pp.t_sig = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _pt);
     var _t0 = _pt;
     var cached = tgpLoad(sig);
@@ -728,7 +733,7 @@
     _pp.t_loop = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
     var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
     _pp.t_sort = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
-    TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
+    TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null), builtAt: Date.now() };
     var _tS = ((window.performance && performance.now) ? performance.now() : Date.now());
     tgpSave(TG_IDX);
     _pp.t_save = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _tS);
@@ -1241,6 +1246,11 @@
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
+    tagIndexRebuild: function () {
+      /* 手机上题库/标签分批到位时，索引可能是残的：丢掉内存索引重扫一次 */
+      TG_IDX = { sig: '', byTag: null, list: null, banks: null };
+      try { return tagIndex(); } catch (e) { return TG_IDX; }
+    },
     tagListAll: function () { return tagIndex().list.slice(0); }, aggDebug: aggDebug, tagQList: tagQList, statMap: statMap, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
     schemeOf: function (sid) { ensure(); var id = sid || CUR; return DB.list.filter(function (x) { return x && x.id === id; })[0] || null; },
     setBig: function (sid, v) {

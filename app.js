@@ -4674,6 +4674,17 @@ function renderQuiz(bankId) {
   if (!pool.length && bank.virtualTag && bank.questions && bank.questions.length) {
     pool = bank.questions.slice();
   }
+  /* 手机 / iPad 上题库与标签是分批到位的：标签索引可能早建了一次、只认得 1 个标签，
+     于是这个考点算出来 0 题。这里重建一次索引再取题目（每个题集只重建一遍）。 */
+  if (!pool.length && bank.virtualTag && !renderQuiz._rebuilt && window.SCM && SCM.tagIndexRebuild) {
+    renderQuiz._rebuilt = true;
+    try {
+      SCM.tagIndexRebuild();
+      const b2 = bankById(bankId);
+      if (b2 && b2.questions && b2.questions.length) pool = b2.questions.slice();
+    } catch (eRb) {}
+  }
+  if (pool.length) renderQuiz._rebuilt = false;
   /* 刷新后自愈：六科 / 来源白名单 / 筛法 可能是上一轮残留，任一失效都会让题池变空而页面只显示
      「这里暂时没有题目」。逐级放宽，直到有题可做；放宽期间不改题库数据。 */
   /* 标签题集的「来源筛选」可能存着“全不选”，会让 26 道题全被筛掉却看不出原因：
