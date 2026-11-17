@@ -6097,6 +6097,12 @@ function poolOf(bank) {
   arr = chipFilter(arr, QZ.filter, bank);
   if (QZ.subject) arr = arr.filter(q => qzHasSubject(bank, q));
   arr = arr.filter(q => srcMatch(bank, q));
+  /* 标签题集兜底：题是现算的，拼装链路（随机顺序 / 错题轮 / 来源缓存）任一残留都会算空；
+     没有任何显式筛选时直接用题库顺序，保证「上一题/下一题」能走。 */
+  if (!arr.length && bank.virtualTag && bank.questions && bank.questions.length
+      && (!QZ.filter || QZ.filter === 'all') && !QZ.subject && !QZ.rw) {
+    arr = bank.questions.slice();
+  }
   return arr;
 }
 

@@ -64,6 +64,41 @@
 
   function h(html) { var d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
 
+  function exportTagQs() {
+    var tag = cur.tag ? decodeURIComponent(cur.tag) : '';
+    if (!tag) { setStatus('这篇没有绑定考点'); return; }
+    var rows = [];
+    try {
+      if (window.SCM && SCM.tagQList) rows = SCM.tagQList('tgcat:' + encodeURIComponent(tag)) || [];
+    } catch (e) { rows = []; }
+    if (!rows.length) { setStatus('这个考点下还没有题目'); return; }
+    var out = ['# ' + tag + ' · 题目（共 ' + rows.length + ' 题）', ''];
+    rows.forEach(function (r, i) {
+      var q = (r && r.questions && r.questions[0]) || r || {};
+      var qno = (i + 1);
+      var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      out.push('## ' + qno + '. ' + stem);
+      var opts = q.options || q.opts || [];
+      if (opts && opts.length) {
+        opts.forEach(function (o, k) {
+          out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim());
+        });
+      }
+      var ans = q.answer || q.ans || [];
+      if (typeof ans === 'string') ans = ans.split(/[,\s]+/);
+      if (ans && ans.length) out.push('答案：' + ans.join(''));
+      var ex = q.explain || q.exp || q.analysis || '';
+      if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
+      out.push('');
+    });
+    var blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    var a2 = document.createElement('a');
+    a2.href = URL.createObjectURL(blob);
+    a2.download = tag + '-题目.md';
+    document.body.appendChild(a2); a2.click(); a2.remove();
+    setStatus('已导出 ' + rows.length + ' 题');
+  }
+
   function ensureDom() {
     if (host) return;
     host = h('<div class="kbdoc-mask"><div class="kbdoc-win">'
@@ -83,7 +118,7 @@
       + '<button class="b kbdoc-goto">去题库</button><button class="b kbdoc-save p">保存</button><button class="b kbdoc-close">关闭</button></div>'
       + '</div></div>').firstChild;
     document.body.appendChild(host);
-    var menu = h('<div class="kbdoc-menu"><div data-a="link">复制链接</div><div data-a="copy">复制正文</div><div data-a="export">导出 Markdown</div><div data-a="clear">清空内容</div></div>');
+    var menu = h('<div class="kbdoc-menu"><div data-a="link">复制链接</div><div data-a="copy">复制正文</div><div data-a="export">导出 Markdown</div><div data-a="qexport">导出该考点题目</div><div data-a="clear">清空内容</div></div>');
     var win = host.classList.contains('kbdoc-win') ? host : host.querySelector('.kbdoc-win'); (win || host).appendChild(menu);
     var moreBtn = host.querySelector('.kbdoc-more');
     moreBtn.onclick = function (e) { e.stopPropagation(); var r = moreBtn.getBoundingClientRect(); menu.style.left = Math.max(8, r.right - 170) + 'px'; menu.style.top = (r.bottom + 6) + 'px'; menu.classList.toggle('on'); };
@@ -109,6 +144,8 @@
         a2.download = (cur.title || '知识点') + '.md';
         document.body.appendChild(a2); a2.click(); a2.remove();
         setStatus('已导出');
+      } else if (a === 'qexport') {
+        exportTagQs();
       } else if (a === 'clear') {
         if (!confirm('确定清空这篇内容？')) return;
         localStorage.removeItem(cur.tag ? 'kbdoc.tag.' + cur.tag : 'kbdoc.doc.' + cur.title);
