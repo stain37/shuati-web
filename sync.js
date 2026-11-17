@@ -668,6 +668,21 @@ async function syncPush(silent) {
       throw e;
     }
   }
+  /* 回读校验：云端那份必须能完整 parse，否则下次同步会在“解析失败”上死循环。
+     校验不过就明确报错，让人先去缩小同步范围（别整份题库都塞进来）。 */
+  try {
+    const m2 = await syncCloudMeta();
+    if (m2) {
+      const t2 = await syncCloudRead(m2);
+      JSON.parse(t2);
+      if (t2.length !== text.length) syncLog('注意：云端回读长度 ' + t2.length + ' ≠ 本机 ' + text.length, true);
+    }
+  } catch (eV) {
+    const e2 = new Error('上传后回读校验失败（云端那份不是完整 JSON）：' + (eV.message || eV)
+      + '。这份数据 ' + (bytes / 1048576).toFixed(1) + ' MB，建议在「同步范围」里先取消勾选「自建题库」「自己导入的资料库」，只同步进度和标签。');
+    e2.verify = 1;
+    throw e2;
+  }
   SYC.lastPush = Date.now(); SYC.lastBytes = bytes; SYC.lastErr = '';
   syncSave();
   if (!silent) syncLog('已上传 ' + (bytes / 1024).toFixed(0) + ' KB（' + syncDevice() + '）');
@@ -680,7 +695,16 @@ async function syncNow(silent) {
   try {
     let cloud = null, meta = null;
     try { meta = await syncCloudMeta(); } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
-    if (meta) cloud = JSON.parse(await syncCloudRead(meta));
+    if (meta) {
+      try { cloud = JSON.parse(await syncCloudRead(meta)); }
+      catch (eC) {
+        /* 云端那份 JSON 本身坏了（常见于文件太大、上一次上传被截断）：
+           先别让整次同步失败，改成“只上传本机这份”，把坏文件覆盖掉。 */
+        syncLog('云端数据解析失败（' + (eC.message || eC) + '）——这次改为用本机数据覆盖云端。', true);
+        cloud = null;
+        meta = meta || null;
+      }
+    }
     let merged = null;
     if (cloud) merged = syncMergeCloud(cloud);
     SYC.lastPull = Date.now();
