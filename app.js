@@ -4667,7 +4667,7 @@ function renderQuiz(bankId) {
 
   /* 先收一下失效的六科筛选再算题池：标完最后一题「未选」/换筛法后，
      否则 poolOf 会先按旧科目算出空池，页面卡在「这里暂时没有题目」而 chips 已经回全选。 */
-  if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
+  if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';   /* 只在真的选了科目时扫一次 */
   let pool = poolOf(bank);
   /* 标签题集兜底：虚拟题集的题是现算的，poolOf 里的来源/顺序缓存可能把它算空，
      但题本身在——直接按题库顺序取全量，避免“有 26 题却显示没有题目”。 */
@@ -6295,9 +6295,18 @@ function renderChips(bank, keepSrc) {
   const sj = $('subjchips');
   if (sj) {
     const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['政治', '政治'], ['__none', '未选']];
-    const allN = chipFilter(bank.questions, QZ.filter, bank).filter(q => srcMatch(bank, q)).length;
+    /* 原来每个科目各扫一遍全库（9 科 × N 题），5800 题就是 5 万次 qzBasicOf，
+       实测这一行占了整次渲染 180ms 里的 165ms。改成一次遍历同时数完 9 个桶。 */
+    const base = chipFilter(bank.questions, QZ.filter, bank).filter(q => srcMatch(bank, q));
+    const basic = qzBasics();
+    const SUBJ_CNT = { '': base.length, __none: 0 };
+    for (const q of base) {
+      const bs = qzBasicOf(bank, q, basic);
+      if (!bs.length) { SUBJ_CNT.__none++; continue; }
+      for (const b of bs) SUBJ_CNT[b] = (SUBJ_CNT[b] || 0) + 1;
+    }
     sj.innerHTML = '<span class="slabel">七科</span>' + subs.map(([v, label]) => {
-      const cnt = v ? subjectCount(bank, v) : allN;
+      const cnt = SUBJ_CNT[v] || 0;
       const dis = v && !cnt;
       const ttl = v === '__none' ? '还没分到七科里任何一科的题' : (v ? '只看这个科目' : '不限定科目');
       return `<button type="button" class="subjchip${QZ.subject === v ? ' on' : ''}${v === '__none' ? ' none' : ''}" data-subj="${v}" ${dis ? 'disabled ' : ''}title="${ttl}">${label}<i>${cnt}</i></button>`;
@@ -6310,10 +6319,21 @@ function renderChips(bank, keepSrc) {
       render();
     });
   }
-  const n = f => poolCount(bank, f);
-  const defs = [['all', '全部 ' + n('all')], ['undone', '没做 ' + n('undone')],
-                ['single', '单选 ' + n('single')], ['multi', '多选 ' + n('multi')],
-                ['wrong', '错题 ' + n('wrong')], ['fav', '收藏 ' + n('fav')], ['due', '待复习 ' + n('due')]];
+  /* 同理：下面 7 个计数原来各自扫一遍。这里一次遍历数出全部 7 桶。 */
+  const fbase = bank.questions.filter(q => srcMatch(bank, q) && qzHasSubject(bank, q));
+  const F_CNT = { all: fbase.length, undone: 0, single: 0, multi: 0, wrong: 0, fav: 0, due: 0 };
+  for (const q of fbase) {
+    const k = kOf(bank, q), a = ANS[k];
+    if (!answered(k)) F_CNT.undone++;
+    if (isWrongRec(a)) F_CNT.wrong++;
+    if (FAV[favKey(bank, q)]) F_CNT.fav++;
+    if (isDue(k)) F_CNT.due++;
+    const an = ansOf(favKey(bank, q), q);
+    if (an.length === 1) F_CNT.single++; else if (an.length > 1) F_CNT.multi++;
+  }
+  const defs = [['all', '全部 ' + F_CNT.all], ['undone', '没做 ' + F_CNT.undone],
+                ['single', '单选 ' + F_CNT.single], ['multi', '多选 ' + F_CNT.multi],
+                ['wrong', '错题 ' + F_CNT.wrong], ['fav', '收藏 ' + F_CNT.fav], ['due', '待复习 ' + F_CNT.due]];
   $('chips').innerHTML = defs.map(([k, t]) => `<button class="chip${QZ.filter === k ? ' on' : ''}" data-f="${k}">${t}</button>`).join('')
     + `<button class="chip tog${SET.shuffle ? ' on' : ''}" id="chipShuffle" title="随机顺序出题（和「设置」里那个开关是同一个）">随机 ${SET.shuffle ? '开' : '关'}</button>`;
   $('chips').querySelectorAll('.chip[data-f]').forEach(c => c.onclick = () => {
