@@ -3161,7 +3161,15 @@ body.qside-open .qs-tab{display:none}
 }
 .qside .qs-gh:hover{background:var(--card2);color:var(--text)}
 .qside .qs-gh em{margin-left:auto;font-style:normal;font-weight:600;opacity:.75}
-.qside .qs-caret{font-style:normal;display:inline-block;transition:transform .18s ease;font-size:9px}
+.qside .qs-caret{font-style:normal;display:inline-flex;align-items:center;justify-content:center;transition:transform .18s ease;font-size:11px;width:22px;height:22px;margin:0 2px 0 -4px;border-radius:7px;flex:0 0 auto;color:var(--sub)}
+.qside .qs-caret:active{background:rgba(127,127,127,.18)}
+/* 触屏（iPad/手机）：把展开/收起的热区放大，名字那一小块才是「打开题集」，减少误触 */
+@media (pointer:coarse){
+  .qside .qs-caret{width:34px;height:34px;font-size:15px;margin:0 4px 0 -6px}
+  .qside .qs-ch{min-height:42px}
+  .qside .qs-ch .qs-ct-open{padding:3px 6px}
+}
+
 .qside .qs-grp.folded .qs-caret{transform:rotate(-90deg)}
 .qside .qs-grp.folded .qs-rows{display:none}
 .qside .qs-row{
