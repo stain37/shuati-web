@@ -4674,8 +4674,21 @@ function renderQuiz(bankId) {
       renderChips(bank);
       return;
     }
+    var _d = { s0: (bank.questions || []).length, s1: 0, s2: 0, s3: 0, rw: '-', tm: 'no', byTag: -1, sel: '-' };
+    try {
+      var _a = (bank.questions || []).slice();
+      _d.s1 = chipFilter(_a, QZ.filter, bank).length;
+      _d.s2 = QZ.subject ? _a.filter(q => qzHasSubject(bank, q)).length : _d.s1;
+      _d.s3 = _a.filter(q => srcMatch(bank, q)).length;
+      _d.rw = QZ.rw ? (String(QZ.rw.bankId) === String(bank.id) ? ('ids=' + (QZ.rw.ids || []).length) : 'other') : 'no';
+      _d.tm = (window.SCM && SCM.tagMode && SCM.tagMode()) ? 'yes' : 'no';
+      _d.byTag = (window.SCM && SCM.debugTag) ? SCM.debugTag(bank.id) : -1;
+      var _p = srcPick(bank);
+      _d.sel = _p ? ('[' + _p.join('|') + ']') : 'all';
+    } catch (e) { _d.err = String(e && e.message || e); }
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
-      + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=${(bank.questions || []).length} · filter=${esc(QZ.filter)} · subj=${esc(QZ.subject || 'all')} · SCM=${window.SCM ? 'yes' : 'no'}</small><br>`
+      + `<small style="color:#94a3b8">n=${_d.s0} → chip=${_d.s1} → subj=${_d.s2} → src=${_d.s3} · filter=${esc(QZ.filter)} · subj=${esc(QZ.subject || 'all')} · rw=${_d.rw}</small><br>`
+      + `<small style="color:#94a3b8">tagMode=${_d.tm} · byTag=${_d.byTag} · srcSel=${esc(_d.sel)} · tax=${(function(){try{return curTaxScheme()?'yes':'no'}catch(e){return '?'}})()}${_d.err ? (' · ERR ' + esc(_d.err)) : ''}</small><br>`
       + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
     $('stat').textContent = ''; $('bar').style.width = '0%';
     renderChips(bank);
