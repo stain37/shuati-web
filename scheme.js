@@ -481,7 +481,20 @@
     var all = cats(), kidsMap = Object.create(null), out = [], seen = Object.create(null);
     /* 节点 id 里的 \x01 分隔符有两种写法：字面 %01 和真实控制字符（URL 解码后）。
        统一成 %01 再比父子关系，否则从 URL 进来的 id 永远对不上方案里的 parent。 */
-    function nk(v) { return String(v || '').replace(/\u0001/g, '%01'); }
+    function nk(v) {
+      /* 规范成「解码后的原始字符串 + \x01 统一写成 |」：
+         id 可能带 %E7%94%9F 这种百分号编码，也可能已经被 URL 解码成汉字，
+         父节点同理，先解码再比，才不会两套写法互相认不出。 */
+      var t = String(v == null ? '' : v);
+      for (var gi = 0; gi < 3; gi++) {
+        try {
+          var d = decodeURIComponent(t);
+          if (d === t) break;
+          t = d;
+        } catch (e) { break; }
+      }
+      return t.replace(/\u0001/g, '|');
+    }
     var stack = [nk(catId)], guard = 0;
     all.forEach(function (c) {
       if (!c || !c.id) return;
