@@ -50,20 +50,37 @@
   window.registerBank = function (b) { window.__BANKS__.push(b); };
 </script>
 <script>
-/* 临时错误横幅：任何脚本异常都显示出来，方便定位「点不进去」 */
-window.addEventListener('error', function (ev) {
-  try {
-    var t = (ev && ev.message) ? ev.message : String(ev);
-    var box = document.getElementById('__errbar');
-    if (!box) {
-      box = document.createElement('div'); box.id = '__errbar';
-      box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#b91c1c;color:#fff;font:12px/1.5 monospace;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto';
-      box.onclick = function () { box.remove(); };
-      document.body.appendChild(box);
+/* 临时错误横幅 v2：只报真正的脚本异常，资源 404 降级为控制台 */
+(function () {
+  function bar(txt) {
+    try {
+      var box = document.getElementById('__errbar');
+      if (!box) {
+        box = document.createElement('div'); box.id = '__errbar';
+        box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#b91c1c;color:#fff;font:12px/1.5 monospace;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto';
+        box.onclick = function () { box.remove(); };
+        document.body.appendChild(box);
+      }
+      box.textContent += (box.textContent ? '\n' : '') + txt;
+    } catch (e) {}
+  }
+  window.addEventListener('error', function (ev) {
+    var tgt = ev && ev.target;
+    if (tgt && tgt !== window && (tgt.src || tgt.href)) {
+      try { console.warn('[res-fail]', tgt.src || tgt.href); } catch (e) {}
+      return;                       /* 资源 404 不弹红条 */
     }
-    box.textContent += (box.textContent ? '\n' : '') + '⚠ ' + t + ' @' + (ev.filename || '').split('/').pop() + ':' + (ev.lineno || 0);
-  } catch (e) {}
-}, true);
+    var msg = (ev && ev.message) || (ev && ev.error && ev.error.message) || '';
+    if (!msg) return;
+    var where = ((ev.filename || '').split('/').pop() || '?') + ':' + (ev.lineno || 0);
+    bar('⚠ ' + msg + ' @' + where);
+  }, true);
+  window.addEventListener('unhandledrejection', function (ev) {
+    var r = ev && ev.reason;
+    var msg = (r && (r.message || r)) ? String(r.message || r) : '';
+    if (msg) bar('⚠ Promise: ' + msg);
+  });
+})();
 </script>
 </head>
 <body>
@@ -369,7 +386,7 @@ var iv=setInterval(function(){n++;
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261118d1"></script>
+<script src="app.js?v=20261118d2"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
