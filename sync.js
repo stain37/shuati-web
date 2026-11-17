@@ -91,6 +91,41 @@ function syncB64Decode(b64) {
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return new TextDecoder('utf-8').decode(u8);
 }
+
+/* ── 压缩：整份 payload 太大时（题库/资料库塞进来能到 7MB+），先 gzip 再 base64，
+      云端那份就是 {"__gz":1,"n":..,"b":"..."}，体积缩到约 1/6，不会再被写坏。── */
+function syncB64FromBytes(u8) {
+  let s = ''; const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return btoa(s);
+}
+function syncBytesFromB64(b64) {
+  const bin = atob(String(b64).replace(/\s+/g, ''));
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+function syncGzOk() { return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function'; }
+async function syncPack(plain) {
+  if (!syncGzOk()) return plain;
+  try {
+    const st = new Blob([new TextEncoder().encode(plain)]).stream().pipeThrough(new CompressionStream('gzip'));
+    const ab = await new Response(st).arrayBuffer();
+    return JSON.stringify({ __gz: 1, n: plain.length, b: syncB64FromBytes(new Uint8Array(ab)) });
+  } catch (e) { return plain; }
+}
+async function syncUnpack(raw) {
+  const o = JSON.parse(raw);
+  if (o && o.__gz) {
+    const u8 = syncBytesFromB64(o.b);
+    const st = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const ab = await new Response(st).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(ab));
+  }
+  return o;
+}
+async function syncParseCloud(raw) { return await syncUnpack(raw); }
+
 function syncDevice() {
   const ua = navigator.userAgent || '';
   let os = '设备';
@@ -641,12 +676,17 @@ async function syncWrittenOk(text) {
     const meta = await syncCloudMeta();
     if (!meta) return false;
     const got = await syncCloudRead(meta);
-    return String(got).trim() === String(text).trim();
+    if (String(got).trim() === String(text).trim()) return true;
+    try {
+      const a = await syncParseCloud(got), b = await syncParseCloud(text);
+      return JSON.stringify(a).length === JSON.stringify(b).length;
+    } catch (e2) { return false; }
   } catch (e) { return false; }
 }
 async function syncPush(silent) {
   if (!syncReady()) throw new Error('还没配置仓库和 token');
-  const text = JSON.stringify(await syncPayload());
+  const plain = JSON.stringify(await syncPayload());
+  const text = await syncPack(plain);
   const bytes = syncBytes(text);
   if (bytes > 25 * 1024 * 1024) throw new Error('数据太大（' + (bytes / 1048576).toFixed(1) + ' MB）：先别勾「自己导入的资料库」和「自建题库」，或者把它们做成 知识库.js');
   let sha = null;
@@ -674,8 +714,8 @@ async function syncPush(silent) {
     const m2 = await syncCloudMeta();
     if (m2) {
       const t2 = await syncCloudRead(m2);
-      JSON.parse(t2);
-      if (t2.length !== text.length) syncLog('注意：云端回读长度 ' + t2.length + ' ≠ 本机 ' + text.length, true);
+      await syncParseCloud(t2);
+      if (t2.length !== text.length) syncLog('注意：云端回读长度与上传长度不同（压缩格式下属正常）');
     }
   } catch (eV) {
     const e2 = new Error('上传后回读校验失败（云端那份不是完整 JSON）：' + (eV.message || eV)
@@ -696,7 +736,7 @@ async function syncNow(silent) {
     let cloud = null, meta = null;
     try { meta = await syncCloudMeta(); } catch (e) { if (e.status !== 404 && e.status !== 409) throw e; }
     if (meta) {
-      try { cloud = JSON.parse(await syncCloudRead(meta)); }
+      try { cloud = await syncParseCloud(await syncCloudRead(meta)); }
       catch (eC) {
         /* 云端那份 JSON 本身坏了（常见于文件太大、上一次上传被截断）：
            先别让整次同步失败，改成“只上传本机这份”，把坏文件覆盖掉。 */
@@ -742,7 +782,7 @@ async function syncPullOnly() {
   try {
     const meta = await syncCloudMeta();
     if (!meta) throw new Error('云端还没有数据');
-    const cloud = JSON.parse(await syncCloudRead(meta));
+    const cloud = await syncParseCloud(await syncCloudRead(meta));
     const r = syncMergeCloud(cloud);
     SYC.lastPull = Date.now(); SYC.lastErr = ''; syncSave();
     syncLog('已从云端合并：新进 ' + r.added + ' 条（云端来自 ' + r.device + '）');
