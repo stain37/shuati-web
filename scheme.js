@@ -81,10 +81,10 @@
   /* 自愈：方案数据里的 parent 被旧版本/同步逻辑清空过时，用内置权威表补回来（只补空，不改已有） */
   function healParents() {
     if (_healed) return 0;
-    _healed = true;
     try {
       var SYS = window.__SYSPATHS;
-      if (!SYS) return 0;
+      if (!SYS) return 0;   /* 权威表还没加载：下次再试，别把「已修」标记打上 */
+      _healed = true;
       var id = CUR, d = DB.data[id];
       if (!d || !d.cats || !d.cats.length) return 0;
       var fix = 0;
