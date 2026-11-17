@@ -5290,7 +5290,9 @@ function renderQuiz(bankId) {
   });
   $('stat').textContent = `${done}/${bank.questions.length}${wr ? ' · 错' + wr : ''}`;
   $('bar').style.width = (done / bank.questions.length * 100) + '%';
-  renderChips(bank);
+  /* 筛选条的计数是全库统计，题多时几十毫秒起。先让新题画出来，
+     计数晚 120ms 再补——用户看到的是「立刻换题」，而不是「按了没反应」。 */
+  deferRenderChips(bank);
 
   /* 一套题做完 → 庆祝一次（fx.js）。renderQuiz 每答一题都会重绘，
      所以靠 localStorage 里的一次性记号 + FX 自己的守卫，绝不重复放；
@@ -6331,6 +6333,28 @@ function poolOf(bank) {
   return arr;
 }
 
+let _CHIPS_T = null, _CHIPS_BANK = null;
+function deferRenderChips(bank) {
+  _CHIPS_BANK = bank;
+  if (_CHIPS_T) return;
+  _CHIPS_T = setTimeout(function () {
+    _CHIPS_T = null;
+    const b = _CHIPS_BANK;
+    if (!b) return;
+    try { renderChips(b); } catch (e) {}
+  }, 120);
+}
+
+/* 计数的缓存：换题时 ANS / FAV 没变，就不必把全库再数一遍。
+   签名取「已答条数 + 收藏条数」，答一题或收藏一题就会自动失效。 */
+const __CHIP_CACHE = { key: '', subj: null, filt: null };
+function chipCacheKey(bank) {
+  let na = 0, nf = 0;
+  try { na = Object.keys(ANS).length; } catch (e) {}
+  try { nf = Object.keys(FAV).length; } catch (e) {}
+  return String(bank.id) + '|' + QZ.filter + '|' + (QZ.subject || '') + '|' + na + '|' + nf;
+}
+
 function renderChips(bank, keepSrc) {
   /* 六科行：跟下面「全部 / 没做 / 单选…」同时生效；该筛法下没有这个科目的题就灰掉 */
   if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
@@ -6339,13 +6363,18 @@ function renderChips(bank, keepSrc) {
     const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['政治', '政治'], ['__none', '未选']];
     /* 原来每个科目各扫一遍全库（9 科 × N 题），5800 题就是 5 万次 qzBasicOf，
        实测这一行占了整次渲染 180ms 里的 165ms。改成一次遍历同时数完 9 个桶。 */
-    const base = chipFilter(bank.questions, QZ.filter, bank).filter(q => srcMatch(bank, q));
-    const basic = qzBasics();
-    const SUBJ_CNT = { '': base.length, __none: 0 };
-    for (const q of base) {
-      const bs = qzBasicOf(bank, q, basic);
-      if (!bs.length) { SUBJ_CNT.__none++; continue; }
-      for (const b of bs) SUBJ_CNT[b] = (SUBJ_CNT[b] || 0) + 1;
+    const ck = chipCacheKey(bank);
+    let SUBJ_CNT = (__CHIP_CACHE.key === ck) ? __CHIP_CACHE.subj : null;
+    if (!SUBJ_CNT) {
+      const base = chipFilter(bank.questions, QZ.filter, bank).filter(q => srcMatch(bank, q));
+      const basic = qzBasics();
+      SUBJ_CNT = { '': base.length, __none: 0 };
+      for (const q of base) {
+        const bs = qzBasicOf(bank, q, basic);
+        if (!bs.length) { SUBJ_CNT.__none++; continue; }
+        for (const b of bs) SUBJ_CNT[b] = (SUBJ_CNT[b] || 0) + 1;
+      }
+      __CHIP_CACHE.key = ck; __CHIP_CACHE.subj = SUBJ_CNT;
     }
     sj.innerHTML = '<span class="slabel">七科</span>' + subs.map(([v, label]) => {
       const cnt = SUBJ_CNT[v] || 0;
@@ -6362,16 +6391,20 @@ function renderChips(bank, keepSrc) {
     });
   }
   /* 同理：下面 7 个计数原来各自扫一遍。这里一次遍历数出全部 7 桶。 */
-  const fbase = bank.questions.filter(q => srcMatch(bank, q) && qzHasSubject(bank, q));
-  const F_CNT = { all: fbase.length, undone: 0, single: 0, multi: 0, wrong: 0, fav: 0, due: 0 };
-  for (const q of fbase) {
-    const k = kOf(bank, q), a = ANS[k];
-    if (!answered(k)) F_CNT.undone++;
-    if (isWrongRec(a)) F_CNT.wrong++;
-    if (FAV[favKey(bank, q)]) F_CNT.fav++;
-    if (isDue(k)) F_CNT.due++;
-    const an = ansOf(favKey(bank, q), q);
-    if (an.length === 1) F_CNT.single++; else if (an.length > 1) F_CNT.multi++;
+  let F_CNT = (__CHIP_CACHE.key === chipCacheKey(bank)) ? __CHIP_CACHE.filt : null;
+  if (!F_CNT) {
+    const fbase = bank.questions.filter(q => srcMatch(bank, q) && qzHasSubject(bank, q));
+    F_CNT = { all: fbase.length, undone: 0, single: 0, multi: 0, wrong: 0, fav: 0, due: 0 };
+    for (const q of fbase) {
+      const k = kOf(bank, q), a = ANS[k];
+      if (!answered(k)) F_CNT.undone++;
+      if (isWrongRec(a)) F_CNT.wrong++;
+      if (FAV[favKey(bank, q)]) F_CNT.fav++;
+      if (isDue(k)) F_CNT.due++;
+      const an = ansOf(favKey(bank, q), q);
+      if (an.length === 1) F_CNT.single++; else if (an.length > 1) F_CNT.multi++;
+    }
+    __CHIP_CACHE.key = chipCacheKey(bank); __CHIP_CACHE.filt = F_CNT;
   }
   const defs = [['all', '全部 ' + F_CNT.all], ['undone', '没做 ' + F_CNT.undone],
                 ['single', '单选 ' + F_CNT.single], ['multi', '多选 ' + F_CNT.multi],
