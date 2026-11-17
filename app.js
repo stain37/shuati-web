@@ -4708,6 +4708,13 @@ function renderQuiz(bankId) {
         + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)}</small><br>`
         + `<small style="color:#94a3b8">byTag=${_byTag} · banks=${_nb} · tagList=${_nt} · TAGS=${_tg} · try=${bank._tagTry || 0}</small><br>`
         + `<small style="color:#94a3b8">有标签的题=${_tq} · 样例 ${esc(String(_smp)).slice(0, 160)}</small><br>`
+        + (function () {
+          try {
+            if (!(bank.virtualTag && String(bank.virtualTag).charAt(0) === '#') || !window.SCM || !SCM.aggDebug) return '';
+            var d = SCM.aggDebug(String(bank.virtualTag).slice(1));
+            return `<small style="color:#94a3b8">聚合：节点=${esc(String(d.nodes))} · 考点=${esc(String(d.tags))} · 命中题=${esc(String(d.hit))} · 池=${esc(String(d.pooled))} · 例=${esc(String((d.sample || []).join('、')))} · 未命中=${esc(String((d.miss || []).join('、')))}</small><br>`;
+          } catch (e) { return ''; }
+        })()
         + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
       var rb0 = document.getElementById('qzReload');
       if (rb0) rb0.onclick = function () { location.reload(); };

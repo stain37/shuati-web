@@ -786,6 +786,25 @@
     TQ_CACHE.map[tag] = rows;
     return rows;
   }
+  /* 自检用：某个中间层下面到底挂了多少考点、这些考点名在题库标签里能命中多少题 */
+  function aggDebug(catId) {
+    ensure();
+    try {
+      var ids = catDescIds(catId);
+      var tags = aggTagsOf(catId);
+      var ix = tagIndex(), hit = 0, miss = [];
+      tags.forEach(function (t) {
+        var arr = ix.byTag[t] || [];
+        hit += arr.length;
+        if (!arr.length && miss.length < 4) miss.push(t);
+      });
+      return {
+        nodes: ids.length, tags: tags.length, hit: hit,
+        sample: tags.slice(0, 3), miss: miss,
+        idSample: ids.slice(0, 3), pooled: ix.list.length
+      };
+    } catch (e) { return { err: e && e.message }; }
+  }
   /* 由 id 还原一条题目行（深链接 / 刷新时用） */
   function tagQById(id) {
     ensure();
@@ -1010,7 +1029,7 @@
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
-    tagListAll: function () { return tagIndex().list.slice(0); }, tagQList: tagQList, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
+    tagListAll: function () { return tagIndex().list.slice(0); }, aggDebug: aggDebug, tagQList: tagQList, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
     schemeOf: function (sid) { ensure(); var id = sid || CUR; return DB.list.filter(function (x) { return x && x.id === id; })[0] || null; },
     setBig: function (sid, v) {
       ensure();
