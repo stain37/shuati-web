@@ -463,7 +463,7 @@
     hit.n += shownBanks.length;
     var folded = !!S.closed[c.id] && !qLow;
     var total = ownBanks.length + kidsArr.length;
-    var isTagC = String(c.id).indexOf('tgcat:') === 0 || String(c.id).indexOf('tgb:') === 0;
+    var isTagC = String(c.id).indexOf('tgcat:') === 0 || String(c.id).indexOf('tgb:') === 0 || (tagScheme() && /^(tbs:|tbc:)/.test(String(c.id)));
     return '<div class="qs-cat' + (folded ? ' folded' : '') + '" data-cat="' + E(c.id) + '">'
       + '<button type="button" class="qs-ch" data-fold="' + E(c.id) + '" data-drop="' + E(c.id) + '" '
       + 'style="--qs-ind:' + (6 + depth * 18) + 'px;--qs-d:' + Math.min(depth, 4) + '" draggable="true">'
@@ -475,7 +475,7 @@
       + '<em>' + (function () {
         if (!tagScheme()) return shownBanks.length || '';
         try {
-          if (String(c.id).indexOf('tgcat:') === 0) {
+          if (/^(tgcat:|tbs:|tbc:)/.test(String(c.id))) {
             var ts = (window.SCM && SCM.tagStatOf) ? SCM.tagStatOf(c.id) : null;
             return ts ? (ts.n || '') : '';
           }
@@ -1051,6 +1051,19 @@
   function openTagFolder(cid) {
     try {
       var sid = String(cid || '');
+      /* 系统 / 科目 / 主题：把下面所有考点的题合成一个题集打开 */
+      if (/^(tbs:|tbc:)/.test(sid) && tagScheme() && window.SCM && SCM.tgBankId) {
+        var abid = SCM.tgBankId('#' + sid);
+        try {
+          if (typeof QZ === 'object' && QZ) {
+            QZ.bankId = abid; QZ.filter = 'all'; QZ.subject = ''; QZ.order = null; QZ.rw = null; QZ.cur = null;
+          }
+        } catch (eQZ2) {}
+        if (typeof setOpen === 'function') setOpen(false);
+        if (typeof go === 'function') go('#/bank/' + encodeURIComponent(abid));
+        else location.hash = '#/bank/' + encodeURIComponent(abid);
+        return true;
+      }
       if (sid.indexOf('tgcat:') !== 0) return false;
       if (!(window.SCM && SCM.tgBankId)) return false;
       var tag = decodeURIComponent(sid.slice(6));
@@ -1097,7 +1110,7 @@
     if (fold) {
       var cid = fold.dataset.fold;
       /* 考点文件夹：点整行 → 直接进这个考点的答题界面（不是回首页管理器） */
-      if (/^(tgcat:|tgb:)/.test(String(cid)) && !e.target.closest('.qs-caret') && !S.selmode) {
+      if ((/^(tgcat:|tgb:)/.test(String(cid)) || (tagScheme() && /^(tbs:|tbc:)/.test(String(cid)))) && !e.target.closest('.qs-caret') && !S.selmode) {
         e.stopPropagation();
         if (openTagFolder(cid)) return;
         /* 大标签（tgb:）没有单一题集：退回打开文件夹看子考点 */

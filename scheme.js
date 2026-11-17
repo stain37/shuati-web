@@ -463,6 +463,48 @@
     } catch (e) { return -2; }
   }
   function tgBankId(tag) { return 'tg:' + encodeURIComponent(String(tag)); }
+
+  /* 系统 / 科目 / 主题 这些中间层本身没有题：把它们下面所有考点的题合成一个虚拟题集。
+     约定：这种「聚合节点」的 tag 字符串是 '#' + 节点 id（例如 #tbs:sys01）。 */
+  function isAggCat(catId) { return /^(tbs:|tbc:)/.test(String(catId || '')); }
+  function catDescIds(catId) {
+    var all = cats(), kidsMap = Object.create(null), out = [], seen = Object.create(null);
+    var stack = [String(catId)], guard = 0;
+    all.forEach(function (c) {
+      if (!c || !c.id) return;
+      var p0 = String(c.parent || '');
+      if (!p0) return;
+      (kidsMap[p0] = kidsMap[p0] || []).push(String(c.id));
+    });
+    while (stack.length && guard++ < 8000) {
+      var cur = stack.pop();
+      if (seen[cur]) continue;
+      seen[cur] = 1; out.push(cur);
+      (kidsMap[cur] || []).forEach(function (k) { if (!seen[k]) stack.push(k); });
+    }
+    return out;
+  }
+  function aggTagsOf(catId) {
+    var tags = [];
+    catDescIds(catId).forEach(function (id) {
+      if (String(id).indexOf('tgcat:') !== 0) return;
+      var t = String(id).slice(6);
+      try { t = decodeURIComponent(t); } catch (e) {}
+      if (t) tags.push(t);
+    });
+    return tags;
+  }
+  function aggRowsOf(catId) {
+    var ix = tagIndex(), seen = Object.create(null), rows = [];
+    aggTagsOf(catId).forEach(function (tag) {
+      (ix.byTag[tag] || []).forEach(function (it) {
+        var k = it.b.id + '#' + it.q.id;
+        if (seen[k]) return;
+        seen[k] = 1; rows.push({ tag: tag, it: it });
+      });
+    });
+    return rows;
+  }
   function tgCatId(tag) { return 'tgcat:' + encodeURIComponent(String(tag)); }
   /* 三级索引的两个上层文件夹：科目（tbs:）、讲义一级章（tbc:）。章 id 里带科目，避免同名章撞车 */
   function tbSubId(sub) { return 'tbs:' + encodeURIComponent(String(sub)); }
@@ -541,6 +583,12 @@
   }
   /* 某个考点文件夹的题数 / 已答（只查索引，不造题目行 —— 列目录时用这个，快得多） */
   function tagStatOf(catId) {
+    if (isAggCat(catId)) {
+      var rr0 = aggRowsOf(catId), done0 = 0;
+      var A0 = (typeof ANS === 'object' && ANS) ? ANS : {};
+      rr0.forEach(function (r) { var a = A0[r.it.b.id + '#' + r.it.q.id]; if (a && !a.redo) done0++; });
+      return { n: rr0.length, done: done0, tag: String(catId) };
+    }
     var tag = String(catId || '').replace(/^tgcat:/, '');
     try { tag = decodeURIComponent(tag); } catch (e0) {}
     var ix = tagIndex();
@@ -579,6 +627,34 @@
   }
   function tagBankOf(tag) {
     ensure();
+    if (String(tag).charAt(0) === '#') {
+      var nid = String(tag).slice(1);
+      var cn = null;
+      try { cn = cats().filter(function (c) { return c && c.id === nid; })[0]; } catch (eC) {}
+      var ab = {
+        id: tgBankId(tag), title: (cn && cn.title) || nid, name: (cn && cn.title) || nid,
+        virtualTag: tag, questions: [], source: 'tagagg', createdAt: 0, cat: null
+      };
+      Object.defineProperty(ab, 'questions', {
+        enumerable: true, configurable: true,
+        get: function () {
+          var ixA = tagIndex();
+          if (ab.__qs && ab.__sig === ixA.sig) return ab.__qs;
+          var qs = aggRowsOf(nid).map(function (r) {
+            var o = {};
+            Object.keys(r.it.q).forEach(function (k) { o[k] = r.it.q[k]; });
+            o._bank = r.it.b.id; o._bname = String(r.it.b.title || r.it.b.name || '');
+            o._srcKey = r.it.b.id + '#' + r.it.q.id;
+            o.__oid = r.it.q.id;
+            o.id = r.it.b.id + '#' + r.it.q.id;
+            return o;
+          });
+          ab.__qs = qs; ab.__sig = ixA.sig;
+          return qs;
+        }
+      });
+      return ab;
+    }
     var ix = tagIndex();
     var hit = ix.banks[tag];
     if (hit) return hit;
@@ -654,6 +730,29 @@
   function tagQList(catId) {
     ensure();
     if (!tagMode()) return [];
+    if (isAggCat(catId)) {
+      var nodeId = String(catId);
+      var ckA = 'agg|' + CUR + '|' + nodeId;
+      if (TQ_CACHE.key !== ckA) TQ_CACHE = { key: ckA, map: Object.create(null) };
+      if (TQ_CACHE.map[nodeId]) return TQ_CACHE.map[nodeId];
+      var rowsA = aggRowsOf(nodeId).map(function (r) {
+        var q = r.it.q;
+        var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+        var title = stem.slice(0, 34) || ('第 ' + q.id + ' 题');
+        var one = {};
+        Object.keys(q).forEach(function (k) { one[k] = q[k]; });
+        one._bank = r.it.b.id; one._bname = String(r.it.b.title || r.it.b.name || '');
+        return {
+          id: 'tgq:' + encodeURIComponent(r.tag) + '|' + r.it.b.id + '#' + q.id,
+          title: title, name: title, virtualTag: r.tag,
+          virtualQ: { bankId: r.it.b.id, qid: q.id }, source: 'tagq',
+          cat: catId, bankName: String(r.it.b.title || r.it.b.name || ''),
+          questions: [one], createdAt: 0
+        };
+      });
+      TQ_CACHE.map[nodeId] = rowsA;
+      return rowsA;
+    }
     var tag = '';
     try { tag = decodeURIComponent(String(catId).slice(6)); } catch (e) { tag = String(catId).slice(6); }
     if (!tag) return [];
