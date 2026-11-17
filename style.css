@@ -7118,3 +7118,10 @@ body.frost.quiz #view .card{
   backdrop-filter:none!important;
   background:var(--card,#fff)!important;
 }
+
+
+/* 答题页每翻一题都会重写内容，入场动画在 iPad 上等于每次多合成一屏 */
+body.quiz #view.view-in,
+body.quiz #view.view-enter{
+  animation:none!important;
+}

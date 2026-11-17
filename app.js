@@ -4627,6 +4627,44 @@ const stemHtml = t => {
   }
 };
 const _STEMC = new Map();
+
+/* ===== 原地换题：Safari 上每次重写整张题卡都要把整页重排一遍，
+   1000 多题 + 长题干时能吃掉近一秒。这里只在「同一题库翻题」时替换真正会变的区块，
+   静态的抽屉/快捷键/悬浮宿主保持不动。失败就退回整块重写。 ===== */
+let __QFAST_BANK = '';
+const __QFAST_PARTS = ['.qmode', '.qhead', '.vstrip', '#qBody', '.actions', '#fb'];
+function __applyQuizHtml(html, bank) {
+  const view = document.getElementById('view');
+  const sig = String((bank && bank.id) || '');
+  const live = view && view.querySelector('.qcard');
+  if (live && __QFAST_BANK === sig) {
+    try {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const okAll = __QFAST_PARTS.every(function (sel) { return live.querySelector(sel) && tmp.querySelector(sel); });
+      if (okAll) {
+        __QFAST_PARTS.forEach(function (sel) {
+          const next = tmp.querySelector(sel);
+          live.querySelector(sel).replaceWith(next);
+        });
+        return;
+      }
+    } catch (eFast) {}
+  }
+  if (view) view.innerHTML = html;
+  __QFAST_BANK = sig;
+}
+/* 题干里的图：别在翻题那一帧解码，交给浏览器按需解 */
+function __lazyQuizImgs() {
+  const view = document.getElementById('view');
+  if (!view) return;
+  const imgs = view.querySelectorAll('#qBody img, .stem img, .opts img');
+  for (let i = 0; i < imgs.length; i++) {
+    const im = imgs[i];
+    if (!im.__lz) { im.__lz = 1; im.loading = 'lazy'; im.decoding = 'async'; }
+  }
+}
+
 function renderQuiz(bankId) {
   try { sessionStorage.setItem('__op', 'open:' + String(bankId).slice(0, 40)); } catch (eOp1) {}
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
@@ -4944,7 +4982,7 @@ function renderQuiz(bankId) {
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
-  $('view').innerHTML = `
+  const __quizHtml = `
     <div class="card qcard">
       <div class="qgrip" id="qdBar" title="按住拖动题目卡片；点一下浮起 / 还原"><i></i></div>
       ${attRailHtml(fk)}
@@ -5046,6 +5084,9 @@ function renderQuiz(bankId) {
       <div id="aiHost"></div>
       <div id="vHost"></div>
     </div>`;
+  __applyQuizHtml(__quizHtml, bank);
+  try { __lazyQuizImgs(); } catch (eLi) {}
+
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
   /* web791：模式收进一个下拉；点外面 / 点任意一项都收起 */
   (function bindQmPop() {
