@@ -52,6 +52,11 @@
     + '.kbdoc-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 16px;border-top:1px solid #e8eaed}'
     + '.kbdoc-ft .b{border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}'
     + '.kbdoc-ft .b.p{background:#2f6fed;border-color:#2f6fed;color:#fff}'
+    + '.kbdoc-more{border:1px solid #e5e7eb;background:#fff;border-radius:8px;width:34px;height:30px;cursor:pointer;font-size:18px;line-height:1;color:#475569}'
+    + '.kbdoc-menu{position:absolute;right:16px;top:44px;background:#fff;border:1px solid #e8eaed;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;display:none;z-index:5;min-width:150px}'
+    + '.kbdoc-menu.on{display:block}'
+    + '.kbdoc-menu div{padding:8px 10px;border-radius:8px;font-size:13px;color:#334155;cursor:pointer}'
+    + '.kbdoc-menu div:hover{background:#f1f5f9}'
     + '@media (max-width:520px){.kbdoc-win{width:100vw;height:100%;left:0;top:0;transform:none;border-radius:0}}';
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
@@ -63,6 +68,7 @@
     if (host) return;
     host = h('<div class="kbdoc-mask"><div class="kbdoc-win">'
       + '<div class="kbdoc-hd"><b class="kbdoc-t">文档</b>'
+      + '<button class="kbdoc-more" title="更多">⋯</button>'
       + '<label><input type="checkbox" class="kbdoc-sync"> 同步</label>'
       + '<button class="kbdoc-x" title="关闭">✕</button></div>'
       + '<div class="kbdoc-tabs"><div class="kbdoc-tab on" data-k="kb">知识点</div><div class="kbdoc-tab" data-k="qz">刷题</div></div>'
@@ -77,6 +83,39 @@
       + '<button class="b kbdoc-goto">去题库</button><button class="b kbdoc-save p">保存</button><button class="b kbdoc-close">关闭</button></div>'
       + '</div></div>').firstChild;
     document.body.appendChild(host);
+    var menu = h('<div class="kbdoc-menu"><div data-a="link">复制链接</div><div data-a="copy">复制正文</div><div data-a="export">导出 Markdown</div><div data-a="clear">清空内容</div></div>');
+    host.querySelector('.kbdoc-win').appendChild(menu);
+    var moreBtn = host.querySelector('.kbdoc-more');
+    moreBtn.onclick = function (e) { e.stopPropagation(); menu.classList.toggle('on'); };
+    document.addEventListener('click', function () { menu.classList.remove('on'); });
+    menu.onclick = function (e) {
+      var a = (e.target && e.target.dataset) ? e.target.dataset.a : '';
+      if (!a) return;
+      menu.classList.remove('on');
+      var id = cur.tag || cur.title;
+      if (a === 'link') {
+        var u = location.origin + location.pathname + '#/kbdoc/' + encodeURIComponent(id);
+        (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject());
+        setStatus('链接已复制');
+      } else if (a === 'copy') {
+        var t = vd && vd.getMarkdown ? vd.getMarkdown() : '';
+        (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject());
+        setStatus('正文已复制');
+      } else if (a === 'export') {
+        var md = vd && vd.getMarkdown ? vd.getMarkdown() : '';
+        var blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        var a2 = document.createElement('a');
+        a2.href = URL.createObjectURL(blob);
+        a2.download = (cur.title || '知识点') + '.md';
+        document.body.appendChild(a2); a2.click(); a2.remove();
+        setStatus('已导出');
+      } else if (a === 'clear') {
+        if (!confirm('确定清空这篇内容？')) return;
+        localStorage.removeItem(cur.tag ? 'kbdoc.tag.' + cur.tag : 'kbdoc.doc.' + cur.title);
+        mountVditor('');
+        setStatus('已清空');
+      }
+    };
     host.querySelector('.kbdoc-x').onclick = close;
     host.querySelector('.kbdoc-close').onclick = close;
     host.querySelector('.kbdoc-goto').onclick = function () {
