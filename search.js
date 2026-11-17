@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var ITEMS = [], READY = false, LOADING = null;
-  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '我的笔记'];
+  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '狂背', '我的笔记'];
   var CUR_SUBJ = '全部';
 
   /* ---------- 数据 ---------- */
@@ -45,6 +45,18 @@
   }
 
   function loadKuangs() {
+    var inline = window.__KBACK;
+    if (inline && inline.items && inline.items.length) {
+      inline.items.forEach(function (it, i) {
+        ITEMS.push({
+          id: 'kback:' + i, t: it.chapter, s: '狂背', g: it.subject || '',
+          x: it.text || '', src: '狂背', kind: 'kuangbei',
+          page: (it.p0 && it.p1) ? ('原书第 ' + it.p0 + '–' + it.p1 + ' 页') : '',
+          p0: it.p0 || 0, p1: it.p1 || 0
+        });
+      });
+      return Promise.resolve();
+    }
     return fetch('资料/狂背/索引.json', { cache: 'no-cache' })
       .then(function (r) { return r.json(); })
       .then(function (idx) {
@@ -289,6 +301,23 @@
     cardBody.innerHTML = mdToHtml(item.x);
     cardBody.scrollTop = 0;
     peek.classList.add('on');
+    if (item.kind === 'kuangbei') {
+      var kbp = window.__KBACK || {};
+      var href = '';
+      if (kbp.pdf) href = encodeURI(kbp.pdf);
+      else if (kbp.pdfLocal) href = 'file:///' + encodeURI(String(kbp.pdfLocal).replace(/\\/g, '/').replace(/^\/+/, ''));
+      var pg = item.p0 ? ('#page=' + item.p0) : '';
+      var head = '<div style="font:12px/1.8;color:#64748b;margin:0 0 10px">'
+        + esc2((item.g ? item.g + ' · ' : '') + item.t) + (item.page ? ' · ' + esc2(item.page) : '') + '</div>';
+      if (href) {
+        cardBody.innerHTML = '<p style="margin:0 0 10px"><a style="display:inline-block;background:#2f6fed;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;text-decoration:none" href="' + href + pg + '" target="_blank" rel="noopener">📄 打开狂背 PDF（第 ' + item.p0 + ' 页）</a></p>'
+          + head + mdToHtml(item.x);
+      } else {
+        cardBody.innerHTML = '<div style="font:12px/1.8;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 0 10px">还没挂上 PDF 文件（' + (item.page ? esc2(item.page) : '原书页码未知') + '）。把 PDF 放进站点 pdf/ 目录后，这里就会出现「打开 PDF」按钮。</div>'
+          + head + mdToHtml(item.x);
+      }
+      return;
+    }
     if (item.src === '资料库') {
       ensurePdfIdx().then(function () {
         var p = resolvePdf(item.t);
@@ -336,6 +365,7 @@
     var q = (input.value || '').trim().toLowerCase();
     var res = ITEMS.filter(function (it) {
       if (CUR_SUBJ === '我的笔记') return it.src === '我的笔记';
+      if (CUR_SUBJ === '狂背') return it.src === '狂背';
       if (CUR_SUBJ !== '全部' && it.s !== CUR_SUBJ) return false;
       return true;
     });
