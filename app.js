@@ -4606,11 +4606,27 @@ const stemLooksMd = t => {
   return false;
 };
 const stemHtml = t => {
-  if (typeof mdToHtml === 'function' && stemLooksMd(t)) {
-    try { return mdToHtml(String(t == null ? '' : t)); } catch (e) {}
+  /* 长题干 + 翻转题时这函数每次都被调 6 次（题干 + 5 个选项），
+     里面还要跑 markdown / 公式渲染，iPad 上会攒成几百毫秒。按原文缓存结果。 */
+  try {
+    const key = String(t == null ? '' : t);
+    if (key.length < 400) {
+      var hit = _STEMC.get(key);
+      if (hit !== undefined) return hit;
+    }
+    var out;
+    if (typeof mdToHtml === 'function' && stemLooksMd(t)) {
+      try { out = mdToHtml(key); } catch (e) { out = null; }
+    }
+    if (out == null) out = (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
+    if (key.length >= 400 || _STEMC.size > 4000) { if (_STEMC.size > 4000) _STEMC.clear(); }
+    else _STEMC.set(key, out);
+    return out;
+  } catch (eAll) {
+    return (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
   }
-  return (typeof renderMathText === 'function' ? renderMathText(t) : esc(t));
 };
+const _STEMC = new Map();
 function renderQuiz(bankId) {
   try { sessionStorage.setItem('__op', 'open:' + String(bankId).slice(0, 40)); } catch (eOp1) {}
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
@@ -5428,6 +5444,7 @@ function uiHandHintOnce(el) {
 
 /* 单手模式 · 选项速选条（web628）：屏幕侧边一列小方块 A B C…，有几个选项就几个，
    点方块＝点那一行，拇指不用横向够到选项文字。 */
+let _RAIL_SIG = '', _RAIL_W = 0, _RAIL_W_SET = -1, _RAIL_SZ = -1, _RAIL_COLS = -1, _OPH = -1;
 function uiOptRail() {
   const opts = document.querySelector('#view .opts') || document.querySelector('.opts');
   let rail = document.getElementById('optRail');
@@ -5452,17 +5469,23 @@ function uiOptRail() {
     document.body.appendChild(rail);
   }
   rail.setAttribute('data-side', (SET.hand === 'left') ? 'left' : 'right');
-  try { uiMakeDraggable(rail, 'railPos', '.orgrip'); } catch (eD1) {}
+  if (!rail._dragReady) { rail._dragReady = 1; try { uiMakeDraggable(rail, 'railPos', '.orgrip'); } catch (eD1) {} }
   const rows = opts.querySelectorAll('.opt');
-  let html = '';
+  let html = '', sig = (SET.hand === 'left' ? 'L' : 'R') + '|' + rows.length;
   rows.forEach((r, i) => {
     const kEl = r.querySelector('.k');
     const letter = (kEl ? kEl.textContent : '').trim() || String.fromCharCode(65 + i);
     const picked = r.classList.contains('on') || r.classList.contains('sel') || r.classList.contains('checked');
+    sig += (picked ? '1' : '0') + letter;
     html += '<button type="button" class="orq' + (picked ? ' on' : '') + '" data-oi="' + i + '" title="选 ' + letter + '">' + letter + '</button>';
   });
-  rail.innerHTML = '<div class="orgrip" title="按住这里上下拖">⋮</div>' + html;
-  rail.classList.toggle('two', rows.length > 6);
+  /* 每翻一题都重写一遍侧边按钮、还把 offsetWidth 读一次，等于逼浏览器重排整页；
+     内容没变就只更新状态，不动 DOM。 */
+  if (sig !== _RAIL_SIG) {
+    _RAIL_SIG = sig;
+    rail.innerHTML = '<div class="orgrip" title="按住这里上下拖">⋮</div>' + html;
+    rail.classList.toggle('two', rows.length > 6);
+  }
   /* web634：按钮跟着选项数量「伸缩」——选项多就分列并缩小，选项少就长回来，
      保证整条永远夹在顶栏与底栏之间，不会顶出屏幕。 */
   try {
@@ -5472,15 +5495,16 @@ function uiOptRail() {
     const per = Math.ceil(n / cols);
     const base = n <= 4 ? 84 : (n <= 6 ? 72 : (n <= 9 ? 62 : (n <= 12 ? 52 : 42)));
     const sz = Math.max(26, Math.min(base, Math.floor((avail - (per - 1) * 6) / per)));
-    rail.style.setProperty('--sz', sz + 'px');
-    rail.style.setProperty('--cols', String(cols));
+    if (_RAIL_SZ !== sz) { _RAIL_SZ = sz; rail.style.setProperty('--sz', sz + 'px'); }
+    if (_RAIL_COLS !== cols) { _RAIL_COLS = cols; rail.style.setProperty('--cols', String(cols)); }
     rail.setAttribute('data-locked', (opts.querySelector('.opt:not(.lock)') ? '0' : '1'));
     /* web635：答题卡（选项行）也跟着一起放大/缩小 —— 选项少就一行更高更好点，
        选项多就自动收小，整页仍然一屏能看个大概。 */
     const oph = Math.max(42, Math.min(88, Math.round((innerHeight * 0.54 - (n - 1) * 8) / Math.max(1, n))));
-    document.body.style.setProperty('--oph', oph + 'px');
+    if (_OPH !== oph) { _OPH = oph; document.body.style.setProperty('--oph', oph + 'px'); }
 
-    document.body.style.setProperty('--railw', (rail.offsetWidth || 38) + 'px');
+    if (_RAIL_W <= 0) { _RAIL_W = rail.offsetWidth || 38; }
+    if (_RAIL_W_SET !== _RAIL_W) { _RAIL_W_SET = _RAIL_W; document.body.style.setProperty('--railw', _RAIL_W + 'px'); }
   } catch (eSz) {}
   try { uiHandHintOnce(rail); } catch (eH) {}
   /* 默认位置：紧挨着「上一题 / 下一题」那组钮的左侧（右手时镜像到右侧）；
