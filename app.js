@@ -5871,6 +5871,17 @@ function curTaxScheme() {
     return !!(one && one.tax === true);
   } catch (e) { return false; }
 }
+/* 「系统分类」等自定义/考点式方案：来源筛选也要生效（原来只认 tax 方案） */
+function curSysScheme() {
+  try {
+    const db = readLS('qbank.schemes.v1', {}) || {};
+    const cur = localStorage.getItem('qbank.scheme.cur.v1') || db.cur || '';
+    const one = (db.list || []).filter(x => x && x.id === cur)[0];
+    if (!one) return false;
+    if (one.tax === true || one.custom === 1 || one.mode === 'tag') return true;
+    return String(one.name || '').indexOf('系统分类') === 0;
+  } catch (e) { return false; }
+}
 const LS_SRC_G = 'qbank.qsrc.global.v1';
 /* 是否「对全部考点有效」：默认开，勾一次所有考点都用同一套来源 */
 function srcGlobalOn() { try { return localStorage.getItem(LS_SRC_G) !== '0'; } catch (e) { return true; } }
@@ -5889,8 +5900,8 @@ function srcSelOf(bank) {
 /* 生效中的来源白名单：null = 全部；[] = 全不选（0 题）；其余 = 只留这些 */
 function srcPick(bank) {
   if (!bank || !bank.virtualTag) return null;
-  /* 只有当前方案是三级索引时才认来源白名单，否则切回别的方案会出现「题全没了又看不到入口」 */
-  if (!curTaxScheme()) return null;
+  /* 三级索引 / 系统分类这类「考点式」方案才认来源白名单，否则切回别的方案会出现「题全没了又看不到入口」 */
+  if (!curTaxScheme() && !curSysScheme()) return null;
   return srcSelOf(bank);
 }
 function srcMatch(bank, q) {
@@ -5987,7 +5998,7 @@ function srcListAll(bank) {
 function renderSrc(bank) {
   const box = $('srcbar');
   if (!box) return;
-  const ok = !!(bank && bank.virtualTag && curTaxScheme());
+  const ok = !!(bank && bank.virtualTag && (curTaxScheme() || curSysScheme()));
   const has = ok ? srcList(bank) : [];
   /* 只有 1 个来源时原本隐藏；但若已经存了白名单（尤其「全不选」= []）就必须显示，
      否则整本题集 0 题、六科 chip 全灰，用户没有任何入口把筛选改回来 */
