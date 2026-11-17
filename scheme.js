@@ -620,10 +620,14 @@
      以前 smallTags() 全库扫一遍、tagBankOf() 每个标签再全库扫一遍，
      标签一多就是 O(标签数 x 题数)，第一次进方案会直接卡死。 ---- */
   var TG_IDX = { sig: '', byTag: null, list: null, banks: null };
+  var SIG_MEMO = { t: 0, v: '' };
   function banksSig() {
+    var now = Date.now();
+    if (SIG_MEMO.v && (now - SIG_MEMO.t) < 300) return SIG_MEMO.v;
     var n = 0, q = 0;
     banks().forEach(function (b) { if (b && b.id) { n++; q += (b.questions || []).length; } });
-    return n + ':' + q + ':' + (window.__TAGS_REV || 0);
+    SIG_MEMO = { t: now, v: n + ':' + q + ':' + (window.__TAGS_REV || 0) };
+    return SIG_MEMO.v;
   }
   function tagIndex() {
     ensure();
@@ -650,10 +654,19 @@
   /* 某个考点文件夹的题数 / 已答（只查索引，不造题目行 —— 列目录时用这个，快得多） */
   function tagStatOf(catId) {
     if (isAggCat(catId)) {
-      var rr0 = aggRowsOf(catId), done0 = 0;
-      var A0 = (typeof ANS === 'object' && ANS) ? ANS : {};
-      rr0.forEach(function (r) { var a = A0[r.it.b.id + '#' + r.it.q.id]; if (a && !a.redo) done0++; });
-      return { n: rr0.length, done: done0, tag: String(catId) };
+      /* 只统计、不造行：原来 aggRowsOf 会把每个考点的题都实例化一遍，
+         列目录时 441 个节点就是几百万次对象分配。这里直接数索引里的条数。 */
+      var ixA0 = tagIndex(), A0 = (typeof ANS === 'object' && ANS) ? ANS : {};
+      var tags0 = aggTagsOf(catId), n0 = 0, done0 = 0, seen0 = Object.create(null);
+      tags0.forEach(function (t0) {
+        (ixA0.byTag[t0] || []).forEach(function (it0) {
+          var k0 = it0.b.id + '#' + it0.q.id;
+          if (seen0[k0]) return;
+          seen0[k0] = 1; n0++;
+          var a0 = A0[k0]; if (a0 && !a0.redo) done0++;
+        });
+      });
+      return { n: n0, done: done0, tag: String(catId) };
     }
     var tag = String(catId || '').replace(/^tgcat:/, '');
     try { tag = decodeURIComponent(tag); } catch (e0) {}
