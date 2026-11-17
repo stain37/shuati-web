@@ -476,8 +476,13 @@
         if (!tagScheme()) return shownBanks.length || '';
         try {
           if (/^(tgcat:|tbs:|tbc:)/.test(String(c.id))) {
-            var ts = (window.SCM && SCM.tagStatOf) ? SCM.tagStatOf(c.id) : null;
-            return ts ? (ts.n || '') : '';
+            var SM = (window.__QS_STATM || (window.__QS_STATM = {}));
+            if (!SM.__map || SM.__rev !== String(window.__TAGS_REV || 0)) {
+              SM.__map = (window.SCM && SCM.statMap) ? SCM.statMap() : null;
+              SM.__rev = String(window.__TAGS_REV || 0);
+            }
+            var n0 = SM.__map ? SM.__map[c.id] : 0;
+            return n0 || '';
           }
           return kidsArr.length || '';
         } catch (eT) { return ''; }

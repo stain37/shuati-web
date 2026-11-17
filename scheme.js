@@ -700,6 +700,46 @@
     return { q: q, done: done, tags: ix.list.length };
   }
 
+  /* 一次性把「每个节点的题数」算出来：把每个考点的题沿 parent 链往上滚，
+     列目录时直接查表，不再对 441 个节点各算一次（那是 O(节点 x 题)）。 */
+  var STAT_MEMO = { sig: '', map: null };
+  function statMap() {
+    var ix = tagIndex();
+    if (STAT_MEMO.map && STAT_MEMO.sig === ix.sig) return STAT_MEMO.map;
+    var par = Object.create(null), idOfTag = Object.create(null);
+    cats().forEach(function (c) {
+      if (!c || !c.id) return;
+      par[c.id] = c.parent || '';
+      if (String(c.id).indexOf('tgcat:') === 0) {
+        var t = String(c.id).slice(6);
+        try { t = decodeURIComponent(t); } catch (e0) {}
+        idOfTag[t] = c.id;
+      }
+    });
+    var sets = Object.create(null);
+    ix.list.forEach(function (t) {
+      var nid = idOfTag[t];
+      if (!nid) return;
+      var arr = ix.byTag[t] || [];
+      if (!arr.length) return;
+      var seen = Object.create(null), keys = [];
+      arr.forEach(function (it) {
+        var k = it.b.id + '#' + it.q.id;
+        if (seen[k]) return;
+        seen[k] = 1; keys.push(k);
+      });
+      var cur = nid, guard = 0;
+      while (cur && guard++ < 12) {
+        var st = sets[cur] || (sets[cur] = Object.create(null));
+        keys.forEach(function (k) { st[k] = 1; });
+        cur = par[cur];
+      }
+    });
+    var map = Object.create(null);
+    Object.keys(sets).forEach(function (nid) { map[nid] = Object.keys(sets[nid]).length; });
+    STAT_MEMO = { sig: ix.sig, map: map };
+    return map;
+  }
   function smallTags() {
     ensure();
     return tagIndex().list.slice(0);
@@ -1112,7 +1152,7 @@
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
     tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
-    tagListAll: function () { return tagIndex().list.slice(0); }, aggDebug: aggDebug, tagQList: tagQList, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
+    tagListAll: function () { return tagIndex().list.slice(0); }, aggDebug: aggDebug, tagQList: tagQList, statMap: statMap, tagStatOf: tagStatOf, tagTotal: tagTotal, tagQById: tagQById, bigTitleOf: bigTitleOf, isJunkTag: isJunkTag,
     schemeOf: function (sid) { ensure(); var id = sid || CUR; return DB.list.filter(function (x) { return x && x.id === id; })[0] || null; },
     setBig: function (sid, v) {
       ensure();
