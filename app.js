@@ -6906,6 +6906,7 @@ function step(d) {
 }
 
 let GRIDF = 'all';        // 答题卡筛选：all / wrong / undone（只影响显示，不影响题号）
+let GRID_LIM = 240;
 function renderGrid() {
   if (route().name === 'exam' && typeof renderExamGrid === 'function') { renderExamGrid(); return; }
   const bank = bankById(QZ.bankId); if (!bank) return;
@@ -6945,22 +6946,33 @@ function renderGrid() {
   if (f) {
     const defs = [['all', '全部 ' + bank.questions.length], ['wrong', '做错 ' + wrong], ['undone', '没做 ' + Math.max(0, bank.questions.length - done)]];
     f.innerHTML = defs.map(([k, t]) => `<button class="chip${GRIDF === k ? ' on' : ''}" data-gf="${k}">${t}</button>`).join('');
-    f.querySelectorAll('.chip').forEach(c => c.onclick = () => { GRIDF = c.dataset.gf; renderGrid(); });
+    f.querySelectorAll('.chip').forEach(c => c.onclick = () => { GRIDF = c.dataset.gf; GRID_LIM = 240; renderGrid(); });
   }
-  const shown = bank.questions.filter(q => {
+  /* 原来这里对每道题都 bank.questions.indexOf(q)，5800 题就是三千多万次比较，
+     每按一次「下一题」都要重跑一遍——大题库卡死的真正原因。改成一次建号表。 */
+  const NOOF = new Map();
+  bank.questions.forEach((q, i) => NOOF.set(q, i + 1));
+  const shown = [];
+  bank.questions.forEach(q => {
     const a = ANS[kOf(bank, q)];
-    if (GRIDF === 'wrong') return isWrongRec(a);
-    if (GRIDF === 'undone') return !(a && !a.redo);
-    return true;
+    if (GRIDF === 'wrong' && !isWrongRec(a)) return;
+    if (GRIDF === 'undone' && (a && !a.redo)) return;
+    shown.push({ q: q, no: NOOF.get(q) });
   });
 
+  /* 题多时不要一次铺几千个按钮：只画前 GRID_LIM 个，其余点「显示更多」再补。
+     （5000+ 个 <button> 在 iPad 上够卡好几秒） */
+  const LIM = Math.min(shown.length, GRID_LIM || 240);
   body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　${bankScoreText(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
-    + (shown.length ? `<div class="grid">` + shown.map(q => {
-      const k = kOf(bank, q), a = ANS[k];
-      const no = bank.questions.indexOf(q) + 1;     // 用原题号，筛选后也不会串号
-      const cls = 'gnum' + (isWrongRec(a) ? ' err' : (a ? ' done' : '')) + (String(q.id) === String(QZ.cur) ? ' cur' : '');
-      return `<button class="${cls}" data-j="${esc(q.id)}">${no}</button>`;
-    }).join('') + `</div>` : '<div class="empty">这个筛选下没有题目。</div>');
+    + (shown.length ? `<div class="grid">` + shown.slice(0, LIM).map(it => {
+      const k = kOf(bank, it.q), a = ANS[k];
+      const cls = 'gnum' + (isWrongRec(a) ? ' err' : (a ? ' done' : '')) + (String(it.q.id) === String(QZ.cur) ? ' cur' : '');
+      return `<button class="${cls}" data-j="${esc(it.q.id)}">${it.no}</button>`;
+    }).join('') + `</div>` : '<div class="empty">这个筛选下没有题目。</div>')
+    + (shown.length > LIM ? `<div class="tools" style="margin-top:8px"><button class="btn" id="gridMore">显示更多（还剩 ${shown.length - LIM} 题）</button></div>` : '');
+
+  const gm = $('gridMore');
+  if (gm) gm.onclick = () => { GRID_LIM = LIM + 300; renderGrid(); };
 
   body.querySelectorAll('.gnum').forEach(b => b.onclick = () => {
     /* 答题卡筛的「没做 / 做错」也带进答题页：从没做的题进去，下一题就继续走没做的 */
