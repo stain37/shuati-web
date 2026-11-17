@@ -15,7 +15,7 @@
       var r = SCM.importData(SCHEME, '系统分类');
       if (r && r.id) {
         try { SCM.switchTo(r.id); } catch (e1) {}
-        try { if (typeof toast === 'function') toast('已装好新方案「系统分类」：19 个系统 › 科目 › 主题 › 标签', 3200, 'ok'); } catch (e2) {}
+        try { if (typeof toast === 'function') toast('已启用新方案「系统分类」：19 个系统 › 科目 › 主题 › 标签', 3600, 'ok'); } catch (e2) {}
       }
     } catch (e) { try { console.warn('scheme-sys:', e); } catch (x) {} }
   }
