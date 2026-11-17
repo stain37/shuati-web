@@ -53,7 +53,7 @@
     + '.kbdoc-ft .b{border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}'
     + '.kbdoc-ft .b.p{background:#2f6fed;border-color:#2f6fed;color:#fff}'
     + '.kbdoc-more{border:1px solid #e5e7eb;background:#fff;border-radius:8px;width:34px;height:30px;cursor:pointer;font-size:18px;line-height:1;color:#475569}'
-    + '.kbdoc-menu{position:absolute;right:16px;top:44px;background:#fff;border:1px solid #e8eaed;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;display:none;z-index:5;min-width:150px}'
+    + '.kbdoc-menu{position:fixed;background:#fff;border:1px solid #e8eaed;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;display:none;z-index:5;min-width:150px}'
     + '.kbdoc-menu.on{display:block}'
     + '.kbdoc-menu div{padding:8px 10px;border-radius:8px;font-size:13px;color:#334155;cursor:pointer}'
     + '.kbdoc-menu div:hover{background:#f1f5f9}'
@@ -84,9 +84,9 @@
       + '</div></div>').firstChild;
     document.body.appendChild(host);
     var menu = h('<div class="kbdoc-menu"><div data-a="link">复制链接</div><div data-a="copy">复制正文</div><div data-a="export">导出 Markdown</div><div data-a="clear">清空内容</div></div>');
-    host.querySelector('.kbdoc-win').appendChild(menu);
+    var win = host.classList.contains('kbdoc-win') ? host : host.querySelector('.kbdoc-win'); (win || host).appendChild(menu);
     var moreBtn = host.querySelector('.kbdoc-more');
-    moreBtn.onclick = function (e) { e.stopPropagation(); menu.classList.toggle('on'); };
+    moreBtn.onclick = function (e) { e.stopPropagation(); var r = moreBtn.getBoundingClientRect(); menu.style.left = Math.max(8, r.right - 170) + 'px'; menu.style.top = (r.bottom + 6) + 'px'; menu.classList.toggle('on'); };
     document.addEventListener('click', function () { menu.classList.remove('on'); });
     menu.onclick = function (e) {
       var a = (e.target && e.target.dataset) ? e.target.dataset.a : '';
