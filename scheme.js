@@ -620,6 +620,52 @@
      以前 smallTags() 全库扫一遍、tagBankOf() 每个标签再全库扫一遍，
      标签一多就是 O(标签数 x 题数)，第一次进方案会直接卡死。 ---- */
   var TG_IDX = { sig: '', byTag: null, list: null, banks: null };
+  var TGP_KEY = 'scm.tgidx.v2';
+  function tgpSave(ix) {
+    try {
+      if (!ix || !ix.list) return;
+      var tags = {}, total = 0;
+      ix.list.forEach(function (t) {
+        var arr = [];
+        (ix.byTag[t] || []).forEach(function (it) {
+          if (!it || !it.b || !it.q) return;
+          arr.push([String(it.b.id), String(it.q.id)]);
+          total++;
+        });
+        if (arr.length) tags[t] = arr;
+      });
+      if (total > 60000) return;
+      sessionStorage.setItem(TGP_KEY, JSON.stringify({ sig: ix.sig, tags: tags }));
+    } catch (e) {}
+  }
+  function tgpLoad(sig) {
+    try {
+      var raw = sessionStorage.getItem(TGP_KEY);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || o.sig !== sig || !o.tags) return null;
+      var bmap = Object.create(null), qmap = Object.create(null);
+      banks().forEach(function (b) {
+        if (!b || !b.id) return;
+        bmap[b.id] = b;
+        var m = Object.create(null);
+        (b.questions || []).forEach(function (q) { if (q && q.id != null) m[String(q.id)] = q; });
+        qmap[b.id] = m;
+      });
+      var byTag = Object.create(null), hit = 0;
+      var list = Object.keys(o.tags).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
+      list.forEach(function (t) {
+        var arr = [];
+        (o.tags[t] || []).forEach(function (pr) {
+          var b = bmap[pr[0]], q = qmap[pr[0]] && qmap[pr[0]][pr[1]];
+          if (b && q) { arr.push({ b: b, q: q, big: '' }); hit++; }
+        });
+        byTag[t] = arr;
+      });
+      if (!hit) return null;
+      return { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
+    } catch (e) { return null; }
+  }
   var SIG_MEMO = { t: 0, v: '' };
   function banksSig() {
     var now = Date.now();
@@ -633,6 +679,8 @@
     ensure();
     var sig = banksSig();
     if (TG_IDX.byTag && TG_IDX.sig === sig) return TG_IDX;
+    var cached = tgpLoad(sig);
+    if (cached) { TG_IDX = cached; return TG_IDX; }
     var basic = basicSet(), byTag = Object.create(null);
     banks().forEach(function (b) {
       if (!b || !b.id || !Array.isArray(b.questions)) return;
@@ -649,6 +697,7 @@
     });
     var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
     TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
+    tgpSave(TG_IDX);
     return TG_IDX;
   }
   /* 某个考点文件夹的题数 / 已答（只查索引，不造题目行 —— 列目录时用这个，快得多） */
