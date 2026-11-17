@@ -1245,11 +1245,21 @@
     /* 方案「三级索引」的标签文件夹：按二级标签归组 */
     try {
       var idSet = [cid];
-      try { if (typeof descIds === 'function') idSet = idSet.concat(descIds(cid)); } catch (e0) {}
+      try {
+        var stack = [cid], seenId = {}, guard2 = 0;
+        seenId[cid] = 1;
+        while (stack.length && guard2++ < 5000) {
+          var curId = stack.pop();
+          (kids(curId) || []).forEach(function (k) {
+            if (!k || seenId[k.id]) return;
+            seenId[k.id] = 1; idSet.push(k.id); stack.push(k.id);
+          });
+        }
+      } catch (eD) {}
       diag.idSet = idSet.length;
       idSet.forEach(function (nid) {
         var sid = String(nid || '');
-        if (sid.indexOf('tg') !== 0) return;
+        if (sid.indexOf('tgcat:') !== 0) return;
         if (!window.SCM || !SCM.tagQList) return;
         var rows = [];
         try { rows = SCM.tagQList(sid) || []; } catch (e1) { rows = []; }
