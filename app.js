@@ -8673,3 +8673,26 @@ setTimeout(function () {
     try { toast('侧边栏已按考点重新分组：大科目 › 小考点（方案可在右上角切换）', 4200, 'ok'); } catch (e1) {}
   } catch (e) {}
 }, 2600);
+
+/* ===== 临时诊断：答题页 JS 渲染耗时（左下角小条）=====
+   如果这里显示几十毫秒、手指上却明显卡，那瓶颈就不在 JS，而在排版/合成（着色器、模糊、阴影）。 */
+(function () {
+  if (typeof renderInner !== 'function') return;
+  var f = renderInner;
+  window.renderInner = function () {
+    var t = (window.performance && performance.now) ? performance.now() : Date.now();
+    try { return f.apply(this, arguments); }
+    finally {
+      try {
+        var d = (window.performance && performance.now ? performance.now() : Date.now()) - t;
+        var b = document.getElementById('__jb');
+        if (!b) {
+          b = document.createElement('div'); b.id = '__jb';
+          b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147482000;background:#111827;color:#fca5a5;font:12px/1.4 monospace;padding:4px 8px;border-radius:8px;pointer-events:none';
+          document.body.appendChild(b);
+        }
+        b.textContent = 'JS 渲染 ' + Math.round(d) + ' ms';
+      } catch (e) {}
+    }
+  };
+})();
