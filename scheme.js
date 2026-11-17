@@ -685,15 +685,19 @@
     } catch (e) {}
   }
   try {
-    if (document.readyState === 'complete') setTimeout(prewarmTagIndex, 800);
-    else window.addEventListener('load', function () { setTimeout(prewarmTagIndex, 800); });
+    /* 预热暂时关闭：同步建 4 秒会冻住主线程，先分段化再说 */
+    /* prewarm disabled */
   } catch (eL) {}
   function tagIndex() {
     ensure();
+    var _pt = (window.performance && performance.now) ? performance.now() : Date.now();
+    var _pp = (window.__P = window.__P || {});
     var sig = banksSig();
     if (TG_IDX.byTag && TG_IDX.sig === sig) return TG_IDX;
-    var _t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    _pp.t_sig = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _pt);
+    var _t0 = _pt;
     var cached = tgpLoad(sig);
+    _pp.t_cache = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
     if (cached) {
       TG_IDX = cached;
       try { (window.__P = window.__P || {}).idx = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0); window.__P.idxsrc = 'cache'; } catch (e0) {}
@@ -717,9 +721,13 @@
         }
       });
     });
+    _pp.t_loop = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
     var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
+    _pp.t_sort = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
     TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
+    var _tS = ((window.performance && performance.now) ? performance.now() : Date.now());
     tgpSave(TG_IDX);
+    _pp.t_save = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _tS);
     try {
       window.__P = window.__P || {};
       window.__P.idx = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);

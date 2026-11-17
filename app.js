@@ -4759,7 +4759,11 @@ function renderQuiz(bankId) {
   bank._retryLoad = false;
   try {
     var _P = window.__P || {};
-    var _txt = 'PERF idx=' + (_P.idx == null ? '-' : _P.idx + 'ms/' + (_P.idxsrc || '?'))
+    var _txt = 'PERF idx=' + (_P.idx == null ? '-' : _P.idx + '/' + (_P.idxsrc || '?'))
+      + ' sig=' + (_P.t_sig == null ? '-' : _P.t_sig)
+      + ' loop=' + (_P.t_loop == null ? '-' : _P.t_loop)
+      + ' sort=' + (_P.t_sort == null ? '-' : _P.t_sort)
+      + ' save=' + (_P.t_save == null ? '-' : _P.t_save)
       + ' now=' + Math.round(((window.performance && performance.now) ? performance.now() : Date.now()));
     document.title = _txt;
     var _bd = document.getElementById('__perf');
