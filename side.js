@@ -1205,9 +1205,15 @@
       while (cur && cur.id !== cid && guard++ < 12) { parts.unshift(_safe(cur.title || cur.id)); cur = CAT.get(cur.parent || null); }
       return parts;
     }
+    /* 这条题属于「本文件夹下的哪个二级标签」 */
+    function topGroup(catId, fallback) {
+      var cur = (CAT.get ? CAT.get(catId) : null), prev = null, guard = 0;
+      while (cur && cur.id !== cid && guard++ < 15) { prev = cur; cur = CAT.get(cur.parent || null); }
+      return _safe((prev && prev.title) || fallback || '其他');
+    }
 
-    var seen = {}, records = [];
-    function rec(q, tag, bank) {
+    var seen = {}, groups = {}, order = [];
+    function rec(q, group, tag, bank) {
       var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
       if (!stem) return;
       var key = bank + '|' + stem.slice(0, 60);
@@ -1220,17 +1226,20 @@
       if (Array.isArray(ans)) ans = ans.join('');
       ans = String(ans).trim();
       var type = q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : ''));
-      records.push({ tag: tag || '', bank: bank || '', type: type, stem: stem, options: opts, answer: ans,
-        explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() });
+      var r = { tag: tag || '', bank: bank || '', type: type, stem: stem, options: opts, answer: ans,
+        explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() };
+      if (!groups[group]) { groups[group] = []; order.push(group); }
+      groups[group].push(r);
     }
 
-    /* 普通题库文件夹 */
+    /* 普通题库文件夹：按「子目录 › 题库」归组 */
     sub.banks.map(fullBank).filter(function (b) { return b && (b.questions || []).length; }).forEach(function (b) {
+      var g = topGroup(b.cat || null, relPath(b.cat || null).join(' › ') || (b.title || ''));
       var label = [relPath(b.cat || null).join(' › '), b.title || ''].filter(Boolean).join(' › ');
-      (b.questions || []).forEach(function (q) { rec(q, label, b.title || ''); });
+      (b.questions || []).forEach(function (q) { rec(q, g, label, b.title || ''); });
     });
 
-    /* 方案「三级索引」的标签文件夹（tgcat:/tgb:） */
+    /* 方案「三级索引」的标签文件夹：按二级标签归组 */
     try {
       var idSet = [cid];
       try { if (typeof descIds === 'function') idSet = idSet.concat(descIds(cid)); } catch (e0) {}
@@ -1248,42 +1257,61 @@
           var cn = CAT.get ? CAT.get(nid) : null;
           tagName = (cn && cn.title) || sid.slice(0, 12);
         }
+        var g = topGroup(nid, tagName);
         rows.forEach(function (row) {
           var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
-          rec(q, tagName, row.bankName || row._bname || '');
+          rec(q, g, tagName, row.bankName || row._bname || '');
         });
       });
     } catch (eT) {}
 
-    if (!records.length) {
+    var total = order.reduce(function (s, g) { return s + groups[g].length; }, 0);
+    if (!total) {
       try { toast('这个文件夹下没有可导出的题目（题库 ' + sub.banks.length + ' 个）', 2600); } catch (e) {}
       return;
     }
 
-    var nameBase = top + '-题目', blob, fname;
-    if (fmt === 'json') {
-      var data = { folder: (c0 && c0.title) || top, count: records.length, items: records };
-      blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json;charset=utf-8' });
-      fname = nameBase + '.json';
-    } else {
-      var out = ['# ' + ((c0 && c0.title) || top) + ' · 题目（共 ' + records.length + ' 题）', ''];
-      var lastTag = null;
-      records.forEach(function (r, i) {
+    function mdOf(title, list) {
+      var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      var lastTag = null, no = 0;
+      list.forEach(function (r) {
         if (r.tag && r.tag !== lastTag) { out.push('## ' + r.tag, ''); lastTag = r.tag; }
-        out.push('### ' + (i + 1) + '. ' + r.stem);
+        no++;
+        out.push('### ' + no + '. ' + r.stem);
         if (r.type) out.push('题型：' + r.type);
         r.options.forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + o); });
         if (r.answer) out.push('答案：' + r.answer);
         if (r.explain) out.push('解析：' + r.explain);
         out.push('');
       });
-      blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
-      fname = nameBase + '.md';
+      return out.join('\n');
+    }
+    function jsonOf(title, list) {
+      return JSON.stringify({ folder: title, count: list.length, items: list }, null, 1);
+    }
+
+    /* 只有一个二级标签 → 单个文件；有多个 → 打 ZIP，每个二级标签一个文件 */
+    var multi = order.length > 1;
+    var blob, fname;
+    if (!multi) {
+      var only = groups[order[0]];
+      var title = order[0] && order[0] !== top ? (top + ' › ' + order[0]) : top;
+      if (fmt === 'json') { blob = new Blob([jsonOf(title, only)], { type: 'application/json;charset=utf-8' }); fname = top + '-题目.json'; }
+      else { blob = new Blob([mdOf(title, only)], { type: 'text/markdown;charset=utf-8' }); fname = top + '-题目.md'; }
+    } else {
+      var files = order.map(function (g) {
+        var list = groups[g];
+        var isJson = fmt === 'json';
+        return { name: top + '/' + _safe(g) + (isJson ? '.json' : '.md'),
+                 text: isJson ? jsonOf(g, list) : mdOf(g, list) };
+      });
+      blob = _zipStore(files);
+      fname = top + '-题目.zip';
     }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
-    try { toast('已导出 ' + records.length + ' 题 → ' + fname, 2400, 'ok'); } catch (e) {}
+    try { toast('已导出 ' + total + ' 题 → ' + fname + (multi ? '（' + order.length + ' 个标签分文件）' : ''), 2400, 'ok'); } catch (e) {}
   }
 
   function catMenu(cid, anchor) {
@@ -1291,8 +1319,8 @@
     var m = document.createElement('div');
     m.className = 'qs-menu';
     m.id = 'qsMenu';
-    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（单个 .md）</button>'
-      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（单个 .json）</button>'
+    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（.md；多标签自动 ZIP）</button>'
+      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（.json；多标签自动 ZIP）</button>'
       + '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
       + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'
