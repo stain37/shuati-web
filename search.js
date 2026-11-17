@@ -241,21 +241,23 @@
   function close() { if (wrap) wrap.classList.remove('on'); }
   function closePeek() { if (peek) peek.classList.remove('on'); }
 
-  var PDFIDX = null;
+  var PDFIDX = null, PDFNORM = {};
   function ensurePdfIdx() {
     if (PDFIDX) return Promise.resolve(PDFIDX);
     return fetch('pdf-index.json', { cache: 'no-cache' })
       .then(function (r) { return r.json(); })
-      .then(function (j) { PDFIDX = j || {}; return PDFIDX; })
+      .then(function (j) { PDFIDX = j || {}; PDFNORM = {}; for (var k in PDFIDX) PDFNORM[String(k).replace(/\s+/g, '')] = PDFIDX[k]; return PDFIDX; })
       .catch(function () { PDFIDX = {}; return PDFIDX; });
   }
   function resolvePdf(name) {
     if (!PDFIDX) return '';
     var n = String(name || '').trim();
-    var keys = [n, n.replace(/\.pdf$/i, '')];
+    var keys = [n, n.replace(/\.pdf$/i, ''), n.replace(/\s+/g, ''), n.replace(/\.pdf$/i, '').replace(/\s+/g, '')];
     for (var i = 0; i < keys.length; i++) if (PDFIDX[keys[i]]) return PDFIDX[keys[i]];
     var core = n.replace(/\.pdf$/i, '').split('_')[0];
     for (var k in PDFIDX) if (k.indexOf(core) === 0 && core.length >= 4) return PDFIDX[k];
+    var nk = n.replace(/\s+/g, '').replace(/\.pdf$/i, '');
+    for (var k2 in PDFNORM) if (k2.indexOf(nk) === 0 && nk.length >= 6) return PDFNORM[k2];
     return '';
   }
   function pdfPage(name) {
