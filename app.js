@@ -4944,7 +4944,6 @@ function renderQuiz(bankId) {
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
-  var __tH = performance.now();
   $('view').innerHTML = `
     <div class="card qcard">
       <div class="qgrip" id="qdBar" title="按住拖动题目卡片；点一下浮起 / 还原"><i></i></div>
@@ -5047,8 +5046,6 @@ function renderQuiz(bankId) {
       <div id="aiHost"></div>
       <div id="vHost"></div>
     </div>`;
-  try { window.__PLH = Math.round(performance.now() - __tH); var __tL = performance.now(); void $('view').offsetHeight; window.__PLL = Math.round(performance.now() - __tL); } catch (ePL) {}
-
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
   /* web791：模式收进一个下拉；点外面 / 点任意一项都收起 */
   (function bindQmPop() {
@@ -8774,64 +8771,3 @@ setTimeout(function () {
     try { toast('侧边栏已按考点重新分组：大科目 › 小考点（方案可在右上角切换）', 4200, 'ok'); } catch (e1) {}
   } catch (e) {}
 }, 2600);
-
-
-
-
-/* ===== 临时诊断 v4：把 render() 里「不在 renderInner 内部」的时间也找出来 ===== */
-window.__APP_DIAG = 'v4';
-(function () {
-  var JT = window.__JT = { runs: 0 };
-  function wrap(name, label) {
-    var f = window[name];
-    if (typeof f !== 'function') return;
-    window[name] = function () {
-      var t = performance.now();
-      try { return f.apply(this, arguments); }
-      finally { JT[label] = (JT[label] || 0) + (performance.now() - t); }
-    };
-  }
-  ['renderInner', 'renderQuiz', 'renderChips', 'renderGrid', 'writeLS', 'readLS', 'applyLook', 'richFlush', 'skelPaint', 'renderNow', 'renderStats', 'uiOptRail'].forEach(function (n) { wrap(n, n); });
-  try { if (window.CX && typeof CX.fix === 'function') { var cf = CX.fix; CX.fix = function () { var t = performance.now(); try { return cf.apply(this, arguments); } finally { JT.CXfix = (JT.CXfix || 0) + (performance.now() - t); } }; } } catch (e) {}
-  try { if (window.TR && typeof TR.start === 'function') { var ts = TR.start; TR.start = function () { var t = performance.now(); try { return ts.apply(this, arguments); } finally { JT.TR = (JT.TR || 0) + (performance.now() - t); } }; } } catch (e) {}
-
-  var f0 = render;
-  window.render = function () {
-    var t = performance.now();
-    for (var k in JT) if (k !== 'last') delete JT[k];
-    try { return f0.apply(this, arguments); }
-    finally {
-      try {
-        var d = performance.now() - t;
-        if (window.__PLH) JT.html = window.__PLH; if (window.__PLL) JT.layout = window.__PLL;
-        var keys = ['renderInner', 'renderQuiz', 'html', 'layout', 'renderChips', 'renderGrid', 'renderNow', 'applyLook', 'CXfix', 'TR', 'skelPaint', 'richFlush', 'writeLS', 'readLS', 'uiOptRail', 'renderStats'];
-        var parts = keys.filter(function (k) { return (JT[k] || 0) > 0.5; }).map(function (k) { return k + ' ' + Math.round(JT[k]); });
-        var b = document.getElementById('__jb');
-        if (!b) {
-          b = document.createElement('div'); b.id = '__jb';
-          b.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:2147482000;background:#111827;color:#fca5a5;font:11px/1.5 monospace;padding:5px 8px;border-radius:8px;pointer-events:auto;cursor:pointer;max-width:96vw';
-          document.body.appendChild(b);
-        }
-        if (d > 400) {
-          try {
-            var oldP = document.getElementById('__jpanel'); if (oldP) oldP.remove();
-            var pn = document.createElement('div'); pn.id = '__jpanel';
-            pn.style.cssText = 'position:fixed;left:8px;top:8px;bottom:60px;width:min(92vw,420px);overflow:auto;z-index:2147483001;background:rgba(17,24,39,.96);color:#e5e7eb;font:12px/1.6 monospace;padding:10px 12px;border-radius:12px';
-            var rows2 = Object.keys(JT).filter(function(k){ return typeof JT[k] === 'number'; }).sort(function(a,c){ return JT[c]-JT[a]; });
-            var html2 = '<b style="color:#fca5a5">这一下渲染花了 ' + Math.round(d) + ' ms</b><div style="height:6px"></div>';
-            rows2.forEach(function(k){ html2 += k + ' : ' + Math.round(JT[k]) + ' ms<br>'; });
-            var bk2 = null; try { bk2 = bankById(QZ.bankId); } catch(e2){}
-            html2 += '<div style="height:6px"></div>题库：' + (bk2 ? (esc(bk2.title) + ' · ' + bk2.questions.length + ' 题') : '?');
-            var q2 = null; try { q2 = (bk2 && bk2.questions) ? bk2.questions.filter(function(x){ return String(x.id) === String(QZ.cur); })[0] : null; } catch(e3){}
-            if (q2) html2 += '<br>题干 ' + String(q2.stem || '').length + ' 字 · 选项 ' + ((q2.options||[]).length) + ' 个 · 解析 ' + String(q2.explain || '').length + ' 字';
-            html2 += '<div style="height:8px"></div><button id="__jclose" style="font:12px monospace;padding:4px 10px;border-radius:8px;border:1px solid #4b5563;background:#111827;color:#e5e7eb">关闭</button>';
-            pn.innerHTML = html2;
-            document.body.appendChild(pn);
-            document.getElementById('__jclose').onclick = function(){ pn.remove(); };
-          } catch (eP2) {}
-        }
-        window.__JTL = { total: Math.round(d), parts: JT, qs: (window.QZ && QZ.cur) ? 'q' : '', hash: location.hash.slice(0,60) }; b.textContent = '点击总耗时 ' + Math.round(d) + ' ms · ' + (parts.length ? parts.join(' · ') : '（各段都没超 0.5ms → 时间在 render() 自身或没被包住的调用里）') + '　[点我复制]'; b.onclick = function(){ try { var s = 'DIAG ' + JSON.stringify(window.__JTL); if (navigator.clipboard) navigator.clipboard.writeText(s); else { var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } b.textContent = '已复制诊断，粘贴发给开发者'; } catch(e){} };
-      } catch (e) {}
-    }
-  };
-})();
