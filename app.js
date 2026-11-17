@@ -4709,6 +4709,24 @@ function renderQuiz(bankId) {
     for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
   }
   if (!pool.length) {
+    /* 旧链接自愈：换方案后 hash 里可能还留着上一版的节点 id（如 tg:#tbs:病理），
+       这棵树里已经没有它了。按名字找回同名的节点，直接换成新链接。 */
+    try {
+      if (bank.virtualTag && String(bank.virtualTag).charAt(0) === '#' && window.SCM && SCM.findCatByName) {
+        var _oldNode = String(bank.virtualTag).slice(1);
+        var _desc = (SCM.catDescIds && SCM.catDescIds(_oldNode)) || [];
+        if (!_desc.length) {
+          var _nm = _oldNode.indexOf(':') >= 0 ? _oldNode.slice(_oldNode.indexOf(':') + 1) : _oldNode;
+          try { _nm = decodeURIComponent(_nm); } catch (e0) {}
+          var _newId = SCM.findCatByName(_nm);
+          if (_newId && _newId !== _oldNode) {
+            bank._tagTry = 0;
+            location.replace('#/bank/' + encodeURIComponent(SCM.tgBankId ? SCM.tgBankId('#' + _newId) : '#' + _newId));
+            return;
+          }
+        }
+      }
+    } catch (e5) {}
     /* 标签题集依赖「题库加载 → 标签倒排索引」，刷新瞬间题库可能还是空的，
        这时 tg: 题集会造出 0 道题并一直空白。这里最多等 10 次（每次 400ms）。 */
     if (bank.virtualTag && ((bank._tagTry || 0) < 10) && !(bank.questions && bank.questions.length)) {

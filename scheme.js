@@ -542,6 +542,21 @@
   /* 系统 / 科目 / 主题 这些中间层本身没有题：把它们下面所有考点的题合成一个虚拟题集。
      约定：这种「聚合节点」的 tag 字符串是 '#' + 节点 id（例如 #tbs:sys01）。 */
   function isAggCat(catId) { return /^(tbs:|tbc:)/.test(String(catId || '')); }
+  /* 换方案后按名字找回节点（旧 hash 里的 tbs:病理 → 新树里的同名列） */
+  function findCatByName(name) {
+    try {
+      var want = String(name == null ? '' : name).replace(/\s+/g, '');
+      if (!want) return '';
+      var cs = cats();
+      for (var i = 0; i < cs.length; i++) {
+        var c = cs[i];
+        if (!c || !c.id) continue;
+        var t = String(c.title || '').replace(/\s+/g, '');
+        if (t === want) return String(c.id);
+      }
+    } catch (e) {}
+    return '';
+  }
   function catDescIds(catId) {
     var all = cats(), kidsMap = Object.create(null), out = [], seen = Object.create(null);
     /* 节点 id 里的 \x01 分隔符有两种写法：字面 %01 和真实控制字符（URL 解码后）。
@@ -1310,7 +1325,7 @@
       return true;
     },
     makeTagScheme: makeTagScheme, resetToTags: resetToTags, syncTagTree: syncTagTree, smallTags: smallTags,
-    tagBankOf: tagBankOf, tgBankId: tgBankId, debugTag: debugTag, tgCatId: tgCatId,
+    tagBankOf: tagBankOf, tgBankId: tgBankId, findCatByName: findCatByName, debugTag: debugTag, tgCatId: tgCatId,
     tbSubId: tbSubId, tbChapId: tbChapId, hasTax: function () { return !!taxy(); }
   };
 
