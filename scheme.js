@@ -798,10 +798,22 @@
         hit += arr.length;
         if (!arr.length && miss.length < 4) miss.push(t);
       });
+      var all = cats();
+      var noParent = 0, tbc0 = null, tg0 = null, kidsOfNode = 0;
+      all.forEach(function (c) {
+        if (!c || !c.id) return;
+        if (!c.parent) noParent++;
+        var sid2 = String(c.id);
+        if (!tbc0 && sid2.indexOf('tbc:') === 0) tbc0 = { id: sid2.slice(0, 34), parent: String(c.parent || '').slice(0, 34) };
+        if (!tg0 && sid2.indexOf('tgcat:') === 0) tg0 = { id: sid2.slice(0, 40), parent: String(c.parent || '').slice(0, 40) };
+        if (String(c.parent || '') === String(catId)) kidsOfNode++;
+      });
       return {
         nodes: ids.length, tags: tags.length, hit: hit,
         sample: tags.slice(0, 3), miss: miss,
-        idSample: ids.slice(0, 3), pooled: ix.list.length
+        idSample: ids.slice(0, 3), pooled: ix.list.length,
+        cats: all.length, noParent: noParent, kidsOfNode: kidsOfNode,
+        tbc0: tbc0, tg0: tg0
       };
     } catch (e) { return { err: e && e.message }; }
   }

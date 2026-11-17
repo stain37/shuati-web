@@ -4712,7 +4712,8 @@ function renderQuiz(bankId) {
           try {
             if (!(bank.virtualTag && String(bank.virtualTag).charAt(0) === '#') || !window.SCM || !SCM.aggDebug) return '';
             var d = SCM.aggDebug(String(bank.virtualTag).slice(1));
-            return `<small style="color:#94a3b8">聚合：节点=${esc(String(d.nodes))} · 考点=${esc(String(d.tags))} · 命中题=${esc(String(d.hit))} · 池=${esc(String(d.pooled))} · 例=${esc(String((d.sample || []).join('、')))} · 未命中=${esc(String((d.miss || []).join('、')))}</small><br>`;
+            return `<small style="color:#94a3b8">聚合：节点=${esc(String(d.nodes))} · 考点=${esc(String(d.tags))} · 命中=${esc(String(d.hit))} · cats=${esc(String(d.cats))} · 无父=${esc(String(d.noParent))} · 直属=${esc(String(d.kidsOfNode))}</small><br>`
+              + `<small style="color:#94a3b8">tbc样例 ${esc(JSON.stringify(d.tbc0))} · tg样例 ${esc(JSON.stringify(d.tg0))}</small><br>`;
           } catch (e) { return ''; }
         })()
         + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
