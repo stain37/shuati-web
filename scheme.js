@@ -407,7 +407,10 @@
       matched++;
     });
 
-    DB.list.push({ id: id, name: nm2 });
+    var modeIn = (obj && (obj.mode === 'tag' || obj.kind === 'tag' || obj.kind === 'tax')) ? 'tag' : '';
+    var ent = { id: id, name: nm2 };
+    if (modeIn) ent.mode = modeIn;
+    DB.list.push(ent);
     DB.data[id] = { cats: tree };
     MAP[id] = map;
     save();
