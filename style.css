@@ -7099,3 +7099,22 @@ html[data-style] body .opt.pick .k{ background:var(--pick)!important; color:#fff
 /* 来源面板：「对全部考点有效」开关 */
 .srcglob { margin-left: 10px; font-size: 12px; color: var(--sub); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .srcglob input { margin: 0; }
+
+
+/* ===== iPad/Safari 性能：答题页关掉毛玻璃 =====
+   每次翻题都会整块重写 .qcard，卡片上一旦有 backdrop-filter，
+   Safari 就要把整屏重新合成一遍（iPad 上实测能吃掉近一秒）。
+   这里只针对答题页关掉，顶栏/底栏/弹层的毛玻璃保留。 */
+body.quiz .qcard,
+body.quiz .qcard .card,
+body.quiz #view .card,
+body.quiz .qcard *{
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+body.frost.quiz .qcard,
+body.frost.quiz #view .card{
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+  background:var(--card,#fff)!important;
+}
