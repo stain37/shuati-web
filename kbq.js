@@ -65,7 +65,17 @@
 
   function ensureBar() {
     var view = document.getElementById('view');
-    if (!view || view.querySelector('#kbqBar')) return;
+    if (!view) return;
+    /* 只在答题页出现：主页 / 错题 / 搜索 / 设置 / AI 这些页面 #view 里没有题卡，直接收掉。 */
+    var isQuiz = !!view.querySelector('.qcard, .stem, .opts, .qno');
+    if (!isQuiz) {
+      var ob = document.getElementById('kbqBar'), op = document.getElementById('kbqPane');
+      if (ob) { try { ob.remove(); } catch (e) {} }
+      if (op) { try { op.remove(); } catch (e) {} }
+      document.body.classList.remove('kbq-doc');
+      return;
+    }
+    if (view.querySelector('#kbqBar')) return;
     injectCSS();
     var bar = document.createElement('div');
     bar.id = 'kbqBar';
