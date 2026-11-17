@@ -1105,7 +1105,7 @@
       e.stopPropagation();
       var opnId = opn.getAttribute('data-open');
       /* 考点文件夹（名字点一下）→ 直接进这个考点的答题界面 */
-      if (/^(tgcat:|tgb:)/.test(String(opnId)) && openTagFolder(opnId)) { return; }
+      if ((/^(tgcat:|tgb:)/.test(String(opnId)) || (tagScheme() && /^(tbs:|tbc:)/.test(String(opnId)))) && openTagFolder(opnId)) { return; }
       try { if (CAT.openDir) CAT.openDir(opnId); } catch (er) {}
       if (typeof go === 'function') go('#/');
       if (typeof setOpen === 'function') setOpen(false);
