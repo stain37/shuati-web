@@ -775,6 +775,20 @@ async function syncNow(silent) {
     return { ok: false, err: e };
   } finally { SYNC_BUSY = false; if (route().name === 'sync') syncPaintStatus(); }
 }
+/* 标签合并是按「逐题时间戳，谁新用谁」。手机上如果曾经写过一份缩水的标签
+   （每题只剩「生理」），它的时间戳就比云端新，之后永远拉不下云端那份。
+   这个入口不管时间戳：先把本机标签表删掉，再从云端整份合并下来。 */
+async function syncHardPullTags() {
+  if (!syncReady()) return toast('先填仓库和 token');
+  if (!confirm('用云端的标签覆盖这台设备的标签？\n\n只影响「题目 ↔ 考点标签」这一项，作答记录、笔记、题库本身都不动。')) return;
+  try {
+    localStorage.removeItem('qbank.tags.v1');
+    localStorage.removeItem('qbank.tagts.v1');
+  } catch (e) {}
+  toast('本机标签表已清空，正在从云端拉取…');
+  await syncPullOnly();
+  setTimeout(function () { location.reload(); }, 800);
+}
 async function syncPullOnly() {
   if (!syncReady()) return toast('先填仓库和 token');
   if (SYNC_BUSY) return toast('正在同步，稍等');
@@ -1034,6 +1048,7 @@ function syncCardHtml() {
   L.push('<div class="tools"><span class="tl">流量</span><span class="small">' + syncNetHtml() + '</span></div>');
   L.push('<div class="actions"><button class="btn primary" id="syncNow">立即同步（先拉后推）</button>'
     + '<button class="btn" id="syncPull">只从云端合并下来</button>'
+    + '<button class="btn" id="syncHardPullTags" title="标签按逐题时间戳合并；手机上写过旧标签后，云端那份会被当成更旧而拉不下来。这个不管时间戳。">标签：强制用云端覆盖本机</button>'
     + '<button class="btn" id="syncPushOnly">把本机覆盖上传</button>'
     + '<button class="btn danger" id="syncWipe">断开（清掉本机 token）</button></div>');
   L.push('<div class="actions"><button class="btn" id="syncCopyCfg">复制「一键配置」链接（发给手机，点开自动填好）</button></div>');
@@ -1258,6 +1273,7 @@ function syncBind() {
   on('syncTest', () => { syncReadForm(); syncTest(); });
   on('syncNow', () => { syncReadForm(); syncNow(false); });
   on('syncPull', () => { syncReadForm(); syncPullOnly(); });
+  on('syncHardPullTags', () => { syncReadForm(); syncHardPullTags(); });
   on('syncPushOnly', () => { syncReadForm(); syncForcePush(); });
   on('syncCreateRepo', () => { syncReadForm(); syncCreateRepo(); });
   on('syncCopyUrl', () => {
@@ -1417,7 +1433,7 @@ setTimeout(() => {
 }, 800);
 
 window.SYNC = {
-  now: syncNow, pull: syncPullOnly, push: syncForcePush, test: syncTest,
+  now: syncNow, pull: syncPullOnly, hardPullTags: syncHardPullTags, push: syncForcePush, test: syncTest,
   cfg: SYC, payload: syncPayload, fp: syncFp, device: syncDevice, render: renderSync,
   /* 诊断用：标签合并是按 bankId#qid 合，两台设备各自导入同一题库时 id 不同，
      这里把它俩的映射与合并单独暴露出来，方便在控制台里对着一份云端数据复现「为什么没合上」 */
