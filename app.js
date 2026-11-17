@@ -4663,8 +4663,12 @@ function renderQuiz(bankId) {
     /* 标签题集依赖「题库加载 → 标签倒排索引」，刷新瞬间题库可能还是空的，
        这时 tg: 题集会造出 0 道题并一直空白。这里最多等 10 次（每次 400ms）。 */
     if (bank.virtualTag && ((bank._tagTry || 0) < 10) && !(bank.questions && bank.questions.length)) {
-      bank._tagTry = (bank._tagTry || 0) + 1;
-      setTimeout(function () { renderQuiz(bankId); }, 400);
+      /* 自适应重试：先 0/60/100/150… 快速命中，再逐步放慢，总时长仍约 3 秒，
+         但数据已就绪时能立刻出题（原来固定 400ms 起步，每次都要白等） */
+      var _tryN = bank._tagTry = (bank._tagTry || 0) + 1;
+      var _steps = [0, 60, 100, 150, 220, 320, 450, 620, 800, 1000];
+      var _wait = _steps[Math.min(_tryN - 1, _steps.length - 1)];
+      setTimeout(function () { renderQuiz(bankId); }, _wait);
       return;
     }
     if ((bank.questions && bank.questions.length)) bank._tagTry = 0;
