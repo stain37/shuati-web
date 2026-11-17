@@ -8674,24 +8674,53 @@ setTimeout(function () {
   } catch (e) {}
 }, 2600);
 
-/* ===== 临时诊断：答题页 JS 渲染耗时（左下角小条）=====
-   如果这里显示几十毫秒、手指上却明显卡，那瓶颈就不在 JS，而在排版/合成（着色器、模糊、阴影）。 */
+
+/* ===== 临时诊断 v2：把一次渲染拆成几段，左下角小条列出来 =====
+   用来看 500ms 到底花在哪儿：chips=上面两条筛选条 / grid=答题卡 / quiz=题干选项 /
+   write=写 localStorage / read=读 localStorage / cx=自动对比度守卫 */
 (function () {
   if (typeof renderInner !== 'function') return;
-  var f = renderInner;
+  var JT = window.__JT = {};
+  function wrap(name, label) {
+    var f = window[name];
+    if (typeof f !== 'function') return;
+    window[name] = function () {
+      var t = (window.performance && performance.now) ? performance.now() : Date.now();
+      try { return f.apply(this, arguments); }
+      finally {
+        var d = ((window.performance && performance.now) ? performance.now() : Date.now()) - t;
+        JT[label] = (JT[label] || 0) + d;
+      }
+    };
+  }
+  wrap('renderChips', 'chips');
+  wrap('renderGrid', 'grid');
+  wrap('renderQuiz', 'quiz');
+  wrap('writeLS', 'write');
+  wrap('readLS', 'read');
+  wrap('poolOf', 'pool');
+  wrap('poolCount', 'pcnt');
+  try { if (window.CX && typeof CX.fix === 'function') { var cf = CX.fix; CX.fix = function () { var t = performance.now(); try { return cf.apply(this, arguments); } finally { JT.cx = (JT.cx || 0) + (performance.now() - t); } }; } } catch (e) {}
+
+  var f0 = renderInner;
   window.renderInner = function () {
+    for (var k in JT) delete JT[k];
     var t = (window.performance && performance.now) ? performance.now() : Date.now();
-    try { return f.apply(this, arguments); }
+    try { return f0.apply(this, arguments); }
     finally {
       try {
-        var d = (window.performance && performance.now ? performance.now() : Date.now()) - t;
+        var d = ((window.performance && performance.now) ? performance.now() : Date.now()) - t;
+        var parts = [];
+        ['chips', 'grid', 'quiz', 'pool', 'pcnt', 'cx', 'write', 'read'].forEach(function (k) {
+          if (JT[k] && JT[k] > 0.5) parts.push(k + '=' + Math.round(JT[k]));
+        });
         var b = document.getElementById('__jb');
         if (!b) {
           b = document.createElement('div'); b.id = '__jb';
-          b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147482000;background:#111827;color:#fca5a5;font:12px/1.4 monospace;padding:4px 8px;border-radius:8px;pointer-events:none';
+          b.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:2147482000;background:#111827;color:#fca5a5;font:11px/1.45 monospace;padding:4px 7px;border-radius:8px;pointer-events:none;max-width:70vw';
           document.body.appendChild(b);
         }
-        b.textContent = 'JS 渲染 ' + Math.round(d) + ' ms';
+        b.textContent = 'JS 总 ' + Math.round(d) + ' ms  ' + parts.join(' ');
       } catch (e) {}
     }
   };
