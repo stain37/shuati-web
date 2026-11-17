@@ -77,7 +77,27 @@
     migrateTaxOnly();                    /* 老考点方案清干净，只留三级索引这一套 */
     save();
   }
-  function ensure() { if (!LOADED) load(); }
+  var _healed = false;
+  /* 自愈：方案数据里的 parent 被旧版本/同步逻辑清空过时，用内置权威表补回来（只补空，不改已有） */
+  function healParents() {
+    if (_healed) return 0;
+    _healed = true;
+    try {
+      var SYS = window.__SYSPATHS;
+      if (!SYS) return 0;
+      var id = CUR, d = DB.data[id];
+      if (!d || !d.cats || !d.cats.length) return 0;
+      var fix = 0;
+      d.cats.forEach(function (c) {
+        if (!c || !c.id || c.parent) return;
+        var pp = SYS[c.id];
+        if (pp) { c.parent = pp; fix++; }
+      });
+      if (fix) { try { save(); } catch (e) {} }
+      return fix;
+    } catch (e) { return 0; }
+  }
+  function ensure() { if (!LOADED) load(); try { healParents(); } catch (e) {} }
 
   /* ---------- 迁移：三级索引是唯一的考点方案 ----------
      旧版的「考点分类 / 考点分类 3 / 方案 2 …」全部删掉（连同它们的树和归属），
