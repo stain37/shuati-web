@@ -241,12 +241,16 @@
   function close() { if (wrap) wrap.classList.remove('on'); }
   function closePeek() { if (peek) peek.classList.remove('on'); }
 
-  var PDFIDX = null, PDFNORM = {};
+  var PDFIDX = (window.__PDFIDX && typeof window.__PDFIDX === 'object') ? window.__PDFIDX : null;
+  var PDFNORM = {};
+  function buildNorm() {
+    for (var k in PDFIDX) PDFNORM[String(k).replace(/\s+/g, '')] = PDFIDX[k];
+  }
   function ensurePdfIdx() {
-    if (PDFIDX) return Promise.resolve(PDFIDX);
+    if (PDFIDX) { buildNorm(); return Promise.resolve(PDFIDX); }
     return fetch('pdf-index.json', { cache: 'no-cache' })
       .then(function (r) { return r.json(); })
-      .then(function (j) { PDFIDX = j || {}; PDFNORM = {}; for (var k in PDFIDX) PDFNORM[String(k).replace(/\s+/g, '')] = PDFIDX[k]; return PDFIDX; })
+      .then(function (j) { PDFIDX = j || {}; buildNorm(); return PDFIDX; })
       .catch(function () { PDFIDX = {}; return PDFIDX; });
   }
   function resolvePdf(name) {
