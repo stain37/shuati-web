@@ -543,21 +543,32 @@
      约定：这种「聚合节点」的 tag 字符串是 '#' + 节点 id（例如 #tbs:sys01）。 */
   function isAggCat(catId) { return /^(tbs:|tbc:)/.test(String(catId || '')); }
   /* 换方案后按名字找回节点（旧 hash 里的 tbs:病理 → 新树里的同名列） */
+  /* 换方案后按名字找回节点（旧 hash 里的 tbs:病理 → 新树里的「病理学」科目）。
+     旧方案里科目叫「病理」，新方案叫「病理学」，所以不能只做全等：
+     先全等，再「以它开头」，最后「包含」，取最短的那个（越短越像父节点）。 */
   function findCatByName(name) {
     try {
       var want = String(name == null ? '' : name).replace(/\s+/g, '');
       if (!want) return '';
-      var cs = cats();
+      var cs = cats(), best = '', bestScore = 99;
+      function score(t) {
+        if (t === want) return 0;
+        if (t.indexOf(want) === 0) return 10 + (t.length - want.length);
+        if (t.indexOf(want) >= 0) return 50 + t.length;
+        if (want.indexOf(t) === 0 && t.length >= 2) return 30 + (want.length - t.length);
+        return 99;
+      }
       for (var i = 0; i < cs.length; i++) {
         var c = cs[i];
         if (!c || !c.id) continue;
         var t = String(c.title || '').replace(/\s+/g, '');
-        if (t === want) return String(c.id);
+        if (!t) continue;
+        var sc = score(t);
+        if (sc < bestScore) { bestScore = sc; best = String(c.id); }
       }
-    } catch (e) {}
-    return '';
+      return bestScore < 99 ? best : '';
+    } catch (e) { return ''; }
   }
-  /* 这个节点 id 在当前方案树里到底有没有？（换方案后旧链接里的 id 会查不到） */
   function hasCat(catId) {
     try {
       var want = String(catId == null ? '' : catId);
