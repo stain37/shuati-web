@@ -1053,6 +1053,15 @@
       var sid = String(cid || '');
       /* 系统 / 科目 / 主题：把下面所有考点的题合成一个题集打开 */
       if (/^(tbs:|tbc:)/.test(sid) && tagScheme() && window.SCM && SCM.tgBankId) {
+        /* 自检：这一层下面有没有题，没有就直接说清楚，别让人对着空页面猜 */
+        try {
+          var st0 = SCM.tagStatOf ? SCM.tagStatOf(sid) : null;
+          if (st0 && !st0.n) {
+            var nm0 = '';
+            try { var cc0 = CAT.get ? CAT.get(sid) : null; nm0 = (cc0 && cc0.title) || sid; } catch (eN) { nm0 = sid; }
+            toast('「' + nm0 + '」下没有匹配到题：这一层的考点在，但没有题打过这些标签', 5200);
+          }
+        } catch (eS) {}
         var abid = SCM.tgBankId('#' + sid);
         try {
           if (typeof QZ === 'object' && QZ) {

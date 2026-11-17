@@ -450,7 +450,15 @@
     ensure();
     var id = sid || CUR;
     var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
-    return !!(s && s.mode === 'tag');
+    if (s && s.mode === 'tag') return true;
+    /* 兜底：导入/老版本可能没把 mode 存下来；树里有考点节点就按考点方案处理 */
+    try {
+      var cs = (DB.data[id] && DB.data[id].cats) || [];
+      for (var i = 0; i < cs.length; i++) {
+        if (cs[i] && String(cs[i].id).indexOf('tgcat:') === 0) return true;
+      }
+    } catch (e) {}
+    return false;
   }
 
   function debugTag(id) {
