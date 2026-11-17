@@ -323,7 +323,8 @@
     snapshot(CUR);                       /* 先把当前视图记进当前方案 */
     CUR = id;
     save();
-    if (tagMode(CUR)) syncTagTree(CUR);  /* 新打的小标签：方案里自动补文件夹 */
+    var _curEnt = DB.list.filter(function (x) { return x && x.id === CUR; })[0];
+    if (tagMode(CUR) && !(_curEnt && _curEnt.custom)) syncTagTree(CUR);  /* 新打的小标签：方案里自动补文件夹 */
     apply();
     try { if (typeof window.dropTagBankCache === 'function') window.dropTagBankCache(); } catch (e) {}
     return true;
@@ -410,6 +411,7 @@
     var modeIn = (obj && (obj.mode === 'tag' || obj.kind === 'tag' || obj.kind === 'tax')) ? 'tag' : '';
     var ent = { id: id, name: nm2 };
     if (modeIn) ent.mode = modeIn;
+    if (obj && obj.custom) ent.custom = 1;   /* 自带层级的外来方案：别再按科目/章自动重排它 */
     DB.list.push(ent);
     DB.data[id] = { cats: tree };
     MAP[id] = map;
@@ -916,7 +918,7 @@
       }
       var c = cats.filter(function (x) { return x && x.id === cid; })[0];
       if (!c) { cats.push({ id: cid, title: t, parent: parent, order: i + 1 }); added++; }
-      else if ((c.parent || null) !== parent) { c.parent = parent; added++; }
+      else if (!c.parent && parent) { c.parent = parent; added++; }
       MAP[id][tgBankId(t)] = cid;
     });
     /* 大标签层只留「真的有子文件夹」的父级：没人挂进去的（投票没选它）就别建空壳 */
