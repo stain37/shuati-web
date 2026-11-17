@@ -1213,6 +1213,7 @@
     }
 
     var seen = {}, groups = {}, order = [];
+    var diag = { banks: 0, catBanks: 0, tagNodes: 0, tagRows: 0, idSet: 0 };
     function rec(q, group, tag, bank) {
       var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
       if (!stem) return;
@@ -1233,7 +1234,9 @@
     }
 
     /* 普通题库文件夹：按「子目录 › 题库」归组 */
+    diag.banks = sub.banks.length;
     sub.banks.map(fullBank).filter(function (b) { return b && (b.questions || []).length; }).forEach(function (b) {
+      diag.catBanks++;
       var g = topGroup(b.cat || null, relPath(b.cat || null).join(' › ') || (b.title || ''));
       var label = [relPath(b.cat || null).join(' › '), b.title || ''].filter(Boolean).join(' › ');
       (b.questions || []).forEach(function (q) { rec(q, g, label, b.title || ''); });
@@ -1243,6 +1246,7 @@
     try {
       var idSet = [cid];
       try { if (typeof descIds === 'function') idSet = idSet.concat(descIds(cid)); } catch (e0) {}
+      diag.idSet = idSet.length;
       idSet.forEach(function (nid) {
         var sid = String(nid || '');
         if (sid.indexOf('tg') !== 0) return;
@@ -1250,6 +1254,7 @@
         var rows = [];
         try { rows = SCM.tagQList(sid) || []; } catch (e1) { rows = []; }
         if (!rows.length) return;
+        diag.tagNodes++; diag.tagRows += rows.length;
         var tagName = '';
         if (sid.indexOf('tgcat:') === 0) {
           try { tagName = decodeURIComponent(sid.slice(6)).replace(/[\\/]+/g, ' › '); } catch (eD) { tagName = sid.slice(6); }
@@ -1267,7 +1272,7 @@
 
     var total = order.reduce(function (s, g) { return s + groups[g].length; }, 0);
     if (!total) {
-      try { toast('这个文件夹下没有可导出的题目（题库 ' + sub.banks.length + ' 个）', 2600); } catch (e) {}
+      try { toast('没导出：题库 ' + diag.banks + ' 个（可读 ' + diag.catBanks + '）· 标签节点 ' + diag.tagNodes + '/' + diag.idSet + ' · 标签题 ' + diag.tagRows + ' · cid=' + String(cid).slice(0, 18), 6000); } catch (e) {}
       return;
     }
 
