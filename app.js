@@ -5958,10 +5958,30 @@ function qzIsPolitBank(bank, q) {
   const nm = String((q && q._bname) || (bank && (bank.title || bank.name)) || '');
   return POLIT_RE.test(nm);
 }
+/* 政治题识别是有代价的：polifix 的 __polDetect 要对题干 + 选项 + 解析跑 60 多个关键词，
+   而 qzBasicOf 在每个筛法计数里对每道题都会调一次——5800 题的题库一次渲染就是几十万次
+   indexOf，实测把单次渲染从 35ms 拉到 400ms+。判过的题用 WeakMap 记住结果。 */
+const __POL_HIT = new WeakMap();
+const __POL_BANK = new WeakMap();
+function qzPolBankHit(bank) {
+  if (!bank) return false;
+  if (__POL_BANK.has(bank)) return __POL_BANK.get(bank);
+  const v = qzIsPolitBank(bank, null);
+  __POL_BANK.set(bank, v);
+  return v;
+}
+function qzPolHit(q) {
+  if (!q || typeof q !== 'object') return false;
+  if (__POL_HIT.has(q)) return __POL_HIT.get(q);
+  let v = false;
+  try { v = (typeof window.__polDetect === 'function') ? !!window.__polDetect(q) : false; } catch (e) { v = false; }
+  __POL_HIT.set(q, v);
+  return v;
+}
 function qzBasicOf(bank, q, basic) {
   basic = basic || qzBasics();
   /* 政治题库里的题：哪怕以前被医学标签污染过，六科也只认「政治」 */
-  if ((qzIsPolitBank(bank, q) || (typeof window.__polDetect === 'function' && window.__polDetect(q))) && basic.indexOf('政治') >= 0) return ['政治'];
+  if ((qzPolBankHit(bank) || qzPolHit(q)) && basic.indexOf('政治') >= 0) return ['政治'];
   return qzTags(qzKey(bank, q)).filter(t => basic.indexOf(t) >= 0);
 }
 function qzHasSubject(bank, q) {
