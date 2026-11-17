@@ -479,22 +479,25 @@
   function isAggCat(catId) { return /^(tbs:|tbc:)/.test(String(catId || '')); }
   function catDescIds(catId) {
     var all = cats(), kidsMap = Object.create(null), out = [], seen = Object.create(null);
-    var stack = [String(catId)], guard = 0;
+    /* 节点 id 里的 \x01 分隔符有两种写法：字面 %01 和真实控制字符（URL 解码后）。
+       统一成 %01 再比父子关系，否则从 URL 进来的 id 永远对不上方案里的 parent。 */
+    function nk(v) { return String(v || '').replace(/\u0001/g, '%01'); }
+    var stack = [nk(catId)], guard = 0;
     all.forEach(function (c) {
       if (!c || !c.id) return;
       var p0 = String(c.parent || '');
       if (!p0) return;
-      (kidsMap[p0] = kidsMap[p0] || []).push(String(c.id));
+      (kidsMap[nk(p0)] = kidsMap[nk(p0)] || []).push(nk(c.id));
     });
     /* 兜底：方案数据里的 parent 被旧版本清空过时，用内置的权威父子表补上 */
     try {
       var SYS = window.__SYSPATHS;
       if (SYS) {
         Object.keys(SYS).forEach(function (cid) {
-          var pid = String(SYS[cid] || '');
+          var pid = nk(SYS[cid]);
           if (!pid) return;
           var arr = kidsMap[pid] || (kidsMap[pid] = []);
-          if (arr.indexOf(String(cid)) < 0) arr.push(String(cid));
+          if (arr.indexOf(nk(cid)) < 0) arr.push(nk(cid));
         });
       }
     } catch (eS) {}
