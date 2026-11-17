@@ -6726,11 +6726,38 @@ let GRIDF = 'all';        // 答题卡筛选：all / wrong / undone（只影响�
 function renderGrid() {
   if (route().name === 'exam' && typeof renderExamGrid === 'function') { renderExamGrid(); return; }
   const bank = bankById(QZ.bankId); if (!bank) return;
+  /* 答题卡里的「导出题目」：当前题集（含标签题集）全部题目 → Markdown */
+  function exportBankQs() {
+    const bank = bankById(QZ.bankId);
+    if (!bank) return;
+    const qs = (bank.questions || []).slice();
+    if (!qs.length) return toast('这个题集里还没有题目', 1800, 'warn');
+    const out = ['# ' + (bank.title || '题库') + ' · 题目（共 ' + qs.length + ' 题）', ''];
+    qs.forEach((q, i) => {
+      const stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      out.push('## ' + (i + 1) + '. ' + stem);
+      (q.options || []).forEach((o, k) => out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()));
+      const ans = ansOf(favKey(bank, q), q);
+      if (ans && ans.length) out.push('答案：' + ans.join(''));
+      const ex = q.explain || q.exp || q.analysis || '';
+      if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
+      out.push('');
+    });
+    const blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = String(bank.title || '题库').replace(/[\\/:*?"<>|]/g, '_') + '-题目.md';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('已导出 ' + qs.length + ' 题', 1600);
+  }
+
   const body = $('gridBody');
   let done = 0, wrong = 0;
   bank.questions.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && !a.redo) done++; if (isWrongRec(a)) wrong++; });
 
   /* 题多的时候（几百题）只想看错题或没做的，这里给个筛子 */
+  const gex = $('gridExport');
+  if (gex) gex.onclick = exportBankQs;
   const f = $('gridFilter');
   if (f) {
     const defs = [['all', '全部 ' + bank.questions.length], ['wrong', '做错 ' + wrong], ['undone', '没做 ' + Math.max(0, bank.questions.length - done)]];
