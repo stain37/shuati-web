@@ -4679,12 +4679,35 @@ function renderQuiz(bankId) {
         if (window.SCM && SCM.debugTag) _byTag = SCM.debugTag(bank.id);
       } catch (e) {}
       var _nb = '?', _nt = '?', _tg = 'no';
-      try { _nb = banks().length; } catch (e1) {}
+      try { _nb = banks().length; } catch (e1) { _nb = 'ERR:' + (e1 && e1.message); }
       try { _nt = (window.SCM && SCM.tagListAll) ? SCM.tagListAll().length : '?'; } catch (e2) {}
       try { _tg = (window.TAGS && TAGS.of) ? 'yes' : 'no'; } catch (e3) {}
+      /* 标签到底有没有打在题上：数一遍有标签的题 + 给一条样例 */
+      var _tq = -1, _smp = '-';
+      try {
+        var _bs = banks(); _tq = 0;
+        for (var _bi = 0; _bi < _bs.length; _bi++) {
+          var _b = _bs[_bi];
+          if (!_b || !Array.isArray(_b.questions)) continue;
+          for (var _qi = 0; _qi < _b.questions.length; _qi++) {
+            var _q = _b.questions[_qi], _k = _b.id + '#' + _q.id;
+            var _ts = (window.TAGS && TAGS.of) ? (TAGS.of(_k) || []) : [];
+            if (!_ts.length && _q.tags && _q.tags.length) _ts = _q.tags;
+            if (_ts.length) { _tq++; if (_smp === '-') _smp = _k + ' → ' + _ts.slice(0, 3).join('/'); }
+          }
+        }
+        if (_smp === '-') {
+          var _b0 = _bs[0];
+          if (_b0 && _b0.questions && _b0.questions[0]) {
+            var _k0 = _b0.id + '#' + _b0.questions[0].id;
+            _smp = _k0 + ' → ' + (((window.TAGS && TAGS.of) ? TAGS.of(_k0) : []) || []).join('/') + ' | q.tags=' + JSON.stringify(_b0.questions[0].tags || []);
+          }
+        }
+      } catch (e4) { _tq = 'ERR:' + (e4 && e4.message); }
       $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
         + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)}</small><br>`
         + `<small style="color:#94a3b8">byTag=${_byTag} · banks=${_nb} · tagList=${_nt} · TAGS=${_tg} · try=${bank._tagTry || 0}</small><br>`
+        + `<small style="color:#94a3b8">有标签的题=${_tq} · 样例 ${esc(String(_smp)).slice(0, 160)}</small><br>`
         + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
       var rb0 = document.getElementById('qzReload');
       if (rb0) rb0.onclick = function () { location.reload(); };
