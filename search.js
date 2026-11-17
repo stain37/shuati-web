@@ -112,7 +112,7 @@
 
   /* ---------- UI ---------- */
   var CSS = [
-    '#gsBtn{position:fixed;right:18px;bottom:86px;z-index:20000;width:46px;height:46px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.16);cursor:pointer;font-size:20px}',
+    '#gsBtn{position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
     '#gsWrap{position:fixed;inset:0;z-index:20010;display:none;background:rgba(15,23,42,.35);backdrop-filter:blur(3px)}',
     '#gsWrap.on{display:block}',
     '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
@@ -165,8 +165,37 @@
     if (document.getElementById('gsWrap')) return;
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
-    var btn = el('button', null, '🔍'); btn.id = 'gsBtn'; btn.title = '搜索全部笔记（Ctrl+K）';
-    btn.onclick = open;
+    var btn = el('button', null, '🔍'); btn.id = 'gsBtn'; btn.title = '搜索全部笔记（Ctrl+K）— 可拖动';
+    try {
+      var saved = JSON.parse(localStorage.getItem('gs.pos') || 'null');
+      if (saved && saved.x != null) { btn.style.left = saved.x + 'px'; btn.style.top = saved.y + 'px'; btn.style.right = 'auto'; btn.style.bottom = 'auto'; }
+    } catch (e) {}
+    var drag = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+    btn.addEventListener('pointerdown', function (e) {
+      drag.on = true; drag.moved = false;
+      drag.sx = e.clientX; drag.sy = e.clientY;
+      var r = btn.getBoundingClientRect(); drag.ox = r.left; drag.oy = r.top;
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+      btn.style.cursor = 'grabbing';
+    });
+    btn.addEventListener('pointermove', function (e) {
+      if (!drag.on) return;
+      var dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      if (!drag.moved) return;
+      var x = Math.max(6, Math.min(window.innerWidth - 66, drag.ox + dx));
+      var y = Math.max(6, Math.min(window.innerHeight - 66, drag.oy + dy));
+      btn.style.left = x + 'px'; btn.style.top = y + 'px';
+      btn.style.right = 'auto'; btn.style.bottom = 'auto';
+    });
+    btn.addEventListener('pointerup', function () {
+      drag.on = false; btn.style.cursor = 'grab';
+      if (drag.moved) {
+        var r2 = btn.getBoundingClientRect();
+        localStorage.setItem('gs.pos', JSON.stringify({ x: Math.round(r2.left), y: Math.round(r2.top) }));
+      }
+    });
+    btn.onclick = function () { if (drag.moved) { drag.moved = false; return; } open(); };
     document.body.appendChild(btn);
 
     wrap = el('div'); wrap.id = 'gsWrap';
@@ -212,12 +241,44 @@
   function close() { if (wrap) wrap.classList.remove('on'); }
   function closePeek() { if (peek) peek.classList.remove('on'); }
 
+  var PDFIDX = null;
+  function ensurePdfIdx() {
+    if (PDFIDX) return Promise.resolve(PDFIDX);
+    return fetch('pdf/pdf-index.json', { cache: 'no-cache' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { PDFIDX = j || {}; return PDFIDX; })
+      .catch(function () { PDFIDX = {}; return PDFIDX; });
+  }
+  function resolvePdf(name) {
+    if (!PDFIDX) return '';
+    var n = String(name || '').trim();
+    var keys = [n, n.replace(/\.pdf$/i, '')];
+    for (var i = 0; i < keys.length; i++) if (PDFIDX[keys[i]]) return PDFIDX[keys[i]];
+    var core = n.replace(/\.pdf$/i, '').split('_')[0];
+    for (var k in PDFIDX) if (k.indexOf(core) === 0 && core.length >= 4) return PDFIDX[k];
+    return '';
+  }
+  function pdfPage(name) {
+    var m = String(name || '').match(/_(\d+)(?:-\d+)?\.pdf$/i);
+    return m ? m[1] : '';
+  }
+
   function openPeek(item) {
     cardTitle.innerHTML = '<span>' + esc2(item.t) + '</span><i style="font-style:normal;color:#94a3b8;font-size:12px">' + esc2(item.src + (item.page ? ' · ' + item.page : '')) + '</i><span>✕</span>';
     cardTitle.querySelector('span:last-child').onclick = closePeek;
     cardBody.innerHTML = mdToHtml(item.x);
     cardBody.scrollTop = 0;
     peek.classList.add('on');
+    if (item.src === '资料库') {
+      ensurePdfIdx().then(function () {
+        var p = resolvePdf(item.t);
+        if (!p) return;
+        var pg = pdfPage(item.t);
+        var src = encodeURI(p) + (pg ? '#page=' + pg : '');
+        cardBody.innerHTML = '<iframe src="' + src + '" style="width:100%;height:66vh;border:0;border-radius:10px;background:#f8fafc"></iframe>'
+          + '<p style="margin:8px 0 0"><a href="' + src + '" target="_blank" rel="noopener">在新标签页打开 PDF</a></p>';
+      });
+    }
   }
   function esc2(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 

@@ -42,6 +42,12 @@
       '#kbqBar .kbq-sp{flex:1}',
       '#kbqBar label{display:flex;align-items:center;gap:5px;color:#64748b;font-size:13px}',
       '#kbqBar button{padding:6px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:13px;cursor:pointer}',
+      '#kbqBar #kbqMore{background:#f1f5f9;color:#475569;padding:6px 12px}',
+      '#kbqBar{position:relative}',
+      '.kbq-menu{position:absolute;right:10px;top:44px;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 14px 40px rgba(15,23,42,.18);padding:6px;display:none;z-index:30}',
+      '.kbq-menu.on{display:block}',
+      '.kbq-menu div{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:#334155}',
+      '.kbq-menu div:hover{background:#f1f5f9}',
       '#kbqPane{display:none;background:#fff}',
       'body.kbq-doc #view{position:relative}',
       'body.kbq-doc #view > *:not(#kbqBar):not(#kbqPane){display:none!important}',
@@ -53,7 +59,7 @@
     document.head.appendChild(st);
   }
 
-  var mount = null, mountedFor = '', mountEl = null;
+  var mount = null, mountedFor = '', mountEl = null, MODE = 'q';
 
   function pane() { return document.getElementById('kbqPane'); }
 
@@ -68,6 +74,7 @@
       + '<span class="kbq-sp"></span>'
       + '<label><input type="checkbox" id="kbqSync"> 同步</label>'
       + '<button id="kbqExp" title="把所有知识点导出为 Markdown 文件">导出</button>'
+      + '<button id="kbqMore" title="更多">⋯</button>'
       + '<button id="kbqSave">保存</button>';
     var p = document.createElement('div');
     p.id = 'kbqPane';
@@ -80,14 +87,42 @@
     };
     bar.querySelectorAll('.kbq-tab').forEach(function (t) {
       t.onclick = function () { setMode(t.getAttribute('data-m')); };
+      t.classList.toggle('on', t.getAttribute('data-m') === MODE);
     });
+    if (MODE === 'doc') document.body.classList.add('kbq-doc');
     document.getElementById('kbqSave').onclick = saveNow;
     document.getElementById('kbqExp').onclick = exportAll;
+    var menu = document.createElement('div');
+    menu.className = 'kbq-menu';
+    menu.innerHTML = '<div data-act="link">复制链接</div><div data-act="copy">复制内容</div>'
+      + '<div data-act="exp">导出本篇</div><div data-act="clear">清空本篇</div><div data-act="del">删除本篇</div>';
+    bar.appendChild(menu);
+    document.getElementById('kbqMore').onclick = function (e) { e.stopPropagation(); menu.classList.toggle('on'); };
+    document.addEventListener('click', function () { menu.classList.remove('on'); });
+    menu.onclick = function (e) {
+      var act = e.target.getAttribute('data-act');
+      if (!act) return;
+      var md = mount ? (mount.getMarkdown() || '') : (localStorage.getItem(key()) || '');
+      if (act === 'link') { try { navigator.clipboard.writeText(location.href); } catch (err) {} }
+      if (act === 'copy') { try { navigator.clipboard.writeText(md); } catch (err) {} }
+      if (act === 'exp') downloadOne(md);
+      if (act === 'clear' || act === 'del') {
+        if (!confirm('清空这篇知识点？此操作只清本机这一篇。')) { menu.classList.remove('on'); return; }
+        localStorage.removeItem(key());
+        mountedFor = '';
+        if (mount) { try { mount.destroy(); } catch (err) {} mount = null; }
+        var inn = pane() && pane().querySelector('.kbq-inner');
+        if (inn) inn.innerHTML = '';
+        mountDoc();
+      }
+      menu.classList.remove('on');
+    };
   }
 
   function setMode(m) {
     var bar = document.getElementById('kbqBar');
     if (!bar) return;
+    MODE = m;
     bar.querySelectorAll('.kbq-tab').forEach(function (t) {
       t.classList.toggle('on', t.getAttribute('data-m') === m);
     });
@@ -97,6 +132,15 @@
     } else {
       document.body.classList.remove('kbq-doc');
     }
+  }
+
+  function downloadOne(md) {
+    var blob = new Blob([md || ''], { type: 'text/markdown;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = tagId().replace(/[\\/:*?"<>|]/g, '_') + '.md';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
   }
 
   function exportAll() {
@@ -154,7 +198,7 @@
   function tick() {
     if (document.getElementById('view')) {
       ensureBar();
-      if (document.body.classList.contains('kbq-doc')) mountDoc();
+      if (MODE === 'doc') mountDoc();
     }
   }
 

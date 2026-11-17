@@ -136,21 +136,29 @@
     });
   }
 
-  function ensureVditor(cb) {
-    if (window.Vditor) return cb();
-    var s = document.createElement('script');
-    s.src = 'vendor/vditor/dist/index.min.js';
-    s.onload = cb; s.onerror = function () { cb(new Error('vditor load fail')); };
-    document.head.appendChild(s);
+  function ensureBN(cb) {
+    if (window.BlockNoteMount) return cb();
+    if (document.getElementById('bnCSS')) { loadScript(); return; }
+    var css = document.createElement('link');
+    css.id = 'bnCSS'; css.rel = 'stylesheet'; css.href = 'vendor/blocknote/editor.css';
+    document.head.appendChild(css);
+    loadScript();
+    function loadScript() {
+      var s = document.createElement('script');
+      s.src = 'vendor/blocknote/editor.js';
+      s.onload = cb; s.onerror = function () { cb(new Error('blocknote load fail')); };
+      document.head.appendChild(s);
+    }
   }
 
   function mountVditor(text) {
-    if (vd) { vd.setValue(text || ''); return; }
-    vd = new Vditor(host.querySelector('.kbdoc-vd'), {
-      mode: 'ir', lang: 'zh_CN', cdn: 'vendor/vditor', height: 'auto',
-      cache: { enable: false }, toolbar: [],
+    if (vd) { try { vd.destroy(); } catch (e) {} vd = null; }
+    var el = host.querySelector('.kbdoc-vd');
+    if (!el || !window.BlockNoteMount) { if (el) el.textContent = '编辑器加载失败，请刷新重试'; return; }
+    el.innerHTML = '';
+    vd = window.BlockNoteMount(el, {
       value: text || '',
-      input: function () { setStatus('未保存'); }
+      onChange: function () { setStatus('未保存'); }
     });
   }
 
@@ -160,8 +168,8 @@
     if (!vd) return;
     try {
       if (localStorage.getItem('kbdoc.sync') === '0') { setStatus('同步已关：未写入'); return; }
-      if (cur.tag) localStorage.setItem('kbdoc.tag.' + cur.tag, vd.getValue());
-      else localStorage.setItem('kbdoc.doc.' + cur.title, vd.getValue());
+      if (cur.tag) localStorage.setItem('kbdoc.tag.' + cur.tag, vd.getMarkdown() || '');
+      else localStorage.setItem('kbdoc.doc.' + cur.title, vd.getMarkdown() || '');
       setStatus('已保存到本地');
     } catch (e) { setStatus('保存失败'); }
   }
@@ -179,7 +187,7 @@
     host.querySelector('.kbdoc-t').textContent = cur.title;
     host.classList.add('on');
     switchTab('kb');
-    ensureVditor(function () {
+    ensureBN(function () {
       mountVditor(md || ('# ' + cur.title + '\n\n> 这篇知识点还没内容，直接在下面写；保存后就和这个标签绑定了。'));
       setStatus(md ? '已载入本地内容' : '');
     });
@@ -213,7 +221,7 @@
     switchTab('kb');
     var ov = null;
     try { ov = localStorage.getItem('kbdoc.doc.' + cur.title); } catch (e) {}
-    ensureVditor(function () { mountVditor(ov != null ? ov : cur.text); setStatus(ov != null ? '已载入本地修改' : ''); });
+    ensureBN(function () { mountVditor(ov != null ? ov : cur.text); setStatus(ov != null ? '已载入本地修改' : ''); });
     renderQuiz();
   }
 
