@@ -679,8 +679,13 @@
     ensure();
     var sig = banksSig();
     if (TG_IDX.byTag && TG_IDX.sig === sig) return TG_IDX;
+    var _t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     var cached = tgpLoad(sig);
-    if (cached) { TG_IDX = cached; return TG_IDX; }
+    if (cached) {
+      TG_IDX = cached;
+      try { (window.__P = window.__P || {}).idx = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0); window.__P.idxsrc = 'cache'; } catch (e0) {}
+      return TG_IDX;
+    }
     var basic = basicSet(), byTag = Object.create(null);
     banks().forEach(function (b) {
       if (!b || !b.id || !Array.isArray(b.questions)) return;
@@ -698,6 +703,11 @@
     var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
     TG_IDX = { sig: sig, byTag: byTag, list: list, banks: Object.create(null) };
     tgpSave(TG_IDX);
+    try {
+      window.__P = window.__P || {};
+      window.__P.idx = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - _t0);
+      window.__P.idxsrc = 'build';
+    } catch (e1) {}
     return TG_IDX;
   }
   /* 某个考点文件夹的题数 / 已答（只查索引，不造题目行 —— 列目录时用这个，快得多） */

@@ -4757,6 +4757,12 @@ function renderQuiz(bankId) {
     return;
   }
   bank._retryLoad = false;
+  try {
+    var _P = window.__P || {};
+    document.title = 'PERF idx=' + (_P.idx == null ? '-' : _P.idx + 'ms/' + (_P.idxsrc || '?'))
+      + ' now=' + Math.round(((window.performance && performance.now) ? performance.now() : Date.now()));
+  } catch (eP) {}
+
   /* 合并题集（聚合层）里可能掺进没题目的空行，过滤掉再取当前题，避免读 undefined.id */
   pool = (pool || []).filter(function (q) { return q && q.id != null; });
   if (!pool.length) {
