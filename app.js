@@ -4679,13 +4679,13 @@ function renderQuiz(bankId) {
         if (window.SCM && SCM.debugTag) _byTag = SCM.debugTag(bank.id);
       } catch (e) {}
       var _nb = '?', _nt = '?', _tg = 'no';
-      try { _nb = banks().length; } catch (e1) { _nb = 'ERR:' + (e1 && e1.message); }
+      try { _nb = allBanks().length; } catch (e1) { _nb = 'ERR:' + (e1 && e1.message); }
       try { _nt = (window.SCM && SCM.tagListAll) ? SCM.tagListAll().length : '?'; } catch (e2) {}
       try { _tg = (window.TAGS && TAGS.of) ? 'yes' : 'no'; } catch (e3) {}
       /* 标签到底有没有打在题上：数一遍有标签的题 + 给一条样例 */
       var _tq = -1, _smp = '-';
       try {
-        var _bs = banks(); _tq = 0;
+        var _bs = allBanks(); _tq = 0;
         for (var _bi = 0; _bi < _bs.length; _bi++) {
           var _b = _bs[_bi];
           if (!_b || !Array.isArray(_b.questions)) continue;
