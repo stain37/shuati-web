@@ -675,6 +675,19 @@
     SIG_MEMO = { t: now, v: n + ':' + q + ':' + (window.__TAGS_REV || 0) };
     return SIG_MEMO.v;
   }
+  function prewarmTagIndex() {
+    try {
+      if (prewarmTagIndex._d) return;
+      prewarmTagIndex._d = 1;
+      var go = function () { try { tagIndex(); } catch (e) {} };
+      if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 });
+      else setTimeout(go, 1200);
+    } catch (e) {}
+  }
+  try {
+    if (document.readyState === 'complete') setTimeout(prewarmTagIndex, 800);
+    else window.addEventListener('load', function () { setTimeout(prewarmTagIndex, 800); });
+  } catch (eL) {}
   function tagIndex() {
     ensure();
     var sig = banksSig();
@@ -691,13 +704,17 @@
       if (!b || !b.id || !Array.isArray(b.questions)) return;
       b.questions.forEach(function (qq) {
         if (!qq) return;
+        var ts = tagsOfQ(b, qq);
+        if (!ts.length) return;
+        /* big 只取「第一个基本标签」，原来在循环里调 bigOfQ 会把 tagsOfQ 再跑一遍 */
         var bigq = '';
-        tagsOfQ(b, qq).forEach(function (t) {
-          if (basic[t] || isJunkTag(t)) return;
-          if (!bigq) bigq = bigOfQ(b, qq);
+        for (var i0 = 0; i0 < ts.length; i0++) { if (basic[ts[i0]]) { bigq = ts[i0]; break; } }
+        for (var i1 = 0; i1 < ts.length; i1++) {
+          var t = ts[i1];
+          if (basic[t] || isJunkTag(t)) continue;
           var arr = byTag[t] || (byTag[t] = []);
           arr.push({ b: b, q: qq, big: bigq });
-        });
+        }
       });
     });
     var list = Object.keys(byTag).sort(function (a, b2) { return a.localeCompare(b2, 'zh'); });
