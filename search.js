@@ -244,7 +244,7 @@
   var PDFIDX = null;
   function ensurePdfIdx() {
     if (PDFIDX) return Promise.resolve(PDFIDX);
-    return fetch('pdf/pdf-index.json', { cache: 'no-cache' })
+    return fetch('pdf-index.json', { cache: 'no-cache' })
       .then(function (r) { return r.json(); })
       .then(function (j) { PDFIDX = j || {}; return PDFIDX; })
       .catch(function () { PDFIDX = {}; return PDFIDX; });
