@@ -281,8 +281,8 @@
         if (!p) return;
         var pg = pdfPage(item.t);
         var src = encodeURI(p) + (pg ? '#page=' + pg : '');
-        cardBody.innerHTML = '<iframe src="' + src + '" style="width:100%;height:66vh;border:0;border-radius:10px;background:#f8fafc"></iframe>'
-          + '<p style="margin:8px 0 0"><a href="' + src + '" target="_blank" rel="noopener">在新标签页打开 PDF</a></p>';
+        cardBody.innerHTML = '<p style="margin:0 0 10px"><a style="display:inline-block;background:#2f6fed;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;text-decoration:none" href="' + src + '" target="_blank" rel="noopener">📄 打开 PDF（新标签页）</a></p>'
+          + '<iframe src="' + src + '" style="width:100%;height:60vh;border:0;border-radius:10px;background:#f8fafc"></iframe>';
       });
     }
   }
