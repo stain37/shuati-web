@@ -8782,10 +8782,10 @@ window.__APP_DIAG = 'v4';
         var b = document.getElementById('__jb');
         if (!b) {
           b = document.createElement('div'); b.id = '__jb';
-          b.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:2147482000;background:#111827;color:#fca5a5;font:11px/1.5 monospace;padding:5px 8px;border-radius:8px;pointer-events:none;max-width:96vw';
+          b.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:2147482000;background:#111827;color:#fca5a5;font:11px/1.5 monospace;padding:5px 8px;border-radius:8px;pointer-events:auto;cursor:pointer;max-width:96vw';
           document.body.appendChild(b);
         }
-        b.textContent = '点击总耗时 ' + Math.round(d) + ' ms · ' + (parts.length ? parts.join(' · ') : '（各段都没超 0.5ms → 时间在 render() 自身或没被包住的调用里）');
+        window.__JTL = { total: Math.round(d), parts: JT, qs: (window.QZ && QZ.cur) ? 'q' : '', hash: location.hash.slice(0,60) }; b.textContent = '点击总耗时 ' + Math.round(d) + ' ms · ' + (parts.length ? parts.join(' · ') : '（各段都没超 0.5ms → 时间在 render() 自身或没被包住的调用里）') + '　[点我复制]'; b.onclick = function(){ try { var s = 'DIAG ' + JSON.stringify(window.__JTL); if (navigator.clipboard) navigator.clipboard.writeText(s); else { var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); } b.textContent = '已复制诊断，粘贴发给开发者'; } catch(e){} };
       } catch (e) {}
     }
   };
