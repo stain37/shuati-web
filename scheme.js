@@ -97,7 +97,27 @@
       return fix;
     } catch (e) { return 0; }
   }
-  function ensure() { if (!LOADED) load(); try { healParents(); } catch (e) {} }
+  /* 内置「系统分类」方案加载后，本机那一份可能被改坏/是旧版（电脑上就是：cats=167、tgcat=0，
+     点开的还是老 id 的节点，聚合自然 0 命中）。发现树上没有考点节点，就直接用内置那份覆盖回来。 */
+  function ensureBuiltinCats() {
+    try {
+      var SYS = window.__SYS_CATS;
+      if (!SYS || !SYS.length) return 0;
+      var e = (DB.list || []).filter(function (x) { return x && x.id === CUR; })[0];
+      if (!e || String(e.name || '').indexOf('系统分类') !== 0) return 0;
+      var d = DB.data[CUR];
+      if (!d) return 0;
+      var cs = d.cats || [], tg = 0;
+      for (var i = 0; i < cs.length; i++) if (cs[i] && String(cs[i].id).indexOf('tgcat:') === 0) tg++;
+      if (cs.length === SYS.length && tg > 0) return 0;
+      d.cats = JSON.parse(JSON.stringify(SYS));
+      _healed = false;
+      try { save(); } catch (e2) {}
+      var n = healParents();
+      return (d.cats.length || 0) + (n ? 0 : 0);
+    } catch (e) { return 0; }
+  }
+  function ensure() { if (!LOADED) load(); try { ensureBuiltinCats(); } catch (e) {} try { healParents(); } catch (e) {} }
 
   /* ---------- 迁移：三级索引是唯一的考点方案 ----------
      旧版的「考点分类 / 考点分类 3 / 方案 2 …」全部删掉（连同它们的树和归属），
