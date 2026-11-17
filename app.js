@@ -3261,7 +3261,8 @@ function route() {
   /* 地址栏的 hash 会被浏览器做百分号编码：题库 id 里若带中文（例如自带的 ttsx-内科学-1
      会变成 ttsx-%E5%86%85%E7%A7%91%E5%AD%A6-1），不解码就查不到题库，
      点「开始」会被 renderQuiz 当成无效题库弹回首页。 */
-  const parts = h.split('/').map(p => { try { return decodeURIComponent(p); } catch (e) { return p; } });
+  const dec = s => { let v = s; for (let i = 0; i < 3; i++) { let n; try { n = decodeURIComponent(v); } catch (e) { break; } if (n === v) break; v = n; } return v; };
+  const parts = h.split('/').map(dec);
   if (parts[0] === 'bank' && parts[1]) return { name: 'quiz', bankId: parts[1] };
   if (parts[0] === 'import') return { name: 'import' };
   if (parts[0] === 'wrong') return { name: 'wrong' };
@@ -4608,7 +4609,19 @@ const stemHtml = t => {
 function renderQuiz(bankId) {
   if (typeof richFlush === 'function') richFlush();          // 方案十：重画前先把就地编辑的改动存了
   const bank = bankById(bankId);
-  if (!bank) { go('#/'); return; }
+  if (!bank) {
+    /* tg: 题集依赖「标签方案」异步加载；刷新瞬间可能还拿不到，先等一等再回首页。 */
+    renderQuiz._try = (renderQuiz._try || 0) + 1;
+    if (renderQuiz._try <= 6) {
+      const v0 = document.getElementById('view');
+      if (v0) v0.innerHTML = `<div class="card"><div class="empty">正在载入题库…</div></div>`;
+      setTimeout(() => renderQuiz(bankId), 400);
+      return;
+    }
+    renderQuiz._try = 0;
+    go('#/'); return;
+  }
+  renderQuiz._try = 0;
   if (bank.exam) { go('#/exam/' + bank.id); return; }   // 模考走专用页面
   QZ.bankId = bankId;
   qtimeStart(bankId);
