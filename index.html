@@ -50,14 +50,14 @@
   window.registerBank = function (b) { window.__BANKS__.push(b); };
 </script>
 <script>
-/* 临时错误横幅 v2：只报真正的脚本异常，资源 404 降级为控制台 */
+/* 临时错误横幅 v3：异常先存 sessionStorage，页面被重载后还能看到 */
 (function () {
-  function bar(txt) {
+  function paint(txt, color) {
     try {
       var box = document.getElementById('__errbar');
       if (!box) {
         box = document.createElement('div'); box.id = '__errbar';
-        box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#b91c1c;color:#fff;font:12px/1.5 monospace;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto';
+        box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:' + (color || '#b91c1c') + ';color:#fff;font:12px/1.5 monospace;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto';
         box.onclick = function () { box.remove(); };
         document.body.appendChild(box);
       }
@@ -68,17 +68,30 @@
     var tgt = ev && ev.target;
     if (tgt && tgt !== window && (tgt.src || tgt.href)) {
       try { console.warn('[res-fail]', tgt.src || tgt.href); } catch (e) {}
-      return;                       /* 资源 404 不弹红条 */
+      return;
     }
     var msg = (ev && ev.message) || (ev && ev.error && ev.error.message) || '';
     if (!msg) return;
-    var where = ((ev.filename || '').split('/').pop() || '?') + ':' + (ev.lineno || 0);
-    bar('⚠ ' + msg + ' @' + where);
+    var where = ((ev.filename || '').split('/').pop() || '?') + ':' + (ev.lineno || 0) + ':' + (ev.colno || 0);
+    var line = msg + ' @' + where;
+    try { sessionStorage.setItem('__lastErr', line + '\n' + String((ev.error && ev.error.stack) || '').split('\n').slice(0, 4).join('\n')); } catch (e) {}
+    paint('⚠ ' + line);
   }, true);
   window.addEventListener('unhandledrejection', function (ev) {
     var r = ev && ev.reason;
     var msg = (r && (r.message || r)) ? String(r.message || r) : '';
-    if (msg) bar('⚠ Promise: ' + msg);
+    if (!msg) return;
+    try { sessionStorage.setItem('__lastErr', 'Promise: ' + msg); } catch (e) {}
+    paint('⚠ Promise: ' + msg);
+  });
+  window.addEventListener('load', function () {
+    try {
+      var last = sessionStorage.getItem('__lastErr');
+      if (last) {
+        sessionStorage.removeItem('__lastErr');
+        paint('上次的错误：\n' + last, '#7f1d1d');
+      }
+    } catch (e) {}
   });
 })();
 </script>
@@ -404,7 +417,7 @@ var iv=setInterval(function(){n++;
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261118d6"></script>
+<script src="app.js?v=20261118d7"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
