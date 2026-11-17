@@ -486,6 +486,18 @@
       if (!p0) return;
       (kidsMap[p0] = kidsMap[p0] || []).push(String(c.id));
     });
+    /* 兜底：方案数据里的 parent 被旧版本清空过时，用内置的权威父子表补上 */
+    try {
+      var SYS = window.__SYSPATHS;
+      if (SYS) {
+        Object.keys(SYS).forEach(function (cid) {
+          var pid = String(SYS[cid] || '');
+          if (!pid) return;
+          var arr = kidsMap[pid] || (kidsMap[pid] = []);
+          if (arr.indexOf(String(cid)) < 0) arr.push(String(cid));
+        });
+      }
+    } catch (eS) {}
     while (stack.length && guard++ < 8000) {
       var cur = stack.pop();
       if (seen[cur]) continue;
