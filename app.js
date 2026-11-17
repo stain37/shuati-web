@@ -4633,6 +4633,19 @@ function renderQuiz(bankId) {
   let pool = poolOf(bank);
   /* 刷新后自愈：六科 / 来源白名单 / 筛法 可能是上一轮残留，任一失效都会让题池变空而页面只显示
      「这里暂时没有题目」。逐级放宽，直到有题可做；放宽期间不改题库数据。 */
+  /* 标签题集的「来源筛选」可能存着“全不选”，会让 26 道题全被筛掉却看不出原因：
+     这种情况直接清掉这个考点的来源选择，按全选重算。 */
+  if (!pool.length && bank.virtualTag) {
+    try {
+      const m = srcStore();
+      if (m && srcSlot(bank) in m) {
+        delete m[srcSlot(bank)];
+        writeLS(LS_SRC, m);
+        QZ.srcSel = null; QZ.srcTag = '';
+        pool = poolOf(bank);
+      }
+    } catch (e) {}
+  }
   if (!pool.length && bank.questions && bank.questions.length) {
     const relax = [];
     if (QZ.subject) relax.push(() => { QZ.subject = ''; });
