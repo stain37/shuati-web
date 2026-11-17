@@ -648,18 +648,20 @@
   function schemeMore() {
     if (!window.SCM) return;
     var isDef = sid() === SCM.DEF;
-    var isTag = false, curBig = false;
+    var isTag = false, curBig = false, curTax = false;
     try {
       var sp = SCM.schemeOf ? SCM.schemeOf() : null;
       isTag = !!(SCM.tagMode && SCM.tagMode());
       curBig = !!(sp && sp.big);
+      curTax = !!(sp && sp.tax);
     } catch (e0) {}
     qsModal({
       title: '方案：' + E(SCM.curName()),
       html: '<div class="qs-tgs"><button type="button" class="qs-tg" data-t="ren">重命名当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="reset">⟲ 一键恢复默认状态（按考点重建）</button>'
         + '<button type="button" class="qs-tg" data-t="tagnew">＋ 按小标签自动分（读现有考点标签）</button>'
-        + (isTag ? '<button type="button" class="qs-tg" data-t="big">' + (curBig ? '☑ 再按大标签分一层（生理/生化/内外科…）' : '☐ 再按大标签分一层（生理/生化/内外科…）') + '</button>' : '')
+        + (isTag ? '<button type="button" class="qs-tg" data-t="tax">' + (curTax ? '☑ 按三级索引分层（科目 › 讲义章 › 考点）' : '☐ 按三级索引分层（科目 › 讲义章 › 考点）') + '</button>' : '')
+        + (isTag && !curTax ? '<button type="button" class="qs-tg" data-t="big">' + (curBig ? '☑ 再按大标签分一层（生理/生化/内外科…）' : '☐ 再按大标签分一层（生理/生化/内外科…）') + '</button>' : '')
         + (SCM.defaultId && SCM.defaultId() === SCM.current()
             ? '<button type="button" class="qs-tg" data-t="undefault">☆ 取消默认（下次打开用上次的）</button>'
             : '<button type="button" class="qs-tg" data-t="default">★ 设为默认方案（每次打开都用它）</button>')
@@ -702,6 +704,11 @@
           var tags = (SCM.smallTags ? SCM.smallTags() : []).length;
           try { toast('已建「' + SCM.curName() + '」：' + tags + ' 个小标签文件夹，里面直接是题目；想按大标签再分一层，点方案右边的 ⋯', 4200, 'ok'); } catch (e) {}
         });
+      } else if (r.act === 'tax') {
+        var onT = !curTax;
+        SCM.setTax(SCM.current(), onT);
+        schemeReload();
+        try { toast(onT ? '已按三级索引分层：科目 › 讲义章 › 考点 › 题目' : '已改回平铺：考点 › 题目', 2800, 'ok'); } catch (e) {}
       } else if (r.act === 'big') {
         var on = !curBig;
         SCM.setBig(SCM.current(), on);

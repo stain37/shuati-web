@@ -2145,7 +2145,7 @@ function qTypeOf(q) {
 const TYPE_NAMES = { A1: 'A1 型（单选）', A2: 'A2 型（病例）', B1: 'B1 型（配伍）', X: 'X 型（多选）' };
 function qTypeName(t) { return TYPE_NAMES[t] || t || ''; }
 const key = (bankId, qid) => bankId + '#' + qid;
-const kOf = (bank, q) => key((q && q._bank) || bank.id, q.id);   /* 按标签分出来的虚拟题集：记在原题库那道题上 */
+const kOf = (bank, q) => key((q && q._bank) || bank.id, (q && q.__oid != null) ? q.__oid : q.id);   /* 按标签分出来的虚拟题集：记在原题库那道题上 */
 /* 西综真题分值：165 道，满分 300。按**题号（题目在卷子里的顺序）**算，不是按题型：
    1–40 每题 1.5；41–115 每题 2；116–135 每题 1.5；136–165 每题 2。
    分值对照：A 型 1–40（1.5）生理 1–16、生化 17–28、病理 29–40；
@@ -2201,7 +2201,7 @@ const qNo = (q, list) => {
   }
   return raw || '?';
 };
-const favKey = (bank, q) => (bank.paper && q._srcKey) ? q._srcKey : key(bank.id, q.id);
+const favKey = (bank, q) => q._srcKey ? q._srcKey : key(bank.id, (q.__oid != null) ? q.__oid : q.id);
 
 /* 作答记录 */
 function recOf(k) {
@@ -2503,7 +2503,7 @@ function openAnsEditor(host, k, q, done) {
 }
 
 /* ---------- 运行时状态 ---------- */
-const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false, rw: null };
+const QZ = { bankId: null, filter: 'all', subject: '', cur: null, pending: {}, excl: {}, order: null, streak: 0, focusCur: false, rw: null, srcTag: '', srcSel: null, srcOpen: false, srcQ: '', srcFuzzy: false, srcSort: 'n', srcZero: true };
 
 /* ---------- 本套题的用时计时（答题页顶部，可隐藏） ---------- */
 const QTM = { bank: '', t0: 0, timer: 0 };
@@ -3580,6 +3580,7 @@ function renderInner() {
   $('nav').style.display = r.name === 'quiz' ? 'flex' : 'none';
   $('chips').style.display = r.name === 'quiz' ? 'flex' : 'none';
   var sjc = $('subjchips'); if (sjc) sjc.style.display = r.name === 'quiz' ? 'flex' : 'none';
+  var srb = $('srcbar'); if (srb && r.name !== 'quiz') srb.style.display = 'none';
   /* 第二批：顶栏瘦身 —— 题号 / 设置 都挪到下面了（答题卡的「上一题 / 答题卡 / 下一题」里有 #jumpInfo，
      底部导航里有 #btnSetAll），所以这两个老按钮统一收起来，只留在 DOM 里给老代码兜底。 */
   $('btnGrid').style.display = 'none';
@@ -4195,8 +4196,9 @@ function delTargetOf(bank, q) {
   }
   if (bank.virtualTag) {                         /* 按标签分出来的虚拟题集：删的是原题库那道 */
     const real = bankById(q && q._bank);
-    if (!real || real.source !== 'local') return { bankId: q && q._bank, qid: q && q.id, title: (q && q._bname) || '', tagOnly: bank.virtualTag };
-    return { bankId: real.id, qid: q.id, title: real.title, tagOnly: bank.virtualTag };
+    const oid = (q && q.__oid != null) ? q.__oid : (q && q.id);
+    if (!real || real.source !== 'local') return { bankId: q && q._bank, qid: oid, title: (q && q._bname) || '', tagOnly: bank.virtualTag };
+    return { bankId: real.id, qid: oid, title: real.title, tagOnly: bank.virtualTag };
   }
   if (bank.source !== 'local') return null;      /* 内置题库：只读 */
   return { bankId: bank.id, qid: q.id, title: bank.title };
@@ -5682,13 +5684,20 @@ function uiTagDock(bank, q, fk) {
 function qzTags(k) { try { return (window.TAGS && TAGS.of) ? TAGS.of(k) : []; } catch (e) { return []; } }
 /* 套卷 / 每日复习里的题是复制品（键是 paper#p1…），标签挂在原题上：查标签一律走 _srcKey，
    否则六科计数全是 0，整行灰死点不动（web126 用户报）。 */
-function qzKey(bank, q) { return (bank && bank.paper && q && q._srcKey) ? q._srcKey : kOf(bank, q); }
+function qzKey(bank, q) { return ((bank && (bank.paper || bank.virtualTag)) && q && q._srcKey) ? q._srcKey : kOf(bank, q); }
 function qzBasics() {
   try { if (window.TAGS && typeof TAGS.basic === 'function') { const b = TAGS.basic(); if (b && b.length) return b; } } catch (e) {}
   return ['生理', '生化', '病理', '内科', '外科', '人文', '政治'];
 }
+const POLIT_RE = /政治|马原|毛中特|毛概|史纲|思修|时政|马克思|近代史纲要|中国特色/;
+function qzIsPolitBank(bank, q) {
+  const nm = String((q && q._bname) || (bank && (bank.title || bank.name)) || '');
+  return POLIT_RE.test(nm);
+}
 function qzBasicOf(bank, q, basic) {
   basic = basic || qzBasics();
+  /* 政治题库里的题：哪怕以前被医学标签污染过，六科也只认「政治」 */
+  if ((qzIsPolitBank(bank, q) || (typeof window.__polDetect === 'function' && window.__polDetect(q))) && basic.indexOf('政治') >= 0) return ['政治'];
   return qzTags(qzKey(bank, q)).filter(t => basic.indexOf(t) >= 0);
 }
 function qzHasSubject(bank, q) {
@@ -5706,6 +5715,258 @@ function chipFilter(arr, f, bank) {
   if (f === 'undone') return arr.filter(q => !answered(kOf(bank, q)));
   return arr;
 }
+
+/* ---------- 题库来源筛选（只在「三级索引」点进某个考点的题集里出现） ----------
+   从三级索引点二级考点进来时，题是从多个题库汇过来的（scheme.js 在每道题上留了 _bname=原题库名）。
+   这里按原题库给一个多选筛子：只做 ttsx、只做小亮，或者把小亮和 ttsx 都勾上、把医考帮排掉。
+   选择按「考点」记在本机（qbank.qsrc.v1），下次点同一个考点还是上次那套来源。 */
+const LS_SRC = 'qbank.qsrc.v1';
+function srcOf(q) { return String((q && (q._bname || q._bank)) || '').trim() || '未标注来源'; }
+function srcStore() { return readLS(LS_SRC, {}) || {}; }
+function srcList(bank) {
+  const cnt = {}, arr = (bank && bank.questions) || [];
+  arr.forEach(q => { const s = srcOf(q); cnt[s] = (cnt[s] || 0) + 1; });
+  return Object.keys(cnt).sort((a, b) => (cnt[b] - cnt[a]) || a.localeCompare(b, 'zh')).map(n => ({ name: n, n: cnt[n] }));
+}
+function curTaxScheme() {
+  try {
+    const db = readLS('qbank.schemes.v1', {}) || {};
+    const cur = localStorage.getItem('qbank.scheme.cur.v1') || db.cur || '';
+    const one = (db.list || []).filter(x => x && x.id === cur)[0];
+    return !!(one && one.tax === true);
+  } catch (e) { return false; }
+}
+const LS_SRC_G = 'qbank.qsrc.global.v1';
+/* 是否「对全部考点有效」：默认开，勾一次所有考点都用同一套来源 */
+function srcGlobalOn() { try { return localStorage.getItem(LS_SRC_G) !== '0'; } catch (e) { return true; } }
+function srcSetGlobal(v) { try { localStorage.setItem(LS_SRC_G, v ? '1' : '0'); } catch (e) {} }
+function srcSlot(bank) { return srcGlobalOn() ? '__all__' : String((bank && bank.virtualTag) || '__all__'); }
+function srcSelOf(bank) {
+  if (!bank || !bank.virtualTag) return null;
+  const slot = srcSlot(bank);
+  if (QZ.srcTag !== slot) {
+    QZ.srcTag = slot;
+    const arr = srcStore()[slot];
+    QZ.srcSel = Array.isArray(arr) ? arr.slice() : null;      /* null = 从没筛过 = 全部 */
+  }
+  return QZ.srcSel;
+}
+/* 生效中的来源白名单：null = 全部；[] = 全不选（0 题）；其余 = 只留这些 */
+function srcPick(bank) {
+  if (!bank || !bank.virtualTag) return null;
+  /* 只有当前方案是三级索引时才认来源白名单，否则切回别的方案会出现「题全没了又看不到入口」 */
+  if (!curTaxScheme()) return null;
+  return srcSelOf(bank);
+}
+function srcMatch(bank, q) {
+  if (!bank || !bank.virtualTag) return true;
+  const keep = srcPick(bank);
+  return !keep || keep.indexOf(srcOf(q)) >= 0;
+}
+function srcAllNames(bank) {
+  /* 库里所有题库名 + 本题集里的来源名（含没显示的 0 题题库） */
+  const s = {};
+  try { Object.keys(srcBankMeta()).forEach(n => { s[n] = 1; }); } catch (e) {}
+  srcListAll(bank).forEach(x => { s[x.name] = 1; });
+  srcList(bank).forEach(x => { s[x.name] = 1; });
+  return Object.keys(s);
+}
+function srcSet(bank, list, soft) {
+  const all = srcAllNames(bank);
+  const raw = (list || []).slice();
+  const keep = raw.filter((n, i) => raw.indexOf(n) === i);
+  const m = srcStore();
+  const slot = srcSlot(bank);
+  if (all.length && keep.length >= all.length) delete m[slot];   /* 全选 = 不筛 */
+  else m[slot] = keep;                                           /* 空数组保留 = 全不选 */
+  writeLS(LS_SRC, m);
+  QZ.srcTag = slot;
+  QZ.srcSel = (all.length && keep.length >= all.length) ? null : keep;
+  if (soft) {
+    /* 勾选时只重画 chips 行和按钮文字：不动来源面板、不动整页，滚动位置就保住了 */
+    try { renderChips(bank, true); } catch (e) {}
+    const btn = $('srcBtn');
+    if (btn) {
+      const keep2 = srcPick(bank);
+      const rows2 = srcListAll(bank);
+      const base2 = chipFilter(bank.questions, QZ.filter, bank).filter(q => !QZ.subject || qzHasSubject(bank, q));
+      const rest2 = keep2 ? base2.filter(q => keep2.indexOf(srcOf(q)) >= 0).length : base2.length;
+      btn.textContent = keep2 ? ('已选 ' + keep2.length + '/' + rows2.length + ' · ' + rest2 + ' 题 ▾')
+                              : ('全部 ' + rows2.length + ' 个来源 · ' + base2.length + ' 题 ▾');
+      btn.className = 'srcchip' + (keep2 ? ' on' : '');
+    }
+    const p2 = poolOf(bank);
+    if (!p2.length) { if (QZ.cur !== null) { QZ.cur = null; render(); } return; }
+    if (!p2.some(q => String(q.id) === String(QZ.cur))) { QZ.cur = p2[0].id; render(); }
+    return;
+  }
+  const p = poolOf(bank);
+  if (!p.length) QZ.cur = null;
+  else if (!p.some(q => String(q.id) === String(QZ.cur))) QZ.cur = p[0].id;
+  render();
+}
+/* 恢复成「全部来源」：删掉记录 */
+function srcClear(bank) {
+  const m = srcStore();
+  delete m[srcSlot(bank)];
+  writeLS(LS_SRC, m);
+  QZ.srcTag = srcSlot(bank);
+  QZ.srcSel = null;
+  render();
+}
+function srcBankMeta() {
+  /* 题库名 -> 建库时间，用来给来源排「最近添加」 */
+  const m = {};
+  try {
+    (baseBanks() || []).forEach(b => {
+      const n = String(b.title || b.name || '').trim();
+      if (n && !m[n]) m[n] = { born: Number(b.createdAt || b.born || 0) || 0, id: b.id };
+    });
+  } catch (e) {}
+  return m;
+}
+function srcFuzzyHit(s, q) {
+  s = String(s || '').toLowerCase();
+  q = String(q || '').toLowerCase().replace(/\s+/g, '');
+  if (!q) return true;
+  if (s.indexOf(q) >= 0) return true;
+  /* 模糊：按顺序出现就算（cops -> 慢性阻塞性肺疾病 这类缩写也能找到） */
+  let i = 0;
+  for (let k = 0; k < s.length && i < q.length; k++) if (s[k] === q[i]) i++;
+  return i >= q.length;
+}
+/* 本题集的来源（有题的那些） */
+function srcListAll(bank) {
+  const cnt = {}, arr = (bank && bank.questions) || [];
+  arr.forEach(q => { const s = srcOf(q); cnt[s] = (cnt[s] || 0) + 1; });
+  const meta = srcBankMeta();
+  const names = Object.keys(cnt);
+  if (QZ.srcZero) Object.keys(meta).forEach(n => { if (!(n in cnt)) cnt[n] = 0; });
+  const out = Object.keys(cnt).map(n => ({ name: n, n: cnt[n] || 0, born: (meta[n] && meta[n].born) || 0 }));
+  const sort = QZ.srcSort || 'n';
+  if (sort === 'name') out.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  else if (sort === 'new') out.sort((a, b) => (b.born - a.born) || a.name.localeCompare(b.name, 'zh'));
+  else out.sort((a, b) => (b.n - a.n) || a.name.localeCompare(b.name, 'zh'));
+  return out;
+}
+function renderSrc(bank) {
+  const box = $('srcbar');
+  if (!box) return;
+  const ok = !!(bank && bank.virtualTag && curTaxScheme());
+  const has = ok ? srcList(bank) : [];
+  /* 只有 1 个来源时原本隐藏；但若已经存了白名单（尤其「全不选」= []）就必须显示，
+     否则整本题集 0 题、六科 chip 全灰，用户没有任何入口把筛选改回来 */
+  if (!ok || (has.length < 2 && !srcPick(bank))) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const keep = srcPick(bank);
+  const rows = srcListAll(bank);
+  const base = chipFilter(bank.questions, QZ.filter, bank).filter(q => !QZ.subject || qzHasSubject(bank, q));
+  const rest = keep ? base.filter(q => keep.indexOf(srcOf(q)) >= 0).length : base.length;
+  const totalBanks = (() => { try { return (baseBanks() || []).length; } catch (e) { return rows.length; } })();
+  const label = keep ? ('已选 ' + keep.length + '/' + rows.length + ' · ' + rest + ' 题')
+                     : ('全部 ' + rows.length + ' 个来源 · ' + base.length + ' 题');
+  box.style.display = '';
+  box.innerHTML =
+    '<span class="slabel">题库来源</span>'
+    + '<div class="srcwrap"><button type="button" class="srcchip' + (keep ? ' on' : '') + '" id="srcBtn">' + esc(label) + ' <b class="srcarw">▾</b></button>'
+    + (QZ.srcOpen ? (
+        '<div class="srcpanel" id="srcPanel">'
+        + '<div class="srchd"><b>筛选题库</b><span class="srcmeta">本题集 ' + has.length + ' 个来源 / 库里共 ' + totalBanks + ' 个题库</span>'
+        + '<button type="button" class="btn tiny" id="srcAll">全选</button>'
+        + '<button type="button" class="btn tiny" id="srcNone">全不选</button>'
+        + '<button type="button" class="btn tiny" id="srcReset">全部</button></div>'
+        + '<div class="srcfind"><input type="search" id="srcQ" placeholder="搜题库名...（回车不用按，边打边筛）" value="' + esc(QZ.srcQ) + '">'
+        + '<button type="button" class="srctog' + (QZ.srcFuzzy ? ' on' : '') + '" id="srcFuzzy" title="模糊匹配：按字符顺序出现就算，比如 ttsx / 小亮">AI 模糊</button></div>'
+        + '<div class="srcrow2"><span class="srcsortlb">排序</span>'
+        + ['n:题数', 'name:名称', 'new:最近添加'].map((x, i) => { const k = x.split(':')[0]; return '<button type="button" class="srtsort' + ((QZ.srcSort || 'n') === k ? ' on' : '') + '" data-sort="' + k + '">' + x.split(':')[1] + '</button>'; }).join('')
+        + '<label class="srczero"><input type="checkbox" id="srcZero"' + (QZ.srcZero ? ' checked' : '') + '>显示没有该考点的题库</label>'
+        + '<label class="srcglob"><input type="checkbox" id="srcGlobal"' + (srcGlobalOn() ? ' checked' : '') + '>对全部考点有效</label></div>'
+        + '<div class="srcrows" id="srcRows">'
+        + rows.map(x => '<span class="srcitem' + (x.n ? '' : ' zero') + '" data-srcrow="' + esc(x.name) + '" data-n="' + x.n + '" data-born="' + x.born + '"'
+            + (x.n ? '' : ' title="本题集没有这个题库的题；勾上只影响别的考点"') + '>'
+            + '<input type="checkbox" data-src="' + esc(x.name) + '"' + ((!keep ? x.n > 0 : keep.indexOf(x.name) >= 0) ? ' checked' : '') + '>'
+            + '<span>' + esc(x.name) + '</span><i>' + x.n + '</i></span>').join('')
+        + '</div></div>') : '')
+    + '</div>';
+  on('srcBtn', () => { QZ.srcOpen = !QZ.srcOpen; renderSrc(bank); });
+  const pan = $('srcPanel');
+  if (!pan) return;
+  pan.scrollTop = QZ.srcScroll || 0;
+  const rowsBox = $('srcRows');
+  /* 只筛显示，不重画面板，免得输入框失焦 */
+  const applyFilter = () => {
+    if (!rowsBox) return;
+    const q = QZ.srcQ;
+    let shown = 0;
+    rowsBox.querySelectorAll('[data-srcrow]').forEach(r => {
+      const name = r.getAttribute('data-srcrow') || '';
+      const hit = !q || (QZ.srcFuzzy ? srcFuzzyHit(name, q) : name.toLowerCase().indexOf(q.toLowerCase()) >= 0);
+      r.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    let empty = pan.querySelector('.srcempty');
+    if (!shown) {
+      if (!empty) { empty = document.createElement('div'); empty.className = 'srcempty small muted'; empty.textContent = '没有匹配的题库名'; pan.appendChild(empty); }
+      empty.style.display = '';
+    } else if (empty) empty.style.display = 'none';
+  };
+  const qEl = $('srcQ');
+  if (qEl) {
+    qEl.addEventListener('input', () => { QZ.srcQ = qEl.value || ''; applyFilter(); });
+    qEl.addEventListener('keydown', ev => { if (ev.key === 'Escape') { ev.stopPropagation(); QZ.srcQ = ''; qEl.value = ''; applyFilter(); } });
+    applyFilter();
+  }
+  on('srcFuzzy', () => { QZ.srcFuzzy = !QZ.srcFuzzy; $('srcFuzzy').classList.toggle('on', QZ.srcFuzzy); applyFilter(); });
+  pan.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => {
+    QZ.srcSort = b.getAttribute('data-sort') || 'n';
+    QZ.srcScroll = pan.scrollTop || 0;
+    renderSrc(bank);
+    const q2 = $('srcQ'); if (q2 && QZ.srcQ) { q2.value = QZ.srcQ; q2.dispatchEvent(new Event('input')); }
+  }));
+  on('srcZero', () => { QZ.srcZero = !!(($('srcZero') || {}).checked); renderSrc(bank); });
+  /* 点整行也算勾选；用 span 不用 label —— label 会把点击再转发给 input，
+     勾选状态被连翻两次，看起来像「点了没反应」 */
+  pan.querySelectorAll('[data-srcrow]').forEach(row => {
+    row.addEventListener('click', ev => {
+      if (ev.target && ev.target.tagName === 'INPUT') return;
+      const cb = row.querySelector('input');
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+  pan.querySelectorAll('input[data-src]').forEach(cb => {
+    cb.onchange = () => {
+      const pick = [];
+      pan.querySelectorAll('input[data-src]').forEach(c => { if (c.checked) pick.push(c.dataset.src); });
+      QZ.srcScroll = pan.scrollTop || 0;
+      srcSet(bank, pick, true);
+      /* srcSet 会整页重画，面板重开后把搜索词接回去 */
+      const nq = $('srcQ'); if (nq && QZ.srcQ) { nq.value = QZ.srcQ; nq.dispatchEvent(new Event('input')); }
+      const np2 = $('srcPanel'); if (np2) np2.scrollTop = QZ.srcScroll || 0;
+    };
+  });
+  on('srcAll', () => srcSet(bank, rows.map(x => x.name)));
+  on('srcNone', () => srcSet(bank, []));
+  on('srcReset', () => srcClear(bank));
+  on('srcGlobal', () => { const c = $('srcGlobal'); srcSetGlobal(!!(c && c.checked)); QZ.srcTag = ''; QZ.srcSel = null; render(); });
+}
+/* 点面板外面 / 按 Esc 收起来源面板（面板里点复选框不算外面） */
+try {
+  document.addEventListener('click', function (e) {
+    if (!QZ.srcOpen) return;
+    const t = e.target;
+    if (t && t.closest && t.closest('.srcwrap')) return;
+    QZ.srcOpen = false;
+    const b = bankById(QZ.bankId);
+    if (b) renderSrc(b);
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (!QZ.srcOpen || e.key !== 'Escape') return;
+    QZ.srcOpen = false;
+    const b = bankById(QZ.bankId);
+    if (b) renderSrc(b);
+  });
+} catch (e) {}
 function poolOf(bank) {
   let arr = bank.questions.slice();
   /* 「仅重做错题」那一轮：池子只放这一轮的题，顺序照原题库，
@@ -5737,20 +5998,21 @@ function poolOf(bank) {
   }
   arr = chipFilter(arr, QZ.filter, bank);
   if (QZ.subject) arr = arr.filter(q => qzHasSubject(bank, q));
+  arr = arr.filter(q => srcMatch(bank, q));
   return arr;
 }
 
-function renderChips(bank) {
+function renderChips(bank, keepSrc) {
   /* 六科行：跟下面「全部 / 没做 / 单选…」同时生效；该筛法下没有这个科目的题就灰掉 */
   if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
   const sj = $('subjchips');
   if (sj) {
     const subs = [['', '全选'], ['内科', '内科'], ['外科', '外科'], ['病理', '病理'], ['生理', '生理'], ['生化', '生化'], ['人文', '人文'], ['政治', '政治'], ['__none', '未选']];
-    const allN = chipFilter(bank.questions, QZ.filter, bank).length;
-    sj.innerHTML = '<span class="slabel">六科</span>' + subs.map(([v, label]) => {
+    const allN = chipFilter(bank.questions, QZ.filter, bank).filter(q => srcMatch(bank, q)).length;
+    sj.innerHTML = '<span class="slabel">七科</span>' + subs.map(([v, label]) => {
       const cnt = v ? subjectCount(bank, v) : allN;
       const dis = v && !cnt;
-      const ttl = v === '__none' ? '还没分到六科里任何一科的题' : (v ? '只看这个科目' : '不限定科目');
+      const ttl = v === '__none' ? '还没分到七科里任何一科的题' : (v ? '只看这个科目' : '不限定科目');
       return `<button type="button" class="subjchip${QZ.subject === v ? ' on' : ''}${v === '__none' ? ' none' : ''}" data-subj="${v}" ${dis ? 'disabled ' : ''}title="${ttl}">${label}<i>${cnt}</i></button>`;
     }).join('');
     sj.querySelectorAll('.subjchip').forEach(c => c.onclick = () => {
@@ -5782,6 +6044,7 @@ function renderChips(bank) {
     render();
     toast(SET.shuffle ? '随机顺序：开' : '随机顺序：关', 1200);
   });
+  if (!keepSrc) renderSrc(bank);
 }
 /* 题上改完基本标签：只重画六科/筛选行，不整页重画（免得把解析、AI 输出冲掉）。
    正在刷题页时，未选计数会当场减少；标完最后一题会自动回「全选」。 */
@@ -5795,10 +6058,12 @@ function refreshQuizChips() {
 function poolCount(bank, f) {
   let arr = chipFilter(bank.questions, f, bank);
   if (QZ.subject) arr = arr.filter(q => qzHasSubject(bank, q));
+  arr = arr.filter(q => srcMatch(bank, q));
   return arr.length;
 }
 function subjectCount(bank, sub) {
   let arr = chipFilter(bank.questions, QZ.filter, bank);
+  arr = arr.filter(q => srcMatch(bank, q));
   if (sub === '__none') { const basic = qzBasics(); arr = arr.filter(q => qzBasicOf(bank, q, basic).length === 0); }
   else if (sub) { const basic = qzBasics(); arr = arr.filter(q => qzBasicOf(bank, q, basic).indexOf(sub) >= 0); }
   return arr.length;

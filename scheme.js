@@ -74,9 +74,101 @@
     var pf = prefGet();
     if (pf && DB.data[pf]) CUR = pf;     /* 设了默认方案就每次都用它 */
     LOADED = true;
+    migrateTaxOnly();                    /* 老考点方案清干净，只留三级索引这一套 */
     save();
   }
   function ensure() { if (!LOADED) load(); }
+
+  /* ---------- 迁移：三级索引是唯一的考点方案 ----------
+     旧版的「考点分类 / 考点分类 3 / 方案 2 …」全部删掉（连同它们的树和归属），
+     只保留「默认方案（题库目录树）」+ 唯一一个 tax 方案，并把它设成默认，
+     这样侧边栏一进来就是「学科 › 一级章 › 考点」。
+     以后云同步又把旧方案拉回来，这里下次加载也会再清一次。 */
+  var MIGRATING = false;
+  function isLegacyTagScheme(s) {
+    if (!s || !s.id || s.id === DEF) return false;
+    if (s.tax === true) return false;
+    if (s.mode === 'tag') return true;
+    var nm = String(s.name || '');
+    return /考点分类|知识点分类|三级索引/.test(nm) || /^方案\s*\d+$/.test(nm);
+  }
+  function migrateTaxOnly() {
+    if (MIGRATING) return;
+    MIGRATING = true;
+    try {
+      var changed = false;
+      DB.list = DB.list.filter(function (s) {
+        if (!s || !s.id) return false;
+        if (!isLegacyTagScheme(s)) return true;
+        delete DB.data[s.id]; delete MAP[s.id];
+        changed = true;
+        return false;
+      });
+      /* 万一有多个 tax 方案，只留第一个 */
+      var seen = false;
+      DB.list = DB.list.filter(function (s) {
+        if (!s || s.tax !== true) return true;
+        if (!seen) { seen = true; return true; }
+        delete DB.data[s.id]; delete MAP[s.id];
+        changed = true;
+        return false;
+      });
+      var canon = null;
+      DB.list.forEach(function (s) { if (s && s.id !== DEF && s.tax === true && !canon) canon = s; });
+      /* 一个 tax 方案都没有（比如刚清过数据）就自动建一个，侧边栏默认就是三级索引 */
+      if (!canon) {
+        canon = { id: 'scmtaxv2', name: '三级索引（学科 › 一级章 › 二级考点）', mode: 'tag', big: false, tax: true };
+        DB.list.push(canon);
+        DB.data[canon.id] = { cats: [] };
+        MAP[canon.id] = {};
+        changed = true;
+      }
+      /* 三级索引换过版本（书签/考点名变了）就把旧树清掉重画 */
+      var TAXV = (typeof window !== 'undefined' && window.TAX && window.TAX.version) || '';
+      if (canon && TAXV) {
+        var built = '';
+        try { built = localStorage.getItem('qbank.taxscheme.ver') || ''; } catch (e) {}
+        if (built !== TAXV) {
+          DB.data[canon.id] = { cats: [] };
+          try { localStorage.setItem('qbank.taxscheme.ver', TAXV); } catch (e) {}
+          changed = true;
+        }
+      }
+      if (canon) {
+        if (CUR !== canon.id) CUR = canon.id;
+        if (prefGet() !== canon.id) prefSet(canon.id);   /* 每次打开都默认这套 */
+      } else if (CUR !== DEF && !DB.data[CUR]) {
+        CUR = DEF;
+      }
+      if (changed) { lsSet(K_SCH, DB); lsSet(K_MAP, MAP); }
+      try { localStorage.setItem(K_CUR, CUR); } catch (e) {}
+      /* 刚同步下来/刚建好的方案树是空的：等题库和标签就位后自动补一遍 */
+      if (canon && !treeHasTax(canon.id)) autoFillTaxTree(canon.id);
+    } catch (e) {
+    } finally {
+      MIGRATING = false;
+    }
+  }
+  function treeHasTax(cid) {
+    var c = (DB.data[cid] && DB.data[cid].cats) || [];
+    for (var i = 0; i < c.length; i++) {
+      var s = String((c[i] && c[i].id) || '');
+      if (s.indexOf('tbs:') === 0 || s.indexOf('tbc:') === 0) return true;
+    }
+    return false;
+  }
+  function autoFillTaxTree(cid) {
+    [400, 1200, 3000, 7000].forEach(function (ms) {
+      setTimeout(function () {
+        try {
+          if (!DB.data[cid] || !DB.data[cid].cats) return;
+          if (treeHasTax(cid)) return;
+          var n = syncTagTree(cid);
+          if (n) { apply(); }
+        } catch (e) {}
+      }, ms);
+    });
+  }
   function save() {
     lsSet(K_SCH, DB);
     lsSet(K_MAP, MAP);
@@ -359,6 +451,19 @@
   }
   function tgBankId(tag) { return 'tg:' + encodeURIComponent(String(tag)); }
   function tgCatId(tag) { return 'tgcat:' + encodeURIComponent(String(tag)); }
+  /* 三级索引的两个上层文件夹：科目（tbs:）、讲义一级章（tbc:）。章 id 里带科目，避免同名章撞车 */
+  function tbSubId(sub) { return 'tbs:' + encodeURIComponent(String(sub)); }
+  function tbChapId(sub, ch) { return 'tbc:' + encodeURIComponent(String(sub) + '\u0001' + String(ch)); }
+  function taxy() { return (typeof window !== 'undefined' && window.TAX) || null; }
+  /* 科目/章：tax.js 的索引优先；索引里没有的（用户新加的考点、老标签）退回 tags.js 学到的科目归属，
+     这样至少能挂进科目文件夹，不会孤零零平铺在根上。 */
+  function taxSubOf(t) {
+    var T = taxy();
+    var s = (T && T.subOf(t)) || '';
+    if (!s) { try { if (typeof window.subOf === 'function') s = window.subOf(t) || ''; } catch (e) {} }
+    return s;
+  }
+  function taxChOf(t) { var T = taxy(); return (T && T.chOf(t)) || ''; }
   function basicSet() {
     var out = {};
     try {
@@ -473,14 +578,23 @@
       enumerable: true,
       configurable: true,
       get: function () {
-        if (b.__qs) return b.__qs;
-        var qs = (ix.byTag[tag] || []).map(function (it) {
+        /* 题库是异步从 IndexedDB 回来的：闭包里的 ix 可能是旧索引（当时还没有题库），
+           所以每次都向 tagIndex() 要当下的索引，sig 变了就重算 */
+        var ix2 = tagIndex();
+        if (b.__qs && b.__sig === ix2.sig) return b.__qs;
+        var qs = (ix2.byTag[tag] || []).map(function (it) {
           var o = {};
           Object.keys(it.q).forEach(function (kk) { o[kk] = it.q[kk]; });
           o._bank = it.b.id; o._bname = String(it.b.title || it.b.name || '');
+          o._srcKey = it.b.id + '#' + it.q.id;   /* 标签/科目按原题查，虚拟题集才有六科计数 */
+          /* 不同题库的题号会重（都从 1 起），虚拟题集里必须用唯一 id；
+             否则 step() 按 id 找当前题永远命中第一道 → 下一题在 1-2-3 里打转 */
+          o.__oid = it.q.id;
+          o.id = it.b.id + '#' + it.q.id;
           return o;
         });
         b.__qs = qs;
+        b.__sig = ix2.sig;
         return qs;
       },
       set: function (v) { b.__qs = v; }
@@ -597,6 +711,8 @@
     var cats = DB.data[id].cats;
     var sch = DB.list.filter(function (x) { return x && x.id === id; })[0] || {};
     var big = !!sch.big;
+    var TAX = taxy();
+    var tax = !!sch.tax && !!TAX;      /* 三级索引：科目 › 讲义一级章 › 考点（优先于大标签分层） */
     var ix = tagIndex();
     if (!MAP[id] || typeof MAP[id] !== 'object') MAP[id] = {};
     var added = 0, have = {};
@@ -612,11 +728,41 @@
         if (!have[cid]) { cats.push({ id: cid, title: g, parent: null, order: i + 1, bigDir: 1 }); have[cid] = 1; added++; }
       });
     }
-    /* 小标签文件夹（parent ＝ 大标签；没开大标签就平铺） */
+    /* 三级索引这一层：科目 › 章。只给真有考点的科目/章建文件夹，空的（比如生理·绪论）不建 */
+    var subCat = {}, chapCat = {};
+    if (tax) {
+      var needSub = {}, needCh = {};
+      ix.list.forEach(function (t) {
+        var s0 = taxSubOf(t), c0 = taxChOf(t);
+        if (s0) needSub[s0] = 1;
+        if (s0 && c0) needCh[s0 + '\u0001' + c0] = 1;
+      });
+      TAX.subs.forEach(function (s0, i0) {
+        if (!needSub[s0]) return;
+        var sid2 = tbSubId(s0);
+        subCat[s0] = sid2;
+        if (!have[sid2]) { cats.push({ id: sid2, title: s0, parent: null, order: 900 + i0, bigDir: 1 }); have[sid2] = 1; added++; }
+        TAX.chapters(s0).forEach(function (ch0, j0) {
+          if (!needCh[s0 + '\u0001' + ch0]) return;
+          /* 章名与科目同名（比如「人文」只有一章也叫人文）：不建多余的一层，考点直接挂科目下 */
+          if (ch0 === s0) return;
+          var cid2 = tbChapId(s0, ch0);
+          chapCat[s0 + '\u0001' + ch0] = cid2;
+          if (!have[cid2]) { cats.push({ id: cid2, title: ch0, parent: sid2, order: 900 + i0 * 100 + j0, bigDir: 1 }); have[cid2] = 1; added++; }
+        });
+      });
+    }
+    /* 小标签文件夹（parent ＝ 章 / 大标签；都没开就平铺） */
     ix.list.forEach(function (t, i) {
       var cid = tgCatId(t);
-      var g = big ? bigTitleOf(t) : '';
-      var parent = (big && g && bigCat[g]) ? bigCat[g] : null;
+      var parent = null;
+      if (tax) {
+        var s1 = taxSubOf(t), c1 = taxChOf(t);
+        parent = (s1 && c1 && chapCat[s1 + '\u0001' + c1]) || (s1 && subCat[s1]) || null;
+      } else if (big) {
+        var g = bigTitleOf(t);
+        parent = (g && bigCat[g]) || null;
+      }
       var c = cats.filter(function (x) { return x && x.id === cid; })[0];
       if (!c) { cats.push({ id: cid, title: t, parent: parent, order: i + 1 }); added++; }
       else if ((c.parent || null) !== parent) { c.parent = parent; added++; }
@@ -649,6 +795,19 @@
         seen[String(c.parent)] = 1; added++;
       });
     }
+    /* 三级索引：科目层 / 章层只留真有子文件夹的（考点删了、题删光了就把空壳收掉） */
+    if (tax) {
+      var need2 = {};
+      cats.forEach(function (c) { if (c && c.parent) need2[String(c.parent)] = 1; });
+      var before2 = cats.length;
+      DB.data[id].cats = cats = cats.filter(function (c) {
+        if (!c || !c.id) return false;
+        var s2 = String(c.id);
+        if (s2.indexOf('tbs:') === 0 || s2.indexOf('tbc:') === 0) return !!need2[s2];
+        return true;
+      });
+      if (cats.length !== before2) added++;
+    }
     /* 清掉已经不存在的标签文件夹（以前标签删了/题删了，文件夹还留着，就成了空文件夹） */
     var live = {};
     ix.list.forEach(function (t) { live[tgCatId(t)] = 1; });
@@ -671,7 +830,7 @@
   /* 新建「按小标签分」方案 */
   /* 一键恢复默认状态：删掉所有非默认方案，按现有考点标签重建一套「考点分类」并设为默认。
      题库、题目、作答记录、错题本都不动（那些不在 scheme 里）。 */
-  function resetToTags(name) {
+  function resetToTags(name, tax) {
     ensure();
     var keepDef = DB.data[DEF] || { cats: [] };
     DB.list = [{ id: DEF, name: '默认方案' }];
@@ -680,16 +839,17 @@
     CUR = DEF; prefSet('');
     LOADED = true;
     save();
-    var id = makeTagScheme(name || '考点分类', false);
+    var id = makeTagScheme(name || '考点分类', false, !!tax);
     if (id) { prefSet(id); CUR = id; save(); apply(); }
+    if (id && tax) { try { window.SCM.setDefault(id); } catch (e2) {} }
     try { if (typeof window.dropTagBankCache === 'function') window.dropTagBankCache(); } catch (e) {}
     return id;
   }
-  function makeTagScheme(name, big) {
+  function makeTagScheme(name, big, tax) {
     ensure();
     var nm = trim(name) || ('知识点分类 ' + (DB.list.length + 1));
     var id = uid();
-    DB.list.push({ id: id, name: nm, mode: 'tag', big: !!big });
+    DB.list.push({ id: id, name: nm, mode: 'tag', big: !!big, tax: !!tax });
     DB.data[id] = { cats: [] };
     MAP[id] = {};
     CUR = id;                       /* 先切过去，syncTagTree 按当前方案写 */
@@ -700,7 +860,15 @@
   }
 
   try {
-    window.addEventListener('qbank:tags-changed', function () { window.__TAGS_REV = (window.__TAGS_REV || 0) + 1; });
+    window.addEventListener('qbank:tags-changed', function () {
+      window.__TAGS_REV = (window.__TAGS_REV || 0) + 1;
+      /* 三级索引方案如果还是空的（刚拉完同步 / 刚导入题库），标签一变就把它补上 */
+      try {
+        ensure();
+        var s = DB.list.filter(function (x) { return x && x.id === CUR; })[0];
+        if (s && s.tax && !treeHasTax(CUR)) { autoFillTaxTree(CUR); }
+      } catch (e1) {}
+    });
   } catch (e0) {}
 
   function modeOf(sid) {
@@ -733,8 +901,19 @@
       syncTagTree(id); apply();
       return true;
     },
+    /* 三级索引分层：科目 › 讲义一级章 › 考点（和「大标签分一层」二选一，开了这个就按科目/章走） */
+    setTax: function (sid, v) {
+      ensure();
+      var id = sid || CUR;
+      var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
+      if (!s) return false;
+      s.tax = !!v; if (v) s.big = false; save();
+      syncTagTree(id); apply();
+      return true;
+    },
     makeTagScheme: makeTagScheme, resetToTags: resetToTags, syncTagTree: syncTagTree, smallTags: smallTags,
-    tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId
+    tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId,
+    tbSubId: tbSubId, tbChapId: tbChapId, hasTax: function () { return !!taxy(); }
   };
 
   load();

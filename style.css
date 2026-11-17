@@ -7042,3 +7042,52 @@ html[data-style] body .opt.pick .k{ background:var(--pick)!important; color:#fff
 .sty-grp.closed .sty-gbody{display:none}
 .sty-gbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:2px 0 4px}
 @media (max-width:560px){ .sty-gbody{grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px} }
+
+/* ---- 题库来源筛选（只在三级索引的考点题集里出现，app.js renderSrc） ---- */
+.srcbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:940px;margin:12px auto 4px;padding:10px 14px;
+  background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 10px rgba(13,23,42,.05)}
+.srcbar .slabel{flex:0 0 auto;font-size:13.5px;font-weight:800;letter-spacing:.3px;color:var(--sub)}
+.srcwrap{position:relative;flex:1 1 260px;min-width:0}
+.srcchip{display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:15px;font-weight:700;padding:10px 18px;min-height:44px;
+  border-radius:13px;border:1px solid var(--line);background:var(--bg2);color:var(--text);cursor:pointer;white-space:nowrap;max-width:100%}
+.srcchip:hover{border-color:var(--primary);color:var(--primary)}
+.srcchip.on{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.srcchip.on:hover{color:#fff}
+.srcchip .srcarw{font-size:11px;opacity:.75}
+.srcpanel{position:absolute;z-index:120;left:0;top:calc(100% + 8px);width:min(620px,92vw);max-height:min(70vh,560px);display:flex;flex-direction:column;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 50px rgba(13,23,42,.22);padding:12px 12px 10px}
+.srchd{display:flex;align-items:center;gap:8px;margin:0 2px 8px;font-size:12px;color:var(--sub);flex-wrap:wrap}
+.srchd b{font-size:14px;color:var(--text)}
+.srchd .srcmeta{flex:1 1 auto;font-size:11.5px;color:var(--sub);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srchd .btn.tiny{padding:3px 10px;font-size:12px}
+.srcfind{display:flex;gap:8px;align-items:center;margin:0 0 8px}
+.srcfind input{flex:1 1 auto;min-width:0;height:38px;font-size:14px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--bg2);color:var(--text)}
+.srcfind input:focus{outline:none;border-color:var(--primary)}
+.srctog{flex:0 0 auto;height:38px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--text);
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.srctog.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.srcrow2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 2px 8px;font-size:12px;color:var(--sub)}
+.srcsortlb{font-weight:700}
+.srtsort{font:inherit;font-size:12px;padding:4px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
+.srtsort.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
+.srczero{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:11.5px;color:var(--sub);cursor:pointer}
+.srczero input{accent-color:var(--primary);margin:0}
+.srcrows{overflow:auto;min-height:0;padding:2px 2px 4px}
+.srcitem{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--text)}
+.srcitem:hover{background:var(--bg2)}
+.srcitem input{accent-color:var(--primary);margin:0;flex:0 0 auto;width:16px;height:16px}
+.srcitem span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srcitem i{font-style:normal;font-size:12px;color:var(--sub);flex:0 0 auto;min-width:22px;text-align:right}
+.srcitem.zero{opacity:.42;cursor:default}
+.srcitem.zero:hover{background:none}
+.srcempty{padding:10px 8px;font-size:12px}
+@media(max-width:560px){
+  .srcbar{margin:8px 8px 4px;padding:8px 10px;gap:8px}
+  .srcbar .slabel{font-size:12px}
+  .srcchip{font-size:13.5px;padding:8px 12px;min-height:40px}
+  .srcpanel{width:calc(100vw - 24px);left:-2px;max-height:66vh}
+}
+
+/* 来源面板：「对全部考点有效」开关 */
+.srcglob { margin-left: 10px; font-size: 12px; color: var(--sub); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.srcglob input { margin: 0; }
