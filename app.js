@@ -4686,6 +4686,13 @@ function renderQuiz(bankId) {
       var _p = srcPick(bank);
       _d.sel = _p ? ('[' + _p.join('|') + ']') : 'all';
     } catch (e) { _d.err = String(e && e.message || e); }
+    /* 标签题集的题是懒加载的：路由先渲染时可能还是空的，几十毫秒后才 hydrate 出题。
+       这里复算一遍若已有题，就别显示“没有题目”，直接重渲染。 */
+    if (_d.s3 > 0 && !bank._rehydrate) {
+      bank._rehydrate = true;
+      setTimeout(function () { bank._rehydrate = false; renderQuiz(bankId); }, 80);
+      return;
+    }
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
       + `<small style="color:#94a3b8">n=${_d.s0} → chip=${_d.s1} → subj=${_d.s2} → src=${_d.s3} · filter=${esc(QZ.filter)} · subj=${esc(QZ.subject || 'all')} · rw=${_d.rw}</small><br>`
       + `<small style="color:#94a3b8">tagMode=${_d.tm} · byTag=${_d.byTag} · srcSel=${esc(_d.sel)} · tax=${(function(){try{return curTaxScheme()?'yes':'no'}catch(e){return '?'}})()}${_d.err ? (' · ERR ' + esc(_d.err)) : ''}</small><br>`
