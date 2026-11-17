@@ -4642,14 +4642,24 @@ function renderQuiz(bankId) {
     for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
   }
   if (!pool.length) {
-    /* 题池空有两种：①题库数据还没 hydrate（重试一次，别死循环）；②筛选条件把题全筛掉了。 */
+    /* 题池空：直接把诊断摆出来（不再重试，避免卡在“正在载入”） */
     if (!bank.questions || !bank.questions.length) {
-      if (!bank._retryLoad) {
-        bank._retryLoad = true;
-        $('view').innerHTML = `<div class="card"><div class="empty">正在载入题目…</div></div>`;
-        setTimeout(() => { bank._retryLoad = false; renderQuiz(bankId); }, 600);
-        return;
-      }
+      var _tm = 'no';
+      var _cur = '';
+      var _byTag = -1;
+      try {
+        _tm = (window.SCM && SCM.tagMode && SCM.tagMode()) ? 'yes' : 'no';
+        _cur = (window.SCM && SCM.current) ? String(SCM.current()) : '';
+        if (window.SCM && SCM.debugTag) _byTag = SCM.debugTag(bank.id);
+      } catch (e) {}
+      $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
+        + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)} · byTag=${_byTag} · banks=${(window.banks ? banks().length : '?')}</small><br>`
+        + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
+      var rb0 = document.getElementById('qzReload');
+      if (rb0) rb0.onclick = function () { location.reload(); };
+      $('stat').textContent = ''; $('bar').style.width = '0%';
+      renderChips(bank);
+      return;
     }
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
       + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=${(bank.questions || []).length} · filter=${esc(QZ.filter)} · subj=${esc(QZ.subject || 'all')} · SCM=${window.SCM ? 'yes' : 'no'}</small><br>`

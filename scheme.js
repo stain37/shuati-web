@@ -449,6 +449,16 @@
     var s = DB.list.filter(function (x) { return x && x.id === id; })[0];
     return !!(s && s.mode === 'tag');
   }
+
+  function debugTag(id) {
+    try {
+      var s = String(id || '');
+      if (s.indexOf('tg:') !== 0) return -1;
+      var tag = decodeURIComponent(s.slice(3));
+      var ix = tagIndex();
+      return (ix.byTag[tag] || []).length;
+    } catch (e) { return -2; }
+  }
   function tgBankId(tag) { return 'tg:' + encodeURIComponent(String(tag)); }
   function tgCatId(tag) { return 'tgcat:' + encodeURIComponent(String(tag)); }
   /* 三级索引的两个上层文件夹：科目（tbs:）、讲义一级章（tbc:）。章 id 里带科目，避免同名章撞车 */
@@ -912,7 +922,7 @@
       return true;
     },
     makeTagScheme: makeTagScheme, resetToTags: resetToTags, syncTagTree: syncTagTree, smallTags: smallTags,
-    tagBankOf: tagBankOf, tgBankId: tgBankId, tgCatId: tgCatId,
+    tagBankOf: tagBankOf, tgBankId: tgBankId, debugTag: debugTag, tgCatId: tgCatId,
     tbSubId: tbSubId, tbChapId: tbChapId, hasTax: function () { return !!taxy(); }
   };
 
