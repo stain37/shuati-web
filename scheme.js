@@ -623,6 +623,9 @@
   var TGP_KEY = 'scm.tgidx.v2';
   function tgpSave(ix) {
     try {
+      /* 暂停写缓存：序列化几万条 + 写 sessionStorage 在 iPad 上会顶到内存上限，
+         标签页直接被系统回收（看起来就是「卡出去」）。先只保留内存索引。 */
+      if (1) return;
       if (!ix || !ix.list) return;
       var tags = {}, total = 0;
       ix.list.forEach(function (t) {
@@ -640,7 +643,8 @@
   }
   function tgpLoad(sig) {
     try {
-      var raw = sessionStorage.getItem(TGP_KEY);
+      var raw = null;
+      try { sessionStorage.removeItem(TGP_KEY); } catch (eR) {}
       if (!raw) return null;
       var o = JSON.parse(raw);
       if (!o || o.sig !== sig || !o.tags) return null;
