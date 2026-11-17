@@ -2354,6 +2354,82 @@
     });
   }
 
+  /* ---------- 导出目录下所有题目（单文件 ZIP，store 模式，不压缩） ---------- */
+  function crc32(buf) {
+    var table = crc32.t;
+    if (!table) {
+      table = crc32.t = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function zipStore(files) {
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+    function u16(n) { return [n & 255, (n >>> 8) & 255]; }
+    function u32(n) { n = n >>> 0; return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+    files.forEach(function (f) {
+      var nameB = enc.encode(f.name), data = enc.encode(f.text), crc = crc32(data);
+      var local = u32(0x04034b50).concat(u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0));
+      parts.push(new Uint8Array(local), nameB, data);
+      var cd = u32(0x02014b50).concat(u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0), u16(0),
+        u16(0), u16(0), u32(0), u32(offset));
+      central.push(new Uint8Array(cd), nameB);
+      offset += local.length + nameB.length + data.length;
+    });
+    var cdSize = central.reduce(function (s, a) { return s + a.length; }, 0);
+    var end = u32(0x06054b50).concat(u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(cdSize), u32(offset), u16(0));
+    return new Blob(parts.concat(central, [new Uint8Array(end)]), { type: 'application/zip' });
+  }
+
+  function qsMarkdown(bank) {
+    var out = ['# ' + (bank.title || '题库'), ''];
+    (bank.questions || []).forEach(function (q, i) {
+      var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      out.push('## ' + (i + 1) + '. ' + stem);
+      (q.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
+      var ans = q.answer || q.ans || q.correct || '';
+      if (Array.isArray(ans)) ans = ans.join('');
+      if (ans) out.push('答案：' + ans);
+      var ex = q.explain || q.exp || q.analysis || '';
+      if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
+      out.push('');
+    });
+    return out.join('\n');
+  }
+
+  function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
+
+  function exportCatQs(id) {
+    var c = byId(id); if (!c) return;
+    var ids = [id].concat(descIds(id));
+    var inTree = {}; ids.forEach(function (x) { inTree[x] = 1; });
+    var banks = bankList().filter(function (b) { return b.cat != null && inTree[b.cat] && (b.questions || []).length; });
+    if (!banks.length) { T('这个目录下还没有题目'); return; }
+    var top = safeName(c.title);
+    var files = [];
+    banks.forEach(function (b) {
+      var sub = safeName(b.title || '题库');
+      files.push({ name: top + '/' + sub + '.md', text: qsMarkdown(b) });
+    });
+    var blob = zipStore(files);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = top + '-题目.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    T('已导出 ' + banks.length + ' 个题库');
+  }
+
   function catMenu(id) {
     var c = byId(id); if (!c) return;
     var pTxt = pathOf(id).map(TITLE).join(' › ');
@@ -2370,6 +2446,7 @@
         + (treeBanks.length > direct ? '　·　含子目录共 ' + treeBanks.length + ' 个题库' : ''),
       items: [
         { value: 'open', label: '打开这个目录' },
+        { value: 'exportqs', label: '⬇ 导出该目录下所有题目', note: treeBanks.length + ' 个题库 / ' + treeBanks.reduce(function (s, b) { return s + (b.questions || []).length; }, 0) + ' 题（导出为 ZIP，内含每个题库一个 .md）' },
         { value: 'aichat', label: '💬 让 AI 分析这个目录', note: '把这个目录（含子目录）里的题库一起分析' },
         { value: 'rename', label: '重命名' },
         { value: 'newsub', label: '在这里新建子目录' },
@@ -2379,6 +2456,7 @@
       ]
     }).then(function (v) {
       if (v === 'open') openDir(id);
+      else if (v === 'exportqs') exportCatQs(id);
       else if (v === 'aichat') { if (window.CHAT) CHAT.openCat(id); else T('对话模块没加载'); }
       else if (v === 'rename') {
         BFUI.prompt({ title: '重命名分类', label: '新名称', value: c.title, test: function (x) { return x ? '' : '名称不能为空'; } })

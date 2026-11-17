@@ -1140,12 +1140,75 @@
     if (typeof toast === 'function') toast('已新建文件夹：' + v, 1500, 'ok');
   }
 
+  /* ---------- 导出文件夹（考点）下所有题目：ZIP，内含每个题库一个 .md ---------- */
+  function _crc32(buf) {
+    var table = _crc32.t;
+    if (!table) {
+      table = _crc32.t = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function _zipStore(files) {
+    var enc = new TextEncoder(); var parts = [], central = [], offset = 0;
+    function u16(n) { return [n & 255, (n >>> 8) & 255]; }
+    function u32(n) { n = n >>> 0; return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+    files.forEach(function (f) {
+      var nameB = enc.encode(f.name), data = enc.encode(f.text), crc = _crc32(data);
+      var local = u32(0x04034b50).concat(u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0));
+      parts.push(new Uint8Array(local), nameB, data);
+      central.push(new Uint8Array(u32(0x02014b50).concat(u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset))), nameB);
+      offset += local.length + nameB.length + data.length;
+    });
+    var cdSize = central.reduce(function (s, a) { return s + a.length; }, 0);
+    var end = u32(0x06054b50).concat(u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0));
+    return new Blob(parts.concat(central, [new Uint8Array(end)]), { type: 'application/zip' });
+  }
+  function _qsMd(bank) {
+    var out = ['# ' + (bank.title || '题库'), ''];
+    (bank.questions || []).forEach(function (q, i) {
+      var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+      out.push('## ' + (i + 1) + '. ' + stem);
+      (q.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
+      var ans = q.answer || q.ans || q.correct || '';
+      if (Array.isArray(ans)) ans = ans.join('');
+      if (ans) out.push('答案：' + ans);
+      var ex = q.explain || q.exp || q.analysis || '';
+      if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
+      out.push('');
+    });
+    return out.join('\n');
+  }
+  function _safe(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
+  function exportFolderQs(cid) {
+    var sub = catSubtree(cid);
+    var all = banks() || [];
+    var map = {}; all.forEach(function (b) { map[b.id] = b; });
+    var picked = sub.banks.map(function (id) { return map[id]; }).filter(function (b) { return b && (b.questions || []).length; });
+    if (!picked.length) { try { toast('这个文件夹下还没有题目', 1800); } catch (e) {} return; }
+    var c = CAT.get ? CAT.get(cid) : null;
+    var top = _safe((c && c.title) || '考点');
+    var files = picked.map(function (b) { return { name: top + '/' + _safe(b.title || b.id) + '.md', text: _qsMd(b) }; });
+    var blob = _zipStore(files);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = top + '-题目.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    try { toast('已导出 ' + picked.length + ' 个题库 / ' + picked.reduce(function (s, b) { return s + b.questions.length; }, 0) + ' 题', 2200, 'ok'); } catch (e) {}
+  }
+
   function catMenu(cid, anchor) {
     closeMenu();
     var m = document.createElement('div');
     m.className = 'qs-menu';
     m.id = 'qsMenu';
-    m.innerHTML = '<button type="button" data-m="sub">新建子文件夹</button>'
+    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点下所有题目（ZIP）</button>'
+      + '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
       + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'
       + '<button type="button" class="danger" data-m="del">删除文件夹</button>';
@@ -1157,7 +1220,8 @@
       var t = ev.target.closest('[data-m]'); if (!t) return;
       var act = t.dataset.m; closeMenu();
       var c = CAT.get ? CAT.get(cid) : null;
-      if (act === 'sub') newFolder(cid);
+      if (act === 'exp') exportFolderQs(cid);
+      else if (act === 'sub') newFolder(cid);
       else if (act === 'ren') {
         var v = window.prompt('文件夹名', (c && c.title) || ''); if (v == null) return;
         v = String(v).trim(); if (!v) return;
