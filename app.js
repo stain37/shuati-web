@@ -8751,6 +8751,7 @@ setTimeout(function () {
 
 
 
+window.__APP_DIAG = 'v3';
 /* ===== 临时诊断 v3：一次点击 = 一次 render()，把内部各段耗时加起来显示 ===== */
 (function () {
   if (typeof render !== 'function') return;
