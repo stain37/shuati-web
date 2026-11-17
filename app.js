@@ -8751,10 +8751,10 @@ setTimeout(function () {
 
 
 
-window.__APP_DIAG = 'v3';
-/* ===== 临时诊断 v3：一次点击 = 一次 render()，把内部各段耗时加起来显示 ===== */
+
+/* ===== 临时诊断 v4：把 render() 里「不在 renderInner 内部」的时间也找出来 ===== */
+window.__APP_DIAG = 'v4';
 (function () {
-  if (typeof render !== 'function') return;
   var JT = window.__JT = { runs: 0 };
   function wrap(name, label) {
     var f = window[name];
@@ -8765,34 +8765,28 @@ window.__APP_DIAG = 'v3';
       finally { JT[label] = (JT[label] || 0) + (performance.now() - t); }
     };
   }
-  ['renderInner', 'renderQuiz', 'renderChips', 'renderGrid', 'writeLS', 'readLS', 'qzBasicOf', 'ansOf'].forEach(function (n) {
-    var lbl = { renderInner: 'inner', renderQuiz: 'quiz', renderChips: 'chips', renderGrid: 'grid', writeLS: 'write', readLS: 'read', qzBasicOf: 'basic', ansOf: 'ans' }[n];
-    wrap(n, lbl);
-  });
-  try { if (window.CX && typeof CX.fix === 'function') { var cf = CX.fix; CX.fix = function () { var t = performance.now(); try { return cf.apply(this, arguments); } finally { JT.cx = (JT.cx || 0) + (performance.now() - t); } }; } } catch (e) {}
+  ['renderInner', 'renderQuiz', 'renderChips', 'renderGrid', 'writeLS', 'readLS', 'applyLook', 'richFlush', 'skelPaint', 'renderNow', 'renderStats', 'uiOptRail'].forEach(function (n) { wrap(n, n); });
+  try { if (window.CX && typeof CX.fix === 'function') { var cf = CX.fix; CX.fix = function () { var t = performance.now(); try { return cf.apply(this, arguments); } finally { JT.CXfix = (JT.CXfix || 0) + (performance.now() - t); } }; } } catch (e) {}
+  try { if (window.TR && typeof TR.start === 'function') { var ts = TR.start; TR.start = function () { var t = performance.now(); try { return ts.apply(this, arguments); } finally { JT.TR = (JT.TR || 0) + (performance.now() - t); } }; } } catch (e) {}
 
   var f0 = render;
   window.render = function () {
     var t = performance.now();
     for (var k in JT) if (k !== 'last') delete JT[k];
-    JT.runs = 0;
     try { return f0.apply(this, arguments); }
     finally {
       try {
         var d = performance.now() - t;
-        var order = [['inner', 'inner'], ['quiz', 'quiz'], ['chips', 'chips'], ['grid', 'grid'], ['basic', 'basic'], ['ans', 'ans'], ['cx', 'cx'], ['write', 'write'], ['read', 'read']];
-        var parts = order.filter(function (x) { return (JT[x[0]] || 0) > 0.5; }).map(function (x) { return x[1] + ' ' + Math.round(JT[x[0]]); });
+        var keys = ['renderInner', 'renderQuiz', 'renderChips', 'renderGrid', 'renderNow', 'applyLook', 'CXfix', 'TR', 'skelPaint', 'richFlush', 'writeLS', 'readLS', 'uiOptRail', 'renderStats'];
+        var parts = keys.filter(function (k) { return (JT[k] || 0) > 0.5; }).map(function (k) { return k + ' ' + Math.round(JT[k]); });
         var b = document.getElementById('__jb');
         if (!b) {
           b = document.createElement('div'); b.id = '__jb';
           b.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:2147482000;background:#111827;color:#fca5a5;font:11px/1.5 monospace;padding:5px 8px;border-radius:8px;pointer-events:none;max-width:96vw';
           document.body.appendChild(b);
         }
-        b.textContent = '点击总耗时 ' + Math.round(d) + ' ms · renderInner 调用 ' + JT.runs + ' 次 · ' + parts.join(' · ');
+        b.textContent = '点击总耗时 ' + Math.round(d) + ' ms · ' + (parts.length ? parts.join(' · ') : '（各段都没超 0.5ms → 时间在 render() 自身或没被包住的调用里）');
       } catch (e) {}
     }
   };
-  /* 数一下 renderInner 被调了几次（transition 会重画两遍） */
-  var fi = window.renderInner;
-  window.renderInner = function () { JT.runs = (JT.runs || 0) + 1; return fi.apply(this, arguments); };
 })();
