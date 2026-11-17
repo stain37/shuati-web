@@ -4769,9 +4769,40 @@ function renderQuiz(bankId) {
               + `<small style="color:#94a3b8">tbc样例 ${esc(JSON.stringify(d.tbc0))} · tg样例 ${esc(JSON.stringify(d.tg0))}</small><br>`;
           } catch (e) { return ''; }
         })()
+        + (function () {
+          /* 标签索引几乎是空的 → 这台设备的「考点标签」没同步过来，题在但挂不上标签 */
+          if (!(_nt < 5)) return '';
+          return `<div style="margin:10px 0 0;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;line-height:1.7">`
+            + `这台设备只认到 ${esc(String(_nt))} 个考点标签（电脑上应该有两百多个）——题库已经在了，标签还没同步过来。`
+            + `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">`
+            + `<button class="btn primary" id="qzSyncNow">立即同步一次</button>`
+            + `<button class="btn" id="qzSyncCfg">打开同步设置</button></div></div>`;
+        })()
         + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
       var rb0 = document.getElementById('qzReload');
       if (rb0) rb0.onclick = function () { location.reload(); };
+      var sb0 = document.getElementById('qzSyncNow');
+      if (sb0) sb0.onclick = function () {
+        sb0.disabled = true; sb0.textContent = '同步中…';
+        try {
+          if (!window.SYNC || !SYNC.now) { alert('同步模块还没加载好，稍等一下再点'); sb0.disabled = false; sb0.textContent = '立即同步一次'; return; }
+          Promise.resolve(SYNC.now()).then(function () {
+            sb0.textContent = '同步完成，正在重载…';
+            setTimeout(function () { location.reload(); }, 600);
+          }).catch(function (e) {
+            sb0.disabled = false; sb0.textContent = '立即同步一次';
+            alert('同步失败：' + (e && e.message ? e.message : e));
+          });
+        } catch (eS) { sb0.disabled = false; sb0.textContent = '立即同步一次'; }
+      };
+      var cb0 = document.getElementById('qzSyncCfg');
+      if (cb0) cb0.onclick = function () {
+        try {
+          var bt = document.getElementById('btnSetAll');
+          if (bt) { bt.click(); return; }
+        } catch (e) {}
+        try { location.hash = '#/'; } catch (e2) {}
+      };
       $('stat').textContent = ''; $('bar').style.width = '0%';
       renderChips(bank);
       return;
