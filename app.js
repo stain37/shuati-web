@@ -4631,6 +4631,11 @@ function renderQuiz(bankId) {
      否则 poolOf 会先按旧科目算出空池，页面卡在「这里暂时没有题目」而 chips 已经回全选。 */
   if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
   let pool = poolOf(bank);
+  /* 标签题集兜底：虚拟题集的题是现算的，poolOf 里的来源/顺序缓存可能把它算空，
+     但题本身在——直接按题库顺序取全量，避免“有 26 题却显示没有题目”。 */
+  if (!pool.length && bank.virtualTag && bank.questions && bank.questions.length) {
+    pool = bank.questions.slice();
+  }
   /* 刷新后自愈：六科 / 来源白名单 / 筛法 可能是上一轮残留，任一失效都会让题池变空而页面只显示
      「这里暂时没有题目」。逐级放宽，直到有题可做；放宽期间不改题库数据。 */
   /* 标签题集的「来源筛选」可能存着“全不选”，会让 26 道题全被筛掉却看不出原因：
