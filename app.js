@@ -4760,6 +4760,13 @@ function renderQuiz(bankId) {
       $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
         + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)}</small><br>`
         + `<small style="color:#94a3b8">byTag=${_byTag} · banks=${_nb} · tagList=${_nt} · TAGS=${_tg} · try=${bank._tagTry || 0}</small><br>`
+        + (function () {
+          try {
+            if (!(window.SCM && SCM.debugScheme)) return '';
+            var g = SCM.debugScheme() || {};
+            return `<small style="color:#94a3b8">方案：${esc(String(g.name))} · mode=${esc(String(g.mode))} · custom=${esc(String(g.custom))} · cats=${esc(String(g.cats))} · tgcat=${esc(String(g.tg))} · 内置=${esc(String(g.builtin))}</small><br>`;
+          } catch (e5) { return ''; }
+        })()
         + `<small style="color:#94a3b8">有标签的题=${_tq} · 样例 ${esc(String(_smp)).slice(0, 160)}</small><br>`
         + (function () {
           try {

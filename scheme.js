@@ -491,6 +491,18 @@
     return false;
   }
 
+  function debugScheme() {
+    try {
+      ensure();
+      var e = (DB.list || []).filter(function (x) { return x && x.id === CUR; })[0] || {};
+      var cs = (DB.data[CUR] && DB.data[CUR].cats) || [];
+      var tg = 0;
+      for (var i = 0; i < cs.length; i++) if (cs[i] && String(cs[i].id).indexOf('tgcat:') === 0) tg++;
+      return { id: CUR, name: e.name || '(未命名)', mode: e.mode || '-', custom: e.custom ? 1 : 0,
+        cats: cs.length, tg: tg, builtin: (window.__SYS_CATS && window.__SYS_CATS.length) || 0,
+        modeOfNow: (function(){ try { return tagMode() ? 'yes' : 'no'; } catch (e2) { return '?'; } })() };
+    } catch (e) { return { err: String(e && e.message || e) }; }
+  }
   function debugTag(id) {
     try {
       var s = String(id || '');
@@ -1245,7 +1257,7 @@
     defaultId: function () { ensure(); var p = prefGet(); return (p && DB.data[p]) ? p : ''; },
     schemesOfBank: schemesOfBank, raw: raw,
     exportCur: exportCur, importData: importData,
-    tagMode: tagMode, modeOf: modeOf, tagBanks: tagBanks, tagBankById: tagBankById,
+    tagMode: tagMode, modeOf: modeOf, debugScheme: debugScheme, tagBanks: tagBanks, tagBankById: tagBankById,
     tagIndexRebuild: function () {
       /* 手机上题库/标签分批到位时，索引可能是残的：丢掉内存索引重扫一次 */
       TG_IDX = { sig: '', byTag: null, list: null, banks: null };
