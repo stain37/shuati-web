@@ -204,6 +204,14 @@
       var v = lsRaw(K_CATS, null);
       if (Array.isArray(v)) { DB.data[DEF].cats = v; }
     }
+    /* 内置「系统分类」：树直接取方案文件里那份权威数据，
+       不再读本机可能被同步清空过的副本（否则考点会全平铺到根上）。 */
+    try {
+      var ent0 = DB.list.filter(function (x) { return x && x.id === CUR; })[0];
+      if (ent0 && String(ent0.name || '').indexOf('系统分类') === 0 && window.__SYS_CATS) {
+        return window.__SYS_CATS;
+      }
+    } catch (e0) {}
     return (DB.data[CUR] && DB.data[CUR].cats) || [];
   }
   /* 「真实题库树」= 默认方案（DEF）的目录树。
