@@ -5996,6 +5996,12 @@ function srcListAll(bank) {
   return out;
 }
 function renderSrc(bank) {
+  try { return renderSrc0(bank); } catch (e) {
+    try { console.warn('renderSrc failed', e); } catch (_) {}
+    const b0 = $('srcbar'); if (b0) { b0.style.display = 'none'; b0.innerHTML = ''; }
+  }
+}
+function renderSrc0(bank) {
   const box = $('srcbar');
   if (!box) return;
   const ok = !!(bank && bank.virtualTag && (curTaxScheme() || curSysScheme()));

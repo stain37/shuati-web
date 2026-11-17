@@ -49,6 +49,22 @@
   window.__BANKS__ = [];
   window.registerBank = function (b) { window.__BANKS__.push(b); };
 </script>
+<script>
+/* 临时错误横幅：任何脚本异常都显示出来，方便定位「点不进去」 */
+window.addEventListener('error', function (ev) {
+  try {
+    var t = (ev && ev.message) ? ev.message : String(ev);
+    var box = document.getElementById('__errbar');
+    if (!box) {
+      box = document.createElement('div'); box.id = '__errbar';
+      box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;background:#b91c1c;color:#fff;font:12px/1.5 monospace;padding:8px 12px;white-space:pre-wrap;max-height:40vh;overflow:auto';
+      box.onclick = function () { box.remove(); };
+      document.body.appendChild(box);
+    }
+    box.textContent += (box.textContent ? '\n' : '') + '⚠ ' + t + ' @' + (ev.filename || '').split('/').pop() + ':' + (ev.lineno || 0);
+  } catch (e) {}
+}, true);
+</script>
 </head>
 <body>
 <script>(function(){try{if(/[?&]pip=1/.test(location.search)){document.documentElement.className+=" pip-guest";document.addEventListener("DOMContentLoaded",function(){document.body.classList.add("pip-guest-body");var snap=null;try{snap=JSON.parse(localStorage.getItem("qbank.pip.snap.v1")||"null");}catch(e){}
@@ -353,7 +369,7 @@ var iv=setInterval(function(){n++;
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261118c9"></script>
+<script src="app.js?v=20261118d0"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
