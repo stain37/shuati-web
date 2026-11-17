@@ -5978,7 +5978,29 @@ function qzPolHit(q) {
   __POL_HIT.set(q, v);
   return v;
 }
+
+/* 政治题判定缓存预热：第一次点进大题库时，上面那 5800 次判定的钱已经在空闲时付掉了。
+   分段跑，每段 300 题，避免和用户的点击抢主线程。 */
+const __POL_WARMED = new WeakSet();
+function polWarm(bank) {
+  try {
+    if (!bank || !bank.questions || bank.questions.length < 800) return;
+    if (__POL_WARMED.has(bank)) return;
+    __POL_WARMED.add(bank);
+    let i = 0;
+    const step = () => {
+      const end = Math.min(i + 300, bank.questions.length);
+      for (; i < end; i++) { try { qzPolHit(bank.questions[i]); } catch (e) {} }
+      if (i < bank.questions.length) {
+        if (window.requestIdleCallback) requestIdleCallback(step, { timeout: 500 });
+        else setTimeout(step, 120);
+      }
+    };
+    setTimeout(step, 600);
+  } catch (e) {}
+}
 function qzBasicOf(bank, q, basic) {
+  try { polWarm(bank); } catch (e) {}
   basic = basic || qzBasics();
   /* 政治题库里的题：哪怕以前被医学标签污染过，六科也只认「政治」 */
   if ((qzPolBankHit(bank) || qzPolHit(q)) && basic.indexOf('政治') >= 0) return ['政治'];
