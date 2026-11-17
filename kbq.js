@@ -196,16 +196,26 @@
   }
 
   function tick() {
-    if (document.getElementById('view')) {
-      ensureBar();
-      if (MODE === 'doc') mountDoc();
+    var view = document.getElementById('view');
+    if (!view) return;
+    var bar = document.getElementById('kbqBar');
+    var p = document.getElementById('kbqPane');
+    /* #view 被整体重画后，bar/pane 可能只剩一个或都掉了；先清残件再重建。 */
+    if ((bar && !document.contains(bar)) || (p && !document.contains(p)) || (bar && !p)) {
+      if (bar) { try { bar.remove(); } catch (e) {} }
+      if (p) { try { p.remove(); } catch (e) {} }
+      mount = null; mountEl = null; mountedFor = '';
     }
+    ensureBar();
+    if (MODE === 'doc') mountDoc();
   }
 
   var mo = new MutationObserver(function () { tick(); });
   function boot() {
     tick();
     mo.observe(document.body, { childList: true, subtree: true });
+    /* 兜底：页面长时间停留时，万一宿主重排把编辑器挤掉，也能自己挂回来。 */
+    setInterval(tick, 1500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

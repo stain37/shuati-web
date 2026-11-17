@@ -4629,11 +4629,20 @@ function renderQuiz(bankId) {
     for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
   }
   if (!pool.length) {
+    /* 刚刷新 / 换库时题库可能还没 hydrate 完，题池会是空的；先重试几轮再判定“没题”。 */
+    QZ.emptyTry = (QZ.emptyTry || 0) + 1;
+    if (QZ.emptyTry <= 8) {
+      $('view').innerHTML = `<div class="card"><div class="empty">正在载入题目…</div></div>`;
+      setTimeout(() => renderQuiz(bankId), 350);
+      return;
+    }
+    QZ.emptyTry = 0;
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。</div></div>`;
     $('stat').textContent = ''; $('bar').style.width = '0%';
     renderChips(bank);
     return;
   }
+  QZ.emptyTry = 0;
   if (QZ.cur == null || !pool.some(q => String(q.id) === String(QZ.cur))) QZ.cur = pool[0].id;
   const q = pool.find(x => String(x.id) === String(QZ.cur));
   const k = kOf(bank, q);
