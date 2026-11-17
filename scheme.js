@@ -557,6 +557,20 @@
     } catch (e) {}
     return '';
   }
+  /* 这个节点 id 在当前方案树里到底有没有？（换方案后旧链接里的 id 会查不到） */
+  function hasCat(catId) {
+    try {
+      var want = String(catId == null ? '' : catId);
+      var cs = cats();
+      for (var i = 0; i < cs.length; i++) {
+        var c = cs[i];
+        if (!c || !c.id) continue;
+        if (String(c.id) === want) return true;
+        try { if (decodeURIComponent(String(c.id)) === decodeURIComponent(want)) return true; } catch (e) {}
+      }
+    } catch (e) {}
+    return false;
+  }
   function catDescIds(catId) {
     var all = cats(), kidsMap = Object.create(null), out = [], seen = Object.create(null);
     /* 节点 id 里的 \x01 分隔符有两种写法：字面 %01 和真实控制字符（URL 解码后）。
@@ -1325,7 +1339,7 @@
       return true;
     },
     makeTagScheme: makeTagScheme, resetToTags: resetToTags, syncTagTree: syncTagTree, smallTags: smallTags,
-    tagBankOf: tagBankOf, tgBankId: tgBankId, findCatByName: findCatByName, debugTag: debugTag, tgCatId: tgCatId,
+    tagBankOf: tagBankOf, tgBankId: tgBankId, findCatByName: findCatByName, hasCat: hasCat, debugTag: debugTag, tgCatId: tgCatId,
     tbSubId: tbSubId, tbChapId: tbChapId, hasTax: function () { return !!taxy(); }
   };
 

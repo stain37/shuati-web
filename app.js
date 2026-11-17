@@ -4714,8 +4714,8 @@ function renderQuiz(bankId) {
     try {
       if (bank.virtualTag && String(bank.virtualTag).charAt(0) === '#' && window.SCM && SCM.findCatByName) {
         var _oldNode = String(bank.virtualTag).slice(1);
-        var _desc = (SCM.catDescIds && SCM.catDescIds(_oldNode)) || [];
-        if (!_desc.length) {
+        var _exists = SCM.hasCat ? SCM.hasCat(_oldNode) : ((SCM.catDescIds && SCM.catDescIds(_oldNode)) || []).length > 1;
+        if (!_exists) {
           var _nm = _oldNode.indexOf(':') >= 0 ? _oldNode.slice(_oldNode.indexOf(':') + 1) : _oldNode;
           try { _nm = decodeURIComponent(_nm); } catch (e0) {}
           var _newId = SCM.findCatByName(_nm);
