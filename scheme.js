@@ -483,10 +483,14 @@
     if (s && s.mode === 'tag') return true;
     /* 兜底：导入/老版本可能没把 mode 存下来；树里有考点节点就按考点方案处理 */
     try {
-      var cs = (DB.data[id] && DB.data[id].cats) || [];
+      /* 注意：不能用 DB.data[id].cats —— 内置「系统分类」的树是 cats() 交出来的
+         （window.__SYS_CATS），DB 里那份可能是空的，pad 上就是这么判成 no 的。 */
+      var cs = (id === CUR) ? cats() : ((DB.data[id] && DB.data[id].cats) || []);
       for (var i = 0; i < cs.length; i++) {
         if (cs[i] && String(cs[i].id).indexOf('tgcat:') === 0) return true;
       }
+      /* 再兜一层：内置方案在，就按考点方案处理 */
+      if (window.__SYS_CATS && window.__SYS_CATS.length) return true;
     } catch (e) {}
     return false;
   }
