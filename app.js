@@ -4620,7 +4620,39 @@ function renderQuiz(bankId) {
       return;
     }
     renderQuiz._try = 0;
-    go('#/'); return;
+    /* 不再静默回首页：把「为什么打不开」直接摊在页面上，方便定位（临时诊断） */
+    try {
+      const v1 = document.getElementById('view');
+      const _esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const cands = [];
+      const forms = [String(bankId)];
+      try { forms.push(decodeURIComponent(String(bankId))); } catch (e) {}
+      try { forms.push(encodeURIComponent(String(bankId))); } catch (e) {}
+      try {
+        const t = String(bankId).replace(/^tg:/, '');
+        try { forms.push('tg:' + decodeURIComponent(t)); } catch (e) {}
+        try { forms.push('tg:' + encodeURIComponent(decodeURIComponent(t))); } catch (e) {}
+      } catch (e) {}
+      forms.forEach((f) => {
+        let r = 'null', qn = '-';
+        try { const b = bankById(f); r = b ? 'ok' : 'null'; if (b && b.questions) qn = b.questions.length; } catch (e) { r = 'ERR:' + e.message; }
+        cands.push('<div style="font:12px/1.7 monospace">' + _esc(f) + ' → ' + r + ' · 题数 ' + qn + '</div>');
+      });
+      let tgInfo = 'n/a';
+      try {
+        const t = String(bankId).replace(/^tg:/, '');
+        const tb = (window.SCM && SCM.tagBankOf) ? SCM.tagBankOf(decodeURIComponent(t)) : null;
+        tgInfo = tb ? ('有题集 · 题数 ' + ((tb.questions || []).length)) : 'null';
+      } catch (e) { tgInfo = 'ERR:' + e.message; }
+      if (v1) v1.innerHTML = '<div class="card" style="padding:18px 20px">'
+        + '<h3 style="margin:0 0 10px">这个题集打不开（临时诊断卡）</h3>'
+        + '<div style="font:13px/1.9">bankId：<b>' + _esc(String(bankId)) + '</b></div>'
+        + '<div style="font:13px/1.9">tagMode：' + _esc(String(window.SCM && SCM.tagMode ? SCM.tagMode() : '?')) + ' · tagBankOf：' + _esc(tgInfo) + '</div>'
+        + '<div style="margin:12px 0 6px;color:#666">各写法查到的结果：</div>' + cands.join('')
+        + '<div style="margin-top:16px"><button class="btn primary" onclick="location.hash=\'#/\';location.reload()">返回首页</button></div>'
+        + '</div>';
+    } catch (eD) {}
+    return;
   }
   renderQuiz._try = 0;
   if (bank.exam) { go('#/exam/' + bank.id); return; }   // 模考走专用页面
