@@ -4944,6 +4944,7 @@ function renderQuiz(bankId) {
   }).join('');
 
   const pos = pool.findIndex(x => String(x.id) === String(q.id)) + 1;
+  var __tH = performance.now();
   $('view').innerHTML = `
     <div class="card qcard">
       <div class="qgrip" id="qdBar" title="按住拖动题目卡片；点一下浮起 / 还原"><i></i></div>
@@ -5046,6 +5047,7 @@ function renderQuiz(bankId) {
       <div id="aiHost"></div>
       <div id="vHost"></div>
     </div>`;
+  try { window.__PLH = Math.round(performance.now() - __tH); var __tL = performance.now(); void $('view').offsetHeight; window.__PLL = Math.round(performance.now() - __tL); } catch (ePL) {}
 
   $('view').querySelectorAll('[data-qm]').forEach(el => el.onclick = () => uiQuizMode(el.dataset.qm));
   /* web791：模式收进一个下拉；点外面 / 点任意一项都收起 */
@@ -8801,7 +8803,8 @@ window.__APP_DIAG = 'v4';
     finally {
       try {
         var d = performance.now() - t;
-        var keys = ['renderInner', 'renderQuiz', 'renderChips', 'renderGrid', 'renderNow', 'applyLook', 'CXfix', 'TR', 'skelPaint', 'richFlush', 'writeLS', 'readLS', 'uiOptRail', 'renderStats'];
+        if (window.__PLH) JT.html = window.__PLH; if (window.__PLL) JT.layout = window.__PLL;
+        var keys = ['renderInner', 'renderQuiz', 'html', 'layout', 'renderChips', 'renderGrid', 'renderNow', 'applyLook', 'CXfix', 'TR', 'skelPaint', 'richFlush', 'writeLS', 'readLS', 'uiOptRail', 'renderStats'];
         var parts = keys.filter(function (k) { return (JT[k] || 0) > 0.5; }).map(function (k) { return k + ' ' + Math.round(JT[k]); });
         var b = document.getElementById('__jb');
         if (!b) {
