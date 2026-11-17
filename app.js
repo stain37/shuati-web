@@ -2057,6 +2057,11 @@ function bankById(id) {
     if (TG_BANK_CACHE[ck]) return TG_BANK_CACHE[ck];
     let vb = null;
     try { vb = SCM.tagBankById(id); } catch (e) { vb = null; }
+    /* 兜底：方案还没加载完时 tagBankById 可能返回 null，但标签题集本身已经能算出来
+       （tagBankOf 不依赖方案状态）——直接拿它，避免刷新后点考点跳回首页。 */
+    if (!vb && window.SCM && SCM.tagBankOf) {
+      try { vb = SCM.tagBankOf(decodeURIComponent(String(id).slice(3))); } catch (e) { vb = null; }
+    }
     if (vb) { TG_BANK_CACHE[ck] = vb; return vb; }
   }
   return allBanks().find(b => b.id === id);

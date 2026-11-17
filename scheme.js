@@ -924,7 +924,8 @@
   function tagBankById(id) {
     ensure();
     if (String(id || '').indexOf('tg:') !== 0) return null;
-    if (!tagMode()) return null;
+    /* 不再要求 tagMode()：刚打开页面时方案还在异步加载，tagMode() 还是 false，
+       会让“点考点”被当成找不到题集而跳回首页；tg: 前缀本身已说明是标签题集。 */
     var tag = '';
     try { tag = decodeURIComponent(String(id).slice(3)); } catch (e) { tag = String(id).slice(3); }
     if (!tag) return null;
