@@ -1225,22 +1225,31 @@
         if (!rows.length) return;
         var cnode = CAT.get ? CAT.get(nid) : null;
         var sub = _safe((cnode && cnode.title) || sid.slice(0, 12));
+        if (sid.indexOf('tgcat:') === 0) {
+          try { sub = _safe(decodeURIComponent(sid.slice(6)).replace(/[\\/]+/g, ' › ').slice(0, 60)); } catch (eD) {}
+        }
         var byBank = {};
         rows.forEach(function (r) {
-          var bn = _safe(r._bname || '题目');
+          var bn = _safe(r.bankName || r._bname || '题目');
           (byBank[bn] = byBank[bn] || []).push(r);
         });
         Object.keys(byBank).forEach(function (bn) {
           var arr = byBank[bn];
           var out = ['# ' + sub + ' · ' + bn, ''];
-          arr.forEach(function (q, i) {
-            var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+          arr.forEach(function (row, i) {
+            var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
+            var stem = String(q.stem || q.title || q.q || q.name || row.title || '').replace(/\s+/g, ' ').trim();
             out.push('## ' + (i + 1) + '. ' + stem);
-            (q.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
-            var ans = q.answer || q.ans || q.correct || '';
+            var opts = q.options || q.opts || q.choices || q.items || [];
+            opts.forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
+            var ans = q.answer != null ? q.answer : (q.ans != null ? q.ans : (q.correct != null ? q.correct : ''));
             if (Array.isArray(ans)) ans = ans.join('');
+            ans = String(ans).trim();
+            var type = q.type || row.type || '';
+            if (!type) type = (ans.length > 1) ? '多选' : (ans ? '单选' : '');
+            if (type) out.push('题型：' + type);
             if (ans) out.push('答案：' + ans);
-            var ex = q.explain || q.exp || q.analysis || '';
+            var ex = q.explain || q.exp || q.analysis || q.why || '';
             if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
             out.push('');
           });
