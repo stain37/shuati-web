@@ -1110,7 +1110,7 @@
       e.stopPropagation();
       var opnId = opn.getAttribute('data-open');
       /* 考点文件夹（名字点一下）→ 直接进这个考点的答题界面 */
-      if ((/^(tgcat:|tgb:)/.test(String(opnId)) || (tagScheme() && /^(tbs:|tbc:)/.test(String(opnId)))) && openTagFolder(opnId)) { return; }
+      if ((/^(tgcat:|tgb:)/.test(String(opnId)) || (/^(tbs:|tbc:)/.test(String(opnId)))) && openTagFolder(opnId)) { return; }
       try { if (CAT.openDir) CAT.openDir(opnId); } catch (er) {}
       if (typeof go === 'function') go('#/');
       if (typeof setOpen === 'function') setOpen(false);
@@ -1124,7 +1124,7 @@
     if (fold) {
       var cid = fold.dataset.fold;
       /* 考点文件夹：点整行 → 直接进这个考点的答题界面（不是回首页管理器） */
-      if ((/^(tgcat:|tgb:)/.test(String(cid)) || (tagScheme() && /^(tbs:|tbc:)/.test(String(cid)))) && !e.target.closest('.qs-caret') && !S.selmode) {
+      if ((/^(tgcat:|tgb:)/.test(String(cid)) || (/^(tbs:|tbc:)/.test(String(cid)))) && !e.target.closest('.qs-caret') && !S.selmode) {
         e.stopPropagation();
         if (openTagFolder(cid)) return;
         /* 大标签（tgb:）没有单一题集：退回打开文件夹看子考点 */
