@@ -1190,24 +1190,75 @@
     var sub = catSubtree(cid);
     var all = banks() || [];
     var map = {}; all.forEach(function (b) { map[b.id] = b; });
-    var picked = sub.banks.map(function (id) { return map[id]; }).filter(function (b) { return b && (b.questions || []).length; });
-    if (!picked.length) { try { toast('这个文件夹下还没有题目', 1800); } catch (e) {} return; }
-    var c = CAT.get ? CAT.get(cid) : null;
-    var top = _safe((c && c.title) || '考点');
+    function fullBank(id) {
+      var b = map[id] || null;
+      if (b && (b.questions || []).length) return b;
+      try { if (window.__PIP_BANK) { var f = window.__PIP_BANK(id); if (f && (f.questions || []).length) return f; } } catch (e) {}
+      try { if (typeof bankById === 'function') { var g = bankById(id); if (g && (g.questions || []).length) return g; } } catch (e2) {}
+      try { if (CAT.bankOf) { var h = CAT.bankOf(id); if (h && (h.questions || []).length) return h; } } catch (e3) {}
+      return b;
+    }
+    var pickedCat = sub.banks.map(fullBank).filter(function (b) { return b && (b.questions || []).length; });
+    var files = [];
+    var c0 = CAT.get ? CAT.get(cid) : null;
+    var top = _safe((c0 && c0.title) || '考点');
     function relPath(catId) {
       var parts = [], cur = (CAT.get ? CAT.get(catId) : null), guard = 0;
       while (cur && cur.id !== cid && guard++ < 12) { parts.unshift(_safe(cur.title || cur.id)); cur = CAT.get(cur.parent || null); }
       return parts;
     }
-    var files = picked.map(function (b) {
-      var name = [top].concat(relPath(b.cat || null), [_safe(b.title || b.id)]).join('/') + '.md';
-      return { name: name, text: _qsMd(b) };
+    pickedCat.forEach(function (b) {
+      files.push({ name: [top].concat(relPath(b.cat || null), [_safe(b.title || b.id)]).join('/') + '.md', text: _qsMd(b) });
     });
+
+    /* 方案「三级索引」里的标签文件夹（tgcat:/tgb:）：题目挂在 SCM 的标签索引上 */
+    var tagCount = 0;
+    try {
+      var idSet = [cid];
+      try { if (typeof descIds === 'function') idSet = idSet.concat(descIds(cid)); } catch (e0) {}
+      idSet.forEach(function (nid) {
+        var sid = String(nid || '');
+        if (sid.indexOf('tg') !== 0) return;
+        if (!window.SCM || !SCM.tagQList) return;
+        var rows = [];
+        try { rows = SCM.tagQList(sid) || []; } catch (e1) { rows = []; }
+        if (!rows.length) return;
+        var cnode = CAT.get ? CAT.get(nid) : null;
+        var sub = _safe((cnode && cnode.title) || sid.slice(0, 12));
+        var byBank = {};
+        rows.forEach(function (r) {
+          var bn = _safe(r._bname || '题目');
+          (byBank[bn] = byBank[bn] || []).push(r);
+        });
+        Object.keys(byBank).forEach(function (bn) {
+          var arr = byBank[bn];
+          var out = ['# ' + sub + ' · ' + bn, ''];
+          arr.forEach(function (q, i) {
+            var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+            out.push('## ' + (i + 1) + '. ' + stem);
+            (q.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()); });
+            var ans = q.answer || q.ans || q.correct || '';
+            if (Array.isArray(ans)) ans = ans.join('');
+            if (ans) out.push('答案：' + ans);
+            var ex = q.explain || q.exp || q.analysis || '';
+            if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
+            out.push('');
+          });
+          tagCount += arr.length;
+          files.push({ name: top + '/' + sub + '/' + bn + '.md', text: out.join('\n') });
+        });
+      });
+    } catch (eT) {}
+
+    if (!files.length) {
+      try { toast('这个文件夹下没有可导出的题目（题库 ' + sub.banks.length + ' 个，标签题 0 道）', 2600); } catch (e) {}
+      return;
+    }
     var blob = _zipStore(files);
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = top + '-题目.zip';
     document.body.appendChild(a); a.click(); a.remove();
-    try { toast('已导出 ' + picked.length + ' 个题库 / ' + picked.reduce(function (s, b) { return s + b.questions.length; }, 0) + ' 题', 2200, 'ok'); } catch (e) {}
+    try { toast('已导出 ' + files.length + ' 个文件' + (tagCount ? '（标签题 ' + tagCount + ' 道）' : ''), 2200, 'ok'); } catch (e) {}
   }
 
   function catMenu(cid, anchor) {
