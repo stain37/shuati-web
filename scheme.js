@@ -112,6 +112,7 @@
       if (cs.length === SYS.length && tg > 0) return 0;
       d.cats = JSON.parse(JSON.stringify(SYS));
       _healed = false;
+      try { TG_IDX = { sig: '', byTag: null, list: null, banks: null }; } catch (e3) {}
       try { save(); } catch (e2) {}
       var n = healParents();
       return (d.cats.length || 0) + (n ? 0 : 0);
