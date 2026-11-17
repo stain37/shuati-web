@@ -36,7 +36,7 @@
     var st = document.createElement('style');
     st.id = 'kbqCSS';
     st.textContent = [
-      '#kbqBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #e6eaf0;background:#fff;position:sticky;top:0;z-index:22;font:14px/1.5 system-ui,"PingFang SC","Microsoft YaHei"}',
+      '#kbqBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #e6eaf0;background:#fff;position:relative;z-index:5;font:14px/1.5 system-ui,"PingFang SC","Microsoft YaHei"}',
       '#kbqBar .kbq-tab{padding:6px 10px;border-radius:8px;cursor:pointer;color:#64748b}',
       '#kbqBar .kbq-tab.on{background:#eef4ff;color:#1d4ed8;font-weight:600}',
       '#kbqBar .kbq-sp{flex:1}',
@@ -53,7 +53,7 @@
     document.head.appendChild(st);
   }
 
-  var mount = null, mountedFor = '';
+  var mount = null, mountedFor = '', mountEl = null;
 
   function pane() { return document.getElementById('kbqPane'); }
 
@@ -67,6 +67,7 @@
       + '<span class="kbq-tab" data-m="doc">知识点</span>'
       + '<span class="kbq-sp"></span>'
       + '<label><input type="checkbox" id="kbqSync"> 同步</label>'
+      + '<button id="kbqExp" title="把所有知识点导出为 Markdown 文件">导出</button>'
       + '<button id="kbqSave">保存</button>';
     var p = document.createElement('div');
     p.id = 'kbqPane';
@@ -81,6 +82,7 @@
       t.onclick = function () { setMode(t.getAttribute('data-m')); };
     });
     document.getElementById('kbqSave').onclick = saveNow;
+    document.getElementById('kbqExp').onclick = exportAll;
   }
 
   function setMode(m) {
@@ -97,6 +99,27 @@
     }
   }
 
+  function exportAll() {
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('kbdoc.tag.') === 0) keys.push(k);
+    }
+    keys.sort();
+    var out = '# 知识点导出\n\n> 导出于 ' + new Date().toLocaleString() + '，共 ' + keys.length + ' 篇\n\n';
+    keys.forEach(function (k) {
+      var tag = k.slice('kbdoc.tag.'.length);
+      var body = localStorage.getItem(k) || '';
+      out += '## ' + tag + '\n\n' + body + '\n\n---\n\n';
+    });
+    var blob = new Blob([out], { type: 'text/markdown;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '知识点导出-' + new Date().toISOString().slice(0, 10) + '.md';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+
   function saveNow() {
     if (!mount) return;
     var md = mount.getMarkdown() || '';
@@ -108,6 +131,8 @@
   function mountDoc() {
     var inner = pane() && pane().querySelector('.kbq-inner');
     if (!inner) return;
+    /* 页面重渲染会把 #view 整块换掉：旧容器已不在文档里就重新挂，避免「有时打不开编辑器」 */
+    if (mountEl && !document.contains(mountEl)) { mount = null; mountedFor = ''; mountEl = null; }
     var t = tagId();
     if (mountedFor === t && mount) return;
     if (mount) { try { mount.destroy(); } catch (e) {} mount = null; }

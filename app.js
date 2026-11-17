@@ -4617,7 +4617,17 @@ function renderQuiz(bankId) {
   /* 先收一下失效的六科筛选再算题池：标完最后一题「未选」/换筛法后，
      否则 poolOf 会先按旧科目算出空池，页面卡在「这里暂时没有题目」而 chips 已经回全选。 */
   if (QZ.subject && subjectCount(bank, QZ.subject) === 0) QZ.subject = '';
-  const pool = poolOf(bank);
+  let pool = poolOf(bank);
+  /* 刷新后自愈：六科 / 来源白名单 / 筛法 可能是上一轮残留，任一失效都会让题池变空而页面只显示
+     「这里暂时没有题目」。逐级放宽，直到有题可做；放宽期间不改题库数据。 */
+  if (!pool.length && bank.questions && bank.questions.length) {
+    const relax = [];
+    if (QZ.subject) relax.push(() => { QZ.subject = ''; });
+    if (QZ.filter && QZ.filter !== 'all') relax.push(() => { QZ.filter = 'all'; });
+    if (QZ.srcSel) relax.push(() => { QZ.srcTag = ''; QZ.srcSel = null; });
+    if (QZ.rw) relax.push(() => { QZ.rw = null; });
+    for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
+  }
   if (!pool.length) {
     $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。</div></div>`;
     $('stat').textContent = ''; $('bar').style.width = '0%';

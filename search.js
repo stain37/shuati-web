@@ -1,0 +1,258 @@
+/* search.js — 全局笔记搜索（悬浮窗 + Ctrl/Cmd+K + Notion 式预览） */
+(function () {
+  'use strict';
+  var ITEMS = [], READY = false, LOADING = null;
+  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '我的笔记'];
+  var CUR_SUBJ = '全部';
+
+  /* ---------- 数据 ---------- */
+  function subjectOf(s) {
+    var t = String(s || '');
+    if (/内科/.test(t)) return '内科';
+    if (/外科/.test(t)) return '外科';
+    if (/病理/.test(t)) return '病理';
+    if (/生理/.test(t)) return '生理';
+    if (/生化|生物化学/.test(t)) return '生化';
+    if (/政治|马原|毛中特|史纲|思修|习思想/.test(t)) return '政治';
+    if (/人文|伦理|心理|卫生法/.test(t)) return '人文';
+    return '其他';
+  }
+
+  function pushNoteItems() {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('kbdoc.tag.') === 0) {
+        var tag = k.slice(10);
+        var md = localStorage.getItem(k) || '';
+        if (!md.trim()) continue;
+        ITEMS.push({ id: 'note:' + tag, t: tag, s: '我的笔记', g: '知识点笔记', x: md, src: '我的笔记' });
+      }
+    }
+  }
+
+  function loadKuangs() {
+    return fetch('资料/狂背/索引.json', { cache: 'no-cache' })
+      .then(function (r) { return r.json(); })
+      .then(function (idx) {
+        var list = Array.isArray(idx) ? idx : (idx.items || idx.list || []);
+        return Promise.all(list.map(function (it) {
+          var f = String(it.file || '').replace(/\\/g, '/');
+          return fetch(f, { cache: 'no-cache' })
+            .then(function (r) { return r.ok ? r.text() : ''; })
+            .then(function (txt) {
+              if (!txt) return null;
+              return {
+                id: 'kb:' + f, t: it.chapter || f.replace(/\.md$/, ''),
+                s: subjectOf(it.subject || f), g: it.subject || '', x: txt, src: '狂背',
+                page: (it.pageStart && it.pageEnd) ? ('原书第 ' + it.pageStart + '–' + it.pageEnd + ' 页') : ''
+              };
+            });
+        }));
+      })
+      .then(function (arr) { arr.forEach(function (x) { if (x) ITEMS.push(x); }); })
+      .catch(function () {});
+  }
+
+  function loadKbDocs() {
+    var kbs = window.__KBS__ || [];
+    kbs.forEach(function (bank) {
+      (bank.docs || []).forEach(function (d, i) {
+        if (!d || !d.text) return;
+        ITEMS.push({
+          id: 'kbd:' + bank.id + ':' + i, t: d.name || ('文档' + i),
+          s: subjectOf(bank.name || bank.id), g: bank.name || '', x: d.text, src: '资料库'
+        });
+      });
+    });
+  }
+
+  function ensureData() {
+    if (READY) return Promise.resolve();
+    if (LOADING) return LOADING;
+    LOADING = loadKuangs().then(function () {
+      loadKbDocs();
+      pushNoteItems();
+      READY = true;
+    });
+    return LOADING;
+  }
+
+  /* ---------- 相似度 ---------- */
+  function bigrams(s) {
+    var m = {};
+    for (var i = 0; i < s.length - 1; i++) { var g = s.substr(i, 2); m[g] = (m[g] || 0) + 1; }
+    return m;
+  }
+  function sim(a, b) {
+    if (!a || !b) return 0;
+    var A = bigrams(a), B = bigrams(b), inter = 0, n = 0;
+    for (var k in A) { if (B[k]) inter += Math.min(A[k], B[k]); n += A[k]; }
+    for (var k2 in B) n += 0;
+    return n ? inter / n : 0;
+  }
+  function score(item, q, ql) {
+    var t = item.t.toLowerCase(), x = item.x.toLowerCase();
+    var s = 0;
+    if (t.indexOf(ql) >= 0) s += 80;
+    var idx = x.indexOf(ql);
+    if (idx >= 0) s += 40;
+    var cnt = 0, pos = 0;
+    while (cnt < 5) { var p = x.indexOf(ql, pos); if (p < 0) break; cnt++; pos = p + ql.length; }
+    s += cnt * 6;
+    if (q.length >= 2) s += sim(ql, x.substr(Math.max(0, idx), 200)) * 25;
+    return s;
+  }
+  function snippet(item, ql, n) {
+    var x = item.x, i = x.toLowerCase().indexOf(ql);
+    if (i < 0) i = 0;
+    var a = Math.max(0, i - Math.floor(n / 3)), b = Math.min(x.length, a + n);
+    var s = x.slice(a, b).replace(/\s+/g, ' ');
+    return (a > 0 ? '…' : '') + s + (b < x.length ? '…' : '');
+  }
+
+  /* ---------- UI ---------- */
+  var CSS = [
+    '#gsBtn{position:fixed;right:18px;bottom:86px;z-index:20000;width:46px;height:46px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.16);cursor:pointer;font-size:20px}',
+    '#gsWrap{position:fixed;inset:0;z-index:20010;display:none;background:rgba(15,23,42,.35);backdrop-filter:blur(3px)}',
+    '#gsWrap.on{display:block}',
+    '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
+    '#gsIn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #eef2f7}',
+    '#gsQ{flex:1;border:0;outline:0;font-size:16px}',
+    '#gsSub{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #f1f5f9}',
+    '#gsSub span{padding:4px 10px;border-radius:999px;background:#f1f5f9;color:#475569;cursor:pointer;font-size:12px}',
+    '#gsSub span.on{background:#2563eb;color:#fff}',
+    '#gsList{overflow:auto;padding:6px}',
+    '.gsItem{padding:10px 12px;border-radius:10px;cursor:pointer}', '.gsItem:hover{background:#f5f8ff}',
+    '.gsItem b{font-weight:600}', '.gsItem i{font-style:normal;color:#94a3b8;font-size:12px;margin-left:6px}',
+    '.gsItem p{margin:4px 0 0;color:#64748b;font-size:12px;line-height:1.5}',
+    '#gsEmpty{padding:24px;text-align:center;color:#94a3b8}',
+    '#gsPeek{position:fixed;inset:0;z-index:20020;display:none;background:rgba(15,23,42,.45)}',
+    '#gsPeek.on{display:block}',
+    '#gsCard{position:absolute;left:50%;top:6vh;transform:translateX(-50%);width:min(820px,94vw);height:84vh;background:#fff;border-radius:18px;box-shadow:0 30px 90px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden}',
+    '#gsCard h3{margin:0;padding:16px 20px;border-bottom:1px solid #eef2f7;font-size:16px;display:flex;align-items:center;gap:8px}',
+    '#gsCard h3 span{margin-left:auto;cursor:pointer;color:#94a3b8;font-size:20px;line-height:1}',
+    '#gsBody{overflow:auto;padding:18px 24px 40px;font:15px/1.75 system-ui,"PingFang SC","Microsoft YaHei"}',
+    '#gsBody h1{font-size:24px;margin:10px 0 14px}', '#gsBody h2{font-size:19px;margin:18px 0 8px}', '#gsBody h3{font-size:16px;margin:14px 0 6px}',
+    '#gsBody blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid #cbd5e1;color:#64748b;background:#f8fafc}',
+    '#gsBody li{margin:3px 0}', '#gsBody code{background:#f1f5f9;padding:1px 5px;border-radius:4px}'
+  ].join('\n');
+
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  function mdToHtml(md) {
+    var esc = function (s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    var lines = String(md || '').split(/\r?\n/), out = [], list = false;
+    function closeList() { if (list) { out.push('</ul>'); list = false; } }
+    lines.forEach(function (ln) {
+      var t = ln.trim();
+      if (!t) { closeList(); return; }
+      if (/^###\s+/.test(t)) { closeList(); out.push('<h3>' + esc(t.slice(4)) + '</h3>'); return; }
+      if (/^##\s+/.test(t)) { closeList(); out.push('<h2>' + esc(t.slice(3)) + '</h2>'); return; }
+      if (/^#\s+/.test(t)) { closeList(); out.push('<h1>' + esc(t.slice(2)) + '</h1>'); return; }
+      if (/^>\s?/.test(t)) { closeList(); out.push('<blockquote>' + esc(t.replace(/^>\s?/, '')) + '</blockquote>'); return; }
+      if (/^[-*]\s+/.test(t)) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + esc(t.replace(/^[-*]\s+/, '')) + '</li>'); return; }
+      closeList(); out.push('<p>' + esc(t) + '</p>');
+    });
+    closeList();
+    var html = out.join('\n');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    return html || '<p style="color:#94a3b8">（空白）</p>';
+  }
+
+  var wrap, box, input, sub, list, peek, card, cardTitle, cardBody;
+
+  function build() {
+    if (document.getElementById('gsWrap')) return;
+    var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+
+    var btn = el('button', null, '🔍'); btn.id = 'gsBtn'; btn.title = '搜索全部笔记（Ctrl+K）';
+    btn.onclick = open;
+    document.body.appendChild(btn);
+
+    wrap = el('div'); wrap.id = 'gsWrap';
+    box = el('div'); box.id = 'gsBox';
+    var row = el('div'); row.id = 'gsIn';
+    input = el('input'); input.id = 'gsQ'; input.placeholder = '搜索笔记 / 考点 / 讲义…（模糊匹配）';
+    var x = el('span', null, '✕'); x.style.cursor = 'pointer'; x.style.color = '#94a3b8'; x.onclick = close;
+    row.appendChild(input); row.appendChild(x);
+    sub = el('div'); sub.id = 'gsSub';
+    SUBJ.forEach(function (s) {
+      var c = el('span', s === CUR_SUBJ ? 'on' : '', s);
+      c.onclick = function () { CUR_SUBJ = s; Array.prototype.forEach.call(sub.children, function (n) { n.classList.remove('on'); }); c.classList.add('on'); run(); };
+      sub.appendChild(c);
+    });
+    list = el('div'); list.id = 'gsList';
+    box.appendChild(row); box.appendChild(sub); box.appendChild(list);
+    wrap.appendChild(box);
+    wrap.onclick = function (e) { if (e.target === wrap) close(); };
+    document.body.appendChild(wrap);
+
+    peek = el('div'); peek.id = 'gsPeek';
+    card = el('div'); card.id = 'gsCard';
+    cardTitle = el('h3');
+    cardBody = el('div'); cardBody.id = 'gsBody';
+    card.appendChild(cardTitle); card.appendChild(cardBody);
+    peek.appendChild(card);
+    peek.onclick = function (e) { if (e.target === peek) closePeek(); };
+    document.body.appendChild(peek);
+
+    input.oninput = run;
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); open(); }
+      else if (e.key === 'Escape') { if (peek.classList.contains('on')) closePeek(); else close(); }
+    });
+  }
+
+  function open() {
+    build();
+    wrap.classList.add('on');
+    input.value = ''; run(); setTimeout(function () { input.focus(); }, 30);
+    ensureData().then(run);
+  }
+  function close() { if (wrap) wrap.classList.remove('on'); }
+  function closePeek() { if (peek) peek.classList.remove('on'); }
+
+  function openPeek(item) {
+    cardTitle.innerHTML = '<span>' + esc2(item.t) + '</span><i style="font-style:normal;color:#94a3b8;font-size:12px">' + esc2(item.src + (item.page ? ' · ' + item.page : '')) + '</i><span>✕</span>';
+    cardTitle.querySelector('span:last-child').onclick = closePeek;
+    cardBody.innerHTML = mdToHtml(item.x);
+    cardBody.scrollTop = 0;
+    peek.classList.add('on');
+  }
+  function esc2(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  function run() {
+    if (!list) return;
+    var q = (input.value || '').trim().toLowerCase();
+    var res = ITEMS.filter(function (it) {
+      if (CUR_SUBJ === '我的笔记') return it.src === '我的笔记';
+      if (CUR_SUBJ !== '全部' && it.s !== CUR_SUBJ) return false;
+      return true;
+    });
+    if (q) {
+      res = res.map(function (it) { return { it: it, s: score(it, q, q) }; })
+        .filter(function (o) { return o.s > 0; })
+        .sort(function (a, b) { return b.s - a.s; })
+        .slice(0, 60).map(function (o) { return o.it; });
+    } else {
+      res = res.slice(0, 30);
+    }
+    if (!res.length) {
+      list.innerHTML = '<div id="gsEmpty">' + (READY ? '没有匹配的笔记' : '正在加载笔记…') + '</div>';
+      return;
+    }
+    list.innerHTML = '';
+    res.forEach(function (it) {
+      var d = el('div', 'gsItem');
+      d.innerHTML = '<b>' + esc2(it.t) + '</b><i>' + esc2(it.src + (it.page ? ' · ' + it.page : '')) + '</i>'
+        + '<p>' + esc2(q ? snippet(it, q, 90) : it.x.replace(/\s+/g, ' ').slice(0, 90)) + '</p>';
+      d.onclick = function () { openPeek(it); };
+      list.appendChild(d);
+    });
+  }
+
+  function boot() { build(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.GS = { open: open, close: close };
+})();
