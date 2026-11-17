@@ -4655,6 +4655,14 @@ function renderQuiz(bankId) {
     for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
   }
   if (!pool.length) {
+    /* 标签题集依赖「题库加载 → 标签倒排索引」，刷新瞬间题库可能还是空的，
+       这时 tg: 题集会造出 0 道题并一直空白。这里最多等 10 次（每次 400ms）。 */
+    if (bank.virtualTag && ((bank._tagTry || 0) < 10) && !(bank.questions && bank.questions.length)) {
+      bank._tagTry = (bank._tagTry || 0) + 1;
+      setTimeout(function () { renderQuiz(bankId); }, 400);
+      return;
+    }
+    if ((bank.questions && bank.questions.length)) bank._tagTry = 0;
     /* 题池空：直接把诊断摆出来（不再重试，避免卡在“正在载入”） */
     if (!bank.questions || !bank.questions.length) {
       var _tm = 'no';
@@ -4665,8 +4673,13 @@ function renderQuiz(bankId) {
         _cur = (window.SCM && SCM.current) ? String(SCM.current()) : '';
         if (window.SCM && SCM.debugTag) _byTag = SCM.debugTag(bank.id);
       } catch (e) {}
+      var _nb = '?', _nt = '?', _tg = 'no';
+      try { _nb = banks().length; } catch (e1) {}
+      try { _nt = (window.SCM && SCM.tagListAll) ? SCM.tagListAll().length : '?'; } catch (e2) {}
+      try { _tg = (window.TAGS && TAGS.of) ? 'yes' : 'no'; } catch (e3) {}
       $('view').innerHTML = `<div class="card"><div class="empty">这里暂时没有题目，换个分类看看。<br>`
-        + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)} · byTag=${_byTag} · banks=${(window.banks ? banks().length : '?')}</small><br>`
+        + `<small style="color:#94a3b8">bank=${esc(bank.id)} · n=0 · tagMode=${_tm} · cur=${esc(_cur)}</small><br>`
+        + `<small style="color:#94a3b8">byTag=${_byTag} · banks=${_nb} · tagList=${_nt} · TAGS=${_tg} · try=${bank._tagTry || 0}</small><br>`
         + `<button class="btn" id="qzReload" style="margin-top:10px">重新载入</button></div></div>`;
       var rb0 = document.getElementById('qzReload');
       if (rb0) rb0.onclick = function () { location.reload(); };
