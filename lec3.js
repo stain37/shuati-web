@@ -25,7 +25,7 @@
      线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
      现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
            ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
-  var IDX_CACHE = 'qbank.lec.idx.v6';
+  var IDX_CACHE = 'qbank.lec.idx.v7';
   function parseCompact(j) {
     IDX = j; BYKEY = {};
     var map = {}, srcs = j.s || [];
@@ -63,7 +63,7 @@
   var LEC_VER = '20261116b';
   /* 讲义目录单独一个版本号：目录里加了一份讲义时只让它重下（105KB），
      不必把 LEC_VER 一起抬起来——那样连十几 MB 的文字块缓存都会失效。 */
-  var IDX_VER = '20261118b';
+  var IDX_VER = '20261118c';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -787,7 +787,9 @@
   function loadManifest() {
     if (MAN) return Promise.resolve(MAN);
     if (MAN_JOB) return MAN_JOB;
-    MAN_JOB = fetchAsset('pdftext/t_index.json', { json: true, tries: 2, timeout: 15000 }).then(function (m) { MAN = m; return m; })
+    /* 清单也要带版本：原来固定 ?v=LEC_VER，加了新分片（t11）老设备永远读到旧清单，
+       讲义里的「文字搜索 / 定位」就看不到新加的那份 PDF。 */
+    MAN_JOB = fetchAsset('pdftext/t_index.json?i=' + IDX_VER, { json: true, tries: 2, timeout: 15000, originFirst: true }).then(function (m) { MAN = m; return m; })
       .catch(function (e) { MAN_JOB = null; throw e; });
     return MAN_JOB;
   }
@@ -1787,7 +1789,7 @@
   var ALLROWS = null;
   function allTextRows() {
     if (ALLROWS) return Promise.resolve(ALLROWS);
-    var subs = ['病理', '内科', '生化', '生理', '外科', '其他'];
+    var subs = ['病理', '内科', '生化', '生理', '外科', '狂背', '其他'];
     return Promise.all(subs.map(function (s) {
       return Promise.resolve().then(function () { return loadTextSubj(s); }).catch(function () { return []; });
     })).then(function (lists) {
@@ -2470,7 +2472,7 @@
   var OV_ST = null;
   var OV_LAST = null;
 
-  var SUBJ_ALL = ['病理', '内科', '生化', '生理', '外科'];
+  var SUBJ_ALL = ['病理', '内科', '生化', '生理', '外科', '狂背'];
 
   /* 宽泛名词兜底：单个词时补常见搭配，否则「核苷酸」只能命中零散几句 */
   function expandKeys(keys, sel) {
