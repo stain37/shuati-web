@@ -4746,9 +4746,13 @@ function renderQuiz(bankId) {
   if (!pool.length && bank.virtualTag) {
     try {
       const m = srcStore();
-      if (m && srcSlot(bank) in m) {
+      const curS = m && m[srcSlot(bank)];
+      /* 2026-11-18：来源筛选已经是「全局一套」，不能再因为某个章节没题就把整份设置删掉
+         （那正是「每进一个大章节来源就变一套」的原因之一）。只有存成空数组（=全不选）才自愈。 */
+      if (Array.isArray(curS) && !curS.length) {
         delete m[srcSlot(bank)];
         writeLS(LS_SRC, m);
+        srcTouch();
         QZ.srcSel = null; QZ.srcTag = '';
         pool = poolOf(bank);
       }
@@ -4758,7 +4762,8 @@ function renderQuiz(bankId) {
     const relax = [];
     if (QZ.subject) relax.push(() => { QZ.subject = ''; });
     if (QZ.filter && QZ.filter !== 'all') relax.push(() => { QZ.filter = 'all'; });
-    if (QZ.srcSel) relax.push(() => { QZ.srcTag = ''; QZ.srcSel = null; });
+    /* 2026-11-18：来源筛选不再自动放宽——放宽只改内存，界面显示「全部」但存储里还筛着，
+       用户会以为「设置自己被改了」。留 0 题 + 「已选 k/N」比自动改掉更清楚。 */
     if (QZ.rw) relax.push(() => { QZ.rw = null; });
     for (let i = 0; i < relax.length && !pool.length; i++) { relax[i](); pool = poolOf(bank); }
   }
@@ -6109,7 +6114,11 @@ const LS_SRC_G = 'qbank.qsrc.global.v1';
 /* 是否「对全部考点有效」：默认开，勾一次所有考点都用同一套来源 */
 function srcGlobalOn() { try { return localStorage.getItem(LS_SRC_G) !== '0'; } catch (e) { return true; } }
 function srcSetGlobal(v) { try { localStorage.setItem(LS_SRC_G, v ? '1' : '0'); } catch (e) {} }
-function srcSlot(bank) { return srcGlobalOn() ? '__all__' : String((bank && bank.virtualTag) || '__all__'); }
+/* 2026-11-18：来源筛选固定是「全局一套」——它是「我要看哪几个题库」这种偏好，
+   不该每进一个章节就换一套（用户原话：对所有的都生效、是全局的、要记住、要同步）。
+   老版本按本题集分槽存过，那些旧键留着不删，但不再读。 */
+function srcSlot(bank) { return '__all__'; }
+function srcTouch() { try { localStorage.setItem('qbank.qsrc.ts.v1', String(Date.now())); } catch (e) {} }
 function srcSelOf(bank) {
   if (!bank || !bank.virtualTag) return null;
   const slot = srcSlot(bank);
@@ -6149,6 +6158,7 @@ function srcSet(bank, list, soft) {
   if (all.length && keep.length >= all.length) delete m[slot];   /* 全选 = 不筛 */
   else m[slot] = keep;                                           /* 空数组保留 = 全不选 */
   writeLS(LS_SRC, m);
+  srcTouch();
   QZ.srcTag = slot;
   QZ.srcSel = (all.length && keep.length >= all.length) ? null : keep;
   if (soft) {
@@ -6179,6 +6189,7 @@ function srcClear(bank) {
   const m = srcStore();
   delete m[srcSlot(bank)];
   writeLS(LS_SRC, m);
+  srcTouch();
   QZ.srcTag = srcSlot(bank);
   QZ.srcSel = null;
   render();
@@ -6209,8 +6220,9 @@ function srcListAll(bank) {
   const cnt = {}, arr = (bank && bank.questions) || [];
   arr.forEach(q => { const s = srcOf(q); cnt[s] = (cnt[s] || 0) + 1; });
   const meta = srcBankMeta();
-  const names = Object.keys(cnt);
-  if (QZ.srcZero) Object.keys(meta).forEach(n => { if (!(n in cnt)) cnt[n] = 0; });
+  /* 2026-11-18：永远把库里全部题库列出来。原来跟着「显示没有该考点的题库」开关走，
+     关掉时面板会按章节增删名单，看起来像「换了一套来源」——而这套筛选本来就是全局的。 */
+  Object.keys(meta).forEach(n => { if (!(n in cnt)) cnt[n] = 0; });
   const out = Object.keys(cnt).map(n => ({ name: n, n: cnt[n] || 0, born: (meta[n] && meta[n].born) || 0 }));
   const sort = QZ.srcSort || 'n';
   if (sort === 'name') out.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
@@ -6218,12 +6230,24 @@ function srcListAll(bank) {
   else out.sort((a, b) => (b.n - a.n) || a.name.localeCompare(b.name, 'zh'));
   return out;
 }
+/* 云同步把来源筛选换掉之后，就地重画（不整页刷新） */
+try {
+  window.srcRefresh = function () {
+    try {
+      QZ.srcTag = '';
+      QZ.srcSel = null;
+      const b = bankById(QZ.bankId);
+      if (b) { renderSrc(b); render(); }
+    } catch (e) {}
+  };
+} catch (e) {}
 function renderSrc(bank) {
   try { return renderSrc0(bank); } catch (e) {
     try { console.warn('renderSrc failed', e); } catch (_) {}
     const b0 = $('srcbar'); if (b0) { b0.style.display = 'none'; b0.innerHTML = ''; }
   }
 }
+function totalBanksNow() { try { return (baseBanks() || []).length; } catch (e) { return 99; } }
 function renderSrc0(bank) {
   const box = $('srcbar');
   if (!box) return;
@@ -6231,14 +6255,15 @@ function renderSrc0(bank) {
   const has = ok ? srcList(bank) : [];
   /* 只有 1 个来源时原本隐藏；但若已经存了白名单（尤其「全不选」= []）就必须显示，
      否则整本题集 0 题、六科 chip 全灰，用户没有任何入口把筛选改回来 */
-  if (!ok || (has.length < 2 && !srcPick(bank))) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  if (!ok || (totalBanksNow() < 2 && !srcPick(bank))) { box.style.display = 'none'; box.innerHTML = ''; return; }
   const keep = srcPick(bank);
   const rows = srcListAll(bank);
   const base = chipFilter(bank.questions, QZ.filter, bank).filter(q => !QZ.subject || qzHasSubject(bank, q));
   const rest = keep ? base.filter(q => keep.indexOf(srcOf(q)) >= 0).length : base.length;
   const totalBanks = (() => { try { return (baseBanks() || []).length; } catch (e) { return rows.length; } })();
-  const label = keep ? ('已选 ' + keep.length + '/' + rows.length + ' · ' + rest + ' 题')
-                     : ('全部 ' + rows.length + ' 个来源 · ' + base.length + ' 题');
+  const nBanks = Math.max(rows.length, totalBanks);
+  const label = keep ? ('已选 ' + keep.length + '/' + nBanks + ' · ' + rest + ' 题')
+                     : ('全部 ' + nBanks + ' 个来源 · ' + base.length + ' 题');
   box.style.display = '';
   box.innerHTML =
     '<span class="slabel">题库来源</span>'
@@ -6253,8 +6278,8 @@ function renderSrc0(bank) {
         + '<button type="button" class="srctog' + (QZ.srcFuzzy ? ' on' : '') + '" id="srcFuzzy" title="模糊匹配：按字符顺序出现就算，比如 ttsx / 小亮">AI 模糊</button></div>'
         + '<div class="srcrow2"><span class="srcsortlb">排序</span>'
         + ['n:题数', 'name:名称', 'new:最近添加'].map((x, i) => { const k = x.split(':')[0]; return '<button type="button" class="srtsort' + ((QZ.srcSort || 'n') === k ? ' on' : '') + '" data-sort="' + k + '">' + x.split(':')[1] + '</button>'; }).join('')
-        + '<label class="srczero"><input type="checkbox" id="srcZero"' + (QZ.srcZero ? ' checked' : '') + '>显示没有该考点的题库</label>'
-        + '<label class="srcglob"><input type="checkbox" id="srcGlobal"' + (srcGlobalOn() ? ' checked' : '') + '>对全部考点有效</label></div>'
+
+        + '<span class="srcglob">对所有章节、所有考点共用这一套</span></div>'
         + '<div class="srcrows" id="srcRows">'
         + rows.map(x => '<span class="srcitem' + (x.n ? '' : ' zero') + '" data-srcrow="' + esc(x.name) + '" data-n="' + x.n + '" data-born="' + x.born + '"'
             + (x.n ? '' : ' title="本题集没有这个题库的题；勾上只影响别的考点"') + '>'
@@ -6297,7 +6322,7 @@ function renderSrc0(bank) {
     renderSrc(bank);
     const q2 = $('srcQ'); if (q2 && QZ.srcQ) { q2.value = QZ.srcQ; q2.dispatchEvent(new Event('input')); }
   }));
-  on('srcZero', () => { QZ.srcZero = !!(($('srcZero') || {}).checked); renderSrc(bank); });
+  /* 2026-11-18：面板固定列出全部题库，这个开关撤了 */
   /* 点整行也算勾选；用 span 不用 label —— label 会把点击再转发给 input，
      勾选状态被连翻两次，看起来像「点了没反应」 */
   pan.querySelectorAll('[data-srcrow]').forEach(row => {
@@ -6323,7 +6348,7 @@ function renderSrc0(bank) {
   on('srcAll', () => srcSet(bank, rows.map(x => x.name)));
   on('srcNone', () => srcSet(bank, []));
   on('srcReset', () => srcClear(bank));
-  on('srcGlobal', () => { const c = $('srcGlobal'); srcSetGlobal(!!(c && c.checked)); QZ.srcTag = ''; QZ.srcSel = null; render(); });
+  /* 2026-11-18：来源筛选不再有「是否全局」的开关，永远全局 */
 }
 /* 点面板外面 / 按 Esc 收起来源面板（面板里点复选框不算外面） */
 try {

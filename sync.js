@@ -427,6 +427,13 @@ async function syncPayload() {
       d.stars = (side && side.star && typeof side.star === 'object') ? side.star : {};
     } catch (e) { d.stars = {}; }
   }
+  /* 题库来源筛选（全局一套）：这是「设置」，不是可以并集的数据 —— 谁改得晚用谁。
+     不带它的话，电脑上挑好的「只看某几个题库」到手机就得重挑一遍（用户 2026-11-18 提的）。 */
+  try {
+    const q = JSON.parse(localStorage.getItem('qbank.qsrc.v1') || '{}') || {};
+    const ts = Number(localStorage.getItem('qbank.qsrc.ts.v1')) || 0;
+    if (ts) d.qsrc = { has: Object.prototype.hasOwnProperty.call(q, '__all__'), all: q.__all__, ts: ts };
+  } catch (e) {}
   /* 空白板手稿：数组，最新的在前 */
   if (s.board) {
     try { const a = JSON.parse(localStorage.getItem('qbank.board.v1') || '[]'); d.boards = Array.isArray(a) ? a : []; }
@@ -530,6 +537,22 @@ function syncMergeCloud(cloud) {
         syncLog('星标并进来 ' + ch + ' 个');
         if (window.SIDE && SIDE.refresh) { try { SIDE.refresh(); } catch (e) {} }
         else if (window.CAT && CAT.render) { try { CAT.render(); } catch (e) {} }
+      }
+    } catch (e) {}
+  }
+  /* 0a2) 题库来源筛选：设置类，两边比时间戳，新的那套覆盖旧的 */
+  if (d.qsrc && typeof d.qsrc === 'object') {
+    try {
+      const mineTs = Number(localStorage.getItem('qbank.qsrc.ts.v1')) || 0;
+      const ts = Number(d.qsrc.ts) || 0;
+      if (ts > mineTs) {
+        const m = {};
+        if (d.qsrc.has) m.__all__ = Array.isArray(d.qsrc.all) ? d.qsrc.all.slice() : [];
+        localStorage.setItem('qbank.qsrc.v1', JSON.stringify(m));
+        localStorage.setItem('qbank.qsrc.ts.v1', String(ts));
+        syncLog('题库来源筛选：改用云端这套（' + (d.qsrc.has ? ((m.__all__ || []).length + ' 个来源') : '全部来源') + '）');
+        added++;
+        try { if (window.srcRefresh) window.srcRefresh(); } catch (e) {}
       }
     } catch (e) {}
   }
