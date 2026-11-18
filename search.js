@@ -168,7 +168,7 @@
 
   /* ---------- UI ---------- */
   var CSS = [
-    '#gsBtn{position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid var(--line,rgba(148,163,184,.35));background:var(--card,#fff);color:var(--text,#0f172a);box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
+    '#gsBtn{position:fixed;right:22px;bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid var(--line,rgba(148,163,184,.35));background:var(--card,#fff);color:var(--text,#0f172a);box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
     '#gsWrap{position:fixed;inset:0;z-index:20010;display:none;background:rgba(15,23,42,.35);backdrop-filter:blur(3px)}',
     '#gsWrap.on{display:block}',
     '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:var(--card,#fff);color:var(--text,#0f172a);border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
@@ -236,7 +236,17 @@
     var btn = el('button', null, '🔍'); btn.id = 'gsBtn'; btn.title = '搜索全部笔记（Ctrl+K）— 可拖动';
     try {
       var saved = JSON.parse(localStorage.getItem('gs.pos') || 'null');
-      if (saved && saved.x != null) { btn.style.left = saved.x + 'px'; btn.style.top = saved.y + 'px'; btn.style.right = 'auto'; btn.style.bottom = 'auto'; }
+      if (saved && saved.x != null) {
+        /* 以前拖到过屏幕外（换设备 / 转屏 / 缩小窗口）就复位到右下角，
+           否则元素在但用户根本看不见 */
+        var vw = window.innerWidth || 360, vh = window.innerHeight || 640;
+        if (saved.x < 0 || saved.y < 0 || saved.x > vw - 40 || saved.y > vh - 40) {
+          localStorage.removeItem('gs.pos');
+        } else {
+          btn.style.left = saved.x + 'px'; btn.style.top = saved.y + 'px';
+          btn.style.right = 'auto'; btn.style.bottom = 'auto';
+        }
+      }
     } catch (e) {}
     var drag = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
     btn.addEventListener('pointerdown', function (e) {
