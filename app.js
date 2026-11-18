@@ -7122,8 +7122,15 @@ function renderGrid() {
      每按一次「下一题」都要重跑一遍——大题库卡死的真正原因。改成一次建号表。 */
   const NOOF = new Map();
   bank.questions.forEach((q, i) => NOOF.set(q, i + 1));
+  /* 答题卡只列「现在真的刷得到」的题：来源筛选 / 科目 chip 与答题页用同一套判断。
+     否则点了一个被来源筛掉的题号，renderQuiz 会把它拉回第 1 题，看起来就是「点了没反应」。 */
+  let reach = bank.questions;
+  try {
+    reach = reach.filter(q => srcMatch(bank, q));
+    if (QZ.subject) reach = reach.filter(q => qzHasSubject(bank, q));
+  } catch (e) { reach = bank.questions; }
   const shown = [];
-  bank.questions.forEach(q => {
+  reach.forEach(q => {
     const a = ANS[kOf(bank, q)];
     if (GRIDF === 'wrong' && !isWrongRec(a)) return;
     if (GRIDF === 'undone' && (a && !a.redo)) return;
@@ -7133,7 +7140,9 @@ function renderGrid() {
   /* 题多时不要一次铺几千个按钮：只画前 GRID_LIM 个，其余点「显示更多」再补。
      （5000+ 个 <button> 在 iPad 上够卡好几秒） */
   const LIM = Math.min(shown.length, GRID_LIM || 240);
-  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题　${bankScoreText(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
+  const dropTxt = reach.length === bank.questions.length ? ''
+    : `　可刷 ${reach.length} 题（来源 / 科目筛掉了 ${bank.questions.length - reach.length} 题）`;
+  body.innerHTML = `<div class="sec-t">${esc(bank.title)}　共 ${bank.questions.length} 题${dropTxt}　${bankScoreText(bank)}　已答 ${done}　做错 ${wrong}${GRIDF === 'all' ? '' : '　（当前只显示 ' + shown.length + ' 题）'}</div>`
     + (shown.length ? `<div class="grid">` + shown.slice(0, LIM).map(it => {
       const k = kOf(bank, it.q), a = ANS[k];
       const cls = 'gnum' + (isWrongRec(a) ? ' err' : (a ? ' done' : '')) + (String(it.q.id) === String(QZ.cur) ? ' cur' : '');
