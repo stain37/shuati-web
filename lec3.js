@@ -25,7 +25,7 @@
      线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
      现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
            ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
-  var IDX_CACHE = 'qbank.lec.idx.v4';
+  var IDX_CACHE = 'qbank.lec.idx.v5';
   function parseCompact(j) {
     IDX = j; BYKEY = {};
     var map = {}, srcs = j.s || [];
@@ -61,6 +61,9 @@
      站点重建那几分钟里拿到过一次 404，就会被浏览器缓存一整天 → 一直“目录没读出来”。
      现在：版本号做 key；重试时带随机数 + no-store，绝不吃坏缓存。 */
   var LEC_VER = '20261116b';
+  /* 讲义目录单独一个版本号：目录里加了一份讲义时只让它重下（105KB），
+     不必把 LEC_VER 一起抬起来——那样连十几 MB 的文字块缓存都会失效。 */
+  var IDX_VER = '20261118a';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -153,7 +156,7 @@
           applyIdx(JSON.parse(c.raw));
           /* 本机缓存 12 小时内直接用；更老的先用着，后台再刷 */
           if (Date.now() - (c.ts || 0) < 12 * 3600e3) return Promise.resolve(IDX);
-          fetchAsset('pdfimg/idx.json', { json: true, timeout: 25000 }).then(function (j) {
+          fetchAsset('pdfimg/idx.json?i=' + IDX_VER, { json: true, timeout: 25000 }).then(function (j) {
             writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) });
             applyIdx(j); if (FILES && el.sel) { fillSelect(); paint(); }
           }).catch(function () {});
@@ -162,7 +165,7 @@
       }
     }
     /* 同一个文件多放几个位置：某些网络对 pdfimg/ 这种大目录会 404 / 被中间层拦掉 */
-    var urls = ['pdfimg/idx.json', 'data/lec-idx.json'], i = 0;
+    var urls = ['pdfimg/idx.json?i=' + IDX_VER, 'data/lec-idx.json?i=' + IDX_VER], i = 0;
     function tryNext(lastErr) {
       if (i >= urls.length) return Promise.reject(lastErr || new Error('no url'));
       return fetchAsset(urls[i++], { json: true, tries: 2, timeout: 25000 }).then(function (j) {
