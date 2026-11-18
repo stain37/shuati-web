@@ -25,7 +25,7 @@
      线上 github.io 只有 ~20KB/s：老的 index.json 375KB 要等十几秒，还常赶上站点重建（Failed to fetch）。
      现在：① 优先读 pdfimg/idx.json（紧凑版，78KB） ② 读到的目录存本机 localStorage，下次秒开
            ③ 失败自动重试 3 次，仍失败给「重试」按钮，不再抛裸 TypeError。 */
-  var IDX_CACHE = 'qbank.lec.idx.v5';
+  var IDX_CACHE = 'qbank.lec.idx.v6';
   function parseCompact(j) {
     IDX = j; BYKEY = {};
     var map = {}, srcs = j.s || [];
@@ -63,7 +63,7 @@
   var LEC_VER = '20261116b';
   /* 讲义目录单独一个版本号：目录里加了一份讲义时只让它重下（105KB），
      不必把 LEC_VER 一起抬起来——那样连十几 MB 的文字块缓存都会失效。 */
-  var IDX_VER = '20261118a';
+  var IDX_VER = '20261118b';
   function fetchJson(url, tries, ms) {
     tries = tries || 1;
     return new Promise(function (resolve, reject) {
@@ -131,6 +131,12 @@
   function fetchAsset(rel, o) {
     o = o || {};
     var list = baseOrder(), i = 0;
+    /* 目录类小文件：先走本站。镜像会把旧文件缓存住（实测拿到过 261 份的旧目录，
+       新加的讲义就一整天看不见），所以本站只失败一次才去镜像。 */
+    if (o.originFirst) {
+      list = list.filter(function (b) { return b.id === 'origin'; })
+        .concat(list.filter(function (b) { return b.id !== 'origin'; }));
+    }
     function next(lastErr) {
       if (i >= list.length) return Promise.reject(lastErr || new Error('所有线路都不通'));
       var b = list[i++];
@@ -151,13 +157,14 @@
     if (IDX && !force) return Promise.resolve(IDX);
     if (!force) {
       var c = readLS(IDX_CACHE, null);
-      if (c && c.raw) {
+      if (c && c.raw && c.ver === IDX_VER) {
         try {
           applyIdx(JSON.parse(c.raw));
-          /* 本机缓存 12 小时内直接用；更老的先用着，后台再刷 */
-          if (Date.now() - (c.ts || 0) < 12 * 3600e3) return Promise.resolve(IDX);
-          fetchAsset('pdfimg/idx.json?i=' + IDX_VER, { json: true, timeout: 25000 }).then(function (j) {
-            writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) });
+          /* 本机缓存 1 小时内直接用；更老的先用着，后台再刷
+             （原来给 12 小时，结果往目录里加了新讲义后，老设备半天都看不到） */
+          if (Date.now() - (c.ts || 0) < 3600e3) return Promise.resolve(IDX);
+          fetchAsset('pdfimg/idx.json?i=' + IDX_VER, { json: true, originFirst: true, timeout: 25000 }).then(function (j) {
+            writeLS(IDX_CACHE, { ts: Date.now(), ver: IDX_VER, raw: JSON.stringify(j) });
             applyIdx(j); if (FILES && el.sel) { fillSelect(); paint(); }
           }).catch(function () {});
           return Promise.resolve(IDX);
@@ -168,9 +175,9 @@
     var urls = ['pdfimg/idx.json?i=' + IDX_VER, 'data/lec-idx.json?i=' + IDX_VER], i = 0;
     function tryNext(lastErr) {
       if (i >= urls.length) return Promise.reject(lastErr || new Error('no url'));
-      return fetchAsset(urls[i++], { json: true, tries: 2, timeout: 25000 }).then(function (j) {
+      return fetchAsset(urls[i++], { json: true, tries: 2, timeout: 25000, originFirst: true }).then(function (j) {
         applyIdx(j);
-        try { writeLS(IDX_CACHE, { ts: Date.now(), raw: JSON.stringify(j) }); } catch (e) {}
+        try { writeLS(IDX_CACHE, { ts: Date.now(), ver: IDX_VER, raw: JSON.stringify(j) }); } catch (e) {}
         return IDX;
       }).catch(tryNext);
     }

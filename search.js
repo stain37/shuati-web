@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var ITEMS = [], READY = false, LOADING = null;
-  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '狂背', '我的笔记'];
+  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '西综', '狂背', '我的笔记'];
   var CUR_SUBJ = '全部';
 
   /* ---------- 数据 ---------- */
@@ -79,17 +79,45 @@
       .catch(function () {});
   }
 
+  /* 资料库（知识库）里的正文也能搜：库是分片（kb/m*.js）懒加载的，谁先加载进来就收谁。
+     西综合集那份（kb/m9.js，830KB）在这里单独按需拉一次——不挡开窗，
+     到了之后 run() 自动把结果补上。 */
+  var KBD_SEEN = {};
   function loadKbDocs() {
     var kbs = window.__KBS__ || [];
     kbs.forEach(function (bank) {
+      var bid = String(bank.id || bank.name || '');
       (bank.docs || []).forEach(function (d, i) {
         if (!d || !d.text) return;
+        var id = 'kbd:' + bid + ':' + i;
+        if (KBD_SEEN[id]) return;
+        KBD_SEEN[id] = 1;
+        var lect = !!d.imgKey;              /* 有页图 key = 这份是「讲义」的那一页 */
         ITEMS.push({
-          id: 'kbd:' + bank.id + ':' + i, t: d.name || ('文档' + i),
-          s: subjectOf(bank.name || bank.id), g: bank.name || '', x: d.text, src: '资料库'
+          id: id, t: d.name || ('文档' + i),
+          s: lect ? '西综' : subjectOf(bank.name || bid),
+          g: bank.name || '', x: d.text,
+          src: lect ? '西综' : '资料库',
+          kind: lect ? 'lecture' : '',
+          pg: d.page || 0, pages: d.pages || 0,
+          file: d.file || '', img: d.imgKey || ''
         });
       });
     });
+  }
+  var SHARD_JOB = null;
+  function loadKbShard() {
+    if (window.__KBS__ && window.__KBS__.length && KBD_SEEN['kbd:file-xzong:0']) return Promise.resolve();
+    if (SHARD_JOB) return SHARD_JOB;
+    SHARD_JOB = new Promise(function (resolve) {
+      if (window.__XZ_LOADED__) return resolve();
+      var sc = document.createElement('script');
+      sc.src = 'kb/m9.js?v=20261118a';
+      sc.onload = function () { window.__XZ_LOADED__ = 1; resolve(); };
+      sc.onerror = function () { resolve(); };
+      document.head.appendChild(sc);
+    });
+    return SHARD_JOB;
   }
 
   function ensureData() {
@@ -99,6 +127,8 @@
       loadKbDocs();
       pushNoteItems();
       READY = true;
+      /* 西综分片在后台到（830KB），到了补进结果，不耽误开窗 */
+      loadKbShard().then(function () { loadKbDocs(); try { run(); } catch (e) {} });
     });
     return LOADING;
   }
@@ -353,6 +383,33 @@
       img2.onclick = function () { window.open(img2.src, '_blank', 'noopener'); };
       inp2.onchange = function () { paint(inp2.value); };
       inp2.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); paint(inp2.value); inp2.blur(); } };
+      return;
+    }
+    if (item.kind === 'lecture') {
+      var pg = Math.max(1, item.pg | 0);
+      var file = String(item.file || '');
+      var pdfHref2 = file ? (encodeURI(file) + '#page=' + pg) : '';
+      cardBody.innerHTML = '<div class="kbp-head">' + esc2(item.g || '西综') + ' · 第 ' + pg + ' 页'
+        + (item.pages ? ' / ' + item.pages : '') + '</div>'
+        + '<div class="kbp-bar">'
+        + '<button class="kbp-btn" id="lecJump">📖 在讲义里打开这一页</button>'
+        + '<span class="kbp-sp"></span>'
+        + (pdfHref2 ? '<a class="kbp-btn" href="' + pdfHref2 + '" target="_blank" rel="noopener">📄 整本 PDF</a>' : '')
+        + '</div>'
+        + '<div class="kbp-wrap"><img class="kbp-img" id="lecImg2" alt="第 ' + pg + ' 页"'
+        + ' src="' + encodeURI('pdfimg/' + item.img + '.webp') + '"></div>'
+        + (item.x ? '<details class="kbp-txt"><summary>文字版（可复制）</summary>' + mdToHtml(item.x) + '</details>' : '');
+      var im2 = cardBody.querySelector('#lecImg2');
+      if (im2) {
+        im2.title = '点一下在新标签页看大图'; im2.style.cursor = 'zoom-in';
+        im2.onclick = function () { window.open(im2.src, '_blank', 'noopener'); };
+      }
+      var jb = cardBody.querySelector('#lecJump');
+      if (jb) jb.onclick = function () {
+        closePeek();
+        if (window.LECTURE && LECTURE.openHit) LECTURE.openHit({ file: item.file, doc: item.t, pdfp: pg, page: pg });
+        else location.hash = '#/';
+      };
       return;
     }
     if (item.src === '资料库') {
