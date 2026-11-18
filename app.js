@@ -5093,7 +5093,10 @@ function renderQuiz(bankId) {
      旧的那份（上一次渲染挂在 body 上的）先删，避免 id 重复。 */
   (function relocateQSheet() {
     const cur = $('view').querySelector('#qSheet');
-    document.querySelectorAll('body > #qSheet').forEach(el => el.remove());
+    /* 原地换题（__applyQuizHtml）只替换 .actions 等几块，模板里新生成的 #qSheet
+       会被丢掉；这时 view 里没有抽屉，body 上那份是唯一可用的，不能删。
+       只有「view 里确实有一份新的」时才清掉旧的 body 副本。 */
+    if (cur) document.querySelectorAll('body > #qSheet').forEach(el => el.remove());
     if (cur) document.body.appendChild(cur);
     /* 重画后抽屉默认是收起的，顺手把滚动锁解开（不然「再答一次」后页面上下滑不动） */
     if (!cur || cur.hasAttribute('hidden')) document.body.classList.remove('sheet-open');

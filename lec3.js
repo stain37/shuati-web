@@ -298,7 +298,7 @@
       if (a === 'aisum') return aiSum();
       if (a === 'sumext') { var h2 = aiSumHost(); if (h2) aiSumFold(h2, !h2.querySelector('.lec-sumhid')); return; }
       if (a === 'aisumx') { var c2 = document.getElementById('lecSumCard'); if (c2) { c2.hidden = true; c2.innerHTML = ''; } var h3 = aiSumHost(); if (h3) aiSumFold(h3, false); return; }
-      if (a === 'loc') return locate();
+      if (a === 'loc') return locate(true);
       if (a === 'scope') return openScope();
       if (a === 'ovask') return overviewAsk();
       if (a === 'scopeok') return pickScope(b.getAttribute('data-v'), b.getAttribute('data-subj'), b.getAttribute('data-src'));
@@ -991,6 +991,12 @@
   var SCOPE_KEY = 'qbank.lec.scope.v1';
   var SCOPE = readLS(SCOPE_KEY, null) || { mode: 'auto' };
   function scopeSave() { try { writeLS(SCOPE_KEY, SCOPE); } catch (e) {} }
+  /* 定位范围的指纹：缓存/结果都必须跟「这次是在哪个范围里找的」绑定，
+     否则先按「自动」找过一次，再切成「只在这份里找」，命中的还是那份跨讲义的老结果。 */
+  function scopeSig() {
+    return SCOPE.mode + '|' + (SCOPE.mode === 'file' ? (SCOPE.src || '')
+      : SCOPE.mode === 'subj' ? (SCOPE.subj || '') : '');
+  }
   function scopeLabel() {
     if (SCOPE.mode === 'file') {
       var f = fileOf(SCOPE.src);
@@ -1437,7 +1443,7 @@
   function applyCands(list, tag) {
     list = (list || []).slice(0, 18);
     if (!list.length) return false;
-    try { LOC_CACHE[LOCKEY()] = { ts: Date.now(), list: list, tag: tag }; } catch (e) {}
+    try { LOC_CACHE[LOCKEY()] = { ts: Date.now(), list: list, tag: tag, sig: scopeSig() }; } catch (e) {}
     CAND2 = list; CAND_I = 0;
     var top = list[0];
     var f = fileOf(top.src);
@@ -1493,7 +1499,9 @@
     return hits.map(function (h) { var r = pages[h.i] || {}; return { p: r.p, score: h.score || 0 }; });
   }
   function embedRank(src, q) {
-    return loadTextSubj().then(function (rows) {
+    /* 按被搜的那份讲义自己的科目取文字：以前固定取「当前打开的那份」的科目，
+       范围选的是别的科目的讲义时就一行都取不到 → 报「这份讲义里没找到」。 */
+    return loadRows(subjOf(src), true).then(function (rows) {
       var pages = (rows || []).filter(function (r) { return r && r.src === src && r.t; });
       if (!pages.length) return [];
       return rankPages(pages, q);
@@ -1871,20 +1879,26 @@
   }
 
 
-  function locate() {
+  function locate(force) {
     var bd = getBind();
     if (bd && fileOf(bd.src)) {
-      CUR.src = bd.src; CUR.p = bd.p; CAND = [];
-      var alt0 = $('#lecAlt'); if (alt0) alt0.style.display = 'none';
-      paint();
-      if (el.meta) el.meta.textContent = '📌 已绑定：' + String(bd.f || '').replace(/\.pdf$/i, '').slice(0, 18) + ' 第 ' + bd.p + ' 页';
-      toast('这题已绑过讲义页（想重新自动定位，先点「解绑」）');
-      return;
+      if (!force) {
+        CUR.src = bd.src; CUR.p = bd.p; CAND = [];
+        var alt0 = $('#lecAlt'); if (alt0) alt0.style.display = 'none';
+        paint();
+        if (el.meta) el.meta.textContent = '📌 已绑定：' + String(bd.f || '').replace(/\.pdf$/i, '').slice(0, 18) + ' 第 ' + bd.p + ' 页';
+        toast('这题已绑过讲义页（想重新自动定位，先点「解绑」）');
+        return;
+      }
+      /* 用户又点了一次「定位到这题」：先解绑再重新找，不然这里会一直挡着，
+         看起来就是「定位过一次以后再也点不动」。 */
+      delBind();
+      toast('已解绑旧页码，重新定位…');
     }
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }
-    var lk = LOCKEY(), lc = LOC_CACHE[lk];
-    if (lc && lc.list && lc.list.length && (Date.now() - lc.ts) < 600000) {
+    var lk = LOCKEY(), lc = LOC_CACHE[lk], sig = scopeSig();
+    if (!force && lc && lc.sig === sig && lc.list && lc.list.length && (Date.now() - lc.ts) < 600000) {
       if (applyCands(lc.list, lc.tag)) {
         if (el.meta) el.meta.textContent = (el.meta.textContent || '') + ' · 10 分钟内同题缓存';
         return;

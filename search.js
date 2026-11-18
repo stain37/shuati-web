@@ -138,29 +138,41 @@
 
   /* ---------- UI ---------- */
   var CSS = [
-    '#gsBtn{position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid rgba(148,163,184,.35);background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
+    '#gsBtn{position:fixed;right:22px;bottom:96px;z-index:20000;width:60px;height:60px;border-radius:50%;border:1px solid var(--line,rgba(148,163,184,.35));background:var(--card,#fff);color:var(--text,#0f172a);box-shadow:0 10px 30px rgba(15,23,42,.22);cursor:grab;font-size:26px;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center}',
     '#gsWrap{position:fixed;inset:0;z-index:20010;display:none;background:rgba(15,23,42,.35);backdrop-filter:blur(3px)}',
     '#gsWrap.on{display:block}',
-    '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
-    '#gsIn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #eef2f7}',
-    '#gsQ{flex:1;border:0;outline:0;font-size:16px}',
-    '#gsSub{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #f1f5f9}',
-    '#gsSub span{padding:4px 10px;border-radius:999px;background:#f1f5f9;color:#475569;cursor:pointer;font-size:12px}',
-    '#gsSub span.on{background:#2563eb;color:#fff}',
+    '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:var(--card,#fff);color:var(--text,#0f172a);border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
+    '#gsIn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line,#eef2f7)}',
+    '#gsQ{flex:1;border:0;outline:0;font-size:16px;background:transparent;color:inherit}',
+    '#gsSub{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
+    '#gsSub span{padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent);color:var(--text,#475569);cursor:pointer;font-size:12px}',
+    '#gsSub span.on{background:var(--primary,#2563eb);color:#fff}',
     '#gsList{overflow:auto;padding:6px}',
-    '.gsItem{padding:10px 12px;border-radius:10px;cursor:pointer}', '.gsItem:hover{background:#f5f8ff}',
-    '.gsItem b{font-weight:600}', '.gsItem i{font-style:normal;color:#94a3b8;font-size:12px;margin-left:6px}',
-    '.gsItem p{margin:4px 0 0;color:#64748b;font-size:12px;line-height:1.5}',
+    '.gsItem{padding:10px 12px;border-radius:10px;cursor:pointer}', '.gsItem:hover{background:color-mix(in srgb,var(--primary,#2563eb) 10%,transparent)}',
+    '.gsItem b{font-weight:600}', '.gsItem i{font-style:normal;color:color-mix(in srgb,var(--text,#0f172a) 55%,transparent);font-size:12px;margin-left:6px}',
+    '.gsItem p{margin:4px 0 0;color:color-mix(in srgb,var(--text,#0f172a) 62%,transparent);font-size:12px;line-height:1.5}',
     '#gsEmpty{padding:24px;text-align:center;color:#94a3b8}',
     '#gsPeek{position:fixed;inset:0;z-index:20020;display:none;background:rgba(15,23,42,.45)}',
     '#gsPeek.on{display:block}',
-    '#gsCard{position:absolute;left:50%;top:6vh;transform:translateX(-50%);width:min(820px,94vw);height:84vh;background:#fff;border-radius:18px;box-shadow:0 30px 90px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden}',
-    '#gsCard h3{margin:0;padding:16px 20px;border-bottom:1px solid #eef2f7;font-size:16px;display:flex;align-items:center;gap:8px}',
+    '#gsCard{position:absolute;left:50%;top:6vh;transform:translateX(-50%);width:min(820px,94vw);height:84vh;background:var(--card,#fff);color:var(--text,#0f172a);border-radius:18px;box-shadow:0 30px 90px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden}',
+    '#gsCard h3{margin:0;padding:16px 20px;border-bottom:1px solid var(--line,#eef2f7);font-size:16px;display:flex;align-items:center;gap:8px}',
     '#gsCard h3 span{margin-left:auto;cursor:pointer;color:#94a3b8;font-size:20px;line-height:1}',
     '#gsBody{overflow:auto;padding:18px 24px 40px;font:15px/1.75 system-ui,"PingFang SC","Microsoft YaHei"}',
     '#gsBody h1{font-size:24px;margin:10px 0 14px}', '#gsBody h2{font-size:19px;margin:18px 0 8px}', '#gsBody h3{font-size:16px;margin:14px 0 6px}',
-    '#gsBody blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid #cbd5e1;color:#64748b;background:#f8fafc}',
-    '#gsBody li{margin:3px 0}', '#gsBody code{background:#f1f5f9;padding:1px 5px;border-radius:4px}'
+    '#gsBody blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--line,#cbd5e1);color:color-mix(in srgb,var(--text,#0f172a) 70%,transparent);background:color-mix(in srgb,var(--text,#0f172a) 5%,transparent)}',
+    '#gsBody li{margin:3px 0}', '#gsBody code{background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent);padding:1px 5px;border-radius:4px}',
+    '#gsPeek .kbp-head{font:12px/1.8;color:color-mix(in srgb,var(--text,#0f172a) 62%,transparent);margin:0 0 8px}',
+    '.kbp-bar{display:flex;align-items:center;gap:8px;margin:0 0 10px;font:13px/1 system-ui,"PingFang SC","Microsoft YaHei"}',
+    '.kbp-btn{border:1px solid var(--line,#d7dee9);background:var(--card,#fff);color:var(--text,#334155);border-radius:8px;padding:7px 12px;cursor:pointer;text-decoration:none;font-size:13px}',
+    '.kbp-btn:hover{background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent)}',
+    '.kbp-no{font-variant-numeric:tabular-nums;color:var(--text,#475569);min-width:64px;text-align:center}',
+    '.kbp-in{width:64px;border:1px solid var(--line,#d7dee9);border-radius:8px;padding:6px 8px;font:13px/1 inherit;background:var(--card,#fff);color:inherit}',
+    '.kbp-sp{flex:1}',
+    '.kbp-lbl{color:color-mix(in srgb,var(--text,#0f172a) 55%,transparent)}',
+    '.kbp-wrap{border:1px solid var(--line,#e2e8f0);border-radius:12px;overflow:auto;max-height:60vh;background:#fff;-webkit-overflow-scrolling:touch}',
+    '.kbp-img{display:block;width:100%;height:auto}',
+    '.kbp-txt{margin-top:12px;font-size:13px;color:color-mix(in srgb,var(--text,#0f172a) 62%,transparent)}',
+    '.kbp-txt summary{cursor:pointer;padding:6px 0}'
   ].join('\n');
 
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
@@ -303,19 +315,44 @@
     peek.classList.add('on');
     if (item.kind === 'kuangbei') {
       var kbp = window.__KBACK || {};
-      var href = '';
-      if (kbp.pdf) href = encodeURI(kbp.pdf);
-      else if (kbp.pdfLocal) href = 'file:///' + encodeURI(String(kbp.pdfLocal).replace(/\\/g, '/').replace(/^\/+/, ''));
-      var pg = item.p0 ? ('#page=' + item.p0) : '';
-      var head = '<div style="font:12px/1.8;color:#64748b;margin:0 0 10px">'
+      var total = kbp.pages || 50;
+      var p0 = Math.max(1, Math.min(total, (item.p0 | 0) || 1));
+      var pdfHref = '';
+      if (kbp.pdf) pdfHref = encodeURI(kbp.pdf);
+      else if (kbp.pdfLocal) pdfHref = 'file:///' + encodeURI(String(kbp.pdfLocal).replace(/\\/g, '/').replace(/^\/+/, ''));
+      var kbSrc = function (p) { return encodeURI('资料/狂背/页/p' + ('00' + p).slice(-3) + '.webp'); };
+      var head = '<div class="kbp-head">'
         + esc2((item.g ? item.g + ' · ' : '') + item.t) + (item.page ? ' · ' + esc2(item.page) : '') + '</div>';
-      if (href) {
-        cardBody.innerHTML = '<p style="margin:0 0 10px"><a style="display:inline-block;background:#2f6fed;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;text-decoration:none" href="' + href + pg + '" target="_blank" rel="noopener">📄 打开狂背 PDF（第 ' + item.p0 + ' 页）</a></p>'
-          + head + mdToHtml(item.x);
-      } else {
-        cardBody.innerHTML = '<div style="font:12px/1.8;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:0 0 10px">还没挂上 PDF 文件（' + (item.page ? esc2(item.page) : '原书页码未知') + '）。把 PDF 放进站点 pdf/ 目录后，这里就会出现「打开 PDF」按钮。</div>'
-          + head + mdToHtml(item.x);
-      }
+      cardBody.innerHTML = head
+        + '<div class="kbp-bar">'
+        + '<button class="kbp-btn" data-kbp="-1" title="上一页（←）">‹</button>'
+        + '<span class="kbp-no" id="kbpNo">' + p0 + ' / ' + total + '</span>'
+        + '<button class="kbp-btn" data-kbp="1" title="下一页（→）">›</button>'
+        + '<span class="kbp-sp"></span>'
+        + '<span class="kbp-lbl">跳至</span>'
+        + '<input class="kbp-in" id="kbpIn" type="number" min="1" max="' + total + '" value="' + p0 + '" title="输入页码后按回车">'
+        + '<span class="kbp-lbl">页</span>'
+        + (pdfHref ? '<a class="kbp-btn kbp-pdf" href="' + pdfHref + '#page=' + p0 + '" target="_blank" rel="noopener">📄 整本 PDF</a>' : '')
+        + '</div>'
+        + '<div class="kbp-wrap"><img id="kbpImg" class="kbp-img" alt="狂背 原书第 ' + p0 + ' 页" src="' + kbSrc(p0) + '"></div>'
+        + (item.x ? '<details class="kbp-txt"><summary>文字版（可复制）</summary>' + mdToHtml(item.x) + '</details>' : '');
+      var img2 = cardBody.querySelector('#kbpImg'), no2 = cardBody.querySelector('#kbpNo');
+      var inp2 = cardBody.querySelector('#kbpIn'), pdfA2 = cardBody.querySelector('.kbp-pdf');
+      var paint = function (p) {
+        p = Math.max(1, Math.min(total, parseInt(p, 10) || 1));
+        img2.src = kbSrc(p); img2.alt = '狂背 原书第 ' + p + ' 页';
+        no2.textContent = p + ' / ' + total; inp2.value = p;
+        if (pdfA2) pdfA2.href = pdfHref + '#page=' + p;
+        cardBody.scrollTop = 0;
+      };
+      cardBody.querySelectorAll('[data-kbp]').forEach(function (b) {
+        b.onclick = function () { paint((parseInt(inp2.value, 10) || p0) + (parseInt(b.getAttribute('data-kbp'), 10) || 0)); };
+      });
+      img2.title = '点一下在新标签页看大图';
+      img2.style.cursor = 'zoom-in';
+      img2.onclick = function () { window.open(img2.src, '_blank', 'noopener'); };
+      inp2.onchange = function () { paint(inp2.value); };
+      inp2.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); paint(inp2.value); inp2.blur(); } };
       return;
     }
     if (item.src === '资料库') {

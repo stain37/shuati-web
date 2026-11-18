@@ -36,25 +36,31 @@
     var st = document.createElement('style');
     st.id = 'kbqCSS';
     st.textContent = [
-      '#kbqBar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #e6eaf0;background:#fff;position:relative;z-index:5;font:14px/1.5 system-ui,"PingFang SC","Microsoft YaHei"}',
-      '#kbqBar .kbq-tab{padding:6px 10px;border-radius:8px;cursor:pointer;color:#64748b}',
-      '#kbqBar .kbq-tab.on{background:#eef4ff;color:#1d4ed8;font-weight:600}',
+      /* 全部走主题变量：以前这里是写死的白底 + 蓝按钮，深色/花哨皮肤下就是一条刺眼的白条 */
+      '#kbqBar{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:0 0 2px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--card) 86%,transparent);backdrop-filter:blur(8px);position:relative;z-index:5;font:14px/1.5 system-ui,"PingFang SC","Microsoft YaHei";color:var(--text)}',
+      '#kbqBar .kbq-tab{padding:6px 14px;border-radius:999px;cursor:pointer;color:color-mix(in srgb,var(--text) 62%,transparent);border:1px solid transparent;transition:background .15s,color .15s}',
+      '#kbqBar .kbq-tab:hover{background:color-mix(in srgb,var(--text) 7%,transparent)}',
+      '#kbqBar .kbq-tab.on{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 32%,transparent);font-weight:600}',
       '#kbqBar .kbq-sp{flex:1}',
-      '#kbqBar label{display:flex;align-items:center;gap:5px;color:#64748b;font-size:13px}',
-      '#kbqBar button{padding:6px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:13px;cursor:pointer}',
-      '#kbqBar #kbqMore{background:#f1f5f9;color:#475569;padding:6px 12px}',
-      '#kbqBar{position:relative}',
-      '.kbq-menu{position:absolute;right:10px;top:44px;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 14px 40px rgba(15,23,42,.18);padding:6px;display:none;z-index:30}',
+      '#kbqBar label{display:flex;align-items:center;gap:5px;color:color-mix(in srgb,var(--text) 62%,transparent);font-size:13px;cursor:pointer}',
+      '#kbqBar button{padding:6px 14px;border:1px solid var(--primary);border-radius:999px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer}',
+      '#kbqBar button:hover{filter:brightness(.94)}',
+      '#kbqBar #kbqExp,#kbqBar #kbqMore{background:transparent;border-color:var(--line);color:var(--text)}',
+      '#kbqBar #kbqExp:hover,#kbqBar #kbqMore:hover{background:color-mix(in srgb,var(--text) 8%,transparent)}',
+      '.kbq-menu{position:absolute;right:10px;top:46px;min-width:160px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(15,23,42,.18);padding:6px;display:none;z-index:30}',
       '.kbq-menu.on{display:block}',
-      '.kbq-menu div{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:#334155}',
-      '.kbq-menu div:hover{background:#f1f5f9}',
-      '#kbqPane{display:none;background:#fff}',
+      '.kbq-menu div{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text)}',
+      '.kbq-menu div:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}',
+      '#kbqPane{display:none;background:transparent}',
       'body.kbq-doc #view{position:relative}',
       'body.kbq-doc #view > *:not(#kbqBar):not(#kbqPane){display:none!important}',
       'body.kbq-doc #kbqPane{display:block}',
-      '#kbqPane .kbq-card{margin:14px;background:#fff;border:1px solid #e8edf4;border-radius:14px;box-shadow:0 6px 24px rgba(15,23,42,.06);padding:6px 6px 20px}',
-      '#kbqPane .kbq-inner{min-height:60vh;padding:6px 10px}',
-      '.bn-container{font-size:15px}'
+      '#kbqPane .kbq-card{margin:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card,0 6px 24px rgba(15,23,42,.06));padding:6px 6px 20px}',
+      '#kbqPane .kbq-inner{min-height:60vh;padding:6px 10px;color:var(--text)}',
+      /* BlockNote 自带白底，深色皮肤下要把画布改成透明 */
+      '.bn-container,.bn-editor,.bn-block-content{background:transparent!important;color:var(--text)}',
+      '.bn-container{font-size:15px}',
+      '.bn-side-menu button,.bn-formatting-toolbar,.bn-suggestion-menu{background:var(--card)!important;color:var(--text)!important;border-color:var(--line)!important}'
     ].join('\n');
     document.head.appendChild(st);
   }
