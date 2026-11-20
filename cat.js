@@ -2392,8 +2392,27 @@
     return new Blob(parts.concat(central, [new Uint8Array(end)]), { type: 'application/zip' });
   }
 
-  function qsMarkdown(bank) {
+  /* 导出统计行：作答次数 / 错误次数 / 正确率。
+     只在用户选了「带上统计」时才有；没做过的题写「还没做过」，不要写 0%。 */
+  function qsStatLine(bank, q) {
+    var a = null;
+    try { a = ANS[kOf(bank, q)]; } catch (e) { a = null; }
+    if (!a || !a.tries) return '统计：还没做过';
+    var tries = +a.tries || 0, wrong = +a.wrong || 0;
+    var line = '统计：作答 ' + tries + ' 次 · 错 ' + wrong + ' 次 · 正确率 ' + rateOf(a) + '%';
+    if (a.fixed) line += ' · 已订正';
+    if (a.grade) line += ' · 自评' + a.grade;
+    if (a.ts) {
+      var d = new Date(a.ts);
+      line += ' · 最近 ' + d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+    return line;
+  }
+
+  function qsMarkdown(bank, opt) {
+    var stat = !!(opt && opt.stat);
     var out = ['# ' + (bank.title || '题库'), ''];
+    if (stat) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
     (bank.questions || []).forEach(function (q, i) {
       var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
       out.push('## ' + (i + 1) + '. ' + stem);
@@ -2401,6 +2420,7 @@
       var ans = q.answer || q.ans || q.correct || '';
       if (Array.isArray(ans)) ans = ans.join('');
       if (ans) out.push('答案：' + ans);
+      if (stat) out.push(qsStatLine(bank, q));
       var ex = q.explain || q.exp || q.analysis || '';
       if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
       out.push('');
@@ -2410,24 +2430,45 @@
 
   function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
 
-  function exportCatQs(id) {
+  function exportCatQs(id, opt) {
     var c = byId(id); if (!c) return;
     var ids = [id].concat(descIds(id));
     var inTree = {}; ids.forEach(function (x) { inTree[x] = 1; });
     var banks = bankList().filter(function (b) { return b.cat != null && inTree[b.cat] && (b.questions || []).length; });
     if (!banks.length) { T('这个目录下还没有题目'); return; }
+    if (!opt) {
+      /* 先问一句要不要带统计——用户在系统分类下导出时明确要这个开关 */
+      var nQ = banks.reduce(function (s2, b) { return s2 + (b.questions || []).length; }, 0);
+      var nDone = 0;
+      banks.forEach(function (b) {
+        (b.questions || []).forEach(function (q) { try { var a = ANS[kOf(b, q)]; if (a && a.tries) nDone++; } catch (e) {} });
+      });
+      BFUI.pick({
+        title: '导出「' + c.title + '」里的题目',
+        desc: banks.length + ' 个题库 · ' + nQ + ' 题' + (nDone ? ('　·　其中 ' + nDone + ' 题有作答记录') : '　·　还没有作答记录'),
+        items: [
+          { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: '每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone ? '' : '（现在还没有作答记录，导出来都是「还没做过」）') }
+        ]
+      }).then(function (v) {
+        if (!v) return;
+        exportCatQs(id, { stat: v === 'stat' });
+      });
+      return;
+    }
+    var stat = !!opt.stat;
     var top = safeName(c.title);
     var files = [];
     banks.forEach(function (b) {
       var sub = safeName(b.title || '题库');
-      files.push({ name: top + '/' + sub + '.md', text: qsMarkdown(b) });
+      files.push({ name: top + '/' + sub + '.md', text: qsMarkdown(b, { stat: stat }) });
     });
     var blob = zipStore(files);
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = top + '-题目.zip';
+    a.download = top + (stat ? '-题目（含统计）.zip' : '-题目.zip');
     document.body.appendChild(a); a.click(); a.remove();
-    T('已导出 ' + banks.length + ' 个题库');
+    T('已导出 ' + banks.length + ' 个题库' + (stat ? '（含作答统计）' : ''));
   }
 
   function catMenu(id) {
@@ -2446,7 +2487,7 @@
         + (treeBanks.length > direct ? '　·　含子目录共 ' + treeBanks.length + ' 个题库' : ''),
       items: [
         { value: 'open', label: '打开这个目录' },
-        { value: 'exportqs', label: '⬇ 导出该目录下所有题目', note: treeBanks.length + ' 个题库 / ' + treeBanks.reduce(function (s, b) { return s + (b.questions || []).length; }, 0) + ' 题（导出为 ZIP，内含每个题库一个 .md）' },
+        { value: 'exportqs', label: '⬇ 导出该目录下所有题目', note: treeBanks.length + ' 个题库 / ' + treeBanks.reduce(function (s, b) { return s + (b.questions || []).length; }, 0) + ' 题（ZIP，每个题库一个 .md；可勾选带上错误次数与正确率）' },
         { value: 'aichat', label: '💬 让 AI 分析这个目录', note: '把这个目录（含子目录）里的题库一起分析' },
         { value: 'rename', label: '重命名' },
         { value: 'newsub', label: '在这里新建子目录' },

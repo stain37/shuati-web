@@ -2,8 +2,13 @@
 (function () {
   'use strict';
   var ITEMS = [], READY = false, LOADING = null;
-  var SUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '西综', '狂背', '我的笔记'];
+  var SUBJ = ['全部', '题目', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '西综', '狂背', '我的笔记'];
   var CUR_SUBJ = '全部';
+  /* 搜题文字的范围：题干 / 选项 / 解析 / 全部（只对「题目」这类条目生效） */
+  var QSCOPE = 'all';
+  var MODE_CHIPS = [['all', '全部'], ['stem', '题干'], ['opts', '选项'], ['exp', '解析']];
+  var AIF = false;                    /* ✨ AI 模糊相似度（把本地前 30 条交给模型重排） */
+  var QSEEN = {}, QREADY = false, AI_TOKEN = 0;
 
   /* ---------- 数据 ---------- */
   function subjectOf(s) {
@@ -120,12 +125,60 @@
     return SHARD_JOB;
   }
 
+  /* ---------- 题目（自建 + 内置题库里的题干/选项/解析） ----------
+     题库是 app.js 的 baseBanks()（IndexedDB + 内置）；这里只做一层「能搜」的索引，
+     正文分三段存（_stem/_opts/_exp），搜索时按 QSCOPE 取其中一段或全部。 */
+  function loadQuestions() {
+    if (QREADY) return;
+    QREADY = true;
+    var banks = [];
+    try { banks = (typeof baseBanks === 'function') ? baseBanks() : (window.__BANKS__ || []); }
+    catch (e) { banks = []; }
+    (banks || []).forEach(function (b) {
+      if (!b || !b.questions) return;
+      for (var i = 0; i < b.questions.length; i++) {
+        var q = b.questions[i];
+        if (!q) continue;
+        var qid = (q.id == null ? i : q.id);
+        var id = 'q:' + b.id + ':' + qid;
+        if (QSEEN[id]) continue;
+        QSEEN[id] = 1;
+        var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
+        if (!stem) continue;
+        var opts = (q.options || []).map(function (o, k) {
+          return 'ABCDEFGH'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim();
+        }).join('\n');
+        var exp = String(q.explain || q.exp || q.analysis || '').replace(/\s+/g, ' ').trim();
+        var ans = q.answer || q.ans || q.correct || '';
+        if (Array.isArray(ans)) ans = ans.join('');
+        ITEMS.push({
+          id: id, t: stem.slice(0, 60), s: subjectOf(b.title || b.id), g: b.title || '',
+          x: '', src: '题目', kind: 'q', bank: b.id, qid: qid, no: i + 1,
+          _stem: stem, _opts: opts, _exp: exp, _ans: String(ans || '')
+        });
+      }
+    });
+  }
+  /* 按当前范围取这条要参与匹配/摘要的文字 */
+  function qText(it) {
+    if (!it || it.kind !== 'q') return it ? it.x : '';
+    if (QSCOPE === 'stem') return it._stem;
+    if (QSCOPE === 'opts') return it._opts;
+    if (QSCOPE === 'exp') return it._exp;
+    if (it._xall == null || it._xallScope !== QSCOPE) {
+      it._xall = (it._stem || '') + '\n' + (it._opts || '') + '\n' + (it._exp || '');
+      it._xallScope = QSCOPE;
+    }
+    return it._xall;
+  }
+
   function ensureData() {
     if (READY) return Promise.resolve();
     if (LOADING) return LOADING;
     LOADING = loadKuangs().then(function () {
       loadKbDocs();
       pushNoteItems();
+      loadQuestions();
       READY = true;
       /* 西综分片在后台到（830KB），到了补进结果，不耽误开窗 */
       loadKbShard().then(function () { loadKbDocs(); try { run(); } catch (e) {} });
@@ -147,7 +200,7 @@
     return n ? inter / n : 0;
   }
   function score(item, q, ql) {
-    var t = item.t.toLowerCase(), x = item.x.toLowerCase();
+    var t = item.t.toLowerCase(), x = String(qText(item) || '').toLowerCase();
     var s = 0;
     if (t.indexOf(ql) >= 0) s += 80;
     var idx = x.indexOf(ql);
@@ -159,7 +212,7 @@
     return s;
   }
   function snippet(item, ql, n) {
-    var x = item.x, i = x.toLowerCase().indexOf(ql);
+    var x = String(qText(item) || ''), i = x.toLowerCase().indexOf(ql);
     if (i < 0) i = 0;
     var a = Math.max(0, i - Math.floor(n / 3)), b = Math.min(x.length, a + n);
     var s = x.slice(a, b).replace(/\s+/g, ' ');
@@ -174,9 +227,15 @@
     '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:var(--card,#fff);color:var(--text,#0f172a);border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
     '#gsIn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line,#eef2f7)}',
     '#gsQ{flex:1;border:0;outline:0;font-size:16px;background:transparent;color:inherit}',
-    '#gsSub{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
-    '#gsSub span{padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent);color:var(--text,#475569);cursor:pointer;font-size:12px}',
+    '#gsSub,#gsMode{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
+    '#gsMode{padding-top:6px;padding-bottom:8px;align-items:center}',
+    '#gsSub span,#gsMode span{padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent);color:var(--text,#475569);cursor:pointer;font-size:12px}',
     '#gsSub span.on{background:var(--primary,#2563eb);color:#fff}',
+    '#gsMode span.on{background:var(--primary,#2563eb);color:#fff}',
+    '#gsMode span.ai{background:color-mix(in srgb,var(--primary,#2563eb) 16%,transparent);color:var(--primary,#2563eb);font-weight:600}',
+    '#gsMode span.ai.on{background:var(--primary,#2563eb);color:#fff}',
+    '#gsMode i{font-style:normal;color:color-mix(in srgb,var(--text,#0f172a) 45%,transparent);font-size:11px;margin-left:2px}',
+    '#gsMode .sp{flex:1}',
     '#gsList{overflow:auto;padding:6px}',
     '.gsItem{padding:10px 12px;border-radius:10px;cursor:pointer}', '.gsItem:hover{background:color-mix(in srgb,var(--primary,#2563eb) 10%,transparent)}',
     '.gsItem b{font-weight:600}', '.gsItem i{font-style:normal;color:color-mix(in srgb,var(--text,#0f172a) 55%,transparent);font-size:12px;margin-left:6px}',
@@ -227,7 +286,7 @@
     return html || '<p style="color:#94a3b8">（空白）</p>';
   }
 
-  var wrap, box, input, sub, list, peek, card, cardTitle, cardBody;
+  var wrap, box, input, sub, mode, list, peek, card, cardTitle, cardBody;
 
   function build() {
     if (document.getElementById('gsWrap')) return;
@@ -279,7 +338,7 @@
     wrap = el('div'); wrap.id = 'gsWrap';
     box = el('div'); box.id = 'gsBox';
     var row = el('div'); row.id = 'gsIn';
-    input = el('input'); input.id = 'gsQ'; input.placeholder = '搜索笔记 / 考点 / 讲义…（模糊匹配）';
+    input = el('input'); input.id = 'gsQ'; input.placeholder = '搜索笔记 / 考点 / 讲义 / 题目…（模糊匹配，Ctrl+K）';
     var x = el('span', null, '✕'); x.style.cursor = 'pointer'; x.style.color = '#94a3b8'; x.onclick = close;
     row.appendChild(input); row.appendChild(x);
     sub = el('div'); sub.id = 'gsSub';
@@ -288,8 +347,28 @@
       c.onclick = function () { CUR_SUBJ = s; Array.prototype.forEach.call(sub.children, function (n) { n.classList.remove('on'); }); c.classList.add('on'); run(); };
       sub.appendChild(c);
     });
+    /* 第二排：题目的搜索范围（题干/选项/解析/全部）+ AI 模糊相似度开关 */
+    mode = el('div'); mode.id = 'gsMode';
+    MODE_CHIPS.forEach(function (pair) {
+      var c = el('span', QSCOPE === pair[0] ? 'on' : '', pair[1]);
+      c.setAttribute('data-scope', pair[0]);
+      c.onclick = function () {
+        QSCOPE = pair[0];
+        Array.prototype.forEach.call(mode.querySelectorAll('span[data-scope]'), function (n) { n.classList.remove('on'); });
+        c.classList.add('on');
+        run();
+      };
+      mode.appendChild(c);
+    });
+    var aiChip = el('span', 'ai' + (AIF ? ' on' : ''), '✨ AI 模糊相似');
+    aiChip.id = 'gsAi';
+    aiChip.title = '把本地匹配的前 30 条交给你配的 AI 再排一次（更懂同义说法；没配 AI 就自动退回本地匹配）';
+    aiChip.onclick = function () { AIF = !AIF; aiChip.classList.toggle('on', AIF); run(); };
+    var sp = el('span', 'sp'); sp.style.background = 'transparent';
+    var hint = el('i', null, ''); hint.id = 'gsAiHint';
+    mode.appendChild(sp); mode.appendChild(hint); mode.appendChild(aiChip);
     list = el('div'); list.id = 'gsList';
-    box.appendChild(row); box.appendChild(sub); box.appendChild(list);
+    box.appendChild(row); box.appendChild(sub); box.appendChild(mode); box.appendChild(list);
     wrap.appendChild(box);
     wrap.onclick = function (e) { if (e.target === wrap) close(); };
     document.body.appendChild(wrap);
@@ -353,6 +432,35 @@
     cardBody.innerHTML = mdToHtml(item.x);
     cardBody.scrollTop = 0;
     peek.classList.add('on');
+    if (item.kind === 'q') {
+      cardTitle.innerHTML = '<span>' + esc2(item.g || '题目') + ' · 第 ' + (item.no || '') + ' 题</span>'
+        + '<i style="font-style:normal;color:#94a3b8;font-size:12px">题目 · ' + esc2(item.s || '') + '</i><span>✕</span>';
+      cardTitle.querySelector('span:last-child').onclick = closePeek;
+      var optHtml = String(item._opts || '').split('\n').filter(function (x) { return x.trim(); })
+        .map(function (ln) { return '<div style="margin:3px 0">' + esc2(ln) + '</div>'; }).join('');
+      cardBody.innerHTML = '<div style="font-weight:600;font-size:16px;line-height:1.7;margin:0 0 12px">' + esc2(item._stem) + '</div>'
+        + (optHtml ? '<div style="margin:0 0 14px;color:color-mix(in srgb,var(--text,#0f172a) 82%,transparent)">' + optHtml + '</div>' : '')
+        + (item._ans ? '<p><b>答案：</b>' + esc2(item._ans) + '</p>' : '')
+        + (item._exp ? '<p style="margin-bottom:4px"><b>解析：</b></p>' + mdToHtml(item._exp) : '')
+        + '<div class="kbp-bar" style="margin-top:16px">'
+        + '<button class="kbp-btn" id="qOpen">💡 在答题页打开这道题</button>'
+        + '<button class="kbp-btn" id="qCopy">📋 复制这道题</button>'
+        + '</div>';
+      var qo = cardBody.querySelector('#qOpen');
+      if (qo) qo.onclick = function () {
+        closePeek();
+        if (window.openQuestionAt) window.openQuestionAt(item.bank, item.qid);
+        else location.hash = '#/bank/' + encodeURIComponent(item.bank);
+      };
+      var qc = cardBody.querySelector('#qCopy');
+      if (qc) qc.onclick = function () {
+        var txt = item._stem + '\n' + String(item._opts || '') + '\n' + (item._ans ? ('答案：' + item._ans + '\n') : '') + (item._exp ? ('解析：' + item._exp) : '');
+        try { navigator.clipboard.writeText(txt); } catch (e) {}
+        qc.textContent = '📋 已复制';
+      };
+      cardBody.scrollTop = 0;
+      return;
+    }
     if (item.kind === 'kuangbei') {
       var kbp = window.__KBACK || {};
       var total = kbp.pages || 50;
@@ -464,50 +572,109 @@
     openNote(item);
   }
 
-  function run() {
-    if (!list) return;
-    var q = (input.value || '').trim().toLowerCase();
-    var res = ITEMS.filter(function (it) {
-      if (CUR_SUBJ === '我的笔记') return it.src === '我的笔记';
-      if (CUR_SUBJ === '狂背') return it.src === '狂背';
-      if (CUR_SUBJ !== '全部' && it.s !== CUR_SUBJ) return false;
-      return true;
+  /* AI 重排：把本地前 30 条交给模型按「语义相似」挑一遍。
+     没配 AI / 报错就当没发生，调用方继续用本地结果。 */
+  function aiRerank(q, items, cb) {
+    if (!q || !items || !items.length || typeof window.aiChat !== 'function') { cb(null); return; }
+    var top = items.slice(0, 30);
+    var lines = top.map(function (it, i) {
+      var body = String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 150);
+      return (i + 1) + ' | ' + (it.kind === 'q' ? '题目' : it.src) + ' | ' + it.t + ' | ' + body;
     });
-    if (q) {
-      res = res.map(function (it) { return { it: it, s: score(it, q, q) }; })
-        .filter(function (o) { return o.s > 0; })
-        .sort(function (a, b) { return b.s - a.s; })
-        .slice(0, 60).map(function (o) { return o.it; });
-    } else {
-      res = res.slice(0, 30);
-    }
+    var sys = '你是检索重排器。用户给一句检索意图和候选清单，你只输出最相关候选的编号，用半角逗号分隔，按相关度从高到低，最多 15 个；没有相关的就只输出 0。不要解释。';
+    var usr = '检索意图：' + q + '\n候选（编号 | 类型 | 标题 | 正文）：\n' + lines.join('\n');
+    var done = false;
+    var finish = function (ord) { if (done) return; done = true; cb(ord); };
+    var t = setTimeout(function () { finish(null); }, 12000);
+    try {
+      window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }], null, null, { stream: false, maxTokens: 160 })
+        .then(function (txt) {
+          clearTimeout(t);
+          var nums = String(txt || '').split(/[^0-9]+/).map(function (x) { return parseInt(x, 10); })
+            .filter(function (n) { return n >= 1 && n <= top.length; });
+          if (!nums.length) { finish(null); return; }
+          var seen = {}, out = [];
+          nums.forEach(function (n) { if (seen[n]) return; seen[n] = 1; out.push(top[n - 1]); });
+          top.forEach(function (it) { if (out.indexOf(it) < 0) out.push(it); });
+          finish(out);
+        })
+        .catch(function () { clearTimeout(t); finish(null); });
+    } catch (e) { clearTimeout(t); finish(null); }
+  }
+
+  function paintList(res, aiOrdered) {
     list.innerHTML = '';
     if (CUR_SUBJ === '我的笔记') {
       var bar = el('div', 'gsItem');
-      bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid #f1f5f9';
+      bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;position:sticky;top:0;background:var(--card,#fff);z-index:2;border-bottom:1px solid var(--line,#f1f5f9)';
       bar.innerHTML = '<b style="font-size:13px">我的笔记 · ' + res.length + ' 篇</b><span style="flex:1"></span>';
       var add = el('span', null, '＋ 新建笔记');
-      add.style.cssText = 'background:#2563eb;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer';
+      add.style.cssText = 'background:var(--primary,#2563eb);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer';
       add.onclick = function (e) { e.stopPropagation(); newNote(); };
       bar.appendChild(add);
       list.appendChild(bar);
     }
     if (!res.length) {
-      list.appendChild(el('div', null, '<div id="gsEmpty">' + (READY ? '还没有笔记，点上面的「＋ 新建笔记」写一篇' : '正在加载笔记…') + '</div>'));
+      var msg = READY ? '没找到相关的笔记 / 考点 / 题目，换个词试试（可以只搜题干或只搜解析）' : '正在加载…';
+      list.appendChild(el('div', null, '<div id="gsEmpty">' + msg + '</div>'));
       return;
     }
     res.forEach(function (it) {
       var d = el('div', 'gsItem');
       var note = it.kind === 'tag' || it.kind === 'doc';
-      d.innerHTML = '<b>' + esc2(it.t) + '</b><i>' + esc2(it.src + (it.page ? ' · ' + it.page : '')) + '</i>'
+      var q0 = (input.value || '').trim().toLowerCase();
+      var meta = it.kind === 'q'
+        ? ('题目 · ' + (it.g || '') + ' · 第 ' + it.no + ' 题')
+        : (it.src + (it.page ? ' · ' + it.page : ''));
+      var body = q0 ? snippet(it, q0, 100) : String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 100);
+      d.innerHTML = '<b>' + esc2(it.t) + '</b><i>' + esc2(meta) + '</i>'
         + (note ? '<i style="float:right;color:#ef4444;cursor:pointer;font-size:12px" data-del="1">删除</i>' : '')
-        + '<p>' + esc2(q ? snippet(it, q, 90) : it.x.replace(/\s+/g, ' ').slice(0, 90)) + '</p>';
+        + (aiOrdered && it.kind !== 'q' ? '' : '')
+        + '<p>' + esc2(body) + '</p>';
       d.onclick = function (e) {
         if (e.target && e.target.getAttribute && e.target.getAttribute('data-del')) { delNote(it, e); return; }
         if (note) { openNote(it); return; }
         openPeek(it);
       };
       list.appendChild(d);
+    });
+  }
+
+  function run() {
+    if (!list) return;
+    var hint = document.getElementById('gsAiHint');
+    var q = (input.value || '').trim().toLowerCase();
+    var base = ITEMS.filter(function (it) {
+      if (CUR_SUBJ === '我的笔记') return it.src === '我的笔记';
+      if (CUR_SUBJ === '狂背') return it.src === '狂背';
+      if (CUR_SUBJ === '题目') return it.kind === 'q';
+      if (CUR_SUBJ !== '全部' && it.s !== CUR_SUBJ) return false;
+      /* 「全部」下不带关键词时不铺题目（几千条太吵） */
+      return true;
+    });
+    if (!q) {
+      AI_TOKEN++;
+      if (hint) hint.textContent = '';
+      var only = base.filter(function (it) { return it.kind !== 'q' || CUR_SUBJ === '题目'; });
+      paintList(only.slice(0, 30), false);
+      return;
+    }
+    var res = base.map(function (it) { return { it: it, s: score(it, q, q) }; })
+      .filter(function (o) { return o.s > 0; })
+      .sort(function (a, b) { return b.s - a.s; })
+      .slice(0, 60).map(function (o) { return o.it; });
+    paintList(res, false);
+    if (!AIF) { AI_TOKEN++; if (hint) hint.textContent = ''; return; }
+    var token = ++AI_TOKEN;
+    if (hint) hint.textContent = 'AI 正在重排…';
+    aiRerank(q, res, function (ord) {
+      if (token !== AI_TOKEN) return;
+      if (!ord) {
+        if (hint) hint.textContent = (typeof window.aiChat === 'function' ? 'AI 没给出结果，用本地匹配' : '还没配 AI，用本地匹配');
+        return;
+      }
+      if (hint) hint.textContent = 'AI 已按语义重排';
+      paintList(ord, true);
     });
   }
 

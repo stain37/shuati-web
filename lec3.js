@@ -473,8 +473,11 @@
   function pinNow() {
     var r = putBind(CUR.src, CUR.p);
     if (!r) return;
-    CAND = []; var alt = $('#lecAlt'); if (alt) alt.style.display = 'none';
-    toast(r.dup ? ('这页已经绑过了（共 ' + r.total + ' 页）') : ('已绑定第 ' + r.item.p + ' 页（这题共 ' + r.total + ' 页）'));
+    /* 绑定一页**不清候选**：这道题常常要绑好几页（不同讲义 / 同一份的不同页），
+       候选清单留着，用户接着点「候选」挑下一页再「就用这页」。
+       只有重新「定位到这题」才会换掉这份候选。 */
+    try { altBtn(CAND2.length); } catch (e) {}
+    toast(r.dup ? ('这页已经绑过了（共 ' + r.total + ' 页）') : ('已绑定第 ' + r.item.p + ' 页（这题共 ' + r.total + ' 页）· 候选还在，可接着绑别的页'));
     paintPin(); paintBinds();
   }
   function goBindNow(i) {
@@ -1902,10 +1905,9 @@
         toast('这题已绑过讲义页（想重新自动定位，先点「解绑」）');
         return;
       }
-      /* 用户又点了一次「定位到这题」：先解绑再重新找，不然这里会一直挡着，
-         看起来就是「定位过一次以后再也点不动」。 */
-      delBind();
-      toast('已解绑旧页码，重新定位…');
+      /* 用户又点了一次「定位到这题」：只重新找候选，**不动已有绑定**
+         （以前这里 delBind() 会把这道题绑过的所有页全删掉——绑几页就丢几页）。 */
+      toast('重新定位（已绑的 ' + getBinds().length + ' 页保留着，可继续绑别的页）…');
     }
     var q = questionText();
     if (normText(q).length < 8) { toast('这题文字太少，没法定位'); return; }

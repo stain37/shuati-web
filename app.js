@@ -2027,6 +2027,27 @@ function baseBanks() { return allBanks().filter(b => !b.paper); }
 
 /* 画中画小窗：把父窗口内存里的临时卷（每日复习 / 套卷）塞进小窗那份文档里。
    小窗是独立文档，看不到父窗口的 LIVE_PAPER，只能靠这条注入。 */
+/* 从别处（搜索 / 知识库）跳到某道题：先把选中状态摆好再进答题页，
+   不然 renderQuiz 会按题池重新挑一道，看起来就是「跳错题」。
+   顺手把「题库来源」筛选清掉，免得那题正好被筛在外面。 */
+window.openQuestionAt = function (bankId, qid) {
+  try {
+    var b = bankById(bankId);
+    if (!b) { toast('这个题库不在本机：' + bankId); return false; }
+    if (qid != null && String(qid) !== '') {
+      var hit = (b.questions || []).some(function (q) { return q && String(q.id) === String(qid); });
+      if (!hit) { toast('这道题已经不在题库里了（可能被删过）'); return false; }
+      QZ.cur = qid;
+    }
+    QZ.bankId = b.id;
+    QZ.srcTag = ''; QZ.srcSel = null; QZ.srcOpen = false;
+    if (!QZ.pending) QZ.pending = {};
+    delete QZ.pending[b.id];
+    go('#/bank/' + encodeURIComponent(b.id));
+    return true;
+  } catch (e) { try { toast('打开这道题失败：' + (e && e.message ? e.message : e)); } catch (e2) {} return false; }
+};
+
 window.__PIP_BANK = function (id) { try { return bankById(id) || null; } catch (e) { return null; } };
 
 window.__PIP_INJECT = function (b) {
