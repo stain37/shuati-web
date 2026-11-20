@@ -2,13 +2,17 @@
 (function () {
   'use strict';
   var ITEMS = [], READY = false, LOADING = null;
-  var SUBJ = ['全部', '题目', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '西综', '狂背', '我的笔记'];
-  var CUR_SUBJ = '全部';
-  /* 搜题文字的范围：题干 / 选项 / 解析 / 全部（只对「题目」这类条目生效） */
+  /* 第一层：模块（来源大类）。「全部」不挂二级筛选，结果按来源折叠汇总。 */
+  var MODULES = ['全部', '题目', '讲义', '西综', '狂背', '我的笔记'];
+  var CUR_MOD = '全部';
+  var CUR_SUB = '全部';              /* 二级：科目（题目 / 讲义 各一套） */
+  var QSUBJ = ['全部', '内科', '外科', '病理', '生理', '生化', '政治', '人文', '其他'];
+  var LSUBJ = ['全部', '内科', '外科', '生理', '生化', '病理', '其他'];
+  /* 题目二级：搜题文字的范围：题干 / 选项 / 解析 / 全部 */
   var QSCOPE = 'all';
   var MODE_CHIPS = [['all', '全部'], ['stem', '题干'], ['opts', '选项'], ['exp', '解析']];
   var AIF = false;                    /* ✨ AI 模糊相似度（把本地前 30 条交给模型重排） */
-  var QSEEN = {}, QREADY = false, AI_TOKEN = 0;
+  var QSEEN = {}, QREADY = false, Q_SIG = '', AI_TOKEN = 0;
 
   /* ---------- 数据 ---------- */
   function subjectOf(s) {
@@ -128,9 +132,21 @@
   /* ---------- 题目（自建 + 内置题库里的题干/选项/解析） ----------
      题库是 app.js 的 baseBanks()（IndexedDB + 内置）；这里只做一层「能搜」的索引，
      正文分三段存（_stem/_opts/_exp），搜索时按 QSCOPE 取其中一段或全部。 */
+  /* 题库签名：自建题库是 IndexedDB 异步读进来的，第一次打开搜索时可能还没到；
+     所以每次打开都比一次签名，变了就重建题目索引（否则「题目」永远搜不到）。 */
+  function bankSig() {
+    var bs = [];
+    try { bs = (typeof baseBanks === 'function') ? baseBanks() : (window.__BANKS__ || []); }
+    catch (e) { bs = []; }
+    return (bs || []).map(function (b) { return (b && b.id) + ':' + ((b && b.questions) ? b.questions.length : 0); }).join('|');
+  }
   function loadQuestions() {
-    if (QREADY) return;
-    QREADY = true;
+    var sig = bankSig();
+    if (QREADY && sig === Q_SIG) return;
+    QREADY = true; Q_SIG = sig;
+    /* 重建：先把旧的题目条目摘掉，再重新扫一遍 */
+    for (var z = ITEMS.length - 1; z >= 0; z--) { if (ITEMS[z] && ITEMS[z].kind === 'q') ITEMS.splice(z, 1); }
+    QSEEN = {};
     var banks = [];
     try { banks = (typeof baseBanks === 'function') ? baseBanks() : (window.__BANKS__ || []); }
     catch (e) { banks = []; }
@@ -146,7 +162,11 @@
         var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
         if (!stem) continue;
         var opts = (q.options || []).map(function (o, k) {
-          return 'ABCDEFGH'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim();
+          var kk = (o && (o.k || o.key)) || 'ABCDEFGH'[k];
+          var tt = '';
+          if (o && typeof o === 'object') tt = (o.t != null ? o.t : (o.text != null ? o.text : (o.title != null ? o.title : '')));
+          else tt = (o == null ? '' : o);
+          return String(kk) + '. ' + String(tt).replace(/\s+/g, ' ').trim();
         }).join('\n');
         var exp = String(q.explain || q.exp || q.analysis || '').replace(/\s+/g, ' ').trim();
         var ans = q.answer || q.ans || q.correct || '';
@@ -227,13 +247,21 @@
     '#gsBox{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(720px,92vw);max-height:70vh;background:var(--card,#fff);color:var(--text,#0f172a);border-radius:16px;box-shadow:0 24px 80px rgba(15,23,42,.28);display:flex;flex-direction:column;overflow:hidden;font:14px/1.6 system-ui,"PingFang SC","Microsoft YaHei"}',
     '#gsIn{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line,#eef2f7)}',
     '#gsQ{flex:1;border:0;outline:0;font-size:16px;background:transparent;color:inherit}',
-    '#gsSub,#gsMode{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
-    '#gsMode{padding-top:6px;padding-bottom:8px;align-items:center}',
+    '#gsSub{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
+    '#gsMode{display:block;padding:8px 14px;border-bottom:1px solid var(--line,#f1f5f9)}',
+    '#gsMode .gsmr{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:3px 0}',
+    '#gsMode .gslbl{font-size:11px;color:color-mix(in srgb,var(--text,#0f172a) 45%,transparent);margin-right:2px}',
     '#gsSub span,#gsMode span{padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--text,#0f172a) 8%,transparent);color:var(--text,#475569);cursor:pointer;font-size:12px}',
     '#gsSub span.on{background:var(--primary,#2563eb);color:#fff}',
     '#gsMode span.on{background:var(--primary,#2563eb);color:#fff}',
     '#gsMode span.ai{background:color-mix(in srgb,var(--primary,#2563eb) 16%,transparent);color:var(--primary,#2563eb);font-weight:600}',
     '#gsMode span.ai.on{background:var(--primary,#2563eb);color:#fff}',
+    '#gsItem .gsim{font-style:normal;font-size:11px;margin-left:6px;padding:1px 5px;border-radius:6px;background:color-mix(in srgb,var(--primary,#2563eb) 14%,transparent);color:var(--primary,#2563eb)}',
+    '#gsList details.gsGrp{border-bottom:1px solid var(--line,#f1f5f9);padding:1px 0}',
+    '#gsList details.gsGrp>summary{cursor:pointer;padding:9px 12px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;list-style:none}',
+    '#gsList details.gsGrp>summary::-webkit-details-marker{display:none}',
+    '#gsList details.gsGrp>summary .gn{font-weight:400;font-size:12px;color:color-mix(in srgb,var(--text,#0f172a) 55%,transparent)}',
+    '#gsList details.gsGrp>summary .gt{margin-left:auto;font-weight:400;font-size:11px;color:color-mix(in srgb,var(--text,#0f172a) 45%,transparent)}',
     '#gsMode i{font-style:normal;color:color-mix(in srgb,var(--text,#0f172a) 45%,transparent);font-size:11px;margin-left:2px}',
     '#gsMode .sp{flex:1}',
     '#gsList{overflow:auto;padding:6px}',
@@ -342,33 +370,30 @@
     var x = el('span', null, '✕'); x.style.cursor = 'pointer'; x.style.color = '#94a3b8'; x.onclick = close;
     row.appendChild(input); row.appendChild(x);
     sub = el('div'); sub.id = 'gsSub';
-    SUBJ.forEach(function (s) {
-      var c = el('span', s === CUR_SUBJ ? 'on' : '', s);
-      c.onclick = function () { CUR_SUBJ = s; Array.prototype.forEach.call(sub.children, function (n) { n.classList.remove('on'); }); c.classList.add('on'); run(); };
+    MODULES.forEach(function (m) {
+      var c = el('span', m === CUR_MOD ? 'on' : '', m);
+      c.setAttribute('data-mod', m);
+      c.onclick = function () {
+        CUR_MOD = m; CUR_SUB = '全部';
+        Array.prototype.forEach.call(sub.children, function (n) { n.classList.remove('on'); });
+        c.classList.add('on');
+        buildMode(); run();
+      };
       sub.appendChild(c);
     });
-    /* 第二排：题目的搜索范围（题干/选项/解析/全部）+ AI 模糊相似度开关 */
+    var sp0 = el('span', 'sp'); sp0.style.background = 'transparent'; sp0.style.flex = '1'; sp0.style.cursor = 'default';
+    sub.appendChild(sp0);
+    var hintTop = el('i', null, ''); hintTop.id = 'gsAiHint'; hintTop.style.cssText = 'font-style:normal;font-size:11px;color:color-mix(in srgb,var(--text,#0f172a) 50%,transparent);align-self:center;margin-right:4px';
+    sub.appendChild(hintTop);
+    var aiTop = el('span', 'ai' + (AIF ? ' on' : ''), '✨ AI 相似度');
+    aiTop.id = 'gsAi';
+    aiTop.title = '用向量相似度排序（设置里填了「向量模型」就走 /embeddings；没填就用本地字符向量，不联网）';
+    aiTop.onclick = function () { AIF = !AIF; aiTop.classList.toggle('on', AIF); run(); };
+    sub.appendChild(aiTop);
     mode = el('div'); mode.id = 'gsMode';
-    MODE_CHIPS.forEach(function (pair) {
-      var c = el('span', QSCOPE === pair[0] ? 'on' : '', pair[1]);
-      c.setAttribute('data-scope', pair[0]);
-      c.onclick = function () {
-        QSCOPE = pair[0];
-        Array.prototype.forEach.call(mode.querySelectorAll('span[data-scope]'), function (n) { n.classList.remove('on'); });
-        c.classList.add('on');
-        run();
-      };
-      mode.appendChild(c);
-    });
-    var aiChip = el('span', 'ai' + (AIF ? ' on' : ''), '✨ AI 模糊相似');
-    aiChip.id = 'gsAi';
-    aiChip.title = '把本地匹配的前 30 条交给你配的 AI 再排一次（更懂同义说法；没配 AI 就自动退回本地匹配）';
-    aiChip.onclick = function () { AIF = !AIF; aiChip.classList.toggle('on', AIF); run(); };
-    var sp = el('span', 'sp'); sp.style.background = 'transparent';
-    var hint = el('i', null, ''); hint.id = 'gsAiHint';
-    mode.appendChild(sp); mode.appendChild(hint); mode.appendChild(aiChip);
     list = el('div'); list.id = 'gsList';
     box.appendChild(row); box.appendChild(sub); box.appendChild(mode); box.appendChild(list);
+    buildMode();
     wrap.appendChild(box);
     wrap.onclick = function (e) { if (e.target === wrap) close(); };
     document.body.appendChild(wrap);
@@ -389,11 +414,60 @@
     });
   }
 
+  /* 这条属于哪个模块（「全部」按这个分组折叠） */
+  function modOf(it) {
+    if (!it) return '其他';
+    if (it.kind === 'q') return '题目';
+    if (it.kind === 'lecture') return '西综';
+    if (it.kind === 'kuangbei' || it.src === '狂背') return '狂背';
+    if (it.src === '我的笔记') return '我的笔记';
+    return '讲义';
+  }
+
+  /* 二级筛选是跟着模块变的：
+       题目 → 第一行 范围（题干/选项/解析/全部）、第二行 科目
+       讲义 → 一行 科目（内科/外科/生理/生化/病理…）
+       其余 → 不显示二级（「全部」就是不筛） */
+  function chipRow(label, list, cur, onPick, attr, attrName) {
+    var r = el('div', 'gsmr');
+    if (label) { var l = el('span', 'gslbl', label); l.style.background = 'transparent'; l.style.cursor = 'default'; r.appendChild(l); }
+    list.forEach(function (v) {
+      var c = el('span', v === cur ? 'on' : '', v);
+      if (attrName) c.setAttribute(attrName, v);
+      c.onclick = function () {
+        Array.prototype.forEach.call(r.querySelectorAll('span[' + (attrName || 'data-v') + ']'), function (n) { n.classList.remove('on'); });
+        c.classList.add('on');
+        onPick(v);
+      };
+      r.appendChild(c);
+    });
+    return r;
+  }
+
+  function buildMode() {
+    if (!mode) return;
+    mode.innerHTML = '';
+    if (CUR_MOD === '题目') {
+      mode.appendChild(chipRow('范围', MODE_CHIPS.map(function (p) { return p[1]; }),
+        (MODE_CHIPS.filter(function (p) { return p[0] === QSCOPE; })[0] || MODE_CHIPS[0])[1],
+        function (v) {
+          var hit = MODE_CHIPS.filter(function (p) { return p[1] === v; })[0];
+          QSCOPE = hit ? hit[0] : 'all';
+          run();
+        }, 'data-scope', 'data-scope'));
+      mode.appendChild(chipRow('科目', QSUBJ, CUR_SUB, function (v) { CUR_SUB = v; run(); }, 'data-sub', 'data-sub'));
+    } else if (CUR_MOD === '讲义') {
+      mode.appendChild(chipRow('科目', LSUBJ, CUR_SUB, function (v) { CUR_SUB = v; run(); }, 'data-sub', 'data-sub'));
+    }
+    /* 全部、西综、狂背、笔记 → 不挂二级筛选（全部就是全部） */
+    mode.style.display = mode.children.length ? 'block' : 'none';
+  }
+
   function open() {
     build();
     wrap.classList.add('on');
     input.value = ''; run(); setTimeout(function () { input.focus(); }, 30);
-    ensureData().then(run);
+    ensureData().then(function () { try { loadQuestions(); } catch (e) {} run(); });
   }
   function close() { if (wrap) wrap.classList.remove('on'); }
   function closePeek() { if (peek) peek.classList.remove('on'); }
@@ -572,71 +646,206 @@
     openNote(item);
   }
 
-  /* AI 重排：把本地前 30 条交给模型按「语义相似」挑一遍。
-     没配 AI / 报错就当没发生，调用方继续用本地结果。 */
-  function aiRerank(q, items, cb) {
-    if (!q || !items || !items.length || typeof window.aiChat !== 'function') { cb(null); return; }
-    var top = items.slice(0, 30);
-    var lines = top.map(function (it, i) {
-      var body = String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 150);
-      return (i + 1) + ' | ' + (it.kind === 'q' ? '题目' : it.src) + ' | ' + it.t + ' | ' + body;
+  /* ---------- 相似度检索（向量） ----------
+     ① 设置里填了「向量模型」→ OpenAI 兼容 /embeddings，按余弦相似度排；
+     ② 没填 → 本地字符二元组稀疏向量余弦（零网络、零费用，补词序/局部重合）；
+     两条都不挡路：失败就当没发生，调用方继续用本地关键词结果。 */
+  var EMB = {};            /* 缓存键 → 向量 */
+  var QEMB = {};           /* 查询文本 → 向量 */
+  var SCORES = null;       /* 本次结果是相似度模式时：id → 相似度 0~1 */
+
+  function hashStr(s) {
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return h;
+  }
+  function bigramVec(s) {
+    var v = {}, g, n = 0;
+    s = String(s || '').toLowerCase().replace(/\s+/g, ' ');
+    for (var i = 0; i < s.length - 1; i++) {
+      g = s.substr(i, 2);
+      if (g === '  ') continue;
+      v[g] = (v[g] || 0) + 1; n++;
+    }
+    if (!n) return v;
+    var d = Math.sqrt(n);
+    for (var k in v) v[k] = v[k] / d;
+    return v;
+  }
+  function cosSparse(a, b) {
+    var s = 0;
+    for (var k in a) if (b[k]) s += a[k] * b[k];
+    return s;
+  }
+  function cosDense(a, b) {
+    if (!a || !b || !a.length) return 0;
+    var s = 0, na = 0, nb = 0;
+    for (var i = 0; i < a.length; i++) { s += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    return (na && nb) ? s / Math.sqrt(na * nb) : 0;
+  }
+  function itemText(it) {
+    return String(qText(it) || '').replace(/\s+/g, ' ').trim().slice(0, 800);
+  }
+  /* 远端向量：分块（一次 16 条），任意一块失败就整批放弃 */
+  function embedAll(list) {
+    if (typeof window.aiEmbed !== 'function' || !list.length) return Promise.resolve(null);
+    var chunks = [], out = [];
+    for (var i = 0; i < list.length; i += 16) chunks.push(list.slice(i, i + 16));
+    var p = Promise.resolve();
+    chunks.forEach(function (ch) {
+      p = p.then(function () {
+        return window.aiEmbed(ch).then(function (arr) {
+          if (!arr || arr.length !== ch.length) throw new Error('emb len');
+          out = out.concat(arr);
+        });
+      });
     });
-    var sys = '你是检索重排器。用户给一句检索意图和候选清单，你只输出最相关候选的编号，用半角逗号分隔，按相关度从高到低，最多 15 个；没有相关的就只输出 0。不要解释。';
-    var usr = '检索意图：' + q + '\n候选（编号 | 类型 | 标题 | 正文）：\n' + lines.join('\n');
-    var done = false;
-    var finish = function (ord) { if (done) return; done = true; cb(ord); };
-    var t = setTimeout(function () { finish(null); }, 12000);
-    try {
-      window.aiChat([{ role: 'system', content: sys }, { role: 'user', content: usr }], null, null, { stream: false, maxTokens: 160 })
-        .then(function (txt) {
-          clearTimeout(t);
-          var nums = String(txt || '').split(/[^0-9]+/).map(function (x) { return parseInt(x, 10); })
-            .filter(function (n) { return n >= 1 && n <= top.length; });
-          if (!nums.length) { finish(null); return; }
-          var seen = {}, out = [];
-          nums.forEach(function (n) { if (seen[n]) return; seen[n] = 1; out.push(top[n - 1]); });
-          top.forEach(function (it) { if (out.indexOf(it) < 0) out.push(it); });
-          finish(out);
-        })
-        .catch(function () { clearTimeout(t); finish(null); });
-    } catch (e) { clearTimeout(t); finish(null); }
+    return p.then(function () { return out; });
+  }
+
+  /* cb(list, how, scores) —— how: 'ai'（远端向量）/ 'local'（本地向量）/ null（失败） */
+  function aiRerank(q, items, cb) {
+    if (!q || !items || !items.length) { cb(null); return; }
+    var top = items.slice(0, 40);
+    var texts = top.map(itemText);
+    var keys = texts.map(function (t, i) { return top[i].id + ':' + t.length + ':' + hashStr(t); });
+    var vecs = new Array(top.length);
+    var miss = [], missIdx = [];
+    for (var i = 0; i < top.length; i++) {
+      if (EMB[keys[i]]) vecs[i] = EMB[keys[i]]; else { miss.push(texts[i]); missIdx.push(i); }
+    }
+    var qKey = 'q:' + q.length + ':' + hashStr(q);
+    if (QEMB[qKey] && Object.keys(EMB).length > 4000) EMB = {};
+
+    function local() {
+      var qv = bigramVec(q);
+      var scored = top.map(function (it, idx) {
+        var v = vecs[idx] || bigramVec(texts[idx]);
+        return { it: it, s: cosSparse(qv, v) };
+      }).sort(function (a, b) { return b.s - a.s; });
+      var sm = {};
+      scored.forEach(function (o) { sm[o.it.id] = o.s; });
+      cb(scored.map(function (o) { return o.it; }), 'local', sm);
+    }
+    function remote() {
+      var qv = QEMB[qKey];
+      var scored = top.map(function (it, idx) {
+        return { it: it, s: vecs[idx] ? cosDense(qv, vecs[idx]) : 0 };
+      }).sort(function (a, b) { return b.s - a.s; });
+      var sm = {};
+      scored.forEach(function (o) { sm[o.it.id] = o.s; });
+      cb(scored.map(function (o) { return o.it; }), 'ai', sm);
+    }
+
+    var need = [];
+    var needQ = !QEMB[qKey];
+    if (needQ) need.push(q);
+    miss.forEach(function (t) { need.push(t); });
+    if (!need.length) { if (QEMB[qKey]) remote(); else local(); return; }
+    embedAll(need).then(function (arr) {
+      if (!arr) { local(); return; }
+      var k = 0;
+      if (needQ) { QEMB[qKey] = arr[k++]; }
+      missIdx.forEach(function (idx, j) {
+        var v = arr[k + j];
+        if (v) { vecs[idx] = v; EMB[keys[idx]] = v; }
+      });
+      /* 远端只覆盖到一部分就退本地 */
+      var gotAll = true;
+      for (var z = 0; z < top.length; z++) if (!vecs[z]) { gotAll = false; break; }
+      if (gotAll && QEMB[qKey]) remote(); else local();
+    }).catch(function () { local(); });
+  }
+
+  var MOD_ORDER = ['题目', '讲义', '西综', '狂背', '我的笔记', '其他'];
+
+  function rowEl(it) {
+    var d = el('div', 'gsItem');
+    var note = it.kind === 'tag' || it.kind === 'doc';
+    var q0 = (input.value || '').trim().toLowerCase();
+    var meta;
+    if (it.kind === 'q') meta = '题目 · ' + (it.g || '') + ' · 第 ' + it.no + ' 题';
+    else if (it.kind === 'lecture') meta = '西综 · 第 ' + it.pg + ' 页';
+    else meta = (it.src || '') + (it.page ? ' · ' + it.page : '');
+    var body = q0 ? snippet(it, q0, 100) : String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 100);
+    var pct = (SCORES && SCORES[it.id] != null) ? (' <span class="gsim">' + Math.round(Math.max(0, Math.min(1, SCORES[it.id])) * 100) + '%</span>') : '';
+    d.innerHTML = '<b>' + esc2(it.t) + '</b>' + pct + '<i>' + esc2(meta) + '</i>'
+      + (note ? '<i style="float:right;color:#ef4444;cursor:pointer;font-size:12px" data-del="1">删除</i>' : '')
+      + '<p>' + esc2(body) + '</p>';
+    d.onclick = function (e) {
+      if (e.target && e.target.getAttribute && e.target.getAttribute('data-del')) { delNote(it, e); return; }
+      if (note) { openNote(it); return; }
+      openPeek(it);
+    };
+    return d;
+  }
+
+  function noteBar(n) {
+    var bar = el('div', 'gsItem');
+    bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;position:sticky;top:0;background:var(--card,#fff);z-index:2;border-bottom:1px solid var(--line,#f1f5f9)';
+    bar.innerHTML = '<b style="font-size:13px">我的笔记 · ' + n + ' 篇</b><span style="flex:1"></span>';
+    var add = el('span', null, '＋ 新建笔记');
+    add.style.cssText = 'background:var(--primary,#2563eb);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer';
+    add.onclick = function (e) { e.stopPropagation(); newNote(); };
+    bar.appendChild(add);
+    return bar;
+  }
+
+  /* 「全部」模式：按来源分组折叠汇总 */
+  function paintGrouped(res) {
+    list.innerHTML = '';
+    var by = {}, order = [];
+    res.forEach(function (it) {
+      var m = modOf(it);
+      if (!by[m]) { by[m] = []; order.push(m); }
+      by[m].push(it);
+    });
+    var keys = MOD_ORDER.filter(function (m) { return by[m]; });
+    if (!res.length) {
+      list.appendChild(el('div', null, '<div id="gsEmpty">' + (READY ? '没找到相关内容，换个词试试（可以只搜题干、只搜讲义）' : '正在加载…') + '</div>'));
+      return;
+    }
+    keys.forEach(function (m) {
+      var arr = by[m];
+      var det = document.createElement('details'); det.className = 'gsGrp'; det.open = true;
+      var sum = document.createElement('summary');
+      sum.innerHTML = '<span>' + esc2(m) + '</span><span class="gn">' + arr.length + ' 条</span>'
+        + '<span class="gt">' + (arr.length > 5 ? '点一下折叠' : '') + '</span>';
+      det.appendChild(sum);
+      arr.forEach(function (it) { det.appendChild(rowEl(it)); });
+      list.appendChild(det);
+    });
   }
 
   function paintList(res, aiOrdered) {
+    if (CUR_MOD === '全部') { paintGrouped(res); return; }
     list.innerHTML = '';
-    if (CUR_SUBJ === '我的笔记') {
-      var bar = el('div', 'gsItem');
-      bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;position:sticky;top:0;background:var(--card,#fff);z-index:2;border-bottom:1px solid var(--line,#f1f5f9)';
-      bar.innerHTML = '<b style="font-size:13px">我的笔记 · ' + res.length + ' 篇</b><span style="flex:1"></span>';
-      var add = el('span', null, '＋ 新建笔记');
-      add.style.cssText = 'background:var(--primary,#2563eb);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer';
-      add.onclick = function (e) { e.stopPropagation(); newNote(); };
-      bar.appendChild(add);
-      list.appendChild(bar);
+    if (CUR_MOD === '我的笔记') {
+      list.appendChild(noteBar(res.length));
     }
     if (!res.length) {
-      var msg = READY ? '没找到相关的笔记 / 考点 / 题目，换个词试试（可以只搜题干或只搜解析）' : '正在加载…';
+      var msg;
+      if (!READY) msg = '正在加载…';
+      else if (CUR_MOD === '题目') msg = '没找到题目，换个词试试（也可以只搜解析或只搜选项）';
+      else if (CUR_MOD === '讲义') msg = '没找到这个科目里的讲义内容';
+      else if (CUR_MOD === '我的笔记') msg = '还没有笔记（点右上角「＋ 新建笔记」）';
+      else msg = '没找到相关内容，换个词试试';
       list.appendChild(el('div', null, '<div id="gsEmpty">' + msg + '</div>'));
       return;
     }
-    res.forEach(function (it) {
-      var d = el('div', 'gsItem');
-      var note = it.kind === 'tag' || it.kind === 'doc';
-      var q0 = (input.value || '').trim().toLowerCase();
-      var meta = it.kind === 'q'
-        ? ('题目 · ' + (it.g || '') + ' · 第 ' + it.no + ' 题')
-        : (it.src + (it.page ? ' · ' + it.page : ''));
-      var body = q0 ? snippet(it, q0, 100) : String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 100);
-      d.innerHTML = '<b>' + esc2(it.t) + '</b><i>' + esc2(meta) + '</i>'
-        + (note ? '<i style="float:right;color:#ef4444;cursor:pointer;font-size:12px" data-del="1">删除</i>' : '')
-        + (aiOrdered && it.kind !== 'q' ? '' : '')
-        + '<p>' + esc2(body) + '</p>';
-      d.onclick = function (e) {
-        if (e.target && e.target.getAttribute && e.target.getAttribute('data-del')) { delNote(it, e); return; }
-        if (note) { openNote(it); return; }
-        openPeek(it);
-      };
-      list.appendChild(d);
+    res.forEach(function (it) { list.appendChild(rowEl(it)); });
+  }
+
+  /* 当前模块（+二级筛选）可见的条目 */
+  function baseItems() {
+    return ITEMS.filter(function (it) {
+      var m = modOf(it);
+      if (CUR_MOD === '我的笔记') return m === '我的笔记';
+      if (CUR_MOD === '题目') return it.kind === 'q' && (CUR_SUB === '全部' || it.s === CUR_SUB);
+      if (CUR_MOD === '讲义') return m === '讲义' && (CUR_SUB === '全部' || it.s === CUR_SUB);
+      if (CUR_MOD === '西综') return m === '西综';
+      if (CUR_MOD === '狂背') return m === '狂背';
+      return true;
     });
   }
 
@@ -644,36 +853,46 @@
     if (!list) return;
     var hint = document.getElementById('gsAiHint');
     var q = (input.value || '').trim().toLowerCase();
-    var base = ITEMS.filter(function (it) {
-      if (CUR_SUBJ === '我的笔记') return it.src === '我的笔记';
-      if (CUR_SUBJ === '狂背') return it.src === '狂背';
-      if (CUR_SUBJ === '题目') return it.kind === 'q';
-      if (CUR_SUBJ !== '全部' && it.s !== CUR_SUBJ) return false;
-      /* 「全部」下不带关键词时不铺题目（几千条太吵） */
-      return true;
-    });
+    var base = baseItems();
     if (!q) {
-      AI_TOKEN++;
+      AI_TOKEN++; SCORES = null;
       if (hint) hint.textContent = '';
-      var only = base.filter(function (it) { return it.kind !== 'q' || CUR_SUBJ === '题目'; });
-      paintList(only.slice(0, 30), false);
+      if (CUR_MOD === '全部') {
+        list.innerHTML = '';
+        list.appendChild(el('div', null, '<div id="gsEmpty">输入关键词：结果会按「题目 / 讲义 / 西综 / 狂背 / 笔记」分类折叠汇总</div>'));
+        var rec = base.filter(function (it) { return modOf(it) === '我的笔记'; }).slice(0, 8);
+        if (rec.length) {
+          var det = document.createElement('details'); det.className = 'gsGrp';
+          var sum = document.createElement('summary');
+          sum.innerHTML = '<span>我的笔记</span><span class="gn">最近 ' + rec.length + ' 条</span>';
+          det.appendChild(sum);
+          rec.forEach(function (it) { det.appendChild(rowEl(it)); });
+          list.appendChild(det);
+        }
+        return;
+      }
+      if (CUR_MOD === '题目') {
+        list.innerHTML = '';
+        list.appendChild(el('div', null, '<div id="gsEmpty">输入关键词搜题目（可切换：题干 / 选项 / 解析）</div>'));
+        return;
+      }
+      paintList(base.slice(0, 30), false);
       return;
     }
     var res = base.map(function (it) { return { it: it, s: score(it, q, q) }; })
       .filter(function (o) { return o.s > 0; })
       .sort(function (a, b) { return b.s - a.s; })
-      .slice(0, 60).map(function (o) { return o.it; });
+      .slice(0, CUR_MOD === '全部' ? 80 : 60)
+      .map(function (o) { return o.it; });
     paintList(res, false);
-    if (!AIF) { AI_TOKEN++; if (hint) hint.textContent = ''; return; }
+    if (!AIF) { AI_TOKEN++; SCORES = null; if (hint) hint.textContent = ''; return; }
     var token = ++AI_TOKEN;
-    if (hint) hint.textContent = 'AI 正在重排…';
-    aiRerank(q, res, function (ord) {
+    if (hint) hint.textContent = '正在算相似度…';
+    aiRerank(q, res, function (ord, how, sm) {
       if (token !== AI_TOKEN) return;
-      if (!ord) {
-        if (hint) hint.textContent = (typeof window.aiChat === 'function' ? 'AI 没给出结果，用本地匹配' : '还没配 AI，用本地匹配');
-        return;
-      }
-      if (hint) hint.textContent = 'AI 已按语义重排';
+      if (!ord) { if (hint) hint.textContent = '相似度没跑起来，用关键词结果'; return; }
+      SCORES = sm || null;
+      if (hint) hint.textContent = (how === 'ai') ? 'AI 相似度排序' : '本地相似度排序（设置里没填向量模型）';
       paintList(ord, true);
     });
   }

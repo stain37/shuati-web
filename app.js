@@ -7102,18 +7102,40 @@ function renderGrid() {
   if (route().name === 'exam' && typeof renderExamGrid === 'function') { renderExamGrid(); return; }
   const bank = bankById(QZ.bankId); if (!bank) return;
   /* 答题卡里的「导出题目」：当前题集（含标签题集）全部题目 → Markdown */
-  function exportBankQs() {
+  function exportBankQs(opt) {
     const bank = bankById(QZ.bankId);
     if (!bank) return;
     const qs = (bank.questions || []).slice();
     if (!qs.length) return toast('这个题集里还没有题目', 1800, 'warn');
+    /* 先问一句要不要带统计（与目录导出、侧边栏导出一致） */
+    if (!opt) {
+      const canStat = (typeof window.__qsStatLine === 'function');
+      if (!(window.BFUI && BFUI.pick)) return exportBankQs({ stat: canStat });
+      let nDone = 0;
+      try { qs.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && a.tries) nDone++; }); } catch (e) {}
+      BFUI.pick({
+        title: '导出「' + (bank.title || '题库') + '」的题目',
+        desc: qs.length + ' 题' + (nDone ? ('　·　其中 ' + nDone + ' 题有作答记录') : '　·　还没有作答记录'),
+        items: [
+          { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' }
+        ]
+      }).then(v => {
+        if (!v) return;
+        exportBankQs({ stat: v === 'stat' });
+      });
+      return;
+    }
+    const stat = !!opt.stat && (typeof window.__qsStatLine === 'function');
     const out = ['# ' + (bank.title || '题库') + ' · 题目（共 ' + qs.length + ' 题）', ''];
+    if (stat) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
     qs.forEach((q, i) => {
       const stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
       out.push('## ' + (i + 1) + '. ' + stem);
       (q.options || []).forEach((o, k) => out.push('ABCDEFGHIJKL'[k] + '. ' + String(o).replace(/\s+/g, ' ').trim()));
       const ans = ansOf(favKey(bank, q), q);
       if (ans && ans.length) out.push('答案：' + ans.join(''));
+      if (stat) { try { out.push(window.__qsStatLine(bank, q)); } catch (e) {} }
       const ex = q.explain || q.exp || q.analysis || '';
       if (ex) out.push('解析：' + String(ex).replace(/\s+/g, ' ').trim());
       out.push('');
@@ -7121,9 +7143,9 @@ function renderGrid() {
     const blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = String(bank.title || '题库').replace(/[\\/:*?"<>|]/g, '_') + '-题目.md';
+    a.download = String(bank.title || '题库').replace(/[\\/:*?"<>|]/g, '_') + '-题目' + (stat ? '（含统计）' : '') + '.md';
     document.body.appendChild(a); a.click(); a.remove();
-    toast('已导出 ' + qs.length + ' 题', 1600);
+    toast('已导出 ' + qs.length + ' 题' + (stat ? '（含统计）' : ''), 1600);
   }
 
   const body = $('gridBody');
@@ -7132,7 +7154,7 @@ function renderGrid() {
 
   /* 题多的时候（几百题）只想看错题或没做的，这里给个筛子 */
   const gex = $('gridExport');
-  if (gex) gex.onclick = exportBankQs;
+  if (gex) gex.onclick = function () { exportBankQs(); };
   const f = $('gridFilter');
   if (f) {
     const defs = [['all', '全部 ' + bank.questions.length], ['wrong', '做错 ' + wrong], ['undone', '没做 ' + Math.max(0, bank.questions.length - done)]];

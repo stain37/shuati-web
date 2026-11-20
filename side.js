@@ -672,7 +672,7 @@
             : '<button type="button" class="qs-tg" data-t="default">★ 设为默认方案（每次打开都用它）</button>')
         + '<button type="button" class="qs-tg" data-t="sync">↻ 同步新标签到当前方案</button>'
         + '<button type="button" class="qs-tg" data-t="exp">⬇ 导出当前方案（.scheme.json）</button>'
-        + '<button type="button" class="qs-tg" data-t="expall">⬇ 导出现有所有二级标签（.md；多个打 ZIP）</button>'
+        + '<button type="button" class="qs-tg" data-t="expall">⬇ 导出现有所有二级标签（.md；多个打 ZIP，可选带统计）</button>'
         + '<button type="button" class="qs-tg" data-t="imp">⬆ 从文件导入方案</button>'
         + (isDef ? '' : '<button type="button" class="qs-tg" data-t="del">删除当前方案（题库不受影响）</button>')
         + '</div>'
@@ -1216,8 +1216,42 @@
     return out.join('\n');
   }
   function _safe(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
-  function exportFolderQs(cid, fmt) {
+  function exportFolderQs(cid, fmt, opt) {
     fmt = fmt === 'json' ? 'json' : 'md';
+    /* 先问一句要不要带统计：与目录 ⋯ 菜单、答题卡的导出保持同一个选择框 */
+    if (!opt) {
+      var canStat = (typeof window.__qsStatLine === 'function');
+      if (!(window.BFUI && BFUI.pick)) return exportFolderQs(cid, fmt, { stat: canStat });
+      var sub0 = catSubtree(cid);
+      var c00 = CAT.get ? CAT.get(cid) : null;
+      var nQ0 = 0, nDone0 = 0;
+      try {
+        (sub0.banks || []).forEach(function (bid) {
+          var b0 = null;
+          try { b0 = (typeof bankById === 'function' ? bankById(bid) : null); } catch (e0) {}
+          if (!b0) return;
+          (b0.questions || []).forEach(function (q0) {
+            nQ0++;
+            try { var a0 = ANS[kOf(b0, q0)]; if (a0 && a0.tries) nDone0++; } catch (e1) {}
+          });
+        });
+      } catch (e2) {}
+      BFUI.pick({
+        title: '导出「' + ((c00 && c00.title) || '这个文件夹') + '」里的题目',
+        desc: (fmt === 'json' ? 'JSON' : 'Markdown') + '　·　' +
+              (nQ0 ? (nQ0 + ' 题') : '按目录里的题库') +
+              (nDone0 ? ('　·　其中 ' + nDone0 + ' 题有作答记录') : '　·　还没有作答记录'),
+        items: [
+          { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone0 ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' }
+        ]
+      }).then(function (v) {
+        if (!v) return;
+        exportFolderQs(cid, fmt, { stat: v === 'stat' });
+      });
+      return;
+    }
+    var stat = !!opt.stat && (typeof window.__qsStatLine === 'function');
     var sub = catSubtree(cid);
     var all = banks() || [];
     var map = {}; all.forEach(function (b) { map[b.id] = b; });
@@ -1244,7 +1278,7 @@
 
     var seen = {}, groups = {}, order = [];
     var diag = { banks: 0, catBanks: 0, tagNodes: 0, tagRows: 0, idSet: 0 };
-    function rec(q, group, tag, bank) {
+    function rec(q, group, tag, bank, bankId) {
       var stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
       if (!stem) return;
       var key = bank + '|' + stem.slice(0, 60);
@@ -1259,6 +1293,9 @@
       var type = q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : ''));
       var r = { tag: tag || '', bank: bank || '', type: type, stem: stem, options: opts, answer: ans,
         explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() };
+      if (stat) {
+        try { r.stat = window.__qsStatLine({ id: bankId || (q && q._bank) || '', title: bank || '' }, q); } catch (e) {}
+      }
       if (!groups[group]) { groups[group] = []; order.push(group); }
       groups[group].push(r);
     }
@@ -1269,7 +1306,7 @@
       diag.catBanks++;
       var g = topGroup(b.cat || null, relPath(b.cat || null).join(' › ') || (b.title || ''));
       var label = [relPath(b.cat || null).join(' › '), b.title || ''].filter(Boolean).join(' › ');
-      (b.questions || []).forEach(function (q) { rec(q, g, label, b.title || ''); });
+      (b.questions || []).forEach(function (q) { rec(q, g, label, b.title || '', b.id); });
     });
 
     /* 方案「三级索引」的标签文件夹：按二级标签归组 */
@@ -1305,7 +1342,7 @@
         var g = topGroup(nid, tagName);
         rows.forEach(function (row) {
           var q = (row.questions && row.questions[0]) ? row.questions[0] : row;
-          rec(q, g, tagName, row.bankName || row._bname || '');
+          rec(q, g, tagName, row.bankName || row._bname || '', (row.virtualQ && row.virtualQ.bankId) || q._bank || '');
         });
       });
     } catch (eT) {}
@@ -1318,6 +1355,7 @@
 
     function mdOf(title, list) {
       var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      if (stat) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
       var lastTag = null, no = 0;
       list.forEach(function (r) {
         if (r.tag && r.tag !== lastTag) { out.push('## ' + r.tag, ''); lastTag = r.tag; }
@@ -1326,6 +1364,7 @@
         if (r.type) out.push('题型：' + r.type);
         r.options.forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + o); });
         if (r.answer) out.push('答案：' + r.answer);
+        if (r.stat) out.push(r.stat);
         if (r.explain) out.push('解析：' + r.explain);
         out.push('');
       });
@@ -1341,8 +1380,9 @@
     if (!multi) {
       var only = groups[order[0]];
       var title = order[0] && order[0] !== top ? (top + ' › ' + order[0]) : top;
-      if (fmt === 'json') { blob = new Blob([jsonOf(title, only)], { type: 'application/json;charset=utf-8' }); fname = top + '-题目.json'; }
-      else { blob = new Blob([mdOf(title, only)], { type: 'text/markdown;charset=utf-8' }); fname = top + '-题目.md'; }
+      var suf0 = stat ? '（含统计）' : '';
+      if (fmt === 'json') { blob = new Blob([jsonOf(title, only)], { type: 'application/json;charset=utf-8' }); fname = top + '-题目' + suf0 + '.json'; }
+      else { blob = new Blob([mdOf(title, only)], { type: 'text/markdown;charset=utf-8' }); fname = top + '-题目' + suf0 + '.md'; }
     } else {
       var files = order.map(function (g) {
         var list = groups[g];
@@ -1351,7 +1391,7 @@
                  text: isJson ? jsonOf(g, list) : mdOf(g, list) };
       });
       blob = _zipStore(files);
-      fname = top + '-题目.zip';
+      fname = top + '-题目' + (stat ? '（含统计）' : '') + '.zip';
     }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = fname;
@@ -1361,7 +1401,21 @@
 
 
   /* ---------- 导出全部二级标签 ---------- */
-  function exportAllTags() {
+  function exportAllTags(opt) {
+    if (!opt) {
+      var canStatA = (typeof window.__qsStatLine === 'function');
+      if (!(window.BFUI && BFUI.pick)) return exportAllTags({ stat: canStatA });
+      BFUI.pick({
+        title: '导出全部二级标签的题目',
+        desc: '每个二级标签一个 .md，打成一个 ZIP',
+        items: [
+          { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStatA ? '每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' : '答题记录模块还没就绪，仍只导出题目' }
+        ]
+      }).then(function (v) { if (!v) return; exportAllTags({ stat: v === 'stat' }); });
+      return;
+    }
+    var statA = !!opt.stat && (typeof window.__qsStatLine === 'function');
     if (!window.SCM || !SCM.tagQList) { try { toast('当前方案不是按考点分组，没有二级标签可导出', 2600); } catch (e) {} return; }
     var tags = [], seen = {}, stack = [null], guard = 0;
     while (stack.length && guard++ < 20000) {
@@ -1378,6 +1432,7 @@
 
     function mdOf(title, list) {
       var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      if (statA) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
       var no = 0;
       list.forEach(function (r) {
         no++;
@@ -1385,6 +1440,7 @@
         if (r.type) out.push('题型：' + r.type);
         (r.options || []).forEach(function (o, k) { out.push('ABCDEFGHIJKL'[k] + '. ' + o); });
         if (r.answer) out.push('答案：' + r.answer);
+        if (r.stat) out.push(r.stat);
         if (r.explain) out.push('解析：' + r.explain);
         out.push('');
       });
@@ -1412,9 +1468,13 @@
         var ans = q.answer != null ? q.answer : (q.ans != null ? q.ans : (q.correct != null ? q.correct : ''));
         if (Array.isArray(ans)) ans = ans.join('');
         ans = String(ans).trim();
-        list.push({ stem: stem, type: q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : '')),
+        var recA = { stem: stem, type: q.type || (ans.length > 1 ? '多选' : (ans ? '单选' : '')),
           options: opts, answer: ans,
-          explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() });
+          explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() };
+        if (statA) {
+          try { recA.stat = window.__qsStatLine({ id: (row.virtualQ && row.virtualQ.bankId) || q._bank || '', title: '' }, q); } catch (eS) {}
+        }
+        list.push(recA);
       });
       if (list.length) { groups.push({ name: name, list: list }); total += list.length; }
     });
@@ -1448,8 +1508,8 @@
     var m = document.createElement('div');
     m.className = 'qs-menu';
     m.id = 'qsMenu';
-    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（.md；多标签自动 ZIP）</button>'
-      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（.json；多标签自动 ZIP）</button>'
+    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（.md；多标签自动 ZIP，可选带统计）</button>'
+      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（.json；多标签自动 ZIP，可选带统计）</button>'
       + '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
       + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'

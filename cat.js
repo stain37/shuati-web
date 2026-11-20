@@ -2428,6 +2428,13 @@
     return out.join('\n');
   }
 
+  /* 侧边栏（side.js）与答题卡（app.js）的导出也要能带统计：把这两个helper暴露到全局 */
+  try {
+    window.__qsStatLine = qsStatLine;
+    window.__qsMarkdown = qsMarkdown;
+    window.__qsSafeName = safeName;
+  } catch (e) {}
+
   function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '未命名'; }
 
   function exportCatQs(id, opt) {
