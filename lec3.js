@@ -195,10 +195,20 @@
     return null;
   }
 
-  function bankKey() {
-    try { if (typeof QZ !== 'undefined' && QZ && QZ.bankId) return QZ.bankId; } catch (e) {}
+  /* 题库 id 归一化：同一个考点题集在 URL / 旧数据里有三种写法
+     （`#` 与 `%23`、真实控制字符 \u0001 与 `%01`），不统一就会「换入口后绑定找不到」 */
+  function normBankKey(s) {
+    s = String(s == null ? '' : s);
+    for (var i = 0; i < 3; i++) {
+      try { var d = decodeURIComponent(s); if (d === s) break; s = d; } catch (e) { break; }
+    }
+    return s.replace(/\u0001/g, '|');
+  }
+  function bankKeyRaw() {
+    try { if (typeof QZ !== 'undefined' && QZ && QZ.bankId) return String(QZ.bankId); } catch (e) {}
     return '';
   }
+  function bankKey() { return normBankKey(bankKeyRaw()); }
 
   /* ---------- 题 → 讲义页 绑定（人工校正） ---------- */
   var BINDS = 'qbank.lec.bind.v1';   /* { "bankId#qid": { v:2, list:[{ src, p, f, n, ts }], ts } }（旧格式是单个对象，读取时自动兼容） */
@@ -207,6 +217,35 @@
     return '';
   }
   function qKey() { var b = bankKey(), q = qid(); return (b && q) ? (b + '#' + q) : ''; }
+
+  /* 同一道题可能从「考点标签题集 / 聚合节点 / 错题本 / 收藏 / 搜索跳转 / 真实题库」进来，
+     题库 id 不同但题目是同一道 —— 再用「题号 + 题干指纹」存一份镜像键兜底 */
+  function curQ() {
+    try {
+      if (typeof bankById !== 'function') return null;
+      var b = bankById(bankKeyRaw()); if (!b) return null;
+      var qs = b.questions || [], q = qid();
+      for (var i = 0; i < qs.length; i++) if (qs[i] && String(qs[i].id) === q) return qs[i];
+    } catch (e) {}
+    return null;
+  }
+  function stemHash() {
+    var q = curQ(); if (!q) return '';
+    var s = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, '');
+    if (!s) return '';
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) { h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; if (i > 400) break; }
+    return h.toString(36);
+  }
+  function mirrorKey() { var q = qid(), h = stemHash(); return (q && h) ? ('&#' + q + '#' + h) : ''; }
+  function bindKeys() {
+    var out = [], k = qKey();
+    if (k) out.push(k);
+    var raw = bankKeyRaw(), q = qid();
+    if (raw && q && (raw + '#' + q) !== k) out.push(raw + '#' + q);
+    var mk = mirrorKey(); if (mk) out.push(mk);
+    return out;
+  }
   function bindAll() { return readLS(BINDS, {}); }
   function normBinds(v) {
     if (!v) return [];
@@ -214,32 +253,48 @@
     if (v.src) return [{ src: v.src, p: v.p || 1, f: v.f || '', n: v.n || 0, ts: v.ts || Date.now() }];
     return [];
   }
-  function getBinds() { var m = bindAll(), k = qKey(); return k ? normBinds(m[k]) : []; }
+  function getBinds() {
+    var m = bindAll(), ks = bindKeys();
+    for (var i = 0; i < ks.length; i++) {
+      var l = normBinds(m[ks[i]]);
+      if (l.length) return l;
+    }
+    return [];
+  }
   function getBind() { return getBinds()[0] || null; }
   function putBind(src, p) {
-    var k = qKey(); if (!k) { toast('先在答题页选一道题，再来绑讲义页'); return null; }
+    var ks = bindKeys(); if (!ks.length) { toast('先在答题页选一道题，再来绑讲义页'); return null; }
     var f = fileOf(src); if (!f) { toast('这份讲义不在目录里'); return null; }
-    var m = bindAll(), list = normBinds(m[k]);
+    var m = bindAll(), list = normBinds(m[ks[0]]);
     var pg = (p | 0) || 1;
     var item = { src: src, p: pg, f: f.f, n: f.n, ts: Date.now() };
     var dup = -1;
     list.forEach(function (x, i) { if (x.src === src && (x.p | 0) === pg) dup = i; });
     if (dup >= 0) { list[dup] = item; } else { list.push(item); }
     if (list.length > 10) list = list.slice(list.length - 10);
-    m[k] = { v: 2, list: list, ts: Date.now() };
+    /* 三个键都写：归一化键 / 原始键 / 题号+题干指纹镜像键 —— 换入口进来也能找到 */
+    ks.forEach(function (k) { m[k] = { v: 2, list: list, ts: Date.now() }; });
     writeLS(BINDS, m);
     return { item: item, total: list.length, dup: dup >= 0 };
   }
   function delBindAt(i) {
-    var m = bindAll(), k = qKey(); if (!k) return false;
-    var list = normBinds(m[k]);
+    var ks = bindKeys(); if (!ks.length) return false;
+    var m = bindAll(), list = normBinds(m[ks[0]]);
     if (i < 0 || i >= list.length) return false;
     list.splice(i, 1);
-    if (list.length) { m[k] = { v: 2, list: list, ts: Date.now() }; } else { delete m[k]; }
+    ks.forEach(function (k) {
+      if (list.length) { m[k] = { v: 2, list: list, ts: Date.now() }; } else { delete m[k]; }
+    });
     writeLS(BINDS, m);
     return true;
   }
-  function delBind() { var m = bindAll(), k = qKey(); if (!k || !m[k]) return false; delete m[k]; writeLS(BINDS, m); return true; }
+  function delBind() {
+    var ks = bindKeys(); if (!ks.length) return false;
+    var m = bindAll(), hit = false;
+    ks.forEach(function (k) { if (m[k]) { delete m[k]; hit = true; } });
+    if (hit) writeLS(BINDS, m);
+    return hit;
+  }
 
   function remember() {
     var m = readLS(LS, {});

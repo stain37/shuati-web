@@ -1224,7 +1224,7 @@
       if (!(window.BFUI && BFUI.pick)) return exportFolderQs(cid, fmt, { stat: canStat });
       var sub0 = catSubtree(cid);
       var c00 = CAT.get ? CAT.get(cid) : null;
-      var nQ0 = 0, nDone0 = 0;
+      var nQ0 = 0, nDone0 = 0, nWrong0 = 0;
       try {
         (sub0.banks || []).forEach(function (bid) {
           var b0 = null;
@@ -1233,6 +1233,7 @@
           (b0.questions || []).forEach(function (q0) {
             nQ0++;
             try { var a0 = ANS[kOf(b0, q0)]; if (a0 && a0.tries) nDone0++; } catch (e1) {}
+            try { if (window.__qsIsWrong && window.__qsIsWrong(b0, q0)) nWrong0++; } catch (e3) {}
           });
         });
       } catch (e2) {}
@@ -1243,15 +1244,18 @@
               (nDone0 ? ('　·　其中 ' + nDone0 + ' 题有作答记录') : '　·　还没有作答记录'),
         items: [
           { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
-          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone0 ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' }
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone0 ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' },
+          { value: 'wrong', label: '🔥 只导出错题', note: nWrong0 ? (nWrong0 + ' 题（做错过，含已订正的）· 自动带作答统计') : '这个文件夹里还没有做错的题' }
         ]
       }).then(function (v) {
         if (!v) return;
-        exportFolderQs(cid, fmt, { stat: v === 'stat' });
+        if (v === 'wrong') exportFolderQs(cid, fmt, { wrong: true, stat: true });
+        else exportFolderQs(cid, fmt, { stat: v === 'stat' });
       });
       return;
     }
     var stat = !!opt.stat && (typeof window.__qsStatLine === 'function');
+    var wrongOnly = !!opt.wrong;
     var sub = catSubtree(cid);
     var all = banks() || [];
     var map = {}; all.forEach(function (b) { map[b.id] = b; });
@@ -1295,6 +1299,11 @@
         explain: String(q.explain || q.exp || q.analysis || q.why || '').replace(/\s+/g, ' ').trim() };
       if (stat) {
         try { r.stat = window.__qsStatLine({ id: bankId || (q && q._bank) || '', title: bank || '' }, q); } catch (e) {}
+      }
+      if (wrongOnly) {
+        var bad = false;
+        try { bad = window.__qsIsWrong && window.__qsIsWrong({ id: bankId || (q && q._bank) || '', title: bank || '' }, q); } catch (e2) { bad = false; }
+        if (!bad) return;
       }
       if (!groups[group]) { groups[group] = []; order.push(group); }
       groups[group].push(r);
@@ -1354,7 +1363,7 @@
     }
 
     function mdOf(title, list) {
-      var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      var out = ['# ' + title + ' · ' + (wrongOnly ? '错题' : '题目') + '（共 ' + list.length + ' 题）', ''];
       if (stat) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
       var lastTag = null, no = 0;
       list.forEach(function (r) {
@@ -1380,9 +1389,9 @@
     if (!multi) {
       var only = groups[order[0]];
       var title = order[0] && order[0] !== top ? (top + ' › ' + order[0]) : top;
-      var suf0 = stat ? '（含统计）' : '';
-      if (fmt === 'json') { blob = new Blob([jsonOf(title, only)], { type: 'application/json;charset=utf-8' }); fname = top + '-题目' + suf0 + '.json'; }
-      else { blob = new Blob([mdOf(title, only)], { type: 'text/markdown;charset=utf-8' }); fname = top + '-题目' + suf0 + '.md'; }
+      var suf0 = wrongOnly ? '-错题' : (stat ? '-题目（含统计）' : '-题目');
+      if (fmt === 'json') { blob = new Blob([jsonOf(title, only)], { type: 'application/json;charset=utf-8' }); fname = top + suf0 + '.json'; }
+      else { blob = new Blob([mdOf(title, only)], { type: 'text/markdown;charset=utf-8' }); fname = top + suf0 + '.md'; }
     } else {
       var files = order.map(function (g) {
         var list = groups[g];
@@ -1391,7 +1400,7 @@
                  text: isJson ? jsonOf(g, list) : mdOf(g, list) };
       });
       blob = _zipStore(files);
-      fname = top + '-题目' + (stat ? '（含统计）' : '') + '.zip';
+      fname = top + '-题目' + (wrongOnly ? '（错题）' : (stat ? '（含统计）' : '')) + '.zip';
     }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = fname;
@@ -1410,12 +1419,18 @@
         desc: '每个二级标签一个 .md，打成一个 ZIP',
         items: [
           { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
-          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStatA ? '每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' : '答题记录模块还没就绪，仍只导出题目' }
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStatA ? '每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' : '答题记录模块还没就绪，仍只导出题目' },
+          { value: 'wrong', label: '🔥 只导出错题', note: '只保留做错过的题（含已订正的），自动带作答统计' }
         ]
-      }).then(function (v) { if (!v) return; exportAllTags({ stat: v === 'stat' }); });
+      }).then(function (v) {
+        if (!v) return;
+        if (v === 'wrong') exportAllTags({ wrong: true, stat: true });
+        else exportAllTags({ stat: v === 'stat' });
+      });
       return;
     }
     var statA = !!opt.stat && (typeof window.__qsStatLine === 'function');
+    var wrongA = !!opt.wrong;
     if (!window.SCM || !SCM.tagQList) { try { toast('当前方案不是按考点分组，没有二级标签可导出', 2600); } catch (e) {} return; }
     var tags = [], seen = {}, stack = [null], guard = 0;
     while (stack.length && guard++ < 20000) {
@@ -1431,7 +1446,7 @@
     if (!tags.length) { try { toast('没找到二级标签（当前方案 ' + tags.length + ' 个）', 3000); } catch (e) {} return; }
 
     function mdOf(title, list) {
-      var out = ['# ' + title + ' · 题目（共 ' + list.length + ' 题）', ''];
+      var out = ['# ' + title + ' · ' + (wrongA ? '错题' : '题目') + '（共 ' + list.length + ' 题）', ''];
       if (statA) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
       var no = 0;
       list.forEach(function (r) {
@@ -1474,6 +1489,11 @@
         if (statA) {
           try { recA.stat = window.__qsStatLine({ id: (row.virtualQ && row.virtualQ.bankId) || q._bank || '', title: '' }, q); } catch (eS) {}
         }
+        if (wrongA) {
+          var badA = false;
+          try { badA = window.__qsIsWrong && window.__qsIsWrong({ id: (row.virtualQ && row.virtualQ.bankId) || q._bank || '', title: '' }, q); } catch (eW) { badA = false; }
+          if (!badA) return;
+        }
         list.push(recA);
       });
       if (list.length) { groups.push({ name: name, list: list }); total += list.length; }
@@ -1488,14 +1508,14 @@
     var blob, fname;
     if (groups.length === 1) {
       blob = new Blob([mdOf(groups[0].name, groups[0].list)], { type: 'text/markdown;charset=utf-8' });
-      fname = '二级标签-' + _safe(groups[0].name) + '.md';
+      fname = '二级标签-' + _safe(groups[0].name) + (wrongA ? '-错题' : '') + '.md';
     } else {
       var files = groups.map(function (g) { return { name: _safe(g.name) + '.md', text: mdOf(g.name, g.list) }; });
       var idx = ['# 二级标签索引（共 ' + groups.length + ' 个 · ' + total + ' 题）', ''];
       groups.forEach(function (g) { idx.push('- ' + g.name + '：' + g.list.length + ' 题'); });
       files.unshift({ name: '00-索引.md', text: idx.join('\n') });
       blob = _zipStore(files);
-      fname = '二级标签-全部（' + groups.length + '个）.zip';
+      fname = '二级标签-' + (wrongA ? '错题' : '全部') + '（' + groups.length + '个）.zip';
     }
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = fname;
@@ -1508,8 +1528,8 @@
     var m = document.createElement('div');
     m.className = 'qs-menu';
     m.id = 'qsMenu';
-    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（.md；多标签自动 ZIP，可选带统计）</button>'
-      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（.json；多标签自动 ZIP，可选带统计）</button>'
+    m.innerHTML = '<button type="button" data-m="exp">⬇ 导出该考点题目（.md；多标签自动 ZIP，可选带统计 / 只导出错题）</button>'
+      + '<button type="button" data-m="expjson">⬇ 导出该考点题目（.json；多标签自动 ZIP，可选带统计 / 只导出错题）</button>'
       + '<button type="button" data-m="sub">新建子文件夹</button>'
       + '<button type="button" data-m="ren">重命名文件夹</button>'
       + '<button type="button" data-m="addsch">里面的题库加进其它方案…</button>'

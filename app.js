@@ -2733,6 +2733,54 @@ function uiCopyText(txt, okMsg) {
     toast(ok ? (okMsg || '已复制') : '复制失败，请手动选中', 1400, ok ? 'ok' : 'bad');
   } catch (e) { toast('复制失败，请手动选中', 1600, 'bad'); }
 }
+/* 一键复制当前这道题：题干 / 选项 / 答案 / 解析 / 出处 + 本机作答统计。
+   复制成纯文本，贴到 AI、笔记、群聊都能直接用。 */
+function copyCurQuestion() {
+  const bank = bankById(QZ.bankId);
+  if (!bank) return toast('当前没有打开的题目', 1600, 'bad');
+  let q = null;
+  try {
+    const pool = poolOf(bank);
+    q = pool.find(x => String(x.id) === String(QZ.cur)) || null;
+    if (!q) q = pool[0] || null;
+  } catch (e) { q = null; }
+  if (!q) return toast('没找到当前这道题', 1600, 'bad');
+  const K = 'ABCDEFGHIJKL';
+  const clean = t => String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+  const out = [];
+  const gs = clean(q.group || (bank.questions && q.__oid != null ? '' : ''));
+  if (gs) out.push('【共用题干】' + gs, '');
+  out.push('【题干】' + clean(q.stem || q.title || q.q || q.name));
+  const opts = (q.options || q.opts || q.choices || []).map((o, i) => {
+    const key = (o && (o.k || o.key)) ? String(o.k || o.key) : K[i];
+    const txt = (o && typeof o === 'object')
+      ? clean(o.t != null ? o.t : (o.text != null ? o.text : (o.title != null ? o.title : '')))
+      : clean(o);
+    return (key ? key + '. ' : '') + txt;
+  });
+  if (opts.length) out.push('', '【选项】', ...opts);
+  let ans = [];
+  try { ans = (ansOf(kOf(bank, q), q) || []).slice(); } catch (e) { ans = (q.answer || []).slice(); }
+  out.push('', '【答案】' + (ans.length ? ans.join('') : '（题库里没标答案）'));
+  const ex = clean(q.explain || q.exp || q.analysis || q.why);
+  if (ex) out.push('【解析】' + ex);
+  let no = 0;
+  try { no = (bank.questions || []).indexOf(q) + 1; } catch (e) { no = 0; }
+  const srcLine = [bank.title || '题库', no ? ('第 ' + no + ' 题') : ''].filter(Boolean).join(' · ');
+  out.push('', '【出处】' + srcLine);
+  try {
+    const a = ANS[kOf(bank, q)];
+    let st = '';
+    if (!a || !a.tries) st = '还没做过';
+    else {
+      st = '作答 ' + (+a.tries) + ' 次 · 错 ' + (+a.wrong || 0) + ' 次 · 正确率 ' + rateOf(a) + '%';
+      if (a.grade) st += ' · 自评' + a.grade;
+    }
+    out.push('【记录】' + st);
+  } catch (e) {}
+  uiCopyText(out.join('\n'), '已复制这道题（题干 / 选项 / 答案 / 解析）');
+}
+
 /* 候补池 A：触屏左右滑动翻题（左滑＝下一题，右滑＝上一题）
    只在触屏上启用；横向位移 > 30px 且横向明显大于纵向才算；
    从选项 / 输入框 / 按钮上起手的不算（不然「点选项」会被当成翻页） */
@@ -4875,10 +4923,25 @@ function renderQuiz(bankId) {
           } catch (e) { return ''; }
         })()
         + (function () {
-          /* 标签索引几乎是空的 → 这台设备的「考点标签」没同步过来，题在但挂不上标签 */
+          /* 空题集有两种原因，说法不能混：
+             ① 这台设备根本没有题库（banks=0）—— 题库没同步 / 全新浏览器；
+             ② 题库在，但「考点标签」没同步过来（tagList 太小）—— 题在，挂不上标签。 */
+          var _nbN = (typeof _nb === 'number') ? _nb : 0;
+          var _wrap = '<div style="margin:10px 0 0;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;line-height:1.7">';
+          if (!_nbN) {
+            return _wrap
+              + `这台设备上还没有题库（banks=0）—— 题库没同步过来，或者这台浏览器是全新的。`
+              + `<div style="margin-top:6px;font-size:12px;opacity:.9">电脑上的题库要传过来：设置 → 云同步，勾上「自建题库」，再点「立即同步一次」；也可以点侧栏的「＋」导入题库文件。</div>`
+              + `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">`
+              + `<button class="btn primary" id="qzSyncNow">立即同步一次</button>`
+              + `<button class="btn" id="qzSyncCfg">打开同步设置</button>`
+              + `<button class="btn" id="qzImport">导入题库</button></div>`
+              + `<div id="qzProbe" style="margin-top:8px;font-size:12px;opacity:.85">存储检测：…</div></div>`;
+          }
           if (!(_nt < 5)) return '';
-          return `<div style="margin:10px 0 0;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;line-height:1.7">`
-            + `这台设备只认到 ${esc(String(_nt))} 个考点标签（电脑上应该有两百多个）——题库已经在了，标签还没同步过来。`
+          return _wrap
+            + `题库有 ${esc(String(_nbN))} 个，但只认到 ${esc(String(_nt))} 个考点标签（电脑上应该有两百多个）—— 考点标签还没同步过来，所以点考点是空的。`
+            + `<div style="margin-top:6px;font-size:12px;opacity:.9">先点「立即同步一次」；还是 0 个的话，到设置 → 云同步点「标签：强制用云端覆盖本机」，再刷新。</div>`
             + `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">`
             + `<button class="btn primary" id="qzSyncNow">立即同步一次</button>`
             + `<button class="btn" id="qzSyncCfg">打开同步设置</button></div></div>`;
@@ -4900,6 +4963,43 @@ function renderQuiz(bankId) {
           });
         } catch (eS) { sb0.disabled = false; sb0.textContent = '立即同步一次'; }
       };
+      var ib0 = document.getElementById('qzImport');
+      if (ib0) ib0.onclick = function () {
+        try {
+          var nb = document.getElementById('qsNew');
+          if (nb) { nb.click(); return; }
+        } catch (e) {}
+        try { location.hash = '#/'; } catch (e2) {}
+      };
+      /* 题库是 0 的时候顺手把「存储到底有没有东西」查出来：换浏览器 / 无痕 / IndexedDB 坏掉 / 被清了，一眼能分 */
+      (function () {
+        var el = document.getElementById('qzProbe');
+        if (!el) return;
+        var parts = [];
+        try { parts.push('localStorage 键=' + localStorage.length); } catch (e) { parts.push('localStorage 读不了'); }
+        var oldCopy = null, tagsRaw = null, sy = null;
+        try { oldCopy = localStorage.getItem('qbank.local.v2'); } catch (e) {}
+        try { tagsRaw = localStorage.getItem('qbank.tags.v1'); } catch (e) {}
+        try { sy = JSON.parse(localStorage.getItem('qbank.sync.v1') || 'null'); } catch (e) {}
+        parts.push('旧副本=' + (oldCopy == null ? '无' : (oldCopy.length + ' 字符')));
+        parts.push('标签词表=' + (tagsRaw == null ? '无' : (tagsRaw.length + ' 字符')));
+        parts.push('同步=' + (sy && sy.repo ? ((sy.provider || '?') + ' ' + (sy.owner || '?') + '/' + (sy.repo || '?') + (sy.lastAt ? (' 上次 ' + new Date(sy.lastAt).toLocaleString()) : ' 没同步过')) : '没配置'));
+        el.textContent = '存储检测：' + parts.join(' · ');
+        appIdbOpen().then(function (db) {
+          var n = 0;
+          return new Promise(function (res) {
+            try {
+              var cur = db.transaction('kv', 'readonly').objectStore('kv').openCursor();
+              cur.onsuccess = function () { var c = cur.result; if (c) { n++; c.continue(); } else res(); };
+              cur.onerror = function () { res(); };
+            } catch (e) { res(); }
+          }).then(function () { return appIdbGet('qbank.local.v2'); }).then(function (v) {
+            el.textContent += ' · IDB 键=' + n + ' · IDB 题库=' + (Array.isArray(v) ? (v.length + ' 个') : (v == null ? '空' : typeof v));
+          });
+        }).catch(function (e) {
+          el.textContent += ' · IDB 打不开：' + (e && e.message ? e.message : e);
+        });
+      })();
       var cb0 = document.getElementById('qzSyncCfg');
       if (cb0) cb0.onclick = function () {
         try {
@@ -5037,6 +5137,7 @@ function renderQuiz(bankId) {
         <button class="btn sim-btn" id="btnSim" title="相似题：在这一题库里找你容易混淆/考同一考点的题，可让 AI 再挑一遍">🔍 相似题</button>
         <button class="btn map-btn" id="btnMap" title="脑图：把这道题、最像的几道题、它的考点摊成一张图，点图上的题直接跳过去">🗺 脑图</button>
         <button class="btn ink-btn" id="btnInk" title="批注：在题目上随手画，笔迹跟着这道题走（只存本机）">✎ 批注</button>
+        <button class="btn copy-btn" id="btnCopyQ" title="一键复制这道题的全部信息：题干 / 选项 / 答案 / 解析 / 出处与作答统计（直接贴给 AI 或笔记）">📋 复制</button>
         </span>
       </div>
       <div class="vstrip" id="vStrip"></div>
@@ -5194,6 +5295,7 @@ function renderQuiz(bankId) {
   on('doSubmit', () => judge(bank, q, QZ.pending[q.id] || []));
   on('doRedo', () => { qSheetToggle(false); redo(bank, q); });
   on('btnInk', () => { if (window.INK) INK.annotation(bank, q); else toast('画板模块没加载（ink.js）', 1800, 'bad'); });
+  on('btnCopyQ', () => copyCurQuestion());
   on('btnSim', () => { if (window.SIMQ) SIMQ.toggle(); else toast('相似题模块没加载（sim.js）', 1800, 'bad'); });
   on('btnMap', () => { if (window.MAPQ) MAPQ.toggle(); else toast('脑图模块没加载（map.js）', 1800, 'bad'); });
 
@@ -7105,29 +7207,35 @@ function renderGrid() {
   function exportBankQs(opt) {
     const bank = bankById(QZ.bankId);
     if (!bank) return;
-    const qs = (bank.questions || []).slice();
+    let qs = (bank.questions || []).slice();
     if (!qs.length) return toast('这个题集里还没有题目', 1800, 'warn');
     /* 先问一句要不要带统计（与目录导出、侧边栏导出一致） */
     if (!opt) {
       const canStat = (typeof window.__qsStatLine === 'function');
       if (!(window.BFUI && BFUI.pick)) return exportBankQs({ stat: canStat });
-      let nDone = 0;
-      try { qs.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && a.tries) nDone++; }); } catch (e) {}
+      let nDone = 0, nWrong = 0;
+      try { qs.forEach(q => { const a = ANS[kOf(bank, q)]; if (a && a.tries) nDone++; if (a && (+a.wrong) > 0) nWrong++; }); } catch (e) {}
       BFUI.pick({
         title: '导出「' + (bank.title || '题库') + '」的题目',
         desc: qs.length + ' 题' + (nDone ? ('　·　其中 ' + nDone + ' 题有作答记录') : '　·　还没有作答记录'),
         items: [
           { value: 'plain', label: '📄 只要题目', note: '题干 / 选项 / 答案 / 解析' },
-          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' }
+          { value: 'stat', label: '📊 带上错误次数与正确率', note: canStat ? ('每题多一行「作答 N 次 · 错 M 次 · 正确率 P%」' + (nDone ? '' : '（现在还没有作答记录，导出来都是「还没做过」）')) : '答题记录模块还没就绪，仍只导出题目' },
+          { value: 'wrong', label: '🔥 只导出错题', note: nWrong ? (nWrong + ' 题（做错过，含已订正的）· 自动带作答统计') : '现在还没有做错的题' }
         ]
       }).then(v => {
         if (!v) return;
-        exportBankQs({ stat: v === 'stat' });
+        if (v === 'wrong') exportBankQs({ wrong: true, stat: true });
+        else exportBankQs({ stat: v === 'stat' });
       });
       return;
     }
     const stat = !!opt.stat && (typeof window.__qsStatLine === 'function');
-    const out = ['# ' + (bank.title || '题库') + ' · 题目（共 ' + qs.length + ' 题）', ''];
+    if (opt.wrong) {
+      qs = qs.filter(q => { const a = ANS[kOf(bank, q)]; return !!(a && (+a.wrong) > 0); });
+      if (!qs.length) return toast('没有做错的题可导出', 1800, 'warn');
+    }
+    const out = ['# ' + (bank.title || '题库') + (opt.wrong ? ' · 错题' : ' · 题目') + '（共 ' + qs.length + ' 题）', ''];
     if (stat) out.push('> 含作答统计（作答次数 / 错误次数 / 正确率，取本机答题记录）', '');
     qs.forEach((q, i) => {
       const stem = String(q.stem || q.title || q.q || q.name || '').replace(/\s+/g, ' ').trim();
@@ -7143,9 +7251,9 @@ function renderGrid() {
     const blob = new Blob([out.join('\n')], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = String(bank.title || '题库').replace(/[\\/:*?"<>|]/g, '_') + '-题目' + (stat ? '（含统计）' : '') + '.md';
+    a.download = String(bank.title || '题库').replace(/[\\/:*?"<>|]/g, '_') + (opt.wrong ? '-错题' : ('-题目' + (stat ? '（含统计）' : ''))) + '.md';
     document.body.appendChild(a); a.click(); a.remove();
-    toast('已导出 ' + qs.length + ' 题' + (stat ? '（含统计）' : ''), 1600);
+    toast((opt.wrong ? '已导出 ' + qs.length + ' 道错题' : '已导出 ' + qs.length + ' 题') + (stat && !opt.wrong ? '（含统计）' : ''), 1600);
   }
 
   const body = $('gridBody');
