@@ -608,6 +608,49 @@ function migrate() {
 }
 migrate();
 
+/* ---------- 还原「系统分类」里早期版本写下的作答记录 ----------
+   早期版本在标签题集（tg:… / tgq:… 这种虚拟题集）里作答时，记录 key 用的是虚拟题集 id，
+   而真实题库的 key 是「题库 id#题号」。这种记录有三个后果：本机再进来显示不出记录、
+   云端拿到的 key 匹配不上任何题、换设备后完全丢失。能还原的在这里一次性还原。 */
+let __ANS_HEALED = false;
+function healAnsKeys(force) {
+  if (__ANS_HEALED && !force) return 0;
+  try { if (!force && !(allBanks() || []).length) return 0; } catch (eB) { return 0; }
+  let moved = 0;
+  try {
+    Object.keys(ANS).forEach(k => {
+      const a = ANS[k];
+      if (!a || typeof a !== 'object') return;
+      if (String(k).indexOf('tg') !== 0 && String(k).indexOf('%') < 0) return;
+      const parts = String(k).split('#');
+      if (parts.length < 3) return;
+      for (let i = parts.length - 2; i >= 1; i--) {
+        const bid = parts[i], qid = parts.slice(i + 1).join('#');
+        let b = null;
+        try { b = bankById(bid) || bankById(decodeURIComponent(bid)); } catch (e) { b = null; }
+        if (!b || !b.questions) continue;
+        let hit = false;
+        try { hit = b.questions.some(x => x && String(x.id) === String(qid)); } catch (e2) { hit = false; }
+        if (!hit) continue;
+        const nk = key(bid, qid);
+        if (nk === k) return;
+        const old = ANS[nk];
+        if (!old || (+old.ts || 0) <= (+a.ts || 0)) ANS[nk] = a;
+        /* 必须打墓碑：mergeWrite 会把「磁盘上有、内存里没有」当成别处的新数据并回来 */
+        try { tombAdd('ans', k); } catch (eT) {}
+        delete ANS[k];
+        moved++;
+        return;
+      }
+    });
+    if (moved) saveAns();
+  } catch (e) {}
+  __ANS_HEALED = true;
+  return moved;
+}
+try { window.__healAns = healAnsKeys; } catch (e) {}
+try { healAnsKeys(); } catch (e) {}
+
 /* ---------- 外观：深色模式 + 字号 + 主题色 ---------- */
 /* §8 视觉 v2：主色默认改成「① 冷静青」，另有 靛 / 蓝+暖橙（②）/ 紫。
    只改 <html data-theme> 和几个变量，style.css 里 html[data-theme=…] 覆盖
@@ -3567,6 +3610,7 @@ var TR = (function () {
 
 var _trPending = null;
 function render() {
+  try { if (!__ANS_HEALED && typeof healAnsKeys === 'function' && allBanks().length) healAnsKeys(); } catch (eH) {}
   if (typeof richFlush === 'function') richFlush();          // 方案十：换页 / 重画前先保存就地编辑
   try {
     const r = route();
@@ -4984,6 +5028,13 @@ function renderQuiz(bankId) {
         parts.push('旧副本=' + (oldCopy == null ? '无' : (oldCopy.length + ' 字符')));
         parts.push('标签词表=' + (tagsRaw == null ? '无' : (tagsRaw.length + ' 字符')));
         parts.push('同步=' + (sy && sy.repo ? ((sy.provider || '?') + ' ' + (sy.owner || '?') + '/' + (sy.repo || '?') + (sy.lastAt ? (' 上次 ' + new Date(sy.lastAt).toLocaleString()) : ' 没同步过')) : '没配置'));
+        /* 作答记录：手机上反馈「做题不显示记录」时，先看这里存了多少、有没有落在虚拟题集 id 上 */
+        try {
+          var ansRaw = JSON.parse(localStorage.getItem('qbank.answers.v2') || '{}') || {};
+          var ansKeys = Object.keys(ansRaw), vk = 0;
+          ansKeys.forEach(function (k) { if (String(k).indexOf('tg') === 0 || String(k).indexOf('%') >= 0) vk++; });
+          parts.push('作答记录=' + ansKeys.length + (vk ? ('（其中虚拟 key ' + vk + ' 条）') : ''));
+        } catch (eAns) { parts.push('作答记录=读不了'); }
         el.textContent = '存储检测：' + parts.join(' · ');
         appIdbOpen().then(function (db) {
           var n = 0;

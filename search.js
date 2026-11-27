@@ -96,6 +96,9 @@
     var kbs = window.__KBS__ || [];
     kbs.forEach(function (bank) {
       var bid = String(bank.id || bank.name || '');
+      var bn0 = String(bank.name || '');
+      if (bn0 === '狂背') return;                 /* 狂背走 __KBACK */
+      if (/^(内科|外科|生化|生理|病理)$/.test(bn0)) return;  /* 这几个库的正文已经按页从 pdftext 进来了，别重复 */
       (bank.docs || []).forEach(function (d, i) {
         if (!d || !d.text) return;
         var id = 'kbd:' + bid + ':' + i;
@@ -104,10 +107,10 @@
         var lect = !!d.imgKey;              /* 有页图 key = 这份是「讲义」的那一页 */
         ITEMS.push({
           id: id, t: d.name || ('文档' + i),
-          s: lect ? '西综' : subjectOf(bank.name || bid),
+          s: lect ? '西综' : '其他',
           g: bank.name || '', x: d.text,
           src: lect ? '西综' : '资料库',
-          kind: lect ? 'lecture' : '',
+          kind: lect ? 'lecture' : '', xz: lect ? 1 : 0,
           pg: d.page || 0, pages: d.pages || 0,
           file: d.file || '', img: d.imgKey || ''
         });
@@ -127,6 +130,67 @@
       document.head.appendChild(sc);
     });
     return SHARD_JOB;
+  }
+
+  /* ---------- 讲义 PDF 文字（「讲义」模块） ----------
+     讲义正文在 pdftext/t*.json 里，由 lec3.js 按科目分块下载（第一次慢，之后进 IndexedDB 缓存）。
+     这里按科目一块一块取，每块到了就补进索引并重跑一次：结果边下边出，不是空列表。 */
+  var LEC_SUBJ = ['内科', '外科', '生理', '生化', '病理', '肖190知识点'];
+  var LEC_SEEN = {};
+  var LEC_STATE = { on: false, done: 0, total: 0, err: '' };
+  var LEC_JOBS = {};
+
+  /* 一行 pdftext（{k,p,src,f,t}）→ 一条可搜的讲义页 */
+  function lecAdd(r, subj) {
+    if (!r || !r.t) return;
+    var src = String(r.src || '');
+    if (src.indexOf('27狂背西综合集') >= 0) return;   /* 这份归「西综」模块，不重复 */
+    var id = 'lec:' + (r.k || (src + '#' + r.p));
+    if (LEC_SEEN[id]) return;
+    LEC_SEEN[id] = 1;
+    var name = String(r.f || src.split('/').pop() || '').replace(/\.pdf$/i, '');
+    var ss = (subj === '肖190知识点') ? '其他' : (subj || '其他');
+    ITEMS.push({
+      id: id, t: name, s: ss, g: ss,
+      x: r.t, src: '讲义', kind: 'lecture', xz: 0,
+      file: src, pg: r.p | 0, pages: 0, img: r.k || ''
+    });
+  }
+
+  function ensureLecSubj(subj) {
+    if (!window.LECTURE || !LECTURE.textSubj) return Promise.resolve();
+    var key = subj || '__all__';
+    if (LEC_JOBS[key]) return LEC_JOBS[key];
+    LEC_STATE.on = true;
+    LEC_JOBS[key] = LECTURE.textSubj(subj).then(function (rows) {
+      (rows || []).forEach(function (r) { lecAdd(r, subj); });
+      LEC_STATE.done++;
+      try { run(); } catch (e) {}
+    }).catch(function (e) {
+      LEC_STATE.err = String((e && e.message) || e || '');
+    });
+    return LEC_JOBS[key];
+  }
+
+  /* 选了具体科目只下那一个；「全部」按 内科 → 外科 → 生理 → 生化 → 病理 依次补 */
+  function ensureLec() {
+    if (!window.LECTURE || !LECTURE.textSubj) return;
+    var subs = (CUR_SUB && CUR_SUB !== '全部') ? [CUR_SUB] : LEC_SUBJ.slice();
+    subs = subs.map(function (x) { return x === '其他' ? '肖190知识点' : x; })
+               .filter(function (x) { return x; });
+    if (!subs.length) return;
+    if (!LEC_STATE.on) { LEC_STATE.on = true; LEC_STATE.total = subs.length; }
+    var ch = Promise.resolve();
+    subs.forEach(function (x) { ch = ch.then(function () { return ensureLecSubj(x); }); });
+  }
+  function lecBusy() { return LEC_STATE.on && LEC_STATE.done < LEC_STATE.total; }
+  function lecHintText() {
+    if (!lecBusy()) return '';
+    return '讲义文字还在下载（已完成 ' + LEC_STATE.done + ' / ' + LEC_STATE.total + ' 个科目），到了会自动补上…';
+  }
+  function lecHintEl() {
+    var t = lecHintText();
+    return t ? el('div', 'gsLoad', t) : null;
   }
 
   /* ---------- 题目（自建 + 内置题库里的题干/选项/解析） ----------
@@ -268,6 +332,7 @@
     '.gsItem{padding:10px 12px;border-radius:10px;cursor:pointer}', '.gsItem:hover{background:color-mix(in srgb,var(--primary,#2563eb) 10%,transparent)}',
     '.gsItem b{font-weight:600}', '.gsItem i{font-style:normal;color:color-mix(in srgb,var(--text,#0f172a) 55%,transparent);font-size:12px;margin-left:6px}',
     '.gsItem p{margin:4px 0 0;color:color-mix(in srgb,var(--text,#0f172a) 62%,transparent);font-size:12px;line-height:1.5}',
+    '.gsLoad{margin:10px 2px;padding:8px 10px;border-radius:10px;font-size:12.5px;color:color-mix(in srgb,var(--text,#0f172a) 62%,transparent);background:color-mix(in srgb,var(--primary,#2f6fed) 8%,transparent)}',
     '#gsEmpty{padding:24px;text-align:center;color:#94a3b8}',
     '#gsPeek{position:fixed;inset:0;z-index:20020;display:none;background:rgba(15,23,42,.45)}',
     '#gsPeek.on{display:block}',
@@ -418,7 +483,7 @@
   function modOf(it) {
     if (!it) return '其他';
     if (it.kind === 'q') return '题目';
-    if (it.kind === 'lecture') return '西综';
+    if (it.kind === 'lecture') return it.xz ? '西综' : '讲义';
     if (it.kind === 'kuangbei' || it.src === '狂背') return '狂背';
     if (it.src === '我的笔记') return '我的笔记';
     return '讲义';
@@ -468,6 +533,14 @@
     wrap.classList.add('on');
     input.value = ''; run(); setTimeout(function () { input.focus(); }, 30);
     ensureData().then(function () { try { loadQuestions(); } catch (e) {} run(); });
+    if (CUR_MOD === '讲义') { try { ensureLec(); } catch (e) {} }
+    /* 知识库分片（kb/m1..m8）是页面另外异步加载的，常在面板打开之后才到；
+       这里补两次索引，到了就重画一次结果。 */
+    [900, 3000].forEach(function (ms) {
+      setTimeout(function () {
+        try { var before = ITEMS.length; loadKbDocs(); if (ITEMS.length !== before) run(); } catch (e) {}
+      }, ms);
+    });
   }
   function close() { if (wrap) wrap.classList.remove('on'); }
   function closePeek() { if (peek) peek.classList.remove('on'); }
@@ -588,8 +661,8 @@
         + '<span class="kbp-sp"></span>'
         + (pdfHref2 ? '<a class="kbp-btn" href="' + pdfHref2 + '" target="_blank" rel="noopener">📄 整本 PDF</a>' : '')
         + '</div>'
-        + '<div class="kbp-wrap"><img class="kbp-img" id="lecImg2" alt="第 ' + pg + ' 页"'
-        + ' src="' + encodeURI('pdfimg/' + item.img + '.webp') + '"></div>'
+        + (item.img ? ('<div class="kbp-wrap"><img class="kbp-img" id="lecImg2" alt="第 ' + pg + ' 页"'
+        + ' src="' + encodeURI('pdfimg/' + item.img + '.webp') + '"></div>') : '')
         + (item.x ? '<details class="kbp-txt"><summary>文字版（可复制）</summary>' + mdToHtml(item.x) + '</details>' : '');
       var im2 = cardBody.querySelector('#lecImg2');
       if (im2) {
@@ -765,7 +838,7 @@
     var q0 = (input.value || '').trim().toLowerCase();
     var meta;
     if (it.kind === 'q') meta = '题目 · ' + (it.g || '') + ' · 第 ' + it.no + ' 题';
-    else if (it.kind === 'lecture') meta = '西综 · 第 ' + it.pg + ' 页';
+    else if (it.kind === 'lecture') meta = (it.xz ? '西综' : (it.s || '讲义')) + ' · 第 ' + it.pg + ' 页';
     else meta = (it.src || '') + (it.page ? ' · ' + it.page : '');
     var body = q0 ? snippet(it, q0, 100) : String(qText(it) || '').replace(/\s+/g, ' ').slice(0, 100);
     var pct = (SCORES && SCORES[it.id] != null) ? (' <span class="gsim">' + Math.round(Math.max(0, Math.min(1, SCORES[it.id])) * 100) + '%</span>') : '';
@@ -802,7 +875,9 @@
     });
     var keys = MOD_ORDER.filter(function (m) { return by[m]; });
     if (!res.length) {
-      list.appendChild(el('div', null, '<div id="gsEmpty">' + (READY ? '没找到相关内容，换个词试试（可以只搜题干、只搜讲义）' : '正在加载…') + '</div>'));
+      var e0 = READY ? '没找到相关内容，换个词试试（可以只搜题干、只搜讲义）' : '正在加载…';
+      if (lecBusy()) e0 = lecHintText();
+      list.appendChild(el('div', null, '<div id="gsEmpty">' + e0 + '</div>'));
       return;
     }
     keys.forEach(function (m) {
@@ -815,6 +890,7 @@
       arr.forEach(function (it) { det.appendChild(rowEl(it)); });
       list.appendChild(det);
     });
+    var lh0 = lecHintEl(); if (lh0) list.appendChild(lh0);
   }
 
   function paintList(res, aiOrdered) {
@@ -827,13 +903,14 @@
       var msg;
       if (!READY) msg = '正在加载…';
       else if (CUR_MOD === '题目') msg = '没找到题目，换个词试试（也可以只搜解析或只搜选项）';
-      else if (CUR_MOD === '讲义') msg = '没找到这个科目里的讲义内容';
+      else if (CUR_MOD === '讲义') msg = lecBusy() ? lecHintText() : '没找到这个科目里的讲义内容（讲义文字是按科目下载的，第一次会慢一点）';
       else if (CUR_MOD === '我的笔记') msg = '还没有笔记（点右上角「＋ 新建笔记」）';
       else msg = '没找到相关内容，换个词试试';
       list.appendChild(el('div', null, '<div id="gsEmpty">' + msg + '</div>'));
       return;
     }
     res.forEach(function (it) { list.appendChild(rowEl(it)); });
+    var lh1 = lecHintEl(); if (lh1) list.appendChild(lh1);
   }
 
   /* 当前模块（+二级筛选）可见的条目 */
@@ -876,9 +953,11 @@
         list.appendChild(el('div', null, '<div id="gsEmpty">输入关键词搜题目（可切换：题干 / 选项 / 解析）</div>'));
         return;
       }
+      if (CUR_MOD === '讲义') { try { ensureLec(); } catch (e) {} }
       paintList(base.slice(0, 30), false);
       return;
     }
+    if (CUR_MOD === '讲义' || CUR_MOD === '全部') { try { ensureLec(); } catch (e) {} }
     var res = base.map(function (it) { return { it: it, s: score(it, q, q) }; })
       .filter(function (o) { return o.s > 0; })
       .sort(function (a, b) { return b.s - a.s; })
