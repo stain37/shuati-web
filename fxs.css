@@ -33,8 +33,12 @@
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(30px); }
 }
-.fx-swap-next { animation: fxSlideInRight calc(400ms * var(--fx-inv,1)) var(--fx-ease-out) both; will-change: transform, opacity; }
-.fx-swap-prev { animation: fxSlideInLeft calc(400ms * var(--fx-inv,1)) var(--fx-ease-out) both; will-change: transform, opacity; }
+/* 换题：下一题从左边划进来、上一题从右边划进来（跟着左右滑手势的方向走），
+   240ms 结束；以前是 400ms 从反方向进来，翻得快的时候会觉得「甩一下」。 */
+@keyframes fxSwapNextIn { from { opacity: .35; transform: translate3d(-26px,0,0); } to { opacity: 1; transform: none; } }
+@keyframes fxSwapPrevIn { from { opacity: .35; transform: translate3d(26px,0,0); } to { opacity: 1; transform: none; } }
+.fx-swap-next { animation: fxSwapNextIn calc(240ms * var(--fx-inv,1)) var(--fx-ease-out) both; will-change: transform, opacity; }
+.fx-swap-prev { animation: fxSwapPrevIn calc(240ms * var(--fx-inv,1)) var(--fx-ease-out) both; will-change: transform, opacity; }
 
 /* ---------- 02 crossfade 交叉淡化 ---------- */
 @keyframes fxFadeIn  { from { opacity: 0; } to { opacity: 1; } }

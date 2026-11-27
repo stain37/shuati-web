@@ -2537,14 +2537,21 @@ function openAnsEditor(host, k, q, done) {
   const fixed = hasFix(k);
   host.innerHTML =
     '<div class="fixbox">' +
-    '<div class="small muted">勾选这道题<b>正确</b>的选项；只改本机的判分依据，题库文件不动。</div>' +
+    '<div class="small muted">' + (qType(q, orig) === 'A' ? '点一个字母就是这道题的正确答案；' : '勾选这道题<b>正确</b>的选项；') + '只改本机的判分依据，题库文件不动。</div>' +
     '<div class="fixrow">' + letters.map(L => '<label class="fixopt' + (cur.includes(L) ? ' on' : '') + '"><input type="checkbox" data-f="' + L + '"' + (cur.includes(L) ? ' checked' : '') + '><span>' + L + '</span></label>').join('') + '</div>' +
     '<div class="small muted">题库原答案 <b>' + (orig.join('') || '—') + '</b>' + (fixed ? '　·　已修正为 <b>' + cur.join('') + '</b>' : '') + '</div>' +
     '<label class="chk small" style="margin-top:6px"><input type="checkbox" id="fxRe" checked> 保存后顺带重判我做过的这道题（错次数和复习排期一起改）</label>' +
     '<div class="actions"><button class="btn primary" id="fxOk">保存</button>' +
     '<button class="btn" id="fxOrig"' + (fixed ? '' : ' disabled') + '>恢复题库原答案</button>' +
     '<button class="btn" id="fxCancel">取消</button></div></div>';
-  host.querySelectorAll('.fixopt input').forEach(cb => cb.onchange = () => cb.parentNode.classList.toggle('on', cb.checked));
+  const singleAns = (qType(q, orig) === 'A');
+  host.querySelectorAll('.fixopt input').forEach(cb => cb.onchange = () => {
+    /* 单选：点一个字母就是「换成它」，不用先取消原来那个（以前会变成 A+B，看着像没改成） */
+    if (singleAns && cb.checked) {
+      host.querySelectorAll('.fixopt input').forEach(o => { if (o !== cb) { o.checked = false; o.parentNode.classList.remove('on'); } });
+    }
+    cb.parentNode.classList.toggle('on', cb.checked);
+  });
   const pick = () => Array.from(host.querySelectorAll('.fixopt input')).filter(cb => cb.checked).map(cb => cb.dataset.f);
   host.querySelector('#fxOk').onclick = () => {
     const L = pick();
@@ -4375,6 +4382,14 @@ window.delTargetOf = delTargetOf;
 /* 第 8 条：在答题页直接改题目（题干 / 选项 / 答案 / 解析）。只对自建题库生效，
    内置题库是只读文件；套卷里的题改它原题库里的那道。 */
 function updateBankQuestion(bankId, qid, patch) {
+  /* 兜底：虚拟题集（tg:…）的题号是「真实题库#题号」，直接用会写成 tg:… 的补丁，原题永远不变 */
+  try {
+    let bid = String(bankId == null ? '' : bankId), qq = String(qid == null ? '' : qid);
+    if (bid.indexOf('tg:') === 0 && qq.indexOf('#') > 0) {
+      const i = qq.indexOf('#');
+      bankId = qq.slice(0, i); qid = qq.slice(i + 1);
+    }
+  } catch (e) {}
   const raw = Array.isArray(LOCAL) ? LOCAL.find(x => x && x.id === bankId) : null;
   if (!raw) {
     /* 内置题库：不写文件，写本地补丁；读的时候 applyPatches 会盖上去 */
@@ -5118,9 +5133,22 @@ function renderQuiz(bankId) {
   const fixedAns = hasFix(fk);
   const delT = delTargetOf(bank, q);              /* 这道题能不能删、删的是哪个题库里的哪道（内置题库不能删） */
   /* 内置题库也要能「改题目」：改的是本地补丁层（bank.source !== 'local'） */
-  const editT = (bank && bank.source === 'local')
-    ? delT
-    : (q ? { bankId: bank.id, qid: q.id, title: bank.title, patch: true } : null);
+  /* 虚拟题集（系统分类 / 标签题集）与套卷里的题，改的必须是它原来题库里的那道：
+     以前直接拿 bank.id（tg:…）当靶子，updateBankQuestion 就把补丁写成 tg:… 的键，
+     原题永远盖不到 —— 表现就是「答案改了没反应」。 */
+  const editT = (function () {
+    if (!q) return null;
+    if (bank && bank.paper) {
+      const f = q._srcKey ? findQIn(baseBanks(), q._srcKey) : null;
+      if (!f) return null;
+      return { bankId: f.bank.id, qid: f.q.id, title: f.bank.title, patch: f.bank.source !== 'local' };
+    }
+    if (bank && bank.virtualTag) {
+      return delT || { bankId: q._bank, qid: (q.__oid != null ? q.__oid : q.id), title: q._bname || '', tagOnly: bank.virtualTag };
+    }
+    if (bank && bank.source === 'local') return delT;
+    return { bankId: bank.id, qid: q.id, title: bank.title, patch: true };
+  })();
 
   const opts = q.options.map((t, i) => {
     const K = 'ABCDEFGHIJKL'[i];
@@ -6890,11 +6918,12 @@ function judge(bank, q, sel) {
   uiSpeedFx(bank, q, ok);
   /* 判完分把反馈（对错 + 解析）滚进视野：手机上尤其需要，不然要点完还得自己往下翻 */
   const fbEl = $('fb');
-  if (fbEl && (!ok || SET.expOnOk)) {
+  if (fbEl && (!ok || SET.expOnOk) && !(ok && SET.autoNext)) {
     setTimeout(() => { try { fbEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { fbEl.scrollIntoView(); } }, 60);
   }
   /* 速刷模式下不叠加 SET.autoNext 那次跳（否则两道跳会连跳两题）—— autoNext 本身的行为没动 */
-  if (ok && SET.autoNext && SET.quizMode !== 'speed') setTimeout(() => step(1), 650);
+  /* 答对立刻走：以前 650ms，等那一口气的时间太长了；留 220ms 让对错反馈闪一下再翻 */
+  if (ok && SET.autoNext && SET.quizMode !== 'speed') setTimeout(() => step(1), 220);
 }
 
 /* 手机端答错后可以「撤销上一次回答」：把上一次判分前的答题记录原样放回去 */
@@ -7243,10 +7272,19 @@ function step(d) {
   const p = poolOf(bank); if (!p.length) return;
   const i = p.findIndex(x => String(x.id) === String(QZ.cur));
   const j = Math.min(p.length - 1, Math.max(0, (i < 0 ? 0 : i) + d));
+  /* 翻页保持滚动位置：右边那根进度条（上下滑块）停在哪儿就还停在哪儿。
+     以前这里强制 scrollTo(0)，每翻一题都跳回顶部。 */
+  const keepY = (window.pageYOffset || document.documentElement.scrollTop || 0);
   QZ.cur = p[j].id;
   writeLS('qbank.last.' + bank.id, QZ.cur);
   render();
-  try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch (e) { window.scrollTo(0, 0); }
+  /* 位置不变，但不留白：新题比原来短、原来的 y 已经超出新内容时，贴着底部停住 */
+  try {
+    const doc = document.documentElement;
+    const maxY = Math.max(0, (doc.scrollHeight || 0) - (window.innerHeight || 0));
+    const target = Math.max(0, Math.min(keepY, maxY));
+    if (Math.abs((window.pageYOffset || 0) - target) > 2) window.scrollTo(0, target);
+  } catch (e) {}
 }
 
 let GRIDF = 'all';        // 答题卡筛选：all / wrong / undone（只影响显示，不影响题号）

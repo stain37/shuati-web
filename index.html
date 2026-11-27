@@ -20,8 +20,8 @@
 <link rel="stylesheet" href="chat.css?v=20261105c">
 <link rel="stylesheet" href="diagram.css?v=20261031a">
 <link rel="stylesheet" href="motion.css?v=20261115a">
-<link rel="stylesheet" href="anim.css?v=20261105b">
-<link rel="stylesheet" href="fxs.css?v=20261105e">
+<link rel="stylesheet" href="anim.css?v=20261105c">
+<link rel="stylesheet" href="fxs.css?v=20261105f">
 <link rel="stylesheet" href="vendor/katex/katex.min.css?v=20261101c">
 <script>
   /* 皮肤层懒加载（web312）：style.css 只剩通用样式（约 60 KB gz），
@@ -333,7 +333,7 @@ var iv=setInterval(function(){n++;
       <span class="hint" id="glowHint" style="margin-top:0"></span>
     </div>
   <label class="chk"><input type="checkbox" id="setExpOnOk"> 答对时也显示解析</label>
-  <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题</label>
+  <label class="chk"><input type="checkbox" id="setAutoNext"> 答对后自动跳下一题（0.2 秒后，带滑动）</label>
   <label class="chk"><input type="checkbox" id="setShuffle"> 随机顺序出题</label>
   <label class="chk"><input type="checkbox" id="setFxConfetti"> 做完一套题 / 交卷时放彩带（🎺）</label>
 <label class="chk"><input type="checkbox" id="setSmooth"> 流畅模式（玻璃换成普通模糊、去掉多层阴影与折射，减少重绘开销）</label>
@@ -422,7 +422,7 @@ window.writeLS=window.writeLS||function(k,v){try{localStorage.setItem(k,JSON.str
 <script src="designer.js?v=20261112b"></script>
 <script src="theme.js?v=20261114c"></script>
 <script src="daylog.js?v=20261113a"></script>
-<script src="app.js?v=20261118ey"></script>
+<script src="app.js?v=20261118ez"></script>
 <script src="smooth.js?v=20261114b" defer></script>
 <script src="sim.js?v=20261108a"></script>
 <script src="map.js?v=20261112s"></script>
